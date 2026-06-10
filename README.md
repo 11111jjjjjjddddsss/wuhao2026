@@ -9,11 +9,10 @@
 
 ## 提示词真源
 - 主对话锚点：`server-go/assets/system_anchor.txt`
-- B 层摘要提示词：`server-go/assets/b_extraction_prompt.txt`
-- C 层摘要提示词：`server-go/assets/c_extraction_prompt.txt`
+- 记忆文档摘要提示词：`server-go/assets/summary_extraction_prompt.txt`
 
 主对话锚点缺失或为空时，服务端会 fail-fast 启动失败。  
-B/C 提示词会在启动时预检查并打日志；若运行时该层失败，只影响对应摘要层并保留重试。
+记忆文档提示词会在启动时预检查并打日志；若运行时摘要失败，只影响记忆文档并保留重试。
 
 ## 构建
 - Android Kotlin 编译：`./gradlew :app:compileDebugKotlin`

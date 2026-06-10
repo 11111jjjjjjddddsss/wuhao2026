@@ -4791,7 +4791,7 @@ fun ChatScreen() {
             latestMessageIndexOrMinusOne() >= 0
     if (shouldAnchorStreamingBottomThisFrame) {
         // Run after this composition commits but before layout, so a streaming wrap and bottom
-        // anchor can land in the same frame instead of flashing below the workline for one draw.
+        // Anchor in the same frame so the tail does not appear below the workline for one draw.
         SideEffect {
             requestForwardListBottomAnchor()
         }

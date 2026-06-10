@@ -80,7 +80,7 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 	if !hasAdminMonitoringModelPolicy(rows, "主聊天问诊", mainChatModel, mainChatSearchStrategy, false) {
 		t.Fatalf("missing main chat model usage policy: %#v", rows)
 	}
-	if !hasAdminMonitoringModelPolicy(rows, "B/C 记忆摘要", summaryExtractionModel, "", false) {
+	if !hasAdminMonitoringModelPolicy(rows, "记忆文档摘要", summaryExtractionModel, "", false) {
 		t.Fatalf("missing summary model usage policy: %#v", rows)
 	}
 	if !hasAdminMonitoringModelPolicy(rows, "今日农情", defaultDailyAgriCardModel, dailyAgriSearchStrategy, true) {
@@ -109,42 +109,34 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 	}
 }
 
-func TestAdminMonitoringSummaryModelPolicyShowsLayerOverride(t *testing.T) {
-	t.Setenv("C_SUMMARY_MODEL", "qwen-plus")
+func TestAdminMonitoringSummaryModelPolicyUsesFixedQwenPlus(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
-	summaryRow := findAdminMonitoringModelPolicy(rows, "B/C 记忆摘要")
+	summaryRow := findAdminMonitoringModelPolicy(rows, "记忆文档摘要")
 	if summaryRow == nil {
 		t.Fatalf("missing summary model usage policy: %#v", rows)
 	}
-	if summaryRow.Model != "B qwen3.5-flash / C qwen-plus" {
+	if summaryRow.Model != summaryExtractionModel {
 		t.Fatalf("summary model label = %q", summaryRow.Model)
 	}
 	if !summaryRow.ThinkingDisabled {
-		t.Fatalf("summary thinking should stay disabled with qwen-plus override: %#v", summaryRow)
-	}
-	if !strings.Contains(summaryRow.CostNote, "C 层可切 qwen-plus") {
-		t.Fatalf("summary cost note should mention C layer qwen-plus option: %#v", summaryRow)
+		t.Fatalf("summary thinking should stay disabled: %#v", summaryRow)
 	}
 }
 
-func TestAdminMonitoringDailyAgriManualFlashExperimentPolicy(t *testing.T) {
-	t.Setenv("DAILY_AGRI_MODEL", "qwen3.5-flash")
+func TestAdminMonitoringDailyAgriUsesFixedQwenPlus(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
 	dailyRow := findAdminMonitoringModelPolicy(rows, "今日农情")
 	if dailyRow == nil {
 		t.Fatalf("missing daily agri model usage policy: %#v", rows)
 	}
-	if dailyRow.Model != "qwen3.5-flash" {
+	if dailyRow.Model != defaultDailyAgriCardModel {
 		t.Fatalf("daily agri model = %q", dailyRow.Model)
 	}
-	if dailyRow.Protocol != "DashScope multimodal-generation 流式" {
-		t.Fatalf("daily agri flash protocol = %q", dailyRow.Protocol)
+	if dailyRow.Protocol != "DashScope text-generation 非流式" {
+		t.Fatalf("daily agri protocol = %q", dailyRow.Protocol)
 	}
-	if dailyRow.ThinkingDisabled {
-		t.Fatalf("daily agri flash experiment thinking should be enabled: %#v", dailyRow)
-	}
-	if !strings.Contains(dailyRow.CostNote, "降本候选") {
-		t.Fatalf("daily agri flash experiment cost note mismatch: %#v", dailyRow)
+	if !dailyRow.ThinkingDisabled {
+		t.Fatalf("daily agri thinking should be disabled: %#v", dailyRow)
 	}
 }
 

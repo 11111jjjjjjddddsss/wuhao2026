@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -14,10 +15,8 @@ import (
 )
 
 type summaryStore interface {
-	WriteUserBSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error)
-	WriteUserCSummaryIfCurrent(ctx context.Context, userID string, summary string, expectedRoundTotal int) (bool, error)
-	SetUserSummaryPending(ctx context.Context, userID string, layer SummaryLayer, pending bool) error
-	GetRecentSessionRoundsForSummary(ctx context.Context, userID string, limit int) ([]SessionRound, error)
+	WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int) (bool, error)
+	SetUserMemoryPending(ctx context.Context, userID string, pending bool) error
 }
 
 type SummaryService struct {
@@ -28,11 +27,7 @@ type SummaryService struct {
 	running sync.Map
 }
 
-const (
-	cSummaryEveryRounds   = 20
-	cSummaryArchiveRounds = 20
-	summaryResponseLimit  = 64 * 1024
-)
+const summaryResponseLimit = 64 * 1024
 
 var summaryExtractionTimeout = 60 * time.Second
 
@@ -55,131 +50,106 @@ func (s *SummaryService) log() *slog.Logger {
 	return slog.Default()
 }
 
-func GetSummaryIntervals(tier Tier) (int, int) {
+func GetMemoryDocumentInterval(tier Tier) int {
 	if tier == TierPro {
-		return 9, cSummaryEveryRounds
+		return 9
 	}
-	return 6, cSummaryEveryRounds
+	return 6
 }
 
 func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *SessionSnapshot) {
-	ctx := context.Background()
-	s.processLayer(ctx, SummaryLayerB, userID, snapshot)
-	s.processLayer(ctx, SummaryLayerC, userID, snapshot)
-}
-
-func (s *SummaryService) processLayer(ctx context.Context, layer SummaryLayer, userID string, snapshot *SessionSnapshot) {
-	pending := snapshot.PendingRetryB
-	oldSummary := snapshot.BSummary
-	if layer == SummaryLayerC {
-		pending = snapshot.PendingRetryC
-		oldSummary = snapshot.CSummary
-	}
-	if !pending {
+	if s == nil || snapshot == nil || !snapshot.PendingMemory {
 		return
 	}
-	if !s.tryStartLayer(userID, layer) {
-		s.log().Info("summary extraction skipped: already running", "userId", userID, "layer", layer, "roundTotal", snapshot.RoundTotal)
+	if !s.tryStart(userID) {
+		s.log().Info("summary extraction skipped: already running", "userId", userID, "roundTotal", snapshot.RoundTotal)
 		return
 	}
-	defer s.finishLayer(userID, layer)
-	if !s.bailian.HasKeyConfigured() {
-		s.log().Warn("summary extraction skipped: model backend unavailable", "userId", userID, "layer", layer)
+	defer s.finish(userID)
+	if s.bailian == nil || !s.bailian.HasKeyConfigured() {
+		s.log().Warn("summary extraction skipped: model backend unavailable", "userId", userID)
 		return
 	}
 
-	dialogueRounds := snapshot.ARoundsFull
-	if layer == SummaryLayerC && s.store != nil {
-		archivedRounds, err := s.store.GetRecentSessionRoundsForSummary(ctx, userID, cSummaryArchiveRounds)
-		if err != nil {
-			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.log().Error("C summary archive load failed", "userId", userID, "roundTotal", snapshot.RoundTotal, "error", err)
-			return
-		}
-		if len(archivedRounds) < cSummaryArchiveRounds {
-			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.log().Info("C summary extraction skipped: insufficient archived rounds", "userId", userID, "roundTotal", snapshot.RoundTotal, "rounds", len(archivedRounds), "required", cSummaryArchiveRounds)
-			return
-		}
-		dialogueRounds = archivedRounds
-	}
-
-	dialogueText := buildDialogueText(dialogueRounds)
+	dialogueText := buildDialogueText(snapshot.ARoundsFull)
 	if dialogueText == "" {
-		s.log().Warn("summary extraction skipped: empty dialogue", "userId", userID, "layer", layer)
+		s.log().Warn("summary extraction skipped: empty dialogue", "userId", userID)
 		return
 	}
 
+	ctx := context.Background()
 	extractCtx, cancelExtract := context.WithTimeout(ctx, summaryExtractionTimeout)
-	nextSummary, err := s.extractSummary(extractCtx, layer, oldSummary, dialogueText)
+	nextMemory, err := s.extractSummary(extractCtx, snapshot.MemoryDocument, dialogueText)
 	cancelExtract()
 	if err != nil {
-		_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-		s.log().Error("summary extraction failed", "userId", userID, "layer", layer, "error", err)
+		s.keepPending(ctx, userID, snapshot)
+		s.log().Error("summary extraction failed", "userId", userID, "error", err)
 		return
 	}
 
-	if layer == SummaryLayerB {
-		written, err := s.store.WriteUserBSummaryIfCurrent(ctx, userID, nextSummary, snapshot.RoundTotal)
-		if err != nil {
-			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.log().Error("write B summary failed", "userId", userID, "error", err)
-			return
-		}
-		if !written {
-			s.log().Info("B summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
-			return
-		}
-		snapshot.BSummary = nextSummary
-		snapshot.PendingRetryB = false
-	} else {
-		written, err := s.store.WriteUserCSummaryIfCurrent(ctx, userID, nextSummary, snapshot.RoundTotal)
-		if err != nil {
-			_ = s.store.SetUserSummaryPending(ctx, userID, layer, true)
-			s.log().Error("write C summary failed", "userId", userID, "error", err)
-			return
-		}
-		if !written {
-			s.log().Info("C summary write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
-			return
-		}
-		snapshot.CSummary = nextSummary
-		snapshot.PendingRetryC = false
+	written, err := s.store.WriteUserMemoryDocumentIfCurrent(ctx, userID, nextMemory.MemoryDocument, snapshot.RoundTotal)
+	if err != nil {
+		s.keepPending(ctx, userID, snapshot)
+		s.log().Error("write memory document failed", "userId", userID, "error", err)
+		return
+	}
+	if !written {
+		s.log().Info("memory document write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
+		return
 	}
 
-	s.log().Info("summary extraction success", "userId", userID, "layer", layer, "chars", len(nextSummary))
+	snapshot.MemoryDocument = nextMemory.MemoryDocument
+	snapshot.PendingMemory = false
+	s.log().Info("memory document extraction success", "userId", userID, "memory_chars", len(nextMemory.MemoryDocument))
 }
 
-func (s *SummaryService) tryStartLayer(userID string, layer SummaryLayer) bool {
-	key := userID + ":" + string(layer)
+func (s *SummaryService) tryStart(userID string) bool {
+	key := userID + ":summary"
 	_, loaded := s.running.LoadOrStore(key, struct{}{})
 	return !loaded
 }
 
-func (s *SummaryService) finishLayer(userID string, layer SummaryLayer) {
-	key := userID + ":" + string(layer)
+func (s *SummaryService) finish(userID string) {
+	key := userID + ":summary"
 	s.running.Delete(key)
 }
 
-func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer, oldSummary string, dialogueText string) (string, error) {
-	prompt, err := s.prompts.SummaryPrompt(layer)
+func (s *SummaryService) keepPending(ctx context.Context, userID string, snapshot *SessionSnapshot) {
+	if s == nil || s.store == nil || snapshot == nil {
+		return
+	}
+	if snapshot.PendingMemory {
+		_ = s.store.SetUserMemoryPending(ctx, userID, true)
+	}
+}
+
+type extractedMemoryDocument struct {
+	MemoryDocument string
+}
+
+type summaryExtractionPayload struct {
+	ShortTermMemory *string
+	LongTermMemory  *string
+	UserProfile     *string
+	AgriMemory      *string
+}
+
+func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument string, dialogueText string) (extractedMemoryDocument, error) {
+	prompt, err := s.prompts.SummaryPrompt()
 	if err != nil {
-		return "", err
+		return extractedMemoryDocument{}, err
 	}
 
-	userContent := "[对话]\n" + dialogueText
-	if strings.TrimSpace(oldSummary) != "" {
-		userContent = "[历史摘要]\n" + strings.TrimSpace(oldSummary) + "\n\n[对话]\n" + dialogueText
-	}
-	s.log().Info("summary extraction started",
-		"layer", layer,
-		"model", summaryExtractionModelForLayer(layer),
+	userContent := buildSummaryExtractionUserContent(oldMemoryDocument, dialogueText)
+	model := summaryExtractionModelName()
+	s.log().Info("memory document extraction started",
+		"model", model,
 		"prompt_chars", utf8.RuneCountInString(prompt),
 		"user_content_chars", utf8.RuneCountInString(userContent),
 	)
 
 	response, err := s.bailian.OpenCompletion(ctx, map[string]any{
-		"model":           summaryExtractionModelForLayer(layer),
+		"model":           model,
 		"stream":          false,
 		"temperature":     unifiedModelTemperature,
 		"enable_thinking": false,
@@ -189,42 +159,230 @@ func (s *SummaryService) extractSummary(ctx context.Context, layer SummaryLayer,
 		},
 	})
 	if err != nil {
-		return "", err
+		return extractedMemoryDocument{}, err
 	}
 	defer response.Body.Close()
 
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		_, readErr := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
 		if readErr != nil && !errors.Is(readErr, errResponseBodyTooLarge) {
-			return "", readErr
+			return extractedMemoryDocument{}, readErr
 		}
-		return "", fmt.Errorf("%s_EXTRACT_HTTP_%d", layer, response.StatusCode)
+		return extractedMemoryDocument{}, fmt.Errorf("SUMMARY_EXTRACT_HTTP_%d", response.StatusCode)
 	}
 
 	body, readErr := readLimitedResponseBody(response.Body, summaryResponseLimit)
 	if readErr != nil {
-		return "", fmt.Errorf("%s_EXTRACT_RESPONSE_TOO_LARGE", layer)
+		return extractedMemoryDocument{}, fmt.Errorf("SUMMARY_EXTRACT_RESPONSE_TOO_LARGE")
 	}
 	payload := map[string]any{}
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", err
+		return extractedMemoryDocument{}, err
 	}
 	if usage, ok := parseBailianUsagePayload(payload["usage"]); ok {
-		logAttrs := []any{"layer", layer}
-		logAttrs = appendBailianUsageLogAttrs(logAttrs, usage)
-		s.log().Info("summary model usage", logAttrs...)
+		s.log().Info("memory document model usage", appendBailianUsageLogAttrs([]any{}, usage)...)
 	}
 	choices, _ := payload["choices"].([]any)
 	if len(choices) == 0 {
-		return "", fmt.Errorf("%s_EXTRACT_EMPTY", layer)
+		return extractedMemoryDocument{}, fmt.Errorf("SUMMARY_EXTRACT_EMPTY")
 	}
 	choice, _ := choices[0].(map[string]any)
 	message, _ := choice["message"].(map[string]any)
 	content := strings.TrimSpace(asString(message["content"]))
 	if content == "" {
-		return "", fmt.Errorf("%s_EXTRACT_EMPTY", layer)
+		return extractedMemoryDocument{}, fmt.Errorf("SUMMARY_EXTRACT_EMPTY")
 	}
-	return content, nil
+	return normalizeMemoryDocumentExtraction(content, oldMemoryDocument)
+}
+
+func buildSummaryExtractionUserContent(oldMemoryDocument string, dialogueText string) string {
+	oldMemory := strings.TrimSpace(oldMemoryDocument)
+	if oldMemory == "" {
+		oldMemory = "暂无记忆文档"
+	}
+	return strings.TrimSpace("[已有记忆文档]\n" + oldMemory + "\n\n[最近对话]\n" + strings.TrimSpace(dialogueText))
+}
+
+func normalizeMemoryDocumentExtraction(content string, oldMemoryDocument string) (extractedMemoryDocument, error) {
+	decoded := parseSummaryExtractionSections(content)
+	if decoded.ShortTermMemory == nil &&
+		decoded.LongTermMemory == nil &&
+		decoded.UserProfile == nil &&
+		decoded.AgriMemory == nil {
+		return extractedMemoryDocument{}, fmt.Errorf("SUMMARY_EXTRACT_EMPTY_FIELDS")
+	}
+
+	previous := splitMemoryDocument(oldMemoryDocument)
+	shortTerm := summaryFieldValue(decoded.ShortTermMemory, stringPtrValue(previous.ShortTermMemory), "暂无短期承接可沉淀")
+	longTerm := summaryFieldValue(decoded.LongTermMemory, stringPtrValue(previous.LongTermMemory), "暂无稳定长期背景可沉淀")
+	userProfile := summaryFieldValue(decoded.UserProfile, stringPtrValue(previous.UserProfile), "暂无稳定用户画像可沉淀")
+	agriMemory := summaryFieldValue(decoded.AgriMemory, stringPtrValue(previous.AgriMemory), "暂无农业重点事件可沉淀")
+
+	return extractedMemoryDocument{
+		MemoryDocument: combineMemoryDocument(shortTerm, longTerm, userProfile, agriMemory),
+	}, nil
+}
+
+func summaryFieldValue(value *string, oldValue string, emptyFallback string) string {
+	if value == nil {
+		return firstNonBlank(oldValue, emptyFallback)
+	}
+	return firstNonBlank(*value, oldValue, emptyFallback)
+}
+
+func stripSummaryTextEnvelope(content string) string {
+	text := strings.TrimSpace(content)
+	if strings.HasPrefix(text, "```") {
+		lines := strings.Split(text, "\n")
+		if len(lines) >= 2 {
+			if strings.HasPrefix(strings.TrimSpace(lines[0]), "```") {
+				lines = lines[1:]
+			}
+			if len(lines) > 0 && strings.HasPrefix(strings.TrimSpace(lines[len(lines)-1]), "```") {
+				lines = lines[:len(lines)-1]
+			}
+			text = strings.TrimSpace(strings.Join(lines, "\n"))
+		}
+	}
+	return text
+}
+
+type summarySectionMatch struct {
+	key        string
+	start      int
+	valueStart int
+}
+
+func parseSummaryExtractionSections(content string) summaryExtractionPayload {
+	text := stripSummaryTextEnvelope(content)
+	matches := []summarySectionMatch{}
+	for _, label := range []struct {
+		key      string
+		variants []string
+	}{
+		{key: "short", variants: []string{"短期承接：", "短期承接:", "短期记忆：", "短期记忆:"}},
+		{key: "long", variants: []string{"长期背景：", "长期背景:", "长期通用记忆：", "长期通用记忆:"}},
+		{key: "profile", variants: []string{"用户画像：", "用户画像:"}},
+		{key: "agri", variants: []string{"农业重点事件：", "农业重点事件:", "农业相关重点事件记忆：", "农业相关重点事件记忆:"}},
+	} {
+		bestStart := -1
+		bestLen := 0
+		for _, variant := range label.variants {
+			idx := strings.Index(text, variant)
+			if idx < 0 {
+				continue
+			}
+			if bestStart < 0 || idx < bestStart {
+				bestStart = idx
+				bestLen = len(variant)
+			}
+		}
+		if bestStart >= 0 {
+			matches = append(matches, summarySectionMatch{
+				key:        label.key,
+				start:      bestStart,
+				valueStart: bestStart + bestLen,
+			})
+		}
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].start < matches[j].start
+	})
+
+	result := summaryExtractionPayload{}
+	seen := map[string]bool{}
+	for idx, match := range matches {
+		if seen[match.key] {
+			continue
+		}
+		seen[match.key] = true
+		valueEnd := len(text)
+		if idx+1 < len(matches) {
+			valueEnd = matches[idx+1].start
+		}
+		value := cleanSummarySectionText(text[match.valueStart:valueEnd])
+		switch match.key {
+		case "short":
+			result.ShortTermMemory = &value
+		case "long":
+			result.LongTermMemory = &value
+		case "profile":
+			result.UserProfile = &value
+		case "agri":
+			result.AgriMemory = &value
+		}
+	}
+	return result
+}
+
+func cleanSummarySectionText(value string) string {
+	text := strings.TrimSpace(value)
+	lines := strings.Split(text, "\n")
+	for idx := range lines {
+		lines[idx] = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[idx]), "#"))
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func combineMemoryDocument(shortTerm string, longTerm string, userProfile string, agriMemory string) string {
+	return strings.TrimSpace("短期承接：" + strings.TrimSpace(shortTerm) +
+		"\n长期背景：" + strings.TrimSpace(longTerm) +
+		"\n用户画像：" + strings.TrimSpace(userProfile) +
+		"\n农业重点事件：" + strings.TrimSpace(agriMemory))
+}
+
+func splitMemoryDocument(memoryDocument string) summaryExtractionPayload {
+	text := strings.TrimSpace(memoryDocument)
+	result := summaryExtractionPayload{}
+	labels := []struct {
+		prefixes []string
+		assign   func(string)
+	}{
+		{[]string{"短期承接：", "短期记忆："}, func(value string) { result.ShortTermMemory = &value }},
+		{[]string{"长期背景：", "长期通用记忆："}, func(value string) { result.LongTermMemory = &value }},
+		{[]string{"用户画像："}, func(value string) { result.UserProfile = &value }},
+		{[]string{"农业重点事件：", "农业相关重点事件记忆："}, func(value string) { result.AgriMemory = &value }},
+	}
+	if text != "" {
+		found := false
+		for idx, label := range labels {
+			start, prefix := firstLabelIndex(text, label.prefixes)
+			if start < 0 {
+				continue
+			}
+			found = true
+			valueStart := start + len(prefix)
+			valueEnd := len(text)
+			for nextIdx := idx + 1; nextIdx < len(labels); nextIdx++ {
+				if nextStart, _ := firstLabelIndex(text[valueStart:], labels[nextIdx].prefixes); nextStart >= 0 {
+					valueEnd = valueStart + nextStart
+					break
+				}
+			}
+			label.assign(strings.TrimSpace(text[valueStart:valueEnd]))
+		}
+		if !found {
+			result.ShortTermMemory = &text
+		}
+	}
+
+	return result
+}
+
+func firstLabelIndex(text string, prefixes []string) (int, string) {
+	bestStart := -1
+	bestPrefix := ""
+	for _, prefix := range prefixes {
+		start := strings.Index(text, prefix)
+		if start < 0 {
+			continue
+		}
+		if bestStart < 0 || start < bestStart {
+			bestStart = start
+			bestPrefix = prefix
+		}
+	}
+	return bestStart, bestPrefix
 }
 
 func buildDialogueText(rounds []SessionRound) string {

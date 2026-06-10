@@ -57,10 +57,8 @@ type SessionRound struct {
 type SessionSnapshot struct {
 	UserID            string         `json:"user_id"`
 	ARoundsFull       []SessionRound `json:"a_rounds_full"`
-	BSummary          string         `json:"b_summary"`
-	CSummary          string         `json:"c_summary"`
-	PendingRetryB     bool           `json:"pending_retry_b"`
-	PendingRetryC     bool           `json:"pending_retry_c"`
+	MemoryDocument    string         `json:"memory_document"`
+	PendingMemory     bool           `json:"pending_memory"`
 	RoundTotal        int            `json:"round_total"`
 	UpdatedAt         int64          `json:"updated_at"`
 	SessionGeneration int            `json:"session_generation"`
@@ -112,13 +110,6 @@ type RegionContext struct {
 	Source      RegionSource
 	Reliability RegionReliability
 }
-
-type SummaryLayer string
-
-const (
-	SummaryLayerB SummaryLayer = "B"
-	SummaryLayerC SummaryLayer = "C"
-)
 
 type PromptProbeResult struct {
 	OK    bool

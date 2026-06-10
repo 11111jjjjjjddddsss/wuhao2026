@@ -111,13 +111,11 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	}
 	logger.Info("system anchor loaded", "anchor_source", "file", "anchor_path", prompts.SystemAnchorPath(), "anchor_chars", len(systemAnchor))
 
-	for _, layer := range []SummaryLayer{SummaryLayerB, SummaryLayerC} {
-		result := prompts.ProbeSummaryPrompt(layer)
-		if result.OK {
-			logger.Info("summary prompt precheck ok", "layer", layer, "prompt_path", result.Path, "prompt_chars", result.Chars)
-		} else {
-			logger.Warn("summary prompt precheck failed", "layer", layer, "prompt_path", result.Path, "error", result.Error)
-		}
+	result := prompts.ProbeSummaryPrompt()
+	if result.OK {
+		logger.Info("summary prompt precheck ok", "prompt_path", result.Path, "prompt_chars", result.Chars)
+	} else {
+		logger.Warn("summary prompt precheck failed", "prompt_path", result.Path, "error", result.Error)
 	}
 
 	store := NewStore(db, shanghai)
@@ -374,8 +372,8 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		"a_json":             safe.ARoundsFull,
 		"a_rounds_full":      safe.ARoundsFull,
 		"a_rounds_for_ui":    uiRounds,
-		"b_summary":          safe.BSummary,
-		"c_summary":          safe.CSummary,
+		"memory_document":    safe.MemoryDocument,
+		"b_summary":          safe.MemoryDocument,
 		"round_total":        safe.RoundTotal,
 		"updated_at":         safe.UpdatedAt,
 		"session_generation": safe.SessionGeneration,
@@ -762,8 +760,8 @@ func safeSnapshot(userID string, snapshot *SessionSnapshot) SessionSnapshot {
 	return SessionSnapshot{
 		UserID:            userID,
 		ARoundsFull:       []SessionRound{},
-		BSummary:          "",
-		CSummary:          "",
+		MemoryDocument:    "",
+		PendingMemory:     false,
 		RoundTotal:        0,
 		UpdatedAt:         time.Now().UnixMilli(),
 		SessionGeneration: 0,

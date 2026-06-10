@@ -2,20 +2,21 @@ package com.nongjiqianwen
 
 /**
  * 聊天记录两条线分离：客户端与后端的会话快照契约。
- * A/B 真相在后端 DB；UI 裁剪（如 RENDER_WINDOW、hardTrimMessages）仅展示层，不得用于回写或推导 A/B。
+ * A 层滑窗和记忆文档真相在后端 DB；UI 裁剪（如 RENDER_WINDOW、hardTrimMessages）仅展示层，不得用于回写或推导后端上下文。
  */
 
-/** GET /api/session/snapshot 响应：B/C 摘要 + A 全量（供摘要提取）+ 最近 30 轮（仅 UI 展示） */
+/** GET /api/session/snapshot 响应：记忆文档 + A 全量 + 最近 30 轮（仅 UI 展示） */
 data class SessionSnapshot(
+    val memory_document: String,
     val b_summary: String,
-    val c_summary: String,
     val a_rounds_full: List<ARound>,
     val a_rounds_for_ui: List<ARound>,
     val session_generation: Int = 0
 ) {
     /** 兼容旧接口只返回 a_rounds 时：视为 for_ui，full 用 for_ui */
-    constructor(b_summary: String, a_rounds: List<ARound>) : this(b_summary, "", a_rounds, a_rounds)
-    constructor(b_summary: String, c_summary: String, a_rounds: List<ARound>) : this(b_summary, c_summary, a_rounds, a_rounds)
+    constructor(memoryDocument: String, a_rounds: List<ARound>) : this(memoryDocument, memoryDocument, a_rounds, a_rounds)
+    constructor(memoryDocument: String, a_rounds_full: List<ARound>, a_rounds_for_ui: List<ARound>, session_generation: Int = 0) :
+        this(memoryDocument, memoryDocument, a_rounds_full, a_rounds_for_ui, session_generation)
 }
 
 /** 单轮对话 (user, assistant) */

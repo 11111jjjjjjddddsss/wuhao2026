@@ -135,7 +135,7 @@ systemctl status nginx --no-pager
 2. 如果有 `request_id`，围绕这个 ID 查同一时间段 Go journal 的业务日志。
 3. 如果只有 Nginx `502`，先跑 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，确认 active upstream slot、Nginx 和 `/healthz`。
 4. 如果是 App 端失败但 Go / Nginx 没异常，再查 `GET /internal/app/logs` 或后续管理后台的 App 自动日志。
-5. 如果是今日农情、B/C 摘要或模型链路，继续按对应 runbook 查模型 Key 池、联网搜索和生成任务状态。
+5. 如果是今日农情、记忆文档摘要或模型链路，继续按对应 runbook 查模型 Key 池、联网搜索和生成任务状态。
 
 ## SLS 接入建议
 

@@ -13,13 +13,12 @@ type PromptLoader struct {
 
 	mu                 sync.Mutex
 	cachedSystemAnchor string
-	cachedSummary      map[SummaryLayer]string
+	cachedSummary      string
 }
 
 func NewPromptLoader(assetDir string) *PromptLoader {
 	return &PromptLoader{
-		assetDir:      assetDir,
-		cachedSummary: map[SummaryLayer]string{},
+		assetDir: assetDir,
 	}
 }
 
@@ -27,13 +26,8 @@ func (p *PromptLoader) SystemAnchorPath() string {
 	return filepath.Join(p.assetDir, "system_anchor.txt")
 }
 
-func (p *PromptLoader) SummaryPromptPath(layer SummaryLayer) string {
-	switch layer {
-	case SummaryLayerB:
-		return filepath.Join(p.assetDir, "b_extraction_prompt.txt")
-	default:
-		return filepath.Join(p.assetDir, "c_extraction_prompt.txt")
-	}
+func (p *PromptLoader) SummaryPromptPath() string {
+	return filepath.Join(p.assetDir, "summary_extraction_prompt.txt")
 }
 
 func (p *PromptLoader) SystemAnchor() (string, error) {
@@ -50,23 +44,23 @@ func (p *PromptLoader) SystemAnchor() (string, error) {
 	return content, nil
 }
 
-func (p *PromptLoader) SummaryPrompt(layer SummaryLayer) (string, error) {
+func (p *PromptLoader) SummaryPrompt() (string, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if content, ok := p.cachedSummary[layer]; ok && content != "" {
-		return content, nil
+	if p.cachedSummary != "" {
+		return p.cachedSummary, nil
 	}
-	content, err := readPromptFile(p.SummaryPromptPath(layer), string(layer)+"_SUMMARY_PROMPT")
+	content, err := readPromptFile(p.SummaryPromptPath(), "SUMMARY_EXTRACTION_PROMPT")
 	if err != nil {
 		return "", err
 	}
-	p.cachedSummary[layer] = content
+	p.cachedSummary = content
 	return content, nil
 }
 
-func (p *PromptLoader) ProbeSummaryPrompt(layer SummaryLayer) PromptProbeResult {
-	path := p.SummaryPromptPath(layer)
-	content, err := p.SummaryPrompt(layer)
+func (p *PromptLoader) ProbeSummaryPrompt() PromptProbeResult {
+	path := p.SummaryPromptPath()
+	content, err := p.SummaryPrompt()
 	if err != nil {
 		return PromptProbeResult{
 			OK:    false,

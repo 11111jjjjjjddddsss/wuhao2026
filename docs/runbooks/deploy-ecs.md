@@ -16,7 +16,7 @@
 - `server-go` 当前采用单台 ECS 双端口发版：Nginx 在 `127.0.0.1:3000` 和 `127.0.0.1:3001` 之间切换上游，systemd slot 服务为 `nongji-server-3000.service` / `nongji-server-3001.service`；历史 `nongji-server.service` 仅作为迁移前旧服务名保留，双端口迁移成功后已禁用，旧 slot 会按排空窗口延迟停止，避免打断正在进行的 SSE。不要在生产环境显式配置 `LISTEN_ADDR` 或 `LISTEN_HOST`，否则双端口脚本无法通过 `PORT=3000/3001` 切换监听地址
 - Go HTTP 服务使用显式 `http.Server`，默认 `ReadHeaderTimeout=5s`、`ReadTimeout=15s`、`IdleTimeout=90s`、`MaxHeaderBytes=1MiB`；`WriteTimeout` 默认保持 `0`，避免把正常 SSE 长回答按写超时杀掉。如需调整，可通过 `HTTP_READ_HEADER_TIMEOUT_SECONDS`、`HTTP_READ_TIMEOUT_SECONDS`、`HTTP_WRITE_TIMEOUT_SECONDS`、`HTTP_IDLE_TIMEOUT_SECONDS`、`HTTP_MAX_HEADER_BYTES` 和 `HTTP_SHUTDOWN_TIMEOUT_SECONDS` 配置
 - 模型出站 HTTP client 不设置全局 `Timeout`，避免误杀 SSE 正文流；只限制拨号、TLS 握手、响应头等待和空闲连接，默认 `DASHSCOPE_DIAL_TIMEOUT_SECONDS=10`、`DASHSCOPE_TLS_HANDSHAKE_TIMEOUT_SECONDS=10`、`DASHSCOPE_RESPONSE_HEADER_TIMEOUT_SECONDS=60`、`DASHSCOPE_IDLE_CONN_TIMEOUT_SECONDS=90`。主聊天流另有 `CHAT_STREAM_MAX_DURATION_SECONDS` 兜底，默认 30 分钟；SSE 响应会带 `X-Accel-Buffering: no`，提示 Nginx 不缓冲流式响应
-- 上游模型错误响应 / 非 SSE 响应只读取 64KiB 预览用于判断和日志，B/C 摘要非流式响应读取上限为 64KiB，今日农情 JSON 响应读取上限为 1MiB；正常主聊天 SSE 正文仍走流式转发
+- 上游模型错误响应 / 非 SSE 响应只读取 64KiB 预览用于判断和日志，记忆文档摘要非流式响应读取上限为 64KiB，今日农情 JSON 响应读取上限为 1MiB；正常主聊天 SSE 正文仍走流式转发
 - 通用 JSON body 解析默认只读取 64KiB，并拒绝多段 JSON；App 日志接口仍有更小的 8KiB 上限且超限返回 `413 body_too_large`，图片上传仍按单张 JPEG `<=1MiB` 处理
 - 主聊天应用层用户限流默认保持 `20 次 / 60 秒`，可用 `CHAT_RATE_LIMIT_MAX_HITS`、`CHAT_RATE_LIMIT_WINDOW_SECONDS` 和 `CHAT_RATE_LIMIT_PRUNE_INTERVAL_SECONDS` 调整；配置 Redis 时该限流跨进程共享，未配置 Redis 时回退单进程限流并定期清理过期用户桶。Nginx 仍承担 IP 级限流，Go 侧限流只作为用户维度的第二层保护
 - 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉

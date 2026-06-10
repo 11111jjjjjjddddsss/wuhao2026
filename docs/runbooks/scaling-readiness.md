@@ -1,6 +1,6 @@
 # 扩容预案 Runbook
 
-最后更新：2026-06-06
+最后更新：2026-06-10
 
 ## 目的
 
@@ -13,8 +13,8 @@
 - 认证 / 短信 / 上传 / 帮助与反馈 / App 日志 / 主聊天用户级限流已支持 Redis 分布式限流
 - 主聊天同用户单流控制使用 MySQL `GET_LOCK` + `chat_stream_inflight`，可跨多台 ECS 生效
 - 数据库迁移启动时使用 MySQL 全局锁，降低多实例同时跑 DDL 风险
-- B/C 摘要失败重试标记已经落在 MySQL `session_ab.pending_retry_b / pending_retry_c`：模型失败、超时、写库失败、C 层归档不足 20 轮或旧快照写回过期时都会保留 pending，后续轮次完成后继续补提取；成功写回且 `round_total` 匹配后才清 pending
-- 当前 B/C 摘要的同用户同层运行中保护仍是单进程 `running` guard，只适合当前单 ECS / 单 active slot 主链；扩多台 ECS 前必须升级为 Redis / MySQL lease，避免多机同时抽取同一层、重复消耗当前配置的摘要模型 token 或同一 `round_total` 下非确定性覆盖
+- 记忆文档摘要失败重试标记已经落在 MySQL `session_ab.pending_retry_b`：模型失败、超时、写库失败或旧快照写回过期时都会保留 pending，后续轮次完成后继续补提取；成功写回且 `round_total` 匹配后才清 pending
+- 当前记忆文档摘要的同用户运行中保护仍是单进程 `running` guard，只适合当前单 ECS / 单 active slot 主链；扩多台 ECS 前必须升级为 Redis / MySQL lease，避免多机同时抽取同一用户、重复消耗摘要模型 token 或同一 `round_total` 下非确定性覆盖
 - 部署脚本已支持本机打包后通过 Cloud Assistant 下发，不依赖 ECS 上保存 GitHub 凭据
 
 ## 不急着做
@@ -56,7 +56,7 @@
 - `AUTH_STRICT=true`
 
 仍需补的准备：
-- B/C 摘要 `running` guard 从本进程 map 升级为 Redis / MySQL lease，lease key 至少包含 `user_id + layer`，并记录触发时 `round_total`、过期时间和 owner；抢到 lease 的实例才允许调用当前配置的摘要模型，写回仍必须保留现有 `round_total` 校验，失败继续保留 `pending_retry_b/c`
+- 记忆文档摘要 `running` guard 从本进程 map 升级为 Redis / MySQL lease，lease key 至少包含 `user_id + memory_document`，并记录触发时 `round_total`、过期时间和 owner；抢到 lease 的实例才允许调用摘要模型，写回仍必须保留现有 `round_total` 校验，失败继续保留 `pending_retry_b`
 - 发布脚本支持多实例滚动发布和逐台 healthz 验证
 - SLS 统一采集所有 ECS 的 `nongji-server` 和 Nginx 日志
 
@@ -75,7 +75,7 @@
 ### 阶段 4：轻量队列
 
 触发条件：
-- 今日农情、B/C 摘要、反馈洞察、日志聚合、支付对账这类后台任务开始影响在线请求
+- 今日农情、记忆文档摘要、反馈洞察、日志聚合、支付对账这类后台任务开始影响在线请求
 - 需要统一失败重试、延迟任务和消费监控
 
 建议：
@@ -95,7 +95,7 @@
 
 ## 还没做但扩机前必须做
 
-1. B/C 摘要 running guard 改为 Redis / MySQL lease；不要只复制当前进程内 `sync.Map` 保护到多实例
+1. 记忆文档摘要 running guard 改为 Redis / MySQL lease；不要只复制当前进程内 `sync.Map` 保护到多实例
 2. 多 ECS 滚动发布脚本
 3. SLS 日志采集和最小告警
 4. DashScope 多账号 Key 池和成本监控

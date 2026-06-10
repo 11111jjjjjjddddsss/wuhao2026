@@ -270,7 +270,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	aWindowRounds := getAWindowByTier(tier)
-	bEveryRounds, cEveryRounds := GetSummaryIntervals(tier)
+	memoryEveryRounds := GetMemoryDocumentInterval(tier)
 
 	snapshot, err := s.store.GetSessionSnapshot(ctx, auth.UserID)
 	if err != nil {
@@ -287,7 +287,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	injectedTime := FormatShanghaiNowToSecond(s.shanghai, time.Now())
 	contextHeader := fmt.Sprintf("当前时间：%s（Asia/Shanghai）；用户地点：%s；地点可信度：%s", injectedTime, region.Region, region.Reliability)
-	promptMessages, usedARoundsCount, hasBSummary, hasCSummary := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader)
+	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader)
 	dayCN := GetTodayKeyCN(s.shanghai, time.Now())
 	promptChars := countBailianMessageContentRunes(promptMessages)
 
@@ -301,8 +301,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"masked_ip", auth.MaskedIP,
 		"tier", tier,
 		"used_a_rounds_count", usedARoundsCount,
-		"has_b_summary", hasBSummary,
-		"has_c_summary", hasCSummary,
+		"has_memory_document", hasMemoryDocument,
 		"prompt_chars", promptChars,
 		"current_text_chars", len([]rune(text)),
 		"current_image_count", len(images),
@@ -473,8 +472,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						RegionReliability: region.Reliability,
 					},
 					aWindowRounds,
-					bEveryRounds,
-					cEveryRounds,
+					memoryEveryRounds,
 					"stream_done",
 				)
 				if appendErr != nil {
@@ -761,13 +759,11 @@ func normalizeImages(images []string) []string {
 	return result
 }
 
-func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string) ([]BailianMessage, int, bool, bool) {
+func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string) ([]BailianMessage, int, bool) {
 	rounds := []SessionRound{}
-	hasBSummary := false
-	hasCSummary := false
+	hasMemoryDocument := false
 	if snapshot != nil {
-		hasBSummary = strings.TrimSpace(snapshot.BSummary) != ""
-		hasCSummary = strings.TrimSpace(snapshot.CSummary) != ""
+		hasMemoryDocument = strings.TrimSpace(snapshot.MemoryDocument) != ""
 		if len(snapshot.ARoundsFull) > aWindowRounds {
 			rounds = append(rounds, snapshot.ARoundsFull[len(snapshot.ARoundsFull)-aWindowRounds:]...)
 		} else {
@@ -779,11 +775,8 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		{Role: "system", Content: s.systemAnchor},
 		{Role: "system", Content: contextHeader},
 	}
-	if hasBSummary {
-		messages = append(messages, BailianMessage{Role: "system", Content: "B层通用短期记忆（仅供参考）\n" + strings.TrimSpace(snapshot.BSummary)})
-	}
-	if hasCSummary {
-		messages = append(messages, BailianMessage{Role: "system", Content: "C层长期通用记忆（仅供参考）\n" + strings.TrimSpace(snapshot.CSummary)})
+	if hasMemoryDocument {
+		messages = append(messages, BailianMessage{Role: "system", Content: "记忆文档（后台参考，仅用于减少重复追问和保持连续性；除非用户要求回顾历史，不要主动复述记忆内容、标签或用户画像）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
 	}
 
 	previousRoundIndex := len(rounds) - 1
@@ -792,7 +785,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		messages = append(messages, BailianMessage{Role: "assistant", Content: round.Assistant})
 	}
 	messages = append(messages, BailianMessage{Role: "user", Content: buildVisionUserContent(currentText, currentImages)})
-	return messages, len(rounds), hasBSummary, hasCSummary
+	return messages, len(rounds), hasMemoryDocument
 }
 
 func buildVisionUserContent(text string, images []string) any {

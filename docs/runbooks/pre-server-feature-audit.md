@@ -70,7 +70,7 @@
 - 如果要多实例，图片必须先接 OSS 或等价共享对象存储，并用 OSS 生命周期策略处理图片保存周期。
 - 多实例前不要让多个后端实例首次启动同时跑迁移；数据库迁移应改成单独发布步骤，或至少加迁移锁。
 - 主聊天 SSE 仍需要后续评估“单轮最大生成时长”，避免上游极端卡住长期占用 goroutine 和 inflight；不要用全局 `http.Client.Timeout` 直接砍流式请求。
-- B/C 摘要的 `running` guard 和模型 Key 冷却仍是本进程级；多实例下可能重复摘要或各实例独立冷却 Key。主聊天用户级限流已支持 Redis，写回已有 `round_total` 校验，所以主要风险是成本和抗刷，不是旧摘要覆盖新轮次。
+- 记忆文档摘要的 `running` guard 和模型 Key 冷却仍是本进程级；多实例下可能重复摘要或各实例独立冷却 Key。主聊天用户级限流已支持 Redis，写回已有 `round_total` 校验，所以主要风险是成本和抗刷，不是旧摘要覆盖新轮次。
 - 归档成功后、扣次前如果进程崩溃且短重试也失败，仍可能漏记一次成本；正式上线后要靠日志和对账巡检兜底。
 
 买服务器后用真实指标决定：
@@ -78,7 +78,7 @@
 - ECS 实例规格和后端实例数。
 - RDS MySQL 规格、最大连接数、连接池参数、慢查询和索引调整。
 - 是否把更多本地保护迁到 Redis / 网关级保护。
-- 是否为 B/C 摘要加数据库 claim / lease，避免多实例重复调用 Qwen3.5-Flash。
+- 是否为记忆文档摘要加数据库 claim / lease，避免多实例重复调用摘要模型。
 - 是否补持久化模型调用 attempt / status 表，进一步压低极端重复开流或漏扣成本。
 
 建议上线观察指标：
@@ -219,7 +219,7 @@
 上线前必须注意：
 
 - 当前正文不是律师审定稿，只能作为当前产品内测 / 早期准备稿。
-- 当前“删除所有历史对话”只删除问诊聊天历史、A/B/C 记忆和 30 天归档，不等于完整账号注销或全部个人信息删除。
+- 当前“删除所有历史对话”只删除问诊聊天历史、A 层滑窗、记忆文档和 30 天归档，不等于完整账号注销或全部个人信息删除。
 - 真实服务器、域名、备案、OSS、SLS、Redis、手机号登录、短信、支付、定位、通知、统计 SDK 或第三方登录一旦接入，必须同步复核 6 个页面。
 - 如果应用商店要求独立隐私政策 URL，需要把 App 内置正文同步到正式网页或可访问页面，保证 App 内外版本一致。
 
@@ -272,49 +272,45 @@
 - 决定图片是否首版接 OSS；如果接 OSS，补上传改造、访问策略、生命周期、图片删除策略和 SLS 监控。
 - 配置并验证 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`、HTTPS 证书、模型公网拉图、`/upload`、`/uploads/`、`/api/chat/stream` 全链路。
 - 用真机跑弱网、多图、图片上传中杀 App、上传成功但流式未完成时杀 App、后台 WorkManager 恢复、删除历史时活跃流 409、冷启动 snapshot 恢复等回归。
-- 多实例前仍需把 B/C 摘要 running guard 升级为数据库 lease / Redis / 网关级保护；聊天用户级限流已支持 Redis，主聊天同用户单流已由 MySQL `GET_LOCK` + `chat_stream_inflight` 跨进程控制。
+- 多实例前仍需把记忆文档摘要 running guard 升级为数据库 lease / Redis / 网关级保护；聊天用户级限流已支持 Redis，主聊天同用户单流已由 MySQL `GET_LOCK` + `chat_stream_inflight` 跨进程控制。
 - 观察 `append session round after stream failed`、`quota consume on DONE failed`、`summary extraction failed`、图片上传失败、图片 URL 404、前台 SSE 中断率和上游 429 / 5xx。
 
-### 8. B/C 记忆与模型调用
+### 8. 记忆文档与模型调用
 
-结论：当前 B/C 记忆链路与现行口径一致，可以进入首版内测观察。B 层是通用短期记忆，负责接住最近对话主线；C 层是长期通用记忆，单文本内分为“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块，不是通用知识库或病例流水账；没有发现 Android 端直连摘要模型或旧摘要接口仍在主链生效。买服务器前不需要继续盲改提示词，买服务器后重点补多实例下的摘要 claim / lease、日志告警和真实效果抽查。
+结论：当前记忆链路已经收敛为一份自然语言记忆文档，可以进入首版内测观察。这份文档同时承接最近对话主线、稳定长期背景、用户画像和农业重点事件，不再保留独立 C 层，也不再保留轻量摘要模型候选；没有发现 Android 端直连摘要模型或旧摘要接口仍在主链生效。买服务器前不需要继续盲改提示词，买服务器后重点补多实例下的摘要 claim / lease、日志告警和真实效果抽查。
 
 当前代码真相：
 
 - 主对话完成并成功归档后，后端在 goroutine 中调用 `SummaryService.ProcessSessionSummaries`，不会阻塞当前 SSE 完成态。
-- B 层通用短期记忆由 `b_extraction_prompt.txt` 控制，默认 `<=500` 字，复杂最多 `<=700` 字，定位是全场景当前主线 / 当前事务短期承接。
-- C 层长期通用记忆由 `c_extraction_prompt.txt` 控制，默认 `<=650` 字，复杂最多 `<=850` 字，输出固定三块：“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”。它低频承接长期通用背景、用户画像和重点农业事件，不保存通用知识、短期病例流水账或具体剂量配方；没有用户复查、检测结果或人工确认时，不得把“倾向于 / 更像 / 可能 / 不能排除 / 未见明显...”升级成“确诊 / 确认为 / 已排除 / 已证实”等长期结论。
-- B 层触发频率：Free / Plus 每 6 轮，Pro 每 9 轮；输入使用当前 A 层窗口。
-- C 层触发频率：每 20 轮；输入使用旧 C 层长期通用记忆 + `session_round_archive` 最近 20 轮完整问答，不再用 A 层 6/9 轮窗口冒充 20 轮归档。
-- 如果 C 层归档不足 20 轮，会保持 `pending_retry_c=true`，后续轮次完成后继续补提取。
-- 摘要模型默认使用 `qwen3.5-flash`，非流式，显式 `temperature=0.8`，在 OpenAI 兼容模式 HTTP 请求顶层显式 `enable_thinking=false`，不联网；后端支持 `B_SUMMARY_MODEL` / `C_SUMMARY_MODEL` 和兜底 `SUMMARY_EXTRACTION_MODEL` 分层灰度，当前只建议在真实质量需要时把低频 C 层临时试到 `qwen-plus`，B 层继续 flash 控成本。不要把 `enable_thinking=false` 放回 `extra_body`：2026-06-10 生产 ECS 一次性样本测试确认，`extra_body.enable_thinking=false` 仍会产生大量 `reasoning_tokens` 和 20 秒级延迟，顶层关闭后同类短摘要请求回到约 200 tokens、1 秒内。
-- 单次摘要提取有 60 秒超时；模型失败、超时、写回失败或归档读取失败都会保持对应 `pending_retry_b / pending_retry_c`。
+- 记忆文档提示词由 `summary_extraction_prompt.txt` 控制，输出固定四段：“短期承接 / 长期背景 / 用户画像 / 农业重点事件”。它不是通用知识库，也不是病例流水账；没有用户复查、检测结果或人工确认时，不得把“倾向于 / 更像 / 可能 / 不能排除 / 未见明显...”升级成“确诊 / 确认为 / 已排除 / 已证实”等长期结论。
+- 触发频率：Free / Plus 每 6 轮，Pro 每 9 轮；输入使用当前 A 层窗口 + 旧记忆文档，整体覆盖更新一份记忆文档。
+- 摘要模型固定使用 `qwen-plus`，非流式，显式 `temperature=0.8`，在 OpenAI 兼容模式 HTTP 请求顶层显式 `enable_thinking=false`，不联网；不保留分层灰度或轻量模型候选。不要把 `enable_thinking=false` 放回 `extra_body`：2026-06-10 生产 ECS 一次性样本测试确认，`extra_body.enable_thinking=false` 不可靠，顶层关闭后同类摘要请求回到正常 token 量级。
+- 单次摘要提取有 60 秒超时；模型失败、超时或写回失败都会保持 `pending_retry_b`。
 - 写回摘要时必须匹配触发快照的 `round_total`；如果处理期间已有新轮次完成，旧快照结果不会覆盖新轮次。
 
 已排查的旧方案：
 
-- Android 端没有摘要模型 API Key、摘要模型直连或 B/C 本地抽取逻辑；Android 只读取 `/api/session/snapshot` 返回的摘要字段用于本地快照结构兼容，不组装模型上下文。
+- Android 端没有摘要模型 API Key、摘要模型直连或本地记忆抽取逻辑；Android 只读取 `/api/session/snapshot` 返回的记忆文档字段用于本地快照结构兼容，不组装模型上下文。
 - 旧 `/api/session/b`、`/api/session/c` 路由仍注册，但返回 `410 DEPRECATED_ENDPOINT`，不能绕过 `/api/chat/stream` 主链触发摘要。
-- C 层已不再使用“旧 C + 当前 A 窗口 6/9 轮”作为长期记忆输入；当前代码会读取 `session_round_archive` 最近 20 轮完整问答。
-- B/C 提示词没有引入外部知识库，也没有把通用农技规则库写进 C 层；当前仍是用户自身记忆，不是 RAG。
+- 旧长期记忆字段只允许出现在迁移 SQL 中，用于把遗留数据合并到当前记忆文档并删除遗留列。
+- 记忆文档提示词没有引入外部知识库，也没有把通用农技规则库写进记忆；当前仍是用户自身记忆，不是 RAG。
 
 上线前必须注意：
 
-- 多后端实例前，B/C 的 `running` guard 仍是进程内保护；同一用户同一层可能被多个实例同时提取，主要风险是重复调用当前配置的摘要模型和同一 `round_total` 下最后写入者覆盖，通常不是用户会话数据错乱。
-- `pending_retry_b / pending_retry_c` 只会在后续轮次完成后继续被处理；如果用户长期不再发问，失败摘要不会自己定时补账。
-- C 层依赖 `session_round_archive` 30 天滚动保留；如果用户 20 轮间隔太久且旧轮次已过保存期，C 层可能因归档不足继续 pending。
-- B/C 摘要质量最终取决于提示词和真实问诊内容，当前代码只能保证不丢账、不旧快照覆盖新轮次，不能保证每次抽取得完美。
+- 多后端实例前，记忆文档摘要的 `running` guard 仍是进程内保护；同一用户可能被多个实例同时提取，主要风险是重复调用摘要模型和同一 `round_total` 下最后写入者覆盖，通常不是用户会话数据错乱。
+- `pending_retry_b` 只会在后续轮次完成后继续被处理；如果用户长期不再发问，失败摘要不会自己定时补账。
+- 记忆文档质量最终取决于提示词和真实问诊内容，当前代码只能保证不丢账、不旧快照覆盖新轮次，不能保证每次抽取得完美。
 
 买服务器后必须补：
 
-- 多实例部署前，为 B/C 摘要增加数据库 claim / lease，或确认首版 ECS 单台运行。
-- 在 SLS 中监控 `summary extraction failed`、`summary extraction skipped: already running`、`C summary extraction skipped: insufficient archived rounds`、`B/C summary write skipped: snapshot is stale`。
-- 增加运维只读查询：按 `user_id` 查看 `round_total`、`pending_retry_b/c`、`b_summary`、`c_summary`、最近归档轮次和最近摘要错误日志。
-- 上线后抽查真实用户的 B/C 输出，确认 B 不把长期画像写满、C 不吸收一次性病例 / 通用农技知识 / 具体剂量配方；必要时只调提示词，不先改主链。
+- 多实例部署前，为记忆文档摘要增加数据库 claim / lease，或确认首版 ECS 单台运行。
+- 在 SLS 中监控 `summary extraction failed`、`summary extraction skipped: already running`、`memory document write skipped: snapshot is stale`。
+- 增加运维只读查询：按 `user_id` 查看 `round_total`、`pending_retry_b`、`b_summary` / `memory_document`、最近归档轮次和最近摘要错误日志。
+- 上线后抽查真实用户的记忆文档输出，确认它不吸收一次性病例、通用农技知识或具体剂量配方；必要时只调提示词，不先改主链。
 
 ### 9. 今日农情
 
-结论：当前“今日农情”可以作为独立每日资讯卡片继续推进，没有进入主聊天消息、A/B/C 上下文、摘要或扣次链路。后端生成链路已用数据库 lease 防同一天并发生成，用户打开 App 只读缓存，缺失 / pending / failed 时 Android 静默不展示，不会临时多次调模型。
+结论：当前“今日农情”可以作为独立每日资讯卡片继续推进，没有进入主聊天消息、A 层滑窗、记忆文档、归档或扣次链路。后端生成链路已用数据库 lease 防同一天并发生成，用户打开 App 只读缓存，缺失 / pending / failed 时 Android 静默不展示，不会临时多次调模型。
 
 当前代码真相：
 
@@ -322,7 +318,7 @@
 - 用户侧接口是 `GET /api/today-agri-card`，需要普通用户鉴权，只读取当天 ready 卡片；没有 ready 卡片时返回 `missing / pending / failed` 状态。
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只接受 `DAILY_AGRI_JOB_SECRET`，支持 `X-Internal-Job-Secret` 或 `Authorization: Bearer ...`。
 - 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
-- 生成链路当前默认使用 `qwen-plus + DashScope text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，服务端从响应里读取完整文本、usage 和可用的 `search_info`。该链路更利于拿到稳定搜索来源；来源名由提示词要求模型写入 `source_name`，URL 只作为内部追溯和后台排查，不作为 Android 用户卡片展示字段。`qwen3.5-flash` 不能直接套旧 text-generation 联网链，否则会返回 `400 InvalidParameter / url error`；当前仅保留 `DAILY_AGRI_MODEL=qwen3.5-flash` 的手动实验 / 降本候选路径，走 `multimodal-generation/generation + stream=true + enable_thinking=true + turbo`，HTTP 头必须带 `X-DashScope-SSE: enable`，不做自动 fallback。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和延迟，今日农情默认不使用。2026-06-09 生产探针确认 `qwen-flash + turbo + enable_source` 可返回来源链接但执行力偏弱；`qwen-plus + turbo + enable_source` 质量较稳；3.5flash 多模态流式链可通但仍需更多质量抽查。生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，仍走 `turbo`。
+- 生成链路固定使用 `qwen-plus + DashScope text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，服务端从响应里读取完整文本、usage 和可用的 `search_info`。该链路更利于拿到稳定搜索来源；来源名由提示词要求模型写入 `source_name`，URL 只作为内部追溯和后台排查，不作为 Android 用户卡片展示字段。当前不保留其它模型候选、其它接口候选或环境变量切换入口。农业大类按种植和养殖理解，今日农情只取种植侧，养殖侧全部排除；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和延迟，今日农情默认不使用。生成最多 2 次，第二次只在首轮质量校验失败后换检索提示补救，仍走 `turbo`。
 - 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
 - 后端解析时要求 JSON 可解析、`card_name=今日农情`、正好 3 条有效 item、标题摘要完整且同批标题不重复；URL 只作为内部追溯和后台排查字段，公开响应不包含 URL、source_index 或条目日期，但会返回短来源名称 `source` 供 Android 展示“来源：xxx”。
 - 后端不再用可信域名、近 7 天链接、历史链接 / 标题、主题词或发布日期等大面积硬过滤卡死来源；只保留 JSON 结构、正好 3 条、标题 / 摘要非空、同批重复标题和私网 / 明显电商 URL 清洗等低风险兜底。种植侧、排除养殖、排除广告软文 / 假新闻 / 标题党主要通过提示词、内部探针和后台运营抽查控制。
@@ -331,7 +327,7 @@
 已排查的旧方案：
 
 - 没有发现用户打开聊天页时临时触发今日农情模型生成的路径；Android 只调用用户侧只读接口。
-- 没有发现今日农情写入 `session_ab`、`session_round_archive`、A/B/C 摘要或 quota 扣次的路径。
+- 没有发现今日农情写入 `session_ab`、`session_round_archive`、记忆文档摘要或 quota 扣次的路径。
 - 没有发现旧的本地静态假卡片作为真实主链；debug-only 文案预览里的示例卡片只用于隐藏预览。
 
 上线前必须注意：
@@ -367,7 +363,7 @@
 - 后端 `ResolveAuthUserID` 优先验证 bearer token；验证成功时以 token 内的 `userID` 为准，不再使用 Android 传来的 `X-User-Id`。
 - `AUTH_STRICT=true` 时，裸 `X-User-Id` 会被拒绝；必须配置 `APP_SECRET` 并提供可验证 bearer token 才能访问需要鉴权的接口。
 - Android 已移除 `SESSION_API_TOKEN` 静态注入和运行时绕过；正式登录只走 per-user session token。
-- 设置页“账号管理”里手机号会显示脱敏号码或未登录；“退出设备”已接 `POST /api/auth/logout`，只吊销当前设备 session、取消当前账号下待发送图文后台任务并回到登录门，不删除聊天、会员、额度、帮助与反馈、礼品卡或本机 `user_id`；“注销账号”当前已接为注销申请入口，用户二次确认后调用 `POST /api/account/deletion-requests` 创建或复用未处理的 `account_deletion_requests` 记录，成功后清本机登录态、取消当前账号待发送图文后台任务并退出当前设备。后台可在“注销申请”队列按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态，并显示 15 个工作日处理期限和超期提醒。这里的已处理只表示线下处理流程已收口，不代表系统已经自动物理删除或匿名化全部数据；真实删除、去标识化、法定留存和处理责任仍需合规收口。真实可用动作还包括“清理本机缓存”和“删除所有历史对话”：前者只清 `cacheDir/app_updates` 检查更新残留和 `cacheDir/composer_camera` 相机临时文件，不碰 `chat_ui_cache`、`files/composer_images` 或待发送 WorkManager 图文；后者只清问诊历史、A/B/C 记忆和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
+- 设置页“账号管理”里手机号会显示脱敏号码或未登录；“退出设备”已接 `POST /api/auth/logout`，只吊销当前设备 session、取消当前账号下待发送图文后台任务并回到登录门，不删除聊天、会员、额度、帮助与反馈、礼品卡或本机 `user_id`；“注销账号”当前已接为注销申请入口，用户二次确认后调用 `POST /api/account/deletion-requests` 创建或复用未处理的 `account_deletion_requests` 记录，成功后清本机登录态、取消当前账号待发送图文后台任务并退出当前设备。后台可在“注销申请”队列按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态，并显示 15 个工作日处理期限和超期提醒。这里的已处理只表示线下处理流程已收口，不代表系统已经自动物理删除或匿名化全部数据；真实删除、去标识化、法定留存和处理责任仍需合规收口。真实可用动作还包括“清理本机缓存”和“删除所有历史对话”：前者只清 `cacheDir/app_updates` 检查更新残留和 `cacheDir/composer_camera` 相机临时文件，不碰 `chat_ui_cache`、`files/composer_images` 或待发送 WorkManager 图文；后者只清问诊历史、A 层滑窗、记忆文档和 30 天归档，不删除会员、额度、帮助与反馈、礼品卡或本机 `user_id`。
 
 已排查的旧方案：
 

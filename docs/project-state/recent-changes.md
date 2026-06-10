@@ -5,21 +5,23 @@
 
 ## 2026-06-10
 
-- B/C 摘要模型策略改成可控灰度而不是直接切贵模型：生产默认仍为 `qwen3.5-flash`、非流式、不联网、顶层 `enable_thinking=false`，新增 `B_SUMMARY_MODEL` / `C_SUMMARY_MODEL` / `SUMMARY_EXTRACTION_MODEL` 环境变量支持按层覆盖；管理后台监控页会显示实际生效的 B/C 模型。当前推荐只在真实摘要质量需要时把低频 C 层临时灰度到 `qwen-plus`，B 层继续 flash 控成本，不把中转站作为生产默认。按用户给出的 `qwen-plus` 资源包价格粗算：`12000千 token / 11.66元` 约 `0.972元 / 百万 token`，`110000千 token / 99.4元` 约 `0.904元 / 百万 token`；后一档仍要输出占比超过约 `8.6%` 才比 plus 按量更划算，纯输入场景约为 `qwen3.5-flash` 的 `4.5倍`，B/C 摘要通常输入长、输出短，资源包本身不是全量切 plus 的理由。
+- 账号管理退出 / 注销本地收口补强：Android `SessionApi.logoutCurrentSession` 成功后不再只清本地 auth token，而是和登录失效 / 注销申请共用本地账号运行时清理，清除 session generation、递增 runtime generation 并取消当前 SSE call，避免用户点“退出设备”后旧模型流或旧回调继续落回界面；账号管理页注销确认弹窗按钮从“确认注销”改为“提交并退出”，正文明确“提交申请后会立即退出当前账号”，继续保持“注销申请队列 + 后台合规处理”的语义，不写成自动物理删除完成。
+
+- 用户拍板删除轻量摘要候选和独立长期记忆层：后端摘要链路收敛为一份自然语言记忆文档，物理字段暂沿用 `session_ab.b_summary`，对外返回 `memory_document`，旧长期记忆列只通过迁移 SQL 合并并删除。摘要模型固定为 `qwen-plus`，非流式、不联网、顶层 `enable_thinking=false`，不再保留分层灰度环境变量或轻量模型候选；提示词真源改为 `server-go/assets/summary_extraction_prompt.txt`，输出“短期承接 / 长期背景 / 用户画像 / 农业重点事件”四段，失败只保留 `pending_retry_b`。管理后台监控页模型口径同步改为主聊天、记忆文档摘要、今日农情三行。
 
 - 本轮后端已部署到 ECS 双端口 slot：`scripts/deploy-ecs-server.ps1` 远端执行 `go test ./...`、编译、启动非当前 slot、切换 Nginx 并返回生产 healthz；随后 `scripts/check-ecs-readiness.ps1` 显示 active upstream 为 `3001`、`nongji-server-3001 active/enabled`、HTTPS healthz 200，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`。本轮未重新部署后台静态前端，部署 / readiness 输出只显示 set/empty，不打印真实 token、AccessKey、模型 Key 或密码。
 
-- 今日农情生产默认口径回到 `qwen-plus`：当前默认链是 DashScope `text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，继续强制联网、全网宽搜、用户侧不点击外链；`qwen3.5-flash + multimodal-generation + stream=true + enable_thinking=true + turbo` 已打通但只保留为 `DAILY_AGRI_MODEL=qwen3.5-flash` 手动实验 / 降本候选，不做自动 fallback。今日农情提示词升到 `2026-06-10-v26`：保持全网宽搜、不限定网站，要求正好 3 条、10-14 字左右一行具体标题、约 3 行摘要、短来源名，种植侧为主并排除养殖、广告软文、导购、假新闻和元表达；后端仍只做 JSON 结构、正好 3 条、标题摘要非空、同批标题重复和 URL 安全等低风险兜底。后台监控 `model_usage_policy` 同步显示今日农情为当前真实模型和协议，避免账单排查时把 `qwen-turbo` 模型名和 `search_strategy=turbo` 混淆。
+- 今日农情生产口径固定为 `qwen-plus`：当前默认链是 DashScope `text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，继续强制联网、全网宽搜、用户侧不点击外链；不保留其它模型、其它接口或环境变量切换入口。今日农情提示词升到 `2026-06-10-v26`：保持全网宽搜、不限定网站，要求正好 3 条、10-14 字左右一行具体标题、约 3 行摘要、短来源名，种植侧为主并排除养殖、广告软文、导购、假新闻和元表达；后端仍只做 JSON 结构、正好 3 条、标题摘要非空、同批标题重复和 URL 安全等低风险兜底。后台监控 `model_usage_policy` 同步显示今日农情为当前真实模型和协议，避免账单排查时把 `qwen-turbo` 模型名和 `search_strategy=turbo` 混淆。
 
-- 历史归档：管理后台监控页早些时候新增“模型调用口径”卡片时，后端 `/admin-api/v1/monitoring` 曾列出今日农情 `qwen-plus + search_strategy=turbo` 强制联网；该口径再次成为当前生产默认，但协议和后台说明已细化为 DashScope text-generation 非流式、`freshness=7`、`prompt_intervene`。中间曾短暂评估 `qwen3.5-flash + DashScope multimodal-generation 流式 + search_strategy=turbo`，现在只作为手动实验链；主聊天仍是 `qwen3.5-plus + search_strategy=turbo` 可联网但不强制，B/C 记忆摘要默认仍是 `qwen3.5-flash` 不联网但已支持按层灰度，当前仓库后端策略仍不包含 `qwen-turbo` 模型调用。
+- 历史归档：管理后台监控页早些时候新增“模型调用口径”卡片时，后端 `/admin-api/v1/monitoring` 曾列出今日农情 `qwen-plus + search_strategy=turbo` 强制联网；该口径再次成为当前生产默认，但协议和后台说明已细化为 DashScope text-generation 非流式、`freshness=7`、`prompt_intervene`。中间曾短暂评估过轻量模型和多模态流式接口，现已按用户拍板撤回，不作为代码路径或手动开关；主聊天仍是 `qwen3.5-plus + search_strategy=turbo` 可联网但不强制，记忆文档摘要和今日农情均固定 `qwen-plus`。
 
-- 历史归档：今日农情降本模型曾只做候选评估，不切生产。根据客服口径补测 `qwen3.5-flash + multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true`，生产 ECS 实测返回 200，耗时约 4.6 秒，总量约 753 tokens，其中 reasoning 约 363 tokens，能生成 3 条卡片，内容质量初看可用。当时缺口是该路由没有像 `qwen-plus + Generation + enable_source` 一样返回稳定 `search_results` 来源列表，且输出仍可能包代码块；当前代码保留这条手动实验链，来源名靠模型 JSON 的 `source_name`，结构化 URL 只作为内部追溯字段，但生产默认仍为 qwen-plus。
+- 历史归档：今日农情降本模型曾只做候选评估，不切生产。根据客服口径补测过轻量模型的多模态流式联网链，生产 ECS 当时能返回 200 并生成 3 条卡片；缺口是来源列表不如 `qwen-plus + Generation + enable_source` 稳定，且输出仍可能包代码块。当前代码已删除这条实验链，今日农情固定 `qwen-plus`，来源名靠模型 JSON 的 `source_name`，结构化 URL 只作为内部追溯字段。
 
-- 修正 DashScope 兼容模式关闭思考参数，降低摘要成本风险：生产 ECS 一次性对比确认，旧写法 `extra_body.enable_thinking=false` 对 `qwen3.5-flash` 摘要不生效，短摘要仍产生约 1900 个 reasoning tokens 且耗时约 20 秒；同请求改为 HTTP 顶层 `enable_thinking=false` 后，总量回到约 200 tokens、耗时约 1 秒。`server-go/internal/app/summary.go` 和主聊天 `OpenStream` 已把 `enable_thinking=false` 放到顶层，测试也锁住该字段，避免后续再误放回 `extra_body`。用 1-2k 字农业样本实测 B/C 摘要质量整体可用：B 层能承接设施番茄当前主线；C 层能按“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块输出，但初测会把“更像 / 不能排除”升级成偏确定判断，因此 `c_extraction_prompt.txt` 又补了防诊断升级护栏，禁止在无复查、检测或人工确认时写成“确诊 / 确认为 / 已排除 / 已证实”，并禁止编号、项目符号和 Markdown 加粗。加强后生产样本复测已保持“倾向 / 待核对 / 尚无确诊结论”口径；仍需上线后抽查真实摘要是否吸收一次性病例。
+- 历史归档：曾修正 DashScope 兼容模式关闭思考参数，确认 `enable_thinking=false` 必须放在 HTTP 顶层，不能放回 `extra_body`。当时用 1-2k 字农业样本实测过旧分层摘要提示词，发现长期记忆容易把“更像 / 不能排除”升级成偏确定判断，因此后来提示词持续加入防诊断升级护栏。当前摘要链路已收敛为固定 `qwen-plus` 的单份记忆文档，继续保留顶层关闭思考和防诊断升级要求。
 
-- 今日农情聊天页展示从“发送后退出”改为“视觉时间线系统卡片”：卡片仍不是 `ChatMessage`，不进本地快照、A/B/C、归档、摘要、重试或问诊扣次；当天 ready 卡片加载时若没有真实消息，就作为首屏第一条视觉内容排在顶部，已有真实消息时锚在当时最后一条真实消息后方。用户后续发送文字 / 图片 / 失败态消息时，卡片不再隐藏或播放 180ms 退出动画，新消息自然追加在卡片后方并把它往上顶；首屏只有今日农情时列表用 Top 排列展示，但工作线触线判断、自动跟随和最新真实消息锚点仍只看真实消息。
+- 今日农情聊天页展示从“发送后退出”改为“视觉时间线系统卡片”：卡片仍不是 `ChatMessage`，不进本地快照、A 层滑窗、记忆文档、归档、摘要、重试或问诊扣次；当天 ready 卡片加载时若没有真实消息，就作为首屏第一条视觉内容排在顶部，已有真实消息时锚在当时最后一条真实消息后方。用户后续发送文字 / 图片 / 失败态消息时，卡片不再隐藏或播放 180ms 退出动画，新消息自然追加在卡片后方并把它往上顶；首屏只有今日农情时列表用 Top 排列展示，但工作线触线判断、自动跟随和最新真实消息锚点仍只看真实消息。
 
-- 历史归档：今日农情曾继续保留 `qwen-plus + turbo + enable_source` 生产链路，不切 `qwen3.5-flash`。当时生产探针确认 `qwen-plus` 质量更稳、`qwen3.5-flash + Generation + turbo` 会返回 `400 InvalidParameter / url error`；该结论只适用于旧 text-generation 路由。当前已按客服口径打通 `qwen3.5-flash + multimodal-generation/generation + SSE + enable_thinking + turbo` 手动实验链，但不再把它作为生产默认。
+- 历史归档：今日农情曾继续保留 `qwen-plus + turbo + enable_source` 生产链路，不切低价模型。当时生产探针确认 `qwen-plus` 质量更稳，旧 text-generation 路由直接套轻量模型会返回参数错误。后续虽短暂打通过其它实验接口，但当前已撤回并删除，生产与手动补跑都固定走 `qwen-plus`。
 
 - 注销申请后台补 15 个工作日 SLA 可视化：后端列表 / 创建 / 状态更新响应会返回 `due_at` 和 `overdue`，监控面板新增 `account_deletion_overdue`，后台注销申请页展示“处理期限 / 剩余天数 / 超期天数”，监控队列会把超期申请标为红色待处理。该改动只增强申请队列和合规处理提醒，不代表已经自动物理删除或匿名化全部账号数据。
 
@@ -41,7 +43,7 @@
 
 - 今日农情提示词按“不限制固定网站”再次收口：根据阿里云百炼联网搜索文档，`assigned_site_list` 是限定来源站点的参数，默认空列表表示不限制来源；当前继续不传 `assigned_site_list`，用 `qwen-plus + turbo + enable_source + freshness=7` 做全网宽搜，并在 `prompt_intervene` 和主提示词里明确不要只围绕少数官网 / 媒体、不要按站点白名单思路检索。种植侧、普通天气、畜牧水产养殖、广告软文和低质内容主要靠提示词、内部探针和后台运营抽查控制；后端发布端只做 JSON 结构、正好 3 条、标题摘要完整、同批标题重复和私网 / 明显电商 URL 清洗等低风险兜底。搜索来源只作为服务端事实核对、去重和后台排查，不下发给 Android 用户卡片。
 
-- 历史归档：今日农情联网模型边界曾按当时生产 ECS 探针修正为 `qwen-plus + turbo` 原生 Generation 强制联网链；当时只验证到 `qwen3.5-flash` 直接套 text-generation / agent 组合会返回 `400 InvalidParameter / url error`。后来确认 `qwen3.5-flash` 走 `multimodal-generation/generation + stream=true + enable_thinking=true + search_strategy=turbo + enable_source=true` 可通，但当前生产默认仍回到 qwen-plus；主聊天、B/C 摘要和 Android UI 不随之改变。
+- 历史归档：今日农情联网模型边界曾按当时生产 ECS 探针修正为 `qwen-plus + turbo` 原生 Generation 强制联网链；中间短暂评估过低价模型和其它接口组合，但已按用户拍板撤回。当前代码只保留 `qwen-plus`，不再保留轻量模型实验配置、其它接口候选或环境变量切换入口。
 
 - 历史归档：今日农情曾短暂改为 `qwen-plus + turbo` 且发布 `2 到 3 条有效 item` 的宽口径。该条已被本日顶部 `2026-06-09-v22` 当前口径替代：现在必须正好 3 条，提示词控方向，后端只做结构和低风险兜底。
 
@@ -185,7 +187,7 @@
 
 - 只读复查手机号一键登录链路：未发现 Android 旧 `SESSION_API_TOKEN` 绕过登录、客户端模型直连或 `/api/auth/fusion/verify` 半程接口误签发账号 token；半程 verify-only 只返回 `ok / phone_mask`，最终 `onVerifySuccess` 才调用 `/api/auth/fusion/login` 换账号 session token。仍需真机重点确认阿里融合认证 verify token 半程校验后，最终 login 是否允许再次校验同一 token；如果出现半程成功但最终失败，再按 SDK 语义调整。
 
-- 复查 ABC 记忆重写和失败重试机制：B 层继续由旧 B 摘要 + 当前 A 层 6/9 轮窗口整体重写，C 层继续由旧 C 摘要 + `session_round_archive` 最近 20 轮完整问答整体重写；`pending_retry_b / pending_retry_c` 保存在 MySQL `session_ab`，模型失败、超时、写库失败、C 层归档不足 20 轮或旧快照写回过期都会保留 pending，后续轮次完成后继续补提取，只有成功写回且 `round_total` 匹配才清 pending。同步在 [scaling-readiness.md](D:/wuhao/docs/runbooks/scaling-readiness.md) 明确：当前同用户同层运行中保护仍是单进程 guard，扩多台 ECS 前必须升级为 Redis / MySQL lease，避免重复抽取 Flash 和非确定性覆盖。
+- 历史归档：曾复查过旧分层记忆重写和失败重试机制；该方案已被当前“一份记忆文档 + `pending_retry_b` + `qwen-plus`”替代。多实例前仍需把本进程运行中保护升级为 Redis / MySQL lease，避免重复抽取和非确定性覆盖。
 
 - 继续复查云资源 / CDN / OSS 生命周期：阿里云官方口径确认 CDN 不是纯免费资源，基础按下行流量 / 带宽等计费，HTTPS 静态请求虽有月度免费额度但超出仍会计费；当前早期不启用 CDN，不把问诊私有图片改成 CDN 长缓存，仍走后端 `/uploads/` 中转 + OSS 生命周期。CLI 复查 `nongjiqiancha-prod` lifecycle 确认 `uploads/` 3 天自动删除、`support/` 30 天自动删除、未完成分片 1 天清理均为 Enabled；最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 被限流拦截。同步校正 ECS 到期口径为 CLI 当前显示的 `2027-06-01T16:00Z`。
 
@@ -203,7 +205,7 @@
 
 - 主对话锚点补 B/C 记忆静默使用规则：B/C 记忆只作后台参考，用于减少重复追问和保持连续性；除非用户明确要求回顾历史，否则主模型不要主动复述记忆内容、层级名称或用户画像。`/api/chat/stream` 注入给主模型的 B/C 标签同步改为“B层通用短期记忆（仅供参考）”和“C层长期通用记忆（仅供参考）”。同时复查时间 / 地点注入链路：每轮只注入当前时间、用户地点和地点可信度；Nginx 会透传真实客户端 IP 给 Go 服务，但 IP 只用于限流、脱敏日志和地区推断，不把完整 IP 注入模型。该条复查时 `ResolveRegionByIP` 仍返回未知；随后已在同日接入免费离线 `ip2region` 粗定位，见本日更新条目。
 
-- 按用户重新拍板收口 B/C 记忆：B 层改为“通用短期记忆”，默认≤500字、复杂场景≤700字；C 层仍每 20 轮一次、仍写入 `session_ab.c_summary` 单文本字段，但提示词要求输出“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块，默认≤650字、复杂场景≤850字。当前不新增独立农事事件表 / 状态卡、不做关键词 gate、不额外增加 Flash 调用频率；农业相关重点事件先由 C 层第三块低频承接，未确认方向不得写成确定诊断。
+- 历史归档：曾按分层记忆方案收口短期和长期画像。该方案已删除，当前只保留一份自然语言记忆文档，四段分别承接短期、长期背景、用户画像和农业重点事件。
 
 - 主对话锚点补联网校准触发条件：在原有强时效、强客观核对和用户明确要求基础上，增加“疑难问题、复杂问题、高风险判断需要校准公开权威信息”时可触发联网搜索；仍保留同轮最多一次、能不联网则不联网、关键参数缺失先追问 1 到 2 条的限制，避免把联网搜索当成知识库或替代田间信息判断。
 
@@ -416,7 +418,7 @@
 
 - 历史归档：当时巡检“今日农情”时记录的是早期 `qwen3.5-plus + search_strategy=max + 严格 3 条 + https` 方案。该条只保留为历史过程，已被当前 `qwen-plus + turbo + enable_source + freshness=7`、正好 3 条、来源只做内部追溯、用户侧只展示标题摘要的方案替代；用户侧仍只读 ready 缓存，不在用户打开 App 时临时触发模型。
 
-- 巡检“B/C 记忆与模型调用”链路：确认主对话完成归档后才异步触发 `SummaryService`，B 层 Free / Plus 每 6 轮、Pro 每 9 轮，用当前 A 层窗口 + 旧 B 摘要生成短期记忆；C 层每 20 轮，用 `session_round_archive` 最近 20 轮完整问答 + 旧 C 生成长期记忆，不再用 6/9 轮 A 窗口冒充长期输入。B/C 均走 `qwen3.5-flash`、非流式、`temperature=0.8`、关闭思考、不联网；模型失败、超时、归档不足或写回失败都会保留 `pending_retry_b/c`，写回带 `round_total` 校验，旧快照不会覆盖新轮次。旧 `/api/session/b`、`/api/session/c`、`/api/session/round_complete` 仍只返回 410，Android 没有摘要模型直连。本轮不改提示词和触发频率，只把多实例前需补摘要数据库 claim / lease、SLS 观察项和只读查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
+- 历史归档：曾巡检过旧分层记忆与模型调用链路。当前已被“一份记忆文档”替代，Android 没有摘要模型直连，旧完成接口仍不是主链；多实例前仍需补摘要数据库 claim / lease、SLS 观察项和只读查询项。
 
 - 巡检“主聊天与图片发送”主链：确认 Android 端仍只通过后端 `/api/chat/stream` 发起文字 / 图片 / 图文混合问诊，图片先进入 App 私有 `composer_images` 稳定副本并经 `/upload` 换成同一公开基地址下的 `https /uploads/*.jpg`，后端再次校验图片 URL 后才进模型；带图发送的唯一 WorkManager 兜底、后端 `chat_stream_inflight` 同用户活跃流约束、归档成功后才发 `[DONE]` 和扣次、`/api/session/snapshot` 历史恢复、`/api/session/clear` 删除历史 409 防活跃流都和当前口径一致。没有发现旧 Android 直连模型、旧 `/api/session/round_complete` 主链、旧 active-zone、旧图片手势或旧上传通道并存；本轮只把 `ImageUploader.kt` 里“上传 OSS”的过期注释改为当前真实“上传后端 /upload，未来 OSS 只能由后端接入”，并把买服务器后必须验证公网 https 图片链、单实例 / OSS、弱网多图、后台恢复和 SLS 指标写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
@@ -432,11 +434,11 @@
 
 - 新增 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)，把下一阶段上线推进顺序固化为：先定 App 名称 / 图标 / 包名 / 签名 / 协议 / 软著材料，买域名和中国内地云资源后立即启动 ICP / App 备案；手机号登录、SAE、RDS、OSS、SLS、帮助与反馈、检查更新、模型 Key 池和真机联调在备案等待期间并行推进；备案通过后补备案号、正式域名 / HTTPS、公安联网备案和应用商店物料。同步更新 runbook 入口、当前状态、待决策和风险记忆，避免后续把“做完手机登录再备案”误当成主顺序。
 
-- 随机巡检所有模型调用链后，给 B/C 摘要提取补 60 秒超时保护：`SummaryService` 调 `qwen3.5-flash` 时用独立 `context.WithTimeout` 包住非流式摘要请求，避免网络层极端挂起导致同一用户同一层的进程内 `running` guard 长期占用、后续摘要一直跳过。超时仍按失败处理，保持 `pending_retry_b / pending_retry_c`，后续轮次完成后继续补提取；主对话 SSE 和今日农情链路不跟随改全局 `http.Client.Timeout`，避免影响流式回答。新增单测覆盖摘要超时后会释放 running guard。
+- 历史归档：曾给旧摘要提取补 60 秒超时保护。当前记忆文档摘要继续保留 60 秒超时，失败只保持 `pending_retry_b`，后续轮次完成后继续补提取；主对话 SSE 和今日农情链路不跟随改全局 `http.Client.Timeout`。
 
 - `server-go/internal/app/bailian.go` 将百炼模型 Key 池从单纯 `DASHSCOPE_API_KEYS` 逗号轮询扩展为 `DASHSCOPE_API_KEY_1/2/3` 三个独立账号槽位，并继续兼容旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS`；后端会自动去重、轮询，主对话、B/C 摘要和今日农情共用同一池。模型请求打开阶段若遇到 `401 / 403 / 429` 或带限流 / quota 语义的 `400`，会在流开始前切下一把 Key，并对触发限流的 Key 做 60 秒冷却；SSE 一旦成功打开，不在同一条回复中途切 Key。新增单测覆盖专用槽位去重、429 切 Key 和冷却跳过；新增 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 记录同一阿里云主账号多 Key 共享限流、扩容必须用不同主账号 Key 的运维口径。
 
-- `server-go` 将 C 层从“旧 C + 当前 A 窗口 6/9 轮”的滚动摘要输入，改为每 20 轮从 `session_round_archive` 读取最近 20 轮完整问答并融合旧 C 重写；归档不足 20 轮时不凑合提取，保持 `pending_retry_c`，后续轮次完成后继续补提取。C 层提示词当时收口为用户长期信息，不做通用农技知识库、不保存通用病害常识、标准防治流程、剂量配方或品牌背书；该口径后来已继续收紧为“长期通用记忆 / 用户画像 / 农业相关重点事件记忆”三块。B 层仍按 Free / Plus 每 6 轮、Pro 每 9 轮用 A 窗口更新；B/C 失败仍保留 `pending_retry_b / pending_retry_c`。同步更新根规则、项目记忆和后端单测。
+- 历史归档：曾把旧长期层输入改为归档轮次。该分层方案已删除，当前归档只用于 UI 历史恢复、后台排障和后续可能的离线分析，不再作为独立长期层提取输入。
 
 - `server-go/assets/b_extraction_prompt.txt` 将 B 层从偏“累计背景摘要”收口为“通用短期记忆”：优先保留当前主线、已确认事实、用户纠正、新增信息、仍有效判断倾向、待确认关键点和后续必须承接的限制条件；农业问题保留作物 / 地块 / 症状 / 用药用肥 / 图片证据等短期判断线索，非农业问题保留当前事务目标和已确认事实，但不编造账户、订单、扣费、剩余次数或后台处理结果。后端当时同步调整注入标签；当前标签已进一步收口为“B层通用短期记忆（仅供参考）”。数据库字段、B 层触发频率、C 层摘要提示词、A 层滑窗、模型名称和 `temperature=0.8` 均不变。
 
@@ -450,7 +452,7 @@
 
 - 全仓库产品名称口径统一为“农技千查”：主规则、README、主对话锚点、今日农情系统提示、App 内协议 / 隐私 / 风险文案和运维 / 项目记忆文档同步替换产品名；服务提供者公司主体仍按用户提供信息保留为“北京农技千问科技有限公司”，不跟随产品名机械改动。
 
-- `server-go/internal/app/bailian.go` / `summary.go` 统一真实模型调用温度：新增后端统一常量 `unifiedModelTemperature=0.8`，主对话 `qwen3.5-plus`、B/C 摘要 `qwen3.5-flash` 和今日农情 `qwen3.5-plus` 生成全部显式使用该温度；`top_p / max_tokens / penalty` 等其他采样参数继续不显式设置，走模型服务默认值。补单测锁住主对话、摘要和今日农情请求里的温度字段；同步更新根规则和当前状态记忆。
+- `server-go/internal/app/bailian.go` / `summary.go` 统一真实模型调用温度：新增后端统一常量 `unifiedModelTemperature=0.8`，主对话、摘要和今日农情生成全部显式使用该温度；`top_p / max_tokens / penalty` 等其他采样参数继续不显式设置，走模型服务默认值。补单测锁住主对话、摘要和今日农情请求里的温度字段；同步更新根规则和当前状态记忆。
 
 - `HamburgerMenuSheet.kt` / `ChatScreen.kt` 同步删除历史确认文案：确认卡片标题从“删除所有历史对话？”改为“是否删除所有历史对话”，debug-only 预览面板对应入口也改为同一句。只改用户可见文案和预览入口，不改删除接口、清理范围、确认按钮、取消按钮、账号数据或聊天滚动链。
 
@@ -637,7 +639,7 @@
 - `ChatScreen.kt` 小修图片失败重发 / AI 尾部重试的离线体感：如果失败消息还只有本地图片、需要重新上传，点击“点击重发 / 点击重试”时先检查网络；无网络时只提示“当前网络不可用”，原失败胶囊不消失。有网络并开始重传时，胶囊原位变成“正在重发... / 正在重试...”，上传成功并真正进入重发后才消失，上传失败则恢复原失败文案，避免无服务器 / 离线测试时胶囊闪一下、列表轻微下拽。文字重试、已上传图片重试、发送 / WorkManager / 后端扣次和聊天滚动链均不变。
 - `MembershipCenterSheet.kt` 继续收口会员中心底部规则区：删除底部“当前支付功能暂未接入”说明，把规则压成“Plus升级Pro / 扣次顺序”两条短文案，并把升级说明统一放进轻量浅灰卡片，避免裸文字松散也避免多张卡片拉长页面。右上角关闭叉号继续放大；购买按钮点击后的“支付暂未接入”即时提示、真实支付成功预留卡片、套餐 / 加油包规则和后端逻辑均不变。
 - `MembershipCenterSheet.kt` / `ChatScreen.kt` 为后续真实支付成功预留统一收口 UI：会员中心可显示中间黑底白字卡片“订购成功 / 确定”，用户点确定后关闭卡片并重新拉取 `/api/me` 同步当前套餐、今日剩余、升级补偿和加油包次数。当前支付功能仍未接入，现有开通 / 升级 / 购买按钮继续只提示“支付暂未接入”，不会假弹成功，也不调用后端订单接口。
-- `server-go/internal/app/summary.go` 将 B / C 摘要模型从 `qwen-flash` 切到 `qwen3.5-flash`，并在摘要请求里显式传 `extra_body.enable_thinking=false`；主对话 `qwen3.5-plus` 已经显式关闭思考模式，本次保持不变。新增后端单测锁住摘要模型名和关闭思考参数；同步更新根规则和项目记忆，删除“后续评估切到 Qwen3.5-Flash”的待决策项；不改主模型、摘要触发时机、写回校验、扣次顺序、Android UI 或聊天滚动链。
+- 历史归档：摘要模型曾做过轻量候选切换并补关闭思考参数单测。当前这条轻量候选已删除，摘要固定 `qwen-plus`、顶层 `enable_thinking=false`、非流式、不联网。
 - `ChatScreen.kt` 将主聊天页背景从 `#F6F7F8` 轻微提亮到 `#F8F9FA`，让页面观感更透亮，同时保留输入框白壳、用户文字气泡边框 / 阴影、AI 文本、附件面板、图片预览和滚动链不变。
 - `ChatComposerPanel.kt` 收小 `+` 附件底部卡片里的“相机 / 照片”入口框：入口卡片高度从 118dp 降到 104dp，圆角和上下留白同步收紧，底部面板左右内边距略增，让两个入口不再显得过大笨重。相机 / 照片图标、文案、Photo Picker、相机 FileProvider、图片私有副本、压缩上传和聊天滚动链均不变。
 - `ChatScreen.kt` / `ChatComposerCameraStore.kt` 先做聊天页瘦身的第一刀：把 App 内相机目标创建、FileProvider 授权 / 撤销、相册发布 / 删除、临时拍照文件清理等纯相机文件 helper 从 `ChatScreen.kt` 搬到独立文件，调用点和逻辑保持不变。该改动只降低 `ChatScreen.kt` 维护压力，不改相机行为、图片私有副本、压缩上传、图片预览、发送恢复、会员中心或聊天滚动链。

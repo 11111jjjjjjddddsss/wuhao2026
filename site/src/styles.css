@@ -231,6 +231,7 @@ h1 span {
 .site-footer {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 18px;
   width: min(1180px, calc(100vw - 64px));
   margin: 0 auto;
@@ -238,6 +239,26 @@ h1 span {
   border-top: 1px solid rgba(243, 247, 239, 0.1);
   color: rgba(243, 247, 239, 0.48);
   font-size: 13px;
+}
+
+.footer-links {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.police-record {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.police-record img {
+  width: 16px;
+  height: 16px;
+  object-fit: contain;
 }
 
 .site-footer a:hover {
@@ -345,6 +366,13 @@ h1 span {
     align-items: flex-start;
     flex-direction: column;
     width: min(100%, calc(100vw - 48px));
+  }
+
+  .footer-links {
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 8px;
+    flex-direction: column;
   }
 }
 

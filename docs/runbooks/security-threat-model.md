@@ -9,7 +9,7 @@
 ## 关键资产
 
 - 用户账号 session token、手机号 hash、旧本机 user_id 迁移关系
-- 聊天归档、A/B/C 记忆、图片上传 URL、帮助与反馈消息
+- 聊天归档、A 层滑窗、记忆文档、图片上传 URL、帮助与反馈消息
 - 每日额度、会员状态、订单、礼品卡批次 / 兑换记录和后台审计
 - 模型 Key、DYPNS、OSS、RDS、Redis、SLS、内部 job / support secret
 - ECS / Nginx / systemd slot 发布入口和 Cloud Assistant 运维链路
@@ -46,7 +46,7 @@
 - Android 长期 auth token 仍保存在普通 SharedPreferences；备份已禁用，但 Root、恶意调试或设备被拿到时仍可能被窃取。后续可评估 EncryptedSharedPreferences、设备管理和远程吊销
 - 没买 WAF / 高防时，普通 Web 扫描和脚本刷接口主要靠 Nginx / Go / Redis 限流；大流量 DDoS 超过基础防护仍可能不可用
 - SLS 已有 5 条 AlertHub 最小告警，但还没有短信 / 电话 / 机器人等外部通知和仪表盘；现在能查日志、能在 AlertHub 里看到最小规则，但还不能自动叫醒或自动处置
-- 多 ECS 前，B/C 摘要 running guard 仍需升级为 Redis / MySQL lease，避免跨实例重复抽取
+- 多 ECS 前，记忆文档摘要 running guard 仍需升级为 Redis / MySQL lease，避免跨实例重复抽取
 
 ## 后续优先级
 

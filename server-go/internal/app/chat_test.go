@@ -30,7 +30,7 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		},
 	}
 
-	messages, usedCount, hasB, hasC := server.buildPromptMessages(
+	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
 		snapshot,
 		6,
 		"current",
@@ -41,8 +41,8 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	if usedCount != 2 {
 		t.Fatalf("expected 2 historical rounds, got %d", usedCount)
 	}
-	if hasB || hasC {
-		t.Fatalf("expected no summaries, got hasB=%v hasC=%v", hasB, hasC)
+	if hasMemoryDocument {
+		t.Fatalf("expected no memory document, got hasMemoryDocument=%v", hasMemoryDocument)
 	}
 	if len(messages) != 7 {
 		t.Fatalf("expected 7 messages, got %d", len(messages))
@@ -92,19 +92,18 @@ func TestWriteSSEHeadersDisableNginxBuffering(t *testing.T) {
 	}
 }
 
-func TestBuildPromptMessagesAddsBCSummariesWhenPresent(t *testing.T) {
+func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	server := &Server{
 		systemAnchor: "anchor",
 	}
 
 	snapshot := &SessionSnapshot{
-		UserID:      "u1",
-		BSummary:    "b-summary",
-		CSummary:    "c-summary",
-		ARoundsFull: []SessionRound{},
+		UserID:         "u1",
+		MemoryDocument: "短期承接：b-summary\n长期背景：c-summary",
+		ARoundsFull:    []SessionRound{},
 	}
 
-	messages, usedCount, hasB, hasC := server.buildPromptMessages(
+	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
 		snapshot,
 		6,
 		"hello",
@@ -115,23 +114,23 @@ func TestBuildPromptMessagesAddsBCSummariesWhenPresent(t *testing.T) {
 	if usedCount != 0 {
 		t.Fatalf("expected no historical rounds, got %d", usedCount)
 	}
-	if !hasB || !hasC {
-		t.Fatalf("expected both summaries present, got hasB=%v hasC=%v", hasB, hasC)
+	if !hasMemoryDocument {
+		t.Fatalf("expected memory document present")
 	}
-	if len(messages) != 5 {
-		t.Fatalf("expected 5 messages, got %d", len(messages))
+	if len(messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(messages))
 	}
-	if messages[2].Role != "system" || messages[3].Role != "system" {
-		t.Fatalf("expected summary prompts to be inserted as system messages")
+	if messages[2].Role != "system" {
+		t.Fatalf("expected memory document to be inserted as system message")
 	}
-	if !strings.HasPrefix(messages[2].Content.(string), "B层通用短期记忆（仅供参考）\n") {
-		t.Fatalf("expected B short-term memory label, got %#v", messages[2].Content)
+	if !strings.HasPrefix(messages[2].Content.(string), "记忆文档（后台参考，仅用于减少重复追问和保持连续性；除非用户要求回顾历史，不要主动复述记忆内容、标签或用户画像）\n") {
+		t.Fatalf("expected memory document label, got %#v", messages[2].Content)
 	}
-	if !strings.HasPrefix(messages[3].Content.(string), "C层长期通用记忆（仅供参考）\n") {
-		t.Fatalf("expected C long-term memory label, got %#v", messages[3].Content)
+	if strings.Contains(messages[2].Content.(string), "B层") || strings.Contains(messages[2].Content.(string), "C层") {
+		t.Fatalf("memory document prompt should not expose legacy layer labels: %#v", messages[2].Content)
 	}
-	if messages[4].Content != "hello" {
-		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
+	if messages[3].Content != "hello" {
+		t.Fatalf("expected current text-only user message, got %#v", messages[3].Content)
 	}
 }
 
@@ -158,7 +157,7 @@ func TestBuildPromptMessagesIncludesHistoricalRoundTimeWhenAvailable(t *testing.
 		},
 	}
 
-	messages, usedCount, _, _ := server.buildPromptMessages(
+	messages, usedCount, _ := server.buildPromptMessages(
 		snapshot,
 		6,
 		"今天又黄了",
@@ -407,12 +406,10 @@ func TestTierWindowsAndSummaryIntervalsMatchBusinessRules(t *testing.T) {
 		t.Fatalf("pro a-window mismatch: %d", got)
 	}
 
-	b, c := GetSummaryIntervals(TierFree)
-	if b != 6 || c != 20 {
-		t.Fatalf("free/plus summary intervals mismatch: b=%d c=%d", b, c)
+	if got := GetMemoryDocumentInterval(TierFree); got != 6 {
+		t.Fatalf("free/plus memory interval mismatch: %d", got)
 	}
-	b, c = GetSummaryIntervals(TierPro)
-	if b != 9 || c != 20 {
-		t.Fatalf("pro summary intervals mismatch: b=%d c=%d", b, c)
+	if got := GetMemoryDocumentInterval(TierPro); got != 9 {
+		t.Fatalf("pro memory interval mismatch: %d", got)
 	}
 }

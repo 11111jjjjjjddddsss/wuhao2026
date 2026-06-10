@@ -30,11 +30,7 @@ const (
 )
 
 func dailyAgriCardModel() string {
-	model := strings.TrimSpace(os.Getenv("DAILY_AGRI_MODEL"))
-	if model == "" {
-		return defaultDailyAgriCardModel
-	}
-	return model
+	return defaultDailyAgriCardModel
 }
 
 type DailyAgriCardService struct {

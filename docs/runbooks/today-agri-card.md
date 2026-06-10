@@ -5,7 +5,7 @@
 ## 当前真相
 
 - 今日农情是独立每日资讯卡片，不是聊天消息
-- 不进入 A/B/C 上下文，不写 `session_ab` / `session_round_archive`，不触发摘要，不扣用户问诊次数
+- 不进入主聊天上下文或记忆文档，不写 `session_ab` / `session_round_archive`，不触发摘要，不扣用户问诊次数
 - 当前只有全国卡片：`scope = CN`
 - 数据真源表：`daily_agri_cards`
 - 用户只读接口：`GET /api/today-agri-card`
@@ -14,20 +14,18 @@
 - 内部探针接口：`POST /internal/jobs/today-agri-card/probe?runs=3`，只测模型输出 / 来源 / 解析质量，不写 `daily_agri_cards`
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
 - 当前生产推荐主链：ECS systemd timer 每天自动触发一次生成，后台补跑只作为异常兜底
-- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情独立走 DashScope `text-generation/generation + qwen-plus + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，两条链路分开，不互相影响。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和更长延迟，今日农情默认不使用；`qwen3.5-flash + multimodal-generation + stream=true + enable_thinking=true + turbo` 只保留为人工设置 `DAILY_AGRI_MODEL=qwen3.5-flash` 的手动实验 / 降本候选，不做自动 fallback。用户端已经取消外部链接点击，公开接口只返回标题、摘要和短来源名称；URL、source_index 和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户卡片
+- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情固定独立走 DashScope `text-generation/generation + qwen-plus + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，两条链路分开，不互相影响。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和更长延迟，今日农情默认不使用；当前不保留其它模型、其它接口或环境变量切换入口。用户端已经取消外部链接点击，公开接口只返回标题、摘要和短来源名称；URL、source_index 和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户卡片
 
 ## 环境变量
 
 - `DASHSCOPE_API_KEY_1/2/3`、旧 `DASHSCOPE_API_KEY` 或 `DASHSCOPE_API_KEYS`：百炼模型主备 Key 池；多账号配置和限流口径见 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)
 - `DASHSCOPE_BASE_URL`：可选，默认 `https://dashscope.aliyuncs.com/api/v1`
 - `DAILY_AGRI_JOB_SECRET`：内部生成接口密钥，必须配置；不要写入仓库
-- `DAILY_AGRI_MODEL`：可选人工实验开关；默认留空即 `qwen-plus`。只有排障或降本实验时才临时设为 `qwen3.5-flash`，它不是自动 fallback
+- 今日农情模型固定为 `qwen-plus`；当前不支持通过环境变量切换模型
 
-当前生产默认模型为 `qwen-plus`，今日农情继续独立于主聊天模型调用。默认链使用 DashScope `text-generation/generation`，保留 `freshness=7`、`prompt_intervene` 和 `enable_source=true`，更利于拿到稳定搜索来源和成稿质量。2026-06-10 根据客服口径和本项目适配确认：`qwen3.5-flash` 的联网 `search_strategy=turbo` 不能走旧 text-generation 直接替换，必须走 `multimodal-generation/generation`、流式输出和思考模式；当前代码保留显式 `DAILY_AGRI_MODEL=qwen3.5-flash` 的手动实验路径，会按 `input.messages + parameters.enable_thinking=true + parameters.stream=true + parameters.search_options.search_strategy=turbo + parameters.search_options.enable_source=true` 发起，并用 `X-DashScope-SSE: enable` 读取 SSE。3.5flash 这条链不要求 DashScope 返回稳定 `search_results` 结构化列表，来源名由提示词要求模型写入 `source_name`，后端只把 URL 当内部追溯字段。2026-06-09 / 2026-06-10 生产探针曾确认 `qwen-flash + turbo + enable_source` 虽可返回搜索来源但执行力偏弱，`qwen-plus + turbo + enable_source` 质量更稳；当前不把 3.5flash 作为生产默认。用户已明确 `qwen-flash` 质量不行、`qwen-turbo` 即将下线，二者都不作为今日农情生产候选。
+当前生产模型固定为 `qwen-plus`，今日农情继续独立于主聊天模型调用。默认链使用 DashScope `text-generation/generation`，保留 `freshness=7`、`prompt_intervene` 和 `enable_source=true`，更利于拿到稳定搜索来源和成稿质量。2026-06-10 用户已拍板删除低价轻量候选；当前不再评估其它模型作为今日农情模型。
 
-官方联网搜索文档口径：`search_strategy=turbo` 是默认且适合大多数场景的搜索策略；`qwen-plus` 可在原生 Generation 链路下使用 `enable_search + search_options`。`qwen3.5-flash` 也支持 turbo，但属于思考模式下的流式链路，并且启用时只支持 `enable_source=true` 这类返回来源能力。`agent / agent_max` 会多轮信息检索与整合，通常会带来更多输入 token 和更长延迟。因此今日农情默认坚持 `qwen-plus + turbo`，不迁移到 Responses `web_search` / agent 策略。
-
-截至 2026-06-10，当前候选层级已收口为：生产默认 `qwen-plus + text-generation + turbo + enable_source + freshness=7 + prompt_intervene`；手动降本实验 `qwen3.5-flash + multimodal-generation + stream + enable_thinking + turbo + enable_source`；质量替代候选可后续再评估 `qwen3.5-plus`，但成本高于 flash。`qwen-flash` 因实测执行力和内容质量偏松不作为生产候选；`qwen-turbo` 因用户已明确即将下线，不再评估。
+官方联网搜索文档口径：`search_strategy=turbo` 是默认且适合大多数场景的搜索策略；`qwen-plus` 可在原生 Generation 链路下使用 `enable_search + search_options`。`agent / agent_max` 会多轮信息检索与整合，通常会带来更多输入 token 和更长延迟。因此今日农情默认坚持 `qwen-plus + turbo`，不迁移到 Responses `web_search` / agent 策略。
 
 模型提示词版本当前为 `2026-06-10-v26`，要求必须输出 3 条成稿内容；如果已经找到 3 条高质量且主题 / 地区不重复的材料，可以停止继续深挖，不再把 2 条作为正常发布结果。检索阶段保持全网宽搜，不把来源卡死在农业农村部、中国农业信息网、农民日报等少数网站；同等质量下优先官方、农业农村部门、农技推广、气象、主流媒体、农业专业媒体、地方农业信息、市场流通、农资、种业、植保等正式来源。今日农情按“农业大类分种植和养殖，当前只取种植侧”的口径由提示词控制：种子 / 种苗 / 种业、植保农药、肥料水肥、农机农时、农产品价格流通、农资供需、补贴保险，以及明确影响作物和农时的农业气象风险可以选；畜牧、水产、养殖、动物疫病、生猪、猪肉、猪价、家禽、禽蛋、牛羊、奶业、饲料、兽药、渔业、鱼虾等养殖侧内容由提示词排除；普通天气预报、生活天气、旅游出行天气不作为独立选题。后端解析器不再做大面积主题、可信域名、近 7 天链接、旧卡链接重复等硬过滤，只保留 JSON 结构、固定标题、正好 3 条、标题 / 摘要非空、同批重复标题和内部 URL 安全兜底；广告软文、假新闻、养殖侧和重复事件主要靠提示词、生成探针、后台运营复核与后续日志观察控制。
 
@@ -125,7 +123,7 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-cards" `
 
 ## 内部探针
 
-探针用于验证当前默认 `qwen-plus + text-generation + turbo` 的 JSON 执行力、来源名、过滤通过率、usage 和新闻质量；如果显式设置 `DAILY_AGRI_MODEL=qwen3.5-flash`，也可用于手动观察 flash 实验链的 reasoning tokens。探针不会写入 `daily_agri_cards`，也不会改变用户当天看到的卡片。该入口同样必须带 `DAILY_AGRI_JOB_SECRET`，`runs` 默认 1，最多 5。
+探针用于验证当前固定 `qwen-plus + text-generation + turbo` 的 JSON 执行力、来源名、过滤通过率、usage 和新闻质量。探针不会写入 `daily_agri_cards`，也不会改变用户当天看到的卡片。该入口同样必须带 `DAILY_AGRI_JOB_SECRET`，`runs` 默认 1，最多 5。
 
 ```powershell
 curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/probe?runs=3" `
@@ -135,7 +133,7 @@ curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/probe?runs
 返回字段重点看：
 
 - `ok_count`：通过后端解析和质量校验的次数
-- `runs[].source_count`：DashScope 返回的结构化搜索来源数量；默认 3.5flash 链可能为 0，属于预期，需要重点看 `source_name` 和新闻质量
+- `runs[].source_count`：DashScope 返回的结构化搜索来源数量，用于判断搜索是否触发和来源质量
 - `runs[].candidate_items / valid_items / reject_reasons`：模型候选数量、通过数量和过滤原因
 - `runs[].valid_source_hosts`：最终采用来源域名
 - `runs[].model_input_tokens / model_output_tokens / model_total_tokens / model_reasoning_tokens / model_search_count`：可用时返回的 usage、思考 token 与搜索次数
@@ -188,7 +186,7 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 4. 查询 `daily_agri_cards` 当天状态和 `error`。
 5. 如果状态是 `pending` 且 `lease_until` 未过期，等待当前任务完成。
 6. 如果状态是 `failed` 或 lease 已过期，可人工重新调用内部生成接口。
-7. 如果错误是 `dashscope status 400` 且审计 / 日志里没有业务解析报错，优先核对今天这条链是否误用了旧 text-generation 路由、漏了 `X-DashScope-SSE: enable`、漏了 `parameters.stream=true` / `enable_thinking=true`，或把 `search_strategy` 放错层级；不要先怀疑定时器或后台补跑按钮。
+7. 如果错误是 `dashscope status 400` 且审计 / 日志里没有业务解析报错，优先核对 DashScope `text-generation/generation` 请求体是否仍为 `input.messages + parameters.enable_search=true + search_options.search_strategy=turbo + enable_source=true`，不要先怀疑定时器或后台补跑按钮。
 8. 如果用户侧或后台曾出现今日农情 500，优先看 `content_json / sources_json` 是否为坏 JSON 或结构不完整。当前后台今日农情列表会把这类问题标成 `content_json_invalid`、`content_shape_invalid`、`sources_json_invalid` 或 `sources_shape_invalid`，不会再让整页 500；可直接用后台补跑当天卡片。
 
 ## 后台补跑

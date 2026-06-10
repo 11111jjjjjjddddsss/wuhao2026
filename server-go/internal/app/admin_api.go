@@ -1998,13 +1998,13 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 			CostNote:         "可联网但不强制搜索；不会在 Android 端保存模型 Key。",
 		},
 		{
-			Title:            "B/C 记忆摘要",
+			Title:            "记忆文档摘要",
 			Model:            summaryExtractionModelPolicyLabel(),
 			Protocol:         "OpenAI兼容非流式",
-			Trigger:          "问诊轮次完成后由后端异步触发",
+			Trigger:          "问诊轮次完成后由后端异步触发，一次调用覆盖更新一份记忆文档",
 			ForcedSearch:     false,
 			ThinkingDisabled: true,
-			CostNote:         "不联网、非思考；默认 B/C 用 qwen3.5-flash，可用 B_SUMMARY_MODEL / C_SUMMARY_MODEL 分层灰度，C 层可切 qwen-plus 优先质量。",
+			CostNote:         "不联网、非思考；固定 qwen-plus 优先记忆质量，只维护一份记忆文档。",
 		},
 		{
 			Title:            "今日农情",
@@ -2020,21 +2020,15 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 }
 
 func dailyAgriMonitoringProtocol(model string) string {
-	if dailyAgriUsesMultimodalGeneration(model) {
-		return "DashScope multimodal-generation 流式"
-	}
 	return "DashScope text-generation 非流式"
 }
 
 func dailyAgriMonitoringThinkingDisabled(model string) bool {
-	return !dailyAgriUsesMultimodalGeneration(model)
+	return true
 }
 
 func dailyAgriMonitoringCostNote(model string) string {
-	if dailyAgriUsesMultimodalGeneration(model) {
-		return "手动实验 / 降本候选链；需要思考模式和流式 turbo 搜索，用户侧不点击外链，不扣问诊次数。"
-	}
-	return "当前生产默认链；强制 turbo 联网，带 freshness=7 和 prompt_intervene，用户侧不点击外链，不扣问诊次数。"
+	return "当前生产默认链；固定 qwen-plus，强制 turbo 联网，带 freshness=7 和 prompt_intervene，用户侧不点击外链，不扣问诊次数。"
 }
 
 func filterAdminMonitoringActionRoutes(items []AdminMonitoringActionItem, role string) []AdminMonitoringActionItem {

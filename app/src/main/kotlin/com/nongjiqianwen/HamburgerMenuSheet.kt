@@ -3483,7 +3483,7 @@ private fun HamburgerAccountDeletionConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "提交后将退出当前账号。客服会按规定核验并处理账号和相关数据；会员、订单、礼品卡和反馈记录需按规则处理。",
+                text = "提交申请后会立即退出当前账号。客服会按规定核验并处理账号和相关数据；会员、订单、礼品卡和反馈记录需按规则处理。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -3530,7 +3530,7 @@ private fun HamburgerAccountDeletionConfirmCard(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = if (submitting) "提交中" else "确认注销",
+                            text = if (submitting) "提交中" else "提交并退出",
                             color = if (submitting) Color(0xFF777B82) else Color.White,
                             fontSize = 15.sp,
                             lineHeight = 20.sp,

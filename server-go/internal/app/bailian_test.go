@@ -482,119 +482,6 @@ func TestOpenStreamFailoverStatusBoundaries(t *testing.T) {
 	}
 }
 
-func TestGenerateDailyAgriCardUsesQwen35FlashMultimodalTurbo(t *testing.T) {
-	var captured map[string]any
-	var capturedSSEHeader string
-	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/services/aigc/multimodal-generation/generation" {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		capturedSSEHeader = r.Header.Get("X-DashScope-SSE")
-		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
-			t.Fatalf("decode request: %v", err)
-		}
-		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte("data: {\"output\":{\"choices\":[{\"message\":{\"content\":\"```json\\n{\\\"card_name\\\":\\\"今日农情\\\",\\\"items\\\":[{\\\"title\\\":\\\"春播种子质量抽检\\\",\\\"summary\\\":\\\"多地开展春播种子质量抽检，保障玉米大豆等作物备耕用种安全。\\\",\\\"source_name\\\":\\\"农业农村部\\\"},{\\\"title\\\":\\\"小麦赤霉病预警\\\",\\\"summary\\\":\\\"江苏发布小麦赤霉病防控提醒，建议抓住晴好天气及时用药。\\\",\\\"source_name\\\":\\\"全国农技中心\\\"},{\\\"title\\\":\\\"农资价格稳中调整\\\",\\\"summary\\\":\\\"部分批发市场农资供应充足，复合肥价格稳中小幅调整。\\\",\\\"source_name\\\":\\\"农资导报\\\"}]}\\n```\"}}]},\"usage\":{\"input_tokens\":188,\"output_tokens\":565,\"total_tokens\":753,\"output_tokens_details\":{\"reasoning_tokens\":363,\"text_tokens\":565},\"plugins\":{\"search\":{\"count\":1,\"strategy\":\"turbo\"}}}}\n\n"))
-		_, _ = w.Write([]byte("data: [DONE]\n\n"))
-	}))
-	defer modelServer.Close()
-
-	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
-
-	content, sources, usage, err := NewBailianClient().GenerateDailyAgriCard(
-		context.Background(),
-		"qwen3.5-flash",
-		[]BailianMessage{
-			{Role: "system", Content: "你是一个只输出 JSON 的助手。"},
-			{Role: "user", Content: "生成今日农情"},
-		},
-	)
-	if err != nil {
-		t.Fatalf("generate daily agri card: %v", err)
-	}
-	if !strings.Contains(content, "\"card_name\":\"今日农情\"") {
-		t.Fatalf("content mismatch: %q", content)
-	}
-	if len(sources) != 0 {
-		t.Fatalf("multimodal flash should not require structured search sources, got %d", len(sources))
-	}
-	if usage.normalizedInputTokens() != 188 || usage.normalizedOutputTokens() != 565 || usage.normalizedTotalTokens() != 753 || usage.ReasoningTokens != 363 || usage.searchCount() != 1 {
-		t.Fatalf("usage mismatch: %#v", usage)
-	}
-	if capturedSSEHeader != "enable" {
-		t.Fatalf("X-DashScope-SSE = %q, want enable", capturedSSEHeader)
-	}
-	if got := captured["model"]; got != "qwen3.5-flash" {
-		t.Fatalf("model mismatch: %#v", got)
-	}
-	input, ok := captured["input"].(map[string]any)
-	if !ok {
-		t.Fatalf("input mismatch: %#v", captured["input"])
-	}
-	messages, ok := input["messages"].([]any)
-	if !ok || len(messages) != 2 {
-		t.Fatalf("messages mismatch: %#v", input["messages"])
-	}
-	parameters, ok := captured["parameters"].(map[string]any)
-	if !ok {
-		t.Fatalf("parameters mismatch: %#v", captured["parameters"])
-	}
-	if got := parameters["temperature"]; got != unifiedModelTemperature {
-		t.Fatalf("temperature mismatch: %#v", got)
-	}
-	if got := parameters["enable_thinking"]; got != true {
-		t.Fatalf("enable_thinking mismatch: %#v", got)
-	}
-	if got := parameters["stream"]; got != true {
-		t.Fatalf("stream mismatch: %#v", got)
-	}
-	if got := parameters["incremental_output"]; got != true {
-		t.Fatalf("incremental_output mismatch: %#v", got)
-	}
-	if got := parameters["enable_search"]; got != true {
-		t.Fatalf("enable_search mismatch: %#v", got)
-	}
-	searchOptions, ok := parameters["search_options"].(map[string]any)
-	if !ok {
-		t.Fatalf("search_options mismatch: %#v", parameters["search_options"])
-	}
-	if got := searchOptions["search_strategy"]; got != dailyAgriSearchStrategy {
-		t.Fatalf("search_strategy mismatch: %#v", got)
-	}
-	if got := searchOptions["enable_source"]; got != true {
-		t.Fatalf("enable_source mismatch: %#v", got)
-	}
-	if _, ok := parameters["search_strategy"]; ok {
-		t.Fatalf("search_strategy should be nested in search_options for multimodal daily agri: %#v", parameters)
-	}
-	if _, ok := parameters["enable_source"]; ok {
-		t.Fatalf("enable_source should be nested in search_options for multimodal daily agri: %#v", parameters)
-	}
-	if got := parameters["result_format"]; got != "message" {
-		t.Fatalf("result_format mismatch: %#v", got)
-	}
-}
-
-func TestParseDashScopeMultimodalSSESupportsContentParts(t *testing.T) {
-	body := strings.NewReader("data: {\"output\":{\"choices\":[{\"message\":{\"content\":[{\"text\":\"{\\\"card_name\\\":\\\"今日农情\\\"\"},{\"text\":\",\\\"items\\\":[]}\"}]}}]},\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"total_tokens\":30,\"output_tokens_details\":{\"reasoning_tokens\":4},\"plugins\":{\"search\":{\"count\":1}}}}\n\n" +
-		"data: [DONE]\n\n")
-
-	content, sources, usage, err := parseDashScopeMultimodalSSE(body, dashScopeGenerationBodyLimit)
-	if err != nil {
-		t.Fatalf("parse multimodal SSE: %v", err)
-	}
-	if content != "{\"card_name\":\"今日农情\",\"items\":[]}" {
-		t.Fatalf("content = %q", content)
-	}
-	if len(sources) != 0 {
-		t.Fatalf("sources should be empty for multimodal SSE: %#v", sources)
-	}
-	if usage.normalizedInputTokens() != 10 || usage.normalizedOutputTokens() != 20 || usage.normalizedTotalTokens() != 30 || usage.ReasoningTokens != 4 || usage.searchCount() != 1 {
-		t.Fatalf("usage mismatch: %#v", usage)
-	}
-}
-
 func TestGenerateDailyAgriCardQwenPlusUsesUnifiedTemperature(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -702,6 +589,36 @@ func TestGenerateDailyAgriCardQwenPlusUsesUnifiedTemperature(t *testing.T) {
 		if strings.Contains(promptIntervene, forbidden) {
 			t.Fatalf("prompt_intervene should not include out-of-scope positive topic %q: %#v", forbidden, promptIntervene)
 		}
+	}
+}
+
+func TestGenerateDailyAgriCardIgnoresRequestedModelAndUsesQwenPlus(t *testing.T) {
+	var captured map[string]any
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/services/aigc/text-generation/generation" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"output":{"choices":[{"message":{"content":"{\"card_name\":\"今日农情\",\"items\":[]}"}}],"search_info":{"search_results":[]}},"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
+
+	_, _, _, err := NewBailianClient().GenerateDailyAgriCard(
+		context.Background(),
+		"ignored-model",
+		[]BailianMessage{{Role: "user", Content: "生成今日农情"}},
+	)
+	if err != nil {
+		t.Fatalf("generate daily agri card: %v", err)
+	}
+	if got := captured["model"]; got != defaultDailyAgriCardModel {
+		t.Fatalf("daily agri model = %#v, want %q", got, defaultDailyAgriCardModel)
 	}
 }
 

@@ -380,7 +380,7 @@ object SessionApi {
         val base = baseUrl()
         val token = authTokenSync()
         if (base.isEmpty() || token.isNullOrBlank()) {
-            IdManager.clearAuthSession()
+            clearLocalAuthRuntimeSession(notifyListeners = true)
             mainHandler.post { onResult(true) }
             return
         }
@@ -416,7 +416,7 @@ object SessionApi {
                         )
                     }
                     if (ok) {
-                        IdManager.clearAuthSession()
+                        clearLocalAuthRuntimeSession(notifyListeners = true)
                     }
                     mainHandler.post { onResult(ok) }
                 }
@@ -459,10 +459,7 @@ object SessionApi {
                         )
                     }
                     if (ok) {
-                        IdManager.clearAuthSession()
-                        sessionGeneration.set(-1)
-                        runtimeGeneration.incrementAndGet()
-                        currentStreamCall.getAndSet(null)?.cancel()
+                        clearLocalAuthRuntimeSession(notifyListeners = true)
                     }
                     postToMain { onResult(ok) }
                 }
@@ -498,12 +495,18 @@ object SessionApi {
     }
 
     private fun notifyAuthInvalid() {
+        clearLocalAuthRuntimeSession(notifyListeners = true)
+    }
+
+    private fun clearLocalAuthRuntimeSession(notifyListeners: Boolean = false) {
         IdManager.clearAuthSession()
         sessionGeneration.set(-1)
         runtimeGeneration.incrementAndGet()
         currentStreamCall.getAndSet(null)?.cancel()
-        postToMain {
-            authInvalidListeners.forEach { listener -> listener() }
+        if (notifyListeners) {
+            postToMain {
+                authInvalidListeners.forEach { listener -> listener() }
+            }
         }
     }
 
@@ -1650,7 +1653,8 @@ object SessionApi {
                             }
                             val snapshotGeneration = json.session_generation ?: 0
                             updateSessionGeneration(snapshotGeneration)
-                            onResult(SessionSnapshot(json.b_summary ?: "", json.c_summary ?: "", full, forUi, snapshotGeneration))
+                            val memoryDocument = json.memory_document ?: json.b_summary ?: ""
+                            onResult(SessionSnapshot(memoryDocument, full, forUi, snapshotGeneration))
                         } catch (e: Exception) {
                             Log.e(TAG, "parse snapshot", e)
                             reportClientLog(
@@ -2048,8 +2052,8 @@ object SessionApi {
     }
 
     private data class SessionSnapshotJson(
+        @SerializedName("memory_document") val memory_document: String? = null,
         @SerializedName("b_summary") val b_summary: String?,
-        @SerializedName("c_summary") val c_summary: String? = null,
         @SerializedName("a_json") val a_json: List<ARoundJson>? = null,
         @SerializedName("a_rounds_full") val a_rounds_full: List<ARoundJson>?,
         @SerializedName("a_rounds_for_ui") val a_rounds_for_ui: List<ARoundJson>?,

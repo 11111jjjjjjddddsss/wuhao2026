@@ -60,6 +60,10 @@ func (s *Server) handleCreateAccountDeletionRequest(w http.ResponseWriter, r *ht
 	if !ok {
 		return
 	}
+	if auth.AuthMode != AuthModeToken || strings.TrimSpace(auth.SessionID) == "" {
+		s.writeError(w, http.StatusBadRequest, "token_session_required")
+		return
+	}
 	var body accountDeletionRequestBody
 	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
 		s.writeJSONDecodeError(w, err)
@@ -84,10 +88,15 @@ func (s *Server) handleCreateAccountDeletionRequest(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if auth.AuthMode == AuthModeToken && strings.TrimSpace(auth.SessionID) != "" {
-		if err := s.store.RevokeAuthSession(r.Context(), auth.UserID, auth.SessionID, time.Now().UnixMilli()); err != nil {
-			s.logger.Warn("revoke session after account deletion request failed", "userId", auth.UserID, "error", err)
-		}
+	if err := s.store.RevokeAuthSession(r.Context(), auth.UserID, auth.SessionID, time.Now().UnixMilli()); err != nil {
+		s.logger.Error("revoke session after account deletion request failed", "userId", auth.UserID, "error", err)
+		s.recordAdminAuditLog(r, "app_user:"+auth.UserID, "account_deletion.request", "account_deletion_requests", request.RequestID, auth.UserID, false, http.StatusInternalServerError, map[string]any{
+			"error_code": "revoke_session_failed",
+			"created":    created,
+			"status":     request.Status,
+		})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
 	}
 	s.recordAdminAuditLog(r, "app_user:"+auth.UserID, "account_deletion.request", "account_deletion_requests", request.RequestID, auth.UserID, true, http.StatusOK, map[string]any{
 		"created": created,
@@ -146,6 +155,10 @@ func (s *Server) handleAdminUpdateAccountDeletionStatus(w http.ResponseWriter, r
 	note, validationError := normalizeAccountDeletionFreeText(body.Note, "note")
 	if validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	if accountDeletionTerminalStatus(status) && note == "" {
+		s.writeError(w, http.StatusBadRequest, "note_required")
 		return
 	}
 	request, err := s.store.UpdateAccountDeletionRequestStatus(r.Context(), requestID, status, admin.User.Username, note, time.Now().UnixMilli())
@@ -456,6 +469,15 @@ func accountDeletionWithSLA(request AccountDeletionRequest, nowMs int64) Account
 func accountDeletionIsOpen(status string) bool {
 	switch normalizeAccountDeletionStatus(status) {
 	case "pending", "processing":
+		return true
+	default:
+		return false
+	}
+}
+
+func accountDeletionTerminalStatus(status string) bool {
+	switch normalizeAccountDeletionStatus(status) {
+	case "completed", "rejected", "cancelled":
 		return true
 	default:
 		return false
