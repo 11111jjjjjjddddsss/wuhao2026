@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -127,13 +126,6 @@ type extractedMemoryDocument struct {
 	MemoryDocument string
 }
 
-type summaryExtractionPayload struct {
-	ShortTermMemory *string
-	LongTermMemory  *string
-	UserProfile     *string
-	AgriMemory      *string
-}
-
 func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument string, dialogueText string) (extractedMemoryDocument, error) {
 	prompt, err := s.prompts.SummaryPrompt()
 	if err != nil {
@@ -203,31 +195,12 @@ func buildSummaryExtractionUserContent(oldMemoryDocument string, dialogueText st
 	return strings.TrimSpace("[已有记忆文档]\n" + oldMemory + "\n\n[最近对话]\n" + strings.TrimSpace(dialogueText))
 }
 
-func normalizeMemoryDocumentExtraction(content string, oldMemoryDocument string) (extractedMemoryDocument, error) {
-	decoded := parseSummaryExtractionSections(content)
-	if decoded.ShortTermMemory == nil &&
-		decoded.LongTermMemory == nil &&
-		decoded.UserProfile == nil &&
-		decoded.AgriMemory == nil {
+func normalizeMemoryDocumentExtraction(content string, _ string) (extractedMemoryDocument, error) {
+	text := strings.TrimSpace(stripSummaryTextEnvelope(content))
+	if text == "" {
 		return extractedMemoryDocument{}, fmt.Errorf("SUMMARY_EXTRACT_EMPTY_FIELDS")
 	}
-
-	previous := splitMemoryDocument(oldMemoryDocument)
-	shortTerm := summaryFieldValue(decoded.ShortTermMemory, stringPtrValue(previous.ShortTermMemory), "暂无短期承接可沉淀")
-	longTerm := summaryFieldValue(decoded.LongTermMemory, stringPtrValue(previous.LongTermMemory), "暂无稳定长期背景可沉淀")
-	userProfile := summaryFieldValue(decoded.UserProfile, stringPtrValue(previous.UserProfile), "暂无稳定用户画像可沉淀")
-	agriMemory := summaryFieldValue(decoded.AgriMemory, stringPtrValue(previous.AgriMemory), "暂无农业重点事件可沉淀")
-
-	return extractedMemoryDocument{
-		MemoryDocument: combineMemoryDocument(shortTerm, longTerm, userProfile, agriMemory),
-	}, nil
-}
-
-func summaryFieldValue(value *string, oldValue string, emptyFallback string) string {
-	if value == nil {
-		return firstNonBlank(oldValue, emptyFallback)
-	}
-	return firstNonBlank(*value, oldValue, emptyFallback)
+	return extractedMemoryDocument{MemoryDocument: text}, nil
 }
 
 func stripSummaryTextEnvelope(content string) string {
@@ -245,144 +218,6 @@ func stripSummaryTextEnvelope(content string) string {
 		}
 	}
 	return text
-}
-
-type summarySectionMatch struct {
-	key        string
-	start      int
-	valueStart int
-}
-
-func parseSummaryExtractionSections(content string) summaryExtractionPayload {
-	text := stripSummaryTextEnvelope(content)
-	matches := []summarySectionMatch{}
-	for _, label := range []struct {
-		key      string
-		variants []string
-	}{
-		{key: "short", variants: []string{"短期承接：", "短期承接:", "短期记忆：", "短期记忆:"}},
-		{key: "long", variants: []string{"长期背景：", "长期背景:", "长期通用记忆：", "长期通用记忆:"}},
-		{key: "profile", variants: []string{"用户画像：", "用户画像:"}},
-		{key: "agri", variants: []string{"农业重点事件：", "农业重点事件:", "农业相关重点事件记忆：", "农业相关重点事件记忆:"}},
-	} {
-		bestStart := -1
-		bestLen := 0
-		for _, variant := range label.variants {
-			idx := strings.Index(text, variant)
-			if idx < 0 {
-				continue
-			}
-			if bestStart < 0 || idx < bestStart {
-				bestStart = idx
-				bestLen = len(variant)
-			}
-		}
-		if bestStart >= 0 {
-			matches = append(matches, summarySectionMatch{
-				key:        label.key,
-				start:      bestStart,
-				valueStart: bestStart + bestLen,
-			})
-		}
-	}
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].start < matches[j].start
-	})
-
-	result := summaryExtractionPayload{}
-	seen := map[string]bool{}
-	for idx, match := range matches {
-		if seen[match.key] {
-			continue
-		}
-		seen[match.key] = true
-		valueEnd := len(text)
-		if idx+1 < len(matches) {
-			valueEnd = matches[idx+1].start
-		}
-		value := cleanSummarySectionText(text[match.valueStart:valueEnd])
-		switch match.key {
-		case "short":
-			result.ShortTermMemory = &value
-		case "long":
-			result.LongTermMemory = &value
-		case "profile":
-			result.UserProfile = &value
-		case "agri":
-			result.AgriMemory = &value
-		}
-	}
-	return result
-}
-
-func cleanSummarySectionText(value string) string {
-	text := strings.TrimSpace(value)
-	lines := strings.Split(text, "\n")
-	for idx := range lines {
-		lines[idx] = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(lines[idx]), "#"))
-	}
-	return strings.TrimSpace(strings.Join(lines, "\n"))
-}
-
-func combineMemoryDocument(shortTerm string, longTerm string, userProfile string, agriMemory string) string {
-	return strings.TrimSpace("短期承接：" + strings.TrimSpace(shortTerm) +
-		"\n长期背景：" + strings.TrimSpace(longTerm) +
-		"\n用户画像：" + strings.TrimSpace(userProfile) +
-		"\n农业重点事件：" + strings.TrimSpace(agriMemory))
-}
-
-func splitMemoryDocument(memoryDocument string) summaryExtractionPayload {
-	text := strings.TrimSpace(memoryDocument)
-	result := summaryExtractionPayload{}
-	labels := []struct {
-		prefixes []string
-		assign   func(string)
-	}{
-		{[]string{"短期承接：", "短期记忆："}, func(value string) { result.ShortTermMemory = &value }},
-		{[]string{"长期背景：", "长期通用记忆："}, func(value string) { result.LongTermMemory = &value }},
-		{[]string{"用户画像："}, func(value string) { result.UserProfile = &value }},
-		{[]string{"农业重点事件：", "农业相关重点事件记忆："}, func(value string) { result.AgriMemory = &value }},
-	}
-	if text != "" {
-		found := false
-		for idx, label := range labels {
-			start, prefix := firstLabelIndex(text, label.prefixes)
-			if start < 0 {
-				continue
-			}
-			found = true
-			valueStart := start + len(prefix)
-			valueEnd := len(text)
-			for nextIdx := idx + 1; nextIdx < len(labels); nextIdx++ {
-				if nextStart, _ := firstLabelIndex(text[valueStart:], labels[nextIdx].prefixes); nextStart >= 0 {
-					valueEnd = valueStart + nextStart
-					break
-				}
-			}
-			label.assign(strings.TrimSpace(text[valueStart:valueEnd]))
-		}
-		if !found {
-			result.ShortTermMemory = &text
-		}
-	}
-
-	return result
-}
-
-func firstLabelIndex(text string, prefixes []string) (int, string) {
-	bestStart := -1
-	bestPrefix := ""
-	for _, prefix := range prefixes {
-		start := strings.Index(text, prefix)
-		if start < 0 {
-			continue
-		}
-		if bestStart < 0 || start < bestStart {
-			bestStart = start
-			bestPrefix = prefix
-		}
-	}
-	return bestStart, bestPrefix
 }
 
 func buildDialogueText(rounds []SessionRound) string {

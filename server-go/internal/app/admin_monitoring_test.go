@@ -109,6 +109,54 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 	}
 }
 
+func TestAdminMonitoringLaunchReadinessRequiresRealChatEvidence(t *testing.T) {
+	base := AdminMonitoring{
+		Health: AdminHealthStatus{
+			API:               "ok",
+			Bailian:           "ok",
+			Dypns:             "ok",
+			DypnsFusion:       "ok",
+			DypnsSMS:          "ok",
+			Redis:             "ok",
+			UploadStorage:     "oss",
+			AuthStrict:        true,
+			DevOrderEndpoints: false,
+		},
+		Queues: AdminMonitoringQueues{
+			AppUpdate: AdminMonitoringAppUpdate{ConfigValid: true, DownloadArtifactsComplete: true, Enabled: true},
+		},
+	}
+
+	items := buildAdminMonitoringLaunchReadiness(base)
+	modelItem := findAdminMonitoringLaunchItem(items, "模型问诊")
+	if modelItem == nil {
+		t.Fatalf("missing model launch item: %#v", items)
+	}
+	if modelItem.Status != "attention" || !strings.Contains(modelItem.Body, "没有真实问诊记录") {
+		t.Fatalf("model launch item should require real chat evidence, got %#v", modelItem)
+	}
+
+	base.Windows = []AdminMonitoringWindow{{Key: "24h", ChatRounds: 2}}
+	items = buildAdminMonitoringLaunchReadiness(base)
+	modelItem = findAdminMonitoringLaunchItem(items, "模型问诊")
+	if modelItem == nil {
+		t.Fatalf("missing model launch item after text evidence: %#v", items)
+	}
+	if modelItem.Status != "attention" || !strings.Contains(modelItem.Body, "图片问诊") {
+		t.Fatalf("text-only evidence should still require image chat validation, got %#v", modelItem)
+	}
+
+	base.Windows = []AdminMonitoringWindow{{Key: "24h", ChatRounds: 3, ImageChatRounds: 1}}
+	items = buildAdminMonitoringLaunchReadiness(base)
+	modelItem = findAdminMonitoringLaunchItem(items, "模型问诊")
+	if modelItem == nil {
+		t.Fatalf("missing model launch item after image evidence: %#v", items)
+	}
+	if modelItem.Status != "ready" {
+		t.Fatalf("text and image evidence should mark model chat ready, got %#v", modelItem)
+	}
+}
+
 func TestAdminMonitoringSummaryModelPolicyUsesFixedQwenPlus(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
 	summaryRow := findAdminMonitoringModelPolicy(rows, "记忆文档摘要")
@@ -256,6 +304,15 @@ func hasAdminMonitoringModelPolicy(items []AdminMonitoringModelUsageRow, title s
 }
 
 func findAdminMonitoringModelPolicy(items []AdminMonitoringModelUsageRow, title string) *AdminMonitoringModelUsageRow {
+	for idx := range items {
+		if items[idx].Title == title {
+			return &items[idx]
+		}
+	}
+	return nil
+}
+
+func findAdminMonitoringLaunchItem(items []AdminMonitoringLaunchItem, title string) *AdminMonitoringLaunchItem {
 	for idx := range items {
 		if items[idx].Title == title {
 			return &items[idx]

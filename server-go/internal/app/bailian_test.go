@@ -570,8 +570,9 @@ func TestGenerateDailyAgriCardQwenPlusUsesUnifiedTemperature(t *testing.T) {
 		!strings.Contains(promptIntervene, "不要限定固定网站") ||
 		!strings.Contains(promptIntervene, "来源不限定固定站点") ||
 		!strings.Contains(promptIntervene, "分散覆盖") ||
-		!strings.Contains(promptIntervene, "只取种植侧") ||
-		!strings.Contains(promptIntervene, "养殖侧全部排除") ||
+		!strings.Contains(promptIntervene, "今日农情只取种植侧") ||
+		!strings.Contains(promptIntervene, "养殖、水产不要") ||
+		!strings.Contains(promptIntervene, "如果结果偏这些方向就继续换词找种植侧") ||
 		!strings.Contains(promptIntervene, "种子/种苗") ||
 		!strings.Contains(promptIntervene, "品种审定推广") ||
 		!strings.Contains(promptIntervene, "病虫草害/植保") ||
@@ -582,7 +583,7 @@ func TestGenerateDailyAgriCardQwenPlusUsesUnifiedTemperature(t *testing.T) {
 		!strings.Contains(promptIntervene, "用户端只展示标题、摘要和来源名称") ||
 		!strings.Contains(promptIntervene, "不点击链接") ||
 		!strings.Contains(promptIntervene, "不要因为URL像首页或栏目页就丢弃事实清楚") ||
-		!strings.Contains(promptIntervene, "不能拿没有事实支撑的入口页、广告页或聚合页凑数") {
+		!strings.Contains(promptIntervene, "不要因为日期字段不确定就少于3条") {
 		t.Fatalf("prompt_intervene mismatch: %#v", promptIntervene)
 	}
 	for _, forbidden := range []string{"畜牧水产/动物疫病/养殖"} {

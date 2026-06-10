@@ -1866,16 +1866,28 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner: "Android / 后端",
 	})
 	modelOK := strings.EqualFold(health.API, "ok") && strings.EqualFold(health.Bailian, "ok")
+	modelStatus := "blocked"
+	modelBody := "模型或 API 健康异常时，主聊天不能作为正式可用状态。"
+	if modelOK {
+		chatRounds, imageChatRounds := recentMonitoringChatEvidence(report)
+		switch {
+		case chatRounds > 0 && imageChatRounds > 0:
+			modelStatus = "ready"
+			modelBody = "最近 24 小时已有文字和图片问诊记录；模型 Key、后端调用和模型拉图链路具备继续上线观察条件。"
+		case chatRounds > 0:
+			modelStatus = "attention"
+			modelBody = "最近 24 小时已有文字问诊记录；图片问诊 / 模型拉图仍需真机跑通后再算完整验收。"
+		default:
+			modelStatus = "attention"
+			modelBody = "模型 Key 和 API 健康正常，但最近 24 小时没有真实问诊记录；正式上架前必须用真机跑文字和图片问诊。"
+		}
+	}
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "模型问诊",
-		Status: ternary(modelOK, "ready", "blocked"),
-		Body: ternary(
-			modelOK,
-			"主模型 Key 已配置，后端统一发起模型调用；文字 / 图片问诊链路具备生产运行条件。",
-			"模型或 API 健康异常时，主聊天不能作为正式可用状态。",
-		),
-		Route: "health",
-		Owner: "后端",
+		Status: modelStatus,
+		Body:   modelBody,
+		Route:  "health",
+		Owner:  "后端",
 	})
 	giftStatus := "ready"
 	giftBody := "有可兑换礼品卡，可在 Android 设置页兑换并在后台追溯账号ID。"
@@ -1966,6 +1978,23 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner:  "客服 / 运营",
 	})
 	return items
+}
+
+func recentMonitoringChatEvidence(report AdminMonitoring) (int64, int64) {
+	var fallbackChatRounds int64
+	var fallbackImageChatRounds int64
+	for _, window := range report.Windows {
+		if window.ChatRounds > fallbackChatRounds {
+			fallbackChatRounds = window.ChatRounds
+		}
+		if window.ImageChatRounds > fallbackImageChatRounds {
+			fallbackImageChatRounds = window.ImageChatRounds
+		}
+		if window.Key == "24h" {
+			return window.ChatRounds, window.ImageChatRounds
+		}
+	}
+	return fallbackChatRounds, fallbackImageChatRounds
 }
 
 func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {

@@ -47,6 +47,10 @@ func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string
 	if !isUsableStoredDailyAgriCard(card) {
 		return nil, "invalid_content", nil
 	}
+	card.Title = "今日农情"
+	if len(card.Items) > dailyAgriTargetItemCount {
+		card.Items = card.Items[:dailyAgriTargetItemCount]
+	}
 	if card.GeneratedAt == 0 {
 		card.GeneratedAt = generated.Int64
 	}
@@ -95,6 +99,10 @@ func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string,
 		}
 		if !isUsableStoredDailyAgriCard(card) {
 			continue
+		}
+		card.Title = "今日农情"
+		if len(card.Items) > dailyAgriTargetItemCount {
+			card.Items = card.Items[:dailyAgriTargetItemCount]
 		}
 		if card.DateCN == "" {
 			card.DateCN = dayCN
@@ -215,9 +223,7 @@ func isUsableDailyAgriContentJSON(raw sql.NullString) bool {
 }
 
 func isUsableStoredDailyAgriCard(card DailyAgriCard) bool {
-	if strings.TrimSpace(card.Title) != "今日农情" ||
-		len(card.Items) < dailyAgriMinPublishItems ||
-		len(card.Items) > dailyAgriTargetItemCount {
+	if len(card.Items) < dailyAgriMinPublishItems {
 		return false
 	}
 	for _, item := range card.Items {

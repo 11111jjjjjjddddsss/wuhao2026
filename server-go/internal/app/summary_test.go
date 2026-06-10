@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -70,37 +71,107 @@ func TestExtractSummaryUsesFixedQwenPlusWithoutThinking(t *testing.T) {
 	}
 }
 
-func TestNormalizeMemoryDocumentKeepsOldMissingSections(t *testing.T) {
+func TestNormalizeMemoryDocumentStoresModelOutputWithoutSectionFallback(t *testing.T) {
 	oldMemory := "短期承接：旧短期\n长期背景：旧长期\n用户画像：旧画像\n农业重点事件：旧农业事件"
 
 	result, err := normalizeMemoryDocumentExtraction("短期承接：新短期\n农业重点事件：新农业事件", oldMemory)
 	if err != nil {
 		t.Fatalf("normalize memory document: %v", err)
 	}
-	got := result.MemoryDocument
-	if !strings.Contains(got, "短期承接：新短期") {
-		t.Fatalf("new short-term section not applied: %q", got)
-	}
-	if !strings.Contains(got, "长期背景：旧长期") {
-		t.Fatalf("missing long-term section should keep old value: %q", got)
-	}
-	if !strings.Contains(got, "用户画像：旧画像") {
-		t.Fatalf("missing profile section should keep old value: %q", got)
-	}
-	if !strings.Contains(got, "农业重点事件：新农业事件") {
-		t.Fatalf("new agri section not applied: %q", got)
+	want := "短期承接：新短期\n农业重点事件：新农业事件"
+	if result.MemoryDocument != want {
+		t.Fatalf("memory document should store model output without backend section fallback:\n got %q\nwant %q", result.MemoryDocument, want)
 	}
 }
 
-func TestNormalizeMemoryDocumentAllowsExplicitEmptyFallback(t *testing.T) {
+func TestNormalizeMemoryDocumentStoresExplicitEmptyOutputAsModelDecision(t *testing.T) {
 	oldMemory := "短期承接：旧短期\n长期背景：旧长期\n用户画像：旧画像\n农业重点事件：旧农业事件"
 
 	result, err := normalizeMemoryDocumentExtraction("用户画像：暂无稳定用户画像可沉淀", oldMemory)
 	if err != nil {
 		t.Fatalf("normalize memory document: %v", err)
 	}
-	if !strings.Contains(result.MemoryDocument, "用户画像：暂无稳定用户画像可沉淀") {
-		t.Fatalf("explicit empty profile should overwrite old value: %q", result.MemoryDocument)
+	if result.MemoryDocument != "用户画像：暂无稳定用户画像可沉淀" {
+		t.Fatalf("explicit empty model output should be stored as-is: %q", result.MemoryDocument)
+	}
+}
+
+func TestNormalizeMemoryDocumentAcceptsUnlabeledTextAsWholeDocument(t *testing.T) {
+	oldMemory := "短期承接：旧短期\n长期背景：旧长期\n用户画像：旧画像\n农业重点事件：旧农业事件"
+
+	result, err := normalizeMemoryDocumentExtraction("用户这轮主要在核对番茄叶片发黄，下一轮需要继续追问新叶老叶差异、水肥和根系情况。", oldMemory)
+	if err != nil {
+		t.Fatalf("normalize unlabeled memory document: %v", err)
+	}
+	want := "用户这轮主要在核对番茄叶片发黄，下一轮需要继续追问新叶老叶差异、水肥和根系情况。"
+	if result.MemoryDocument != want {
+		t.Fatalf("unlabeled text should be stored as the whole memory document:\n got %q\nwant %q", result.MemoryDocument, want)
+	}
+}
+
+func TestNormalizeMemoryDocumentStripsOnlyCodeFenceEnvelope(t *testing.T) {
+	result, err := normalizeMemoryDocumentExtraction("```text\n短期承接：用户在核对番茄叶片发黄。\n```", "")
+	if err != nil {
+		t.Fatalf("normalize fenced memory document: %v", err)
+	}
+	if result.MemoryDocument != "短期承接：用户在核对番茄叶片发黄。" {
+		t.Fatalf("unexpected fenced memory document: %q", result.MemoryDocument)
+	}
+}
+
+func TestSummaryExtractionPromptKeepsMemorySafeAndUseful(t *testing.T) {
+	path := filepath.Join("..", "..", "assets", "summary_extraction_prompt.txt")
+	promptBytes, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read summary prompt: %v", err)
+	}
+	prompt := string(promptBytes)
+	for _, want := range []string{
+		"短期承接：",
+		"长期背景：",
+		"用户画像：",
+		"农业重点事件：",
+		"当前策略是最大限度放开",
+		"记忆有多少就存多少",
+		"哪怕只有一句当前主线",
+		"后续可能用得上的线索",
+		"不要因为信息少、还不稳定、没有形成完整四段、不是农业问题、只是待确认线索，就整段删除",
+		"新用户或少量对话时，不要强行写满四段",
+		"能存一句就存一句",
+		"不要为了显得完整而编造长期偏好",
+		"长期背景和用户画像不用卡得太死",
+		"已有记忆文档里存在",
+		"不要因为最近几轮没有再次提到就改成“暂无”",
+		"后续可能继续追踪，也可以用谨慎措辞短暂保留",
+		"最终输出必须是可直接写入的一份非空纯文字记忆文档",
+		"尽量不用“无确诊病因”“不可作为确诊依据”“未确诊为...”",
+		"第三方转述的判断都要保留来源和不确定性边界",
+		"不要改写成系统已确认事实",
+		"必须照抄输入中的表达，不要自行换算、补单位或改口径",
+		"1.5亩一共用了8公斤",
+		"不能改成“8公斤/亩”",
+		"一桶水30斤",
+		"不能改成“每亩30斤水”",
+		"参数事实也不要写成“确认为...”",
+		"用户明确说",
+		"用户强调",
+		"用户纠正为",
+	} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("summary prompt missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{
+		"qwen-flash",
+		"qwen3.5-flash",
+		"qwen3-vl-flash",
+		"B层",
+		"C层",
+		"只输出 JSON",
+	} {
+		if strings.Contains(prompt, forbidden) {
+			t.Fatalf("summary prompt contains forbidden text %q", forbidden)
+		}
 	}
 }
 
