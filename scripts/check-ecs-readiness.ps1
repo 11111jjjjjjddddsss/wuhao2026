@@ -90,6 +90,7 @@ $remoteScript = @'
 set -u
 env_file='/etc/nongjiqiancha/server.env'
 nginx_site='/etc/nginx/sites-available/nongjiqiancha-api'
+admin_nginx_site='/etc/nginx/sites-available/nongjiqiancha-admin'
 
 echo '== service =='
 for svc in nongji-server nongji-server-3000 nongji-server-3001; do
@@ -113,6 +114,17 @@ if [ "$active_port" != "unknown" ]; then
   if [ "$active_state" != "active" ]; then
     echo "active upstream service is not active: $active_service" >&2
     exit 10
+  fi
+fi
+if [ -f "$admin_nginx_site" ]; then
+  admin_port=$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "$admin_nginx_site" 2>/dev/null | head -1 | sed -E 's/.*:([0-9]+);/\1/' || true)
+  if [ -z "$admin_port" ]; then
+    admin_port=unknown
+  fi
+  echo "admin_upstream_port=$admin_port"
+  if [ "$active_port" != "unknown" ] && [ "$admin_port" != "$active_port" ]; then
+    echo "admin upstream port does not match api active port: admin=$admin_port api=$active_port" >&2
+    exit 13
   fi
 fi
 
@@ -142,6 +154,18 @@ for expected in \
     exit 12
   fi
 done
+
+echo
+echo '== admin-api =='
+admin_body='/tmp/nongji-readiness-admin-auth-me.json'
+admin_status=$(curl -sS --resolve admin.nongjiqiancha.cn:443:127.0.0.1 -o "$admin_body" -w '%{http_code}' https://admin.nongjiqiancha.cn/admin-api/v1/auth/me || true)
+echo "admin_auth_me_status=$admin_status"
+cat "$admin_body" 2>/dev/null || true
+echo
+if [ "$admin_status" != "401" ]; then
+  echo "admin auth/me expected 401 but got $admin_status" >&2
+  exit 14
+fi
 
 echo
 echo '== env readiness (values redacted) =='

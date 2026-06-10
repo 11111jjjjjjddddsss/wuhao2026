@@ -318,7 +318,7 @@ private fun buildChatTimelineItems(
 private fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
     val cardItems = items.orEmpty()
     return title == "今日农情" &&
-        cardItems.size == 3 &&
+        cardItems.size >= 2 &&
         cardItems.all { item ->
             !item.title.isNullOrBlank() &&
                 !item.summary.isNullOrBlank()
@@ -1740,6 +1740,8 @@ private fun Context.clearLocalChatHistoryStateSync(chatScopeId: String) {
             .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
             .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
             .remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
+            .remove("$TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX$chatScopeId")
+            .remove("$TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX$chatScopeId")
             .commit()
     }
 }
@@ -2617,6 +2619,16 @@ fun ChatScreen() {
                 todayAgriCardIsCurrentDay
         }
     }
+    val currentTodayAgriCardHasSavedAnchor by remember(
+        todayAgriCardAnchorDay,
+        todayAgriCardAnchorMessageId,
+        currentTodayAgriCardDay
+    ) {
+        derivedStateOf {
+            todayAgriCardAnchorDay == currentTodayAgriCardDay &&
+                todayAgriCardAnchorMessageId.isNotBlank()
+        }
+    }
     val todayAgriCardAnchorForRender by remember(
         currentTodayAgriCardDay,
         todayAgriCardAnchorDay,
@@ -2628,30 +2640,32 @@ fun ChatScreen() {
                 ?.takeIf { it.isNotBlank() }
         }
     }
-    LaunchedEffect(
-        shouldShowTodayAgriCard,
-        currentTodayAgriCardDay,
-        todayAgriCardAnchorDay,
-        todayAgriCardAnchorMessageId
-    ) {
-        if (!shouldShowTodayAgriCard) return@LaunchedEffect
-        if (todayAgriCardAnchorDay == currentTodayAgriCardDay && todayAgriCardAnchorMessageId.isNotBlank()) {
-            return@LaunchedEffect
+    val hasStreamingItem by remember(isStreaming, streamingMessageId, messages.size) {
+        derivedStateOf {
+            val messageId = streamingMessageId
+            isStreaming &&
+                !messageId.isNullOrBlank() &&
+                messages.any { it.id == messageId }
         }
-        val anchorMessageId = messages.lastOrNull()?.id ?: TODAY_AGRI_CARD_ANCHOR_START
-        todayAgriCardAnchorDay = currentTodayAgriCardDay
-        todayAgriCardAnchorMessageId = anchorMessageId
-        context.saveTodayAgriCardAnchorSync(chatScopeId, currentTodayAgriCardDay, anchorMessageId)
+    }
+    val waitingForTodayAgriCardAnchor by remember(
+        shouldShowTodayAgriCard,
+        currentTodayAgriCardHasSavedAnchor
+    ) {
+        derivedStateOf {
+            shouldShowTodayAgriCard && !currentTodayAgriCardHasSavedAnchor
+        }
     }
     val chatListItems by remember(
         todayAgriCard,
         shouldShowTodayAgriCard,
         todayAgriCardAnchorForRender,
+        waitingForTodayAgriCardAnchor,
         messages
     ) {
         derivedStateOf {
             val visibleTodayAgriCard = todayAgriCard.takeIf {
-                shouldShowTodayAgriCard
+                shouldShowTodayAgriCard && !waitingForTodayAgriCardAnchor
             }
             buildChatTimelineItems(
                 messages = messages,
@@ -2660,9 +2674,9 @@ fun ChatScreen() {
             )
         }
     }
-    val hasTodayAgriCard by remember(shouldShowTodayAgriCard) {
+    val hasTodayAgriCard by remember(chatListItems) {
         derivedStateOf {
-            shouldShowTodayAgriCard
+            chatListItems.any { it is ChatTimelineItem.TodayAgriCard }
         }
     }
 
@@ -2670,13 +2684,24 @@ fun ChatScreen() {
     val messageSelectionBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val messageContentBoundsById = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Rect>() }
     val imeVisible = WindowInsets.isImeVisible
-    val hasStreamingItem by remember(isStreaming, streamingMessageId, messages.size) {
-        derivedStateOf {
-            val messageId = streamingMessageId
-            isStreaming &&
-                !messageId.isNullOrBlank() &&
-                messages.any { it.id == messageId }
+    LaunchedEffect(
+        shouldShowTodayAgriCard,
+        currentTodayAgriCardDay,
+        todayAgriCardAnchorDay,
+        todayAgriCardAnchorMessageId,
+        currentTodayAgriCardHasSavedAnchor,
+        isStreaming,
+        hasStreamingItem,
+        messages.size
+    ) {
+        if (!shouldShowTodayAgriCard || isStreaming || hasStreamingItem) return@LaunchedEffect
+        if (currentTodayAgriCardHasSavedAnchor) {
+            return@LaunchedEffect
         }
+        val anchorMessageId = messages.lastOrNull()?.id ?: TODAY_AGRI_CARD_ANCHOR_START
+        todayAgriCardAnchorDay = currentTodayAgriCardDay
+        todayAgriCardAnchorMessageId = anchorMessageId
+        context.saveTodayAgriCardAnchorSync(chatScopeId, currentTodayAgriCardDay, anchorMessageId)
     }
     val isComposerSettling by remember(
         sendUiSettling,
@@ -3216,7 +3241,8 @@ fun ChatScreen() {
     LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete, todayAgriRefreshDayKey) {
         if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
         val refreshDayKey = todayAgriRefreshDayKey
-        repeat(2) { attempt ->
+        var attempt = 0
+        while (isActive && refreshDayKey == currentChinaDateKey()) {
             val card = awaitTodayAgriCard()
             if (
                 card != null &&
@@ -3225,9 +3251,14 @@ fun ChatScreen() {
                 todayAgriCard = card
                 return@LaunchedEffect
             }
-            if (attempt == 0) {
-                delay(TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS)
-            }
+            attempt++
+            delay(
+                if (attempt == 1) {
+                    TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS
+                } else {
+                    TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS
+                }
+            )
         }
     }
     BindComposerRuntimeEffects(
@@ -4396,6 +4427,8 @@ fun ChatScreen() {
         mainHandler.removeCallbacksAndMessages(null)
         resetStreamingUiState(clearVisibleContent = true)
         context.clearLocalChatHistoryStateSync(chatScopeId)
+        todayAgriCardAnchorDay = ""
+        todayAgriCardAnchorMessageId = ""
         messages.clear()
         chatListState.requestScrollToItem(0, 0)
         recyclerFirstVisibleItemIndex = 0
@@ -8986,43 +9019,43 @@ private fun TodayAgriNewsCard(
     modifier: Modifier = Modifier
 ) {
     val items = card.items.orEmpty()
-    if (items.size != 3) return
+    if (items.isEmpty()) return
     val dateText = todayAgriDateText(card.dateCn)
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = 12.dp),
+            .padding(horizontal = horizontalPadding, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
             color = Color.White,
-            shape = RoundedCornerShape(18.dp),
-            border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+            shape = RoundedCornerShape(8.dp),
+            border = BorderStroke(0.8.dp, Color(0xFFDDE3DA)),
             modifier = Modifier
                 .widthIn(max = maxCardWidth)
                 .fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Surface(
-                        color = Color(0xFF244B2D),
-                        shape = RoundedCornerShape(999.dp)
-                    ) {
-                        Text(
-                            text = "今日农情",
-                            color = Color.White,
-                            fontSize = 15.sp,
-                            lineHeight = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                        )
-                    }
+                    Box(
+                        modifier = Modifier
+                            .size(width = 3.dp, height = 18.dp)
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(Color(0xFF2F6B3A))
+                    )
+                    Text(
+                        text = "今日农情",
+                        color = Color(0xFF151A16),
+                        fontSize = 17.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 9.dp)
+                    )
                     if (dateText != null) {
                         Text(
                             text = dateText,
@@ -9031,11 +9064,25 @@ private fun TodayAgriNewsCard(
                             lineHeight = 18.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.padding(start = 8.dp)
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = 10.dp),
+                            textAlign = TextAlign.End
                         )
+                    } else {
+                        Box(modifier = Modifier.weight(1f))
                     }
                 }
                 items.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        HorizontalDivider(
+                            color = Color(0xFFE8ECE5),
+                            thickness = 0.7.dp,
+                            modifier = Modifier.padding(vertical = 10.dp)
+                        )
+                    } else {
+                        Box(modifier = Modifier.height(12.dp))
+                    }
                     TodayAgriNewsItem(
                         item = item,
                         index = index
@@ -9054,65 +9101,56 @@ private fun TodayAgriNewsItem(
     val title = item.title.orEmpty().trim()
     val summary = item.summary.orEmpty().trim()
     val source = item.source.orEmpty().trim()
-    Surface(
-        color = Color(0xFFF8F9F7),
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(0.7.dp, Color(0xFFE4E8DE)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
-            horizontalArrangement = Arrangement.spacedBy(11.dp),
-            verticalAlignment = Alignment.Top
+        Surface(
+            color = Color(0xFFEAF1E6),
+            shape = CircleShape,
+            modifier = Modifier.size(24.dp)
         ) {
-            Surface(
-                color = Color(0xFFE7EFE0),
-                shape = CircleShape,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = (index + 1).toString(),
-                        color = Color(0xFF3F5C2D),
-                        fontSize = 12.sp,
-                        lineHeight = 14.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
+            Box(contentAlignment = Alignment.Center) {
                 Text(
-                    text = title,
-                    color = Color(0xFF111111),
-                    fontSize = 16.sp,
-                    lineHeight = 21.sp,
+                    text = (index + 1).toString(),
+                    color = Color(0xFF315D34),
+                    fontSize = 12.sp,
+                    lineHeight = 14.sp,
                     fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = title,
+                color = Color(0xFF111111),
+                fontSize = 16.sp,
+                lineHeight = 21.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = summary,
+                color = Color(0xFF4F535A),
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                maxLines = 4,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (source.isNotEmpty()) {
+                Text(
+                    text = "来源：$source",
+                    color = Color(0xFF868B91),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = summary,
-                    color = Color(0xFF4F535A),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp,
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-                if (source.isNotEmpty()) {
-                    Text(
-                        text = "来源：$source",
-                        color = Color(0xFF868B91),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
         }
     }

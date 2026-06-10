@@ -776,7 +776,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		{Role: "system", Content: contextHeader},
 	}
 	if hasMemoryDocument {
-		messages = append(messages, BailianMessage{Role: "system", Content: "记忆文档（后台参考，仅用于减少重复追问和保持连续性；除非用户要求回顾历史，不要主动复述记忆内容、标签或用户画像）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
+		messages = append(messages, BailianMessage{Role: "system", Content: "记忆摘要（仅供参考；用于上下文承接和减少重复追问；除非用户要求回顾历史，不要主动复述摘要内容、小标题或用户画像）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
 	}
 
 	previousRoundIndex := len(rounds) - 1

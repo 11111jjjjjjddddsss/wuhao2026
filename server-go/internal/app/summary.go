@@ -190,9 +190,9 @@ func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument s
 func buildSummaryExtractionUserContent(oldMemoryDocument string, dialogueText string) string {
 	oldMemory := strings.TrimSpace(oldMemoryDocument)
 	if oldMemory == "" {
-		oldMemory = "暂无记忆文档"
+		oldMemory = "暂无记忆摘要"
 	}
-	return strings.TrimSpace("[已有记忆文档]\n" + oldMemory + "\n\n[最近对话]\n" + strings.TrimSpace(dialogueText))
+	return strings.TrimSpace("[已有记忆摘要]\n" + oldMemory + "\n\n[最近对话]\n" + strings.TrimSpace(dialogueText))
 }
 
 func normalizeMemoryDocumentExtraction(content string, _ string) (extractedMemoryDocument, error) {

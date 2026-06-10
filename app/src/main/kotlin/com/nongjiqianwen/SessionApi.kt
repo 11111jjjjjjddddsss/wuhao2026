@@ -194,7 +194,7 @@ object SessionApi {
         val candidate = this ?: return false
         val items = candidate.items.orEmpty()
         return candidate.title == "今日农情" &&
-            items.size == 3 &&
+            items.size >= 2 &&
             items.all { item ->
                 !item.title.isNullOrBlank() &&
                     !item.summary.isNullOrBlank()
@@ -1099,6 +1099,12 @@ object SessionApi {
                             ?.cards
                             .orEmpty()
                             .filter { card -> card.isValidTodayAgriCard() }
+                            .distinctBy { card -> "${card.dateCn.orEmpty()}|${card.title.orEmpty()}" }
+                            .sortedWith(
+                                compareByDescending<TodayAgriCard> { it.generatedAt ?: 0L }
+                                    .thenByDescending { it.dateCn.orEmpty() }
+                            )
+                            .take(30)
                         postToMain { onResult(validCards) }
                     } catch (e: Exception) {
                         Log.e(TAG, "parse recent today agri cards", e)

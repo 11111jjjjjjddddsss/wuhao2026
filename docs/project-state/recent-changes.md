@@ -3,15 +3,32 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-11
+
+- 用户最新拍板“记忆、今日农情都不要后端内容过滤拦截，主要通过提示词把控方向，不能坑用户也不能过度压模型”。已把今日农情发布 / Android 展示从“必须正好 3 条”放宽为“提示词目标 3 条，但至少 2 条标题 / 摘要完整 item 即可成卡，1 条视为卡片不完整，超过 3 条只展示前 3 条”，避免模型偶发少给一条时当天卡片整张消失，同时不把单条薄卡发给用户。后端仍不按养殖水产词、广告词、可信域名、发布日期、重复标题、历史链接或真假判断做发布阻断；只保留 JSON 可解析、可展示字段非空、公开响应不下发 URL / source_index / published_date、内部 URL 不保存本机 / 内网地址等技术和安全兜底。探针字段和日志也从 `reject / valid_items` 口径改成 `not displayable / displayable_items / invalid_reasons`，降低后续误解为内容过滤的概率。生产探针复测：今日农情 `qwen3.5-plus + turbo + v50` 先 `runs=3` 得到 `ok_count=3/3`，后按最新部署再 `runs=2` 得到 `ok_count=2/2`，每次都是 3 条、无 reasoning tokens；记忆文档 `qwen-plus` 样例确认把“登录排障 / 当前调试 / 两条起发”放短期承接，长期背景保持“暂无”，不再把新用户临时状态写成长背景。
+
 ## 2026-06-10
 
-- 本轮已把后端部署到 ECS 并完成生产探针复核：`scripts/deploy-ecs-server.ps1` 远端重新执行 `go test ./...`、编译并切到 active upstream `3001`；`scripts/check-ecs-readiness.ps1` 确认 HTTPS healthz 200，`auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`。今日农情内部探针跑满 5 次，`qwen-plus + turbo` 全部返回 3 条可解析卡片，`ok_count=5/5`，每次 `model_search_count=1`，无 `reasoning_tokens`，未发现链接下发、养殖水产词、广告词或“根据搜索结果”等元表达；单次 token 约 3.3k 到 6.3k。样本里标题有 7-8 个字的偏短项、同一地区小麦主题跨探针重复较多，属于后续运营质量观察点，不影响当前卡片生成链路。记忆文档真实 `qwen-plus` 虚拟样本也复核了新用户少量信息、剂量面积、第三方转述和非农业 App 事务，语义上均能存住并守住“不换算、不确诊、不把转述当事实”的边界；单次 token 约 1.5k 到 1.65k，无 `reasoning_tokens`。
+- 官网合规页和公安备案 footer 补齐并已部署验证：`site` 新增 `/legal/user-agreement/` 与 `/legal/privacy-policy/` 两个静态页面，一键登录 SDK 协议 URL 改指向这两个独立页面；官网 footer 使用真实公安备案号 `京公网安备11010602202723号`、查询链接和本地警徽图标 `/gongan.png`。`scripts/deploy-ecs-site.ps1` 已补本地构建文件检查和远端验证，公网首页、`/gongan.png`、根域名 / www 的两条协议 URL 均返回 200，首页包含 ICP、公安备案号和公安查询链接。
 
-- 今日农情提示词继续校准到 `2026-06-10-v29`：此前生产探针确认 `qwen-plus + text-generation + turbo` 能稳定返回可解析的 3 条卡片，但 v26/v27 样本里偶有旧日期材料混入、`source_name` 像文章标题 / 站点口号。v29 按用户拍板改成“最大限度全网宽搜，但只取种植侧，养殖、水产不要”，不限定网站、不加后端大面积硬过滤，只在提示词里要求来源名必须是机构 / 媒体 / 站点短名，`published_date` 能确认近 7 天发布日期 / 更新日期 / 监测日期 / 复核日期时再写，不能确认就写空字符串；是否有广告味、养殖水产、元表达或重复事件，继续靠内部探针、后台运营复核和日志观察。
+- 一键登录真机风险继续压缩：`FusionOneLoginClient` 协议 URL 不再指向官网首页；全局 30 秒 timeout 若已进入服务端换号阶段，不再抢先 finish 失败，只上报 `auth.fusion_timeout_ignored`；`onSDKTokenUpdate` 若在主线程回调，直接返回当前 token 并上报 `auth.fusion_token_refresh_skipped`，避免同步网络请求卡住授权页。仍需真机完成本机号码一键登录和短信登录回归。
 
-- 统一记忆文档提示词做多维度校准：在“短期承接 / 长期背景 / 用户画像 / 农业重点事件”四段口径下，继续固定 `qwen-plus`、非流式、不联网、顶层 `enable_thinking=false`。本轮用农业连续问诊、旧记忆冲突、非农业 App 事务、剂量 / 面积、信息不足、稳定画像保留、地点不可靠、第三方转述等样本反复实测，重点拦住三类问题：把“1.5亩共8公斤”改成“8公斤/亩”、把“当地农技站说 / 朋友说”改成系统确认事实、把“倾向 / 可能 / 未见明显”写成诊断定论。提示词已补“旧长期背景和画像未被否定时继续保留”“宽过滤，不因担心误记就把有用线索整段删掉”“第三方转述保留来源和不确定性”“数量 / 面积 / 倍数 / 浓度 / 时间照抄不换算”的约束，并新增单测读取真实提示词文件做防回归检查。后端完全放开落库，只清理外层代码块和空白，不做四段解析、缺段保留或内容关键词硬过滤；典型测试样本单次记忆提取约 1.8k-2.0k tokens，上线后仍按日志观察真实用户长对话成本和质量。
+- 今日农情前端展示补边角：清空历史会同步清今日农情卡片锚点；当天卡片拉取失败后先 5 秒重试，之后每 15 分钟静默低频重试，避免当天后端补跑成功后 App 一直不出卡；卡片锚定延后到非 streaming / 非 active streaming item 时，避免插到正在生成的 assistant 后面扰动底部。近 30 天列表展示层去重、按生成时间和日期倒序、最多 30 条，这只是展示整理，不是内容过滤。
 
-- 清理已废弃 Flash 实验入口：删除旧本地诊断脚本 `scripts/verify_model_url.js`，避免继续保留 `qwen3-vl-flash` 图片诊断路径误导后续窗口。当前仓库真实模型链路仍只有三条：主聊天 `qwen3.5-plus`，记忆文档摘要 `qwen-plus`，今日农情 `qwen-plus`；轻量 Flash 候选不再作为摘要、今日农情或可执行本地诊断方案。
+- 主对话记忆注入标签继续中性化：从旧“后台参考 / 后台摘要”改为“记忆摘要（仅供参考；用于上下文承接和减少重复追问；除非用户要求回顾历史，不要主动复述摘要内容、小标题或用户画像）”，避免把内部后台机制暴露给模型，同时保留“仅供参考、不要主动复述”的约束。
+- 历史归档：今日农情联网链路和提示词曾在 `2026-06-10-v49` 收口到 `qwen3.5-plus + OpenAI 兼容 chat/completions + turbo`，并把“综合指数 / 综合行情 / 批发价格指数 / 菜篮子指数”压成背景材料。该条已被 2026-06-11 的 `v50` 当前口径替代；当前仍沿用同一模型和接口，但提示词、两条起发门槛和线上探针结果以本日顶部记录、`current-status.md` 和 `today-agri-card.md` 为准。
+
+- 历史归档：`POST /internal/jobs/today-agri-card/probe?runs=3` 曾在 ECS 生产环境用 `qwen3.5-plus + turbo + v48` 跑通，随后因综合批发指数 / 价格综述类内容偏多升级到 v49。该结果只保留为早期校准过程，当前生产探针以 2026-06-11 `v50` 记录为准。记忆文档也用生产环境样本做了不写库测试：新用户稀疏农业样本和产品 / 登录 / 提示词事务样本都能产出非空记忆摘要，约 1.4k-1.5k tokens，继续符合“能记多少记多少、不把一次性内容硬写成长期画像、不泄露系统机制”的折中口径。
+
+- 历史归档：今日农情和记忆文档曾在本日早些时候收口到 `qwen-plus + DashScope text-generation/generation + turbo + enable_source + freshness=7 + prompt_intervene`，提示词版本 `2026-06-10-v36`。该条只保留为历史过程，已被 2026-06-11 顶部 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo + v50` 当前口径替代。记忆文档提示词继续单文档四段“短期承接 / 长期背景 / 用户画像 / 农业重点事件”，参考旧 B/C 提示词补强“不机械拼接、旧稳定背景未否定继续保留、第三方转述保留来源和不确定性、关键参数照抄不换算、不泄露系统 / 模型 / 提示词 / API / token / 日志 / 运维信息”，并新增“四个方向只是阅读结构，同一线索不要在四段重复堆”的约束；后端仍不做内容硬过滤，非空模型输出直接覆盖写入。
+
+- 历史归档：本日早些时候曾把后端部署到 ECS 并完成 `qwen-plus + turbo` 今日农情探针复核，`ok_count=5/5`，无 `reasoning_tokens`，样本里未发现链接下发、养殖水产词、广告词或“根据搜索结果”等元表达；但该结果属于旧生产候选验证，已被 2026-06-11 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo + v50` 口径替代。记忆文档真实 `qwen-plus` 虚拟样本仍保留为有效复核：新用户少量信息、剂量面积、第三方转述和非农业 App 事务均能存住并守住“不换算、不确诊、不把转述当事实”的边界；单次 token 约 1.5k 到 1.65k，无 `reasoning_tokens`。
+
+- 历史归档：今日农情提示词曾校准到 `2026-06-10-v29`，当时生产探针确认 `qwen-plus + text-generation + turbo` 能稳定返回可解析的 3 条卡片，但 v26/v27 样本里偶有旧日期材料混入、`source_name` 像文章标题 / 站点口号。该条只保留为历史过程，当前提示词以 2026-06-11 `v50` 为准。
+
+- 统一记忆文档提示词做多维度校准：在“短期承接 / 长期背景 / 用户画像 / 农业重点事件”四段口径下，继续固定 `qwen-plus`、非流式、不联网、顶层 `enable_thinking=false`。本轮用农业连续问诊、旧记忆冲突、非农业 App 事务、剂量 / 面积、信息不足、稳定画像保留、地点不可靠、第三方转述等样本反复实测，重点拦住三类问题：把“1.5亩共8公斤”改成“8公斤/亩”、把“当地农技站说 / 朋友说”改成系统确认事实、把“倾向 / 可能 / 未见明显”写成诊断定论。提示词已补“旧长期背景和画像未被否定时继续保留”“宽过滤，不因担心误记就把有用线索整段删掉”“第三方转述保留来源和不确定性”“数量 / 面积 / 倍数 / 浓度 / 时间照抄不换算”的约束，并新增单测读取真实提示词文件做防回归检查。后端完全放开落库，只清理外层代码块和空白，不做四段解析、缺段保留或内容关键词硬过滤；典型测试样本单次记忆提取约 1.4k-2.0k tokens，上线后仍按日志观察真实用户长对话成本和质量。
+
+- 清理已废弃 Flash 实验入口：删除旧本地诊断脚本 `scripts/verify_model_url.js`，避免继续保留 `qwen3-vl-flash` 图片诊断路径误导后续窗口。当前仓库真实模型链路仍只有三条：主聊天 `qwen3.5-plus`，记忆文档摘要 `qwen-plus`，今日农情 `qwen3.5-plus`；轻量 Flash 候选不再作为摘要、今日农情或可执行本地诊断方案。
 
 - 管理后台“模型问诊”上线就绪判断改为看真实问诊证据：后端 `/admin-api/v1/monitoring` 不再只因为 healthz 里 `api=ok / bailian=ok` 就把模型问诊标为 ready；最近 24 小时没有真实问诊时显示“需处理”，只有文字问诊时仍提示图片问诊 / 模型拉图需要真机验证，最近 24 小时同时有文字和图片问诊记录才标 ready。这样能避免管理层看到模型 Key 健康就误以为主聊天和图片问诊已经完整验收。
 
@@ -19,19 +36,19 @@
 
 - 用户拍板删除轻量摘要候选和独立长期记忆层：后端摘要链路收敛为一份自然语言记忆文档，物理字段暂沿用 `session_ab.b_summary`，对外返回 `memory_document`，旧长期记忆列只通过迁移 SQL 合并并删除。摘要模型固定为 `qwen-plus`，非流式、不联网、顶层 `enable_thinking=false`，不再保留分层灰度环境变量或轻量模型候选；提示词真源改为 `server-go/assets/summary_extraction_prompt.txt`，输出“短期承接 / 长期背景 / 用户画像 / 农业重点事件”四段，失败只保留 `pending_retry_b`。管理后台监控页模型口径同步改为主聊天、记忆文档摘要、今日农情三行。
 
-- 本轮后端已部署到 ECS 双端口 slot：`scripts/deploy-ecs-server.ps1` 远端执行 `go test ./...`、编译、启动非当前 slot、切换 Nginx 并返回生产 healthz；随后 `scripts/check-ecs-readiness.ps1` 显示 active upstream 为 `3001`、`nongji-server-3001 active/enabled`、HTTPS healthz 200，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`。本轮未重新部署后台静态前端，部署 / readiness 输出只显示 set/empty，不打印真实 token、AccessKey、模型 Key 或密码。
+- 本轮后端已部署到 ECS 双端口 slot：`scripts/deploy-ecs-server.ps1` 远端执行 `go test ./...`、编译、启动非当前 slot、切换 API 和后台 `/admin-api/` Nginx 上游并返回生产 healthz；随后 `scripts/check-ecs-readiness.ps1` 显示 active upstream 为 `3000`、`nongji-server-3000 active/enabled`、后台 upstream 同为 `3000`、HTTPS healthz 200，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`，未登录访问 `/admin-api/v1/auth/me` 返回 401。部署 / readiness 输出只显示 set/empty，不打印真实 token、AccessKey、模型 Key 或密码。
 
-- 历史归档：今日农情生产口径曾先固定为 `qwen-plus + DashScope text-generation/generation + turbo`，并在 `2026-06-10-v26` 阶段要求正好 3 条、一行标题、约 3 行摘要和短来源名。该模型和接口口径仍是当前真相，但提示词和后端解析已被本日顶部 v29 口径替代：全网宽搜、种植侧、养殖水产不要，后端只做 JSON 可解析、能取 3 条标题 / 摘要非空 item 和私网 / 本机 URL 安全兜底，不再做重复标题、发布日期、主题词、广告词或养殖关键词硬过滤。后台监控 `model_usage_policy` 继续显示今日农情为当前真实模型和协议，避免账单排查时把 `qwen-turbo` 模型名和 `search_strategy=turbo` 混淆。
+- 历史归档：今日农情生产口径曾先固定为 `qwen-plus + DashScope text-generation/generation + turbo`，并在 `2026-06-10-v26` 阶段要求正好 3 条、一行标题、约 3-4 行摘要和短来源名。该模型和接口口径已被 2026-06-11 顶部 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo + v50` 口径替代；历史里关于 v29 / v36 / v49 的全网宽搜、种植侧、养殖水产不要和后端低风险结构兜底，已吸收到 v50 主提示词和当前解析边界里。
 
-- 历史归档：管理后台监控页早些时候新增“模型调用口径”卡片时，后端 `/admin-api/v1/monitoring` 曾列出今日农情 `qwen-plus + search_strategy=turbo` 强制联网；该口径再次成为当前生产默认，但协议和后台说明已细化为 DashScope text-generation 非流式、`freshness=7`、`prompt_intervene`。中间曾短暂评估过轻量模型和多模态流式接口，现已按用户拍板撤回，不作为代码路径或手动开关；主聊天仍是 `qwen3.5-plus + search_strategy=turbo` 可联网但不强制，记忆文档摘要和今日农情均固定 `qwen-plus`。
+- 历史归档：管理后台监控页早些时候新增“模型调用口径”卡片时，后端 `/admin-api/v1/monitoring` 曾列出今日农情 `qwen-plus + search_strategy=turbo` 强制联网，并一度细化为 DashScope text-generation 非流式、`freshness=7`、`prompt_intervene`。该条已被当前 `qwen3.5-plus + OpenAI兼容非流式 + forced_search=true` 替代；主聊天仍是 `qwen3.5-plus + search_strategy=turbo` 可联网但不强制，记忆文档摘要固定 `qwen-plus`。
 
-- 历史归档：今日农情降本模型曾只做候选评估，不切生产。根据客服口径补测过轻量模型的多模态流式联网链，生产 ECS 当时能返回 200 并生成 3 条卡片；缺口是来源列表不如 `qwen-plus + Generation + enable_source` 稳定，且输出仍可能包代码块。当前代码已删除这条实验链，今日农情固定 `qwen-plus`，来源名靠模型 JSON 的 `source_name`，结构化 URL 只作为内部追溯字段。
+- 历史归档：今日农情降本模型曾只做候选评估，不切生产。根据客服口径补测过轻量模型的多模态流式联网链，生产 ECS 当时能返回 200 并生成 3 条卡片；缺口是来源列表不如当时的 `qwen-plus + Generation + enable_source` 稳定，且输出仍可能包代码块。当前代码已删除这条轻量实验链，今日农情固定 `qwen3.5-plus`，来源名靠模型 JSON 的 `source_name`，结构化 URL 只作为内部追溯字段。
 
 - 历史归档：曾修正 DashScope 兼容模式关闭思考参数，确认 `enable_thinking=false` 必须放在 HTTP 顶层，不能放回 `extra_body`。当时用 1-2k 字农业样本实测过旧分层摘要提示词，发现长期记忆容易把“更像 / 不能排除”升级成偏确定判断，因此后来提示词持续加入防诊断升级护栏。当前摘要链路已收敛为固定 `qwen-plus` 的单份记忆文档，继续保留顶层关闭思考和防诊断升级要求。
 
 - 今日农情聊天页展示从“发送后退出”改为“视觉时间线系统卡片”：卡片仍不是 `ChatMessage`，不进本地快照、A 层滑窗、记忆文档、归档、摘要、重试或问诊扣次；当天 ready 卡片加载时若没有真实消息，就作为首屏第一条视觉内容排在顶部，已有真实消息时锚在当时最后一条真实消息后方。用户后续发送文字 / 图片 / 失败态消息时，卡片不再隐藏或播放 180ms 退出动画，新消息自然追加在卡片后方并把它往上顶；首屏只有今日农情时列表用 Top 排列展示，但工作线触线判断、自动跟随和最新真实消息锚点仍只看真实消息。
 
-- 历史归档：今日农情曾继续保留 `qwen-plus + turbo + enable_source` 生产链路，不切低价模型。当时生产探针确认 `qwen-plus` 质量更稳，旧 text-generation 路由直接套轻量模型会返回参数错误。后续虽短暂打通过其它实验接口，但当前已撤回并删除，生产与手动补跑都固定走 `qwen-plus`。
+- 历史归档：今日农情曾继续保留 `qwen-plus + turbo + enable_source` 生产链路，不切低价模型。当时生产探针确认 `qwen-plus` 质量更稳，旧 text-generation 路由直接套轻量模型会返回参数错误。后续已按官方 OpenAI 兼容 Chat 联网口径切到 `qwen3.5-plus`，生产与手动补跑都固定走当前新链路。
 
 - 注销申请后台补 15 个工作日 SLA 可视化：后端列表 / 创建 / 状态更新响应会返回 `due_at` 和 `overdue`，监控面板新增 `account_deletion_overdue`，后台注销申请页展示“处理期限 / 剩余天数 / 超期天数”，监控队列会把超期申请标为红色待处理。该改动只增强申请队列和合规处理提醒，不代表已经自动物理删除或匿名化全部账号数据。
 
@@ -49,15 +66,15 @@
 
 - 根 `AGENTS.md` 补充“压缩摘要不是真相源”规则：聊天窗口、线程摘要、中转站压缩摘要和外部模型转述只能作为线索，后续执行必须回到仓库文档和当前代码核验；凡是影响正式上线、SDK 接入、模型策略、云资源状态、排障结论或用户拍板的长期口径，都要沉淀到 `AGENTS.md`、`docs/project-state/*`、ADR 或 runbook，避免新窗口因上下文压缩失忆而把旧方案改回来。
 
-- 今日农情提示词再按“固定 3 条、宽搜索、少硬过滤”收口：后端提示词版本升到 `2026-06-09-v22`，JSON 示例直接给满 3 条，规则明确 `items` 必须正好 3 条、标题 12-16 个中文字符一行读完、摘要约 3 行体量。检索仍用 `qwen-plus + turbo + enable_source + freshness=7`，不传 `assigned_site_list`，不限定固定网站；种植侧、养殖水产不要、排除广告软文 / 导购 / 假新闻 / 标题党主要靠提示词和内部探针控制，后端只保留 JSON 结构、正好 3 条、标题摘要非空、私网 / 明显电商 URL 清洗等低风险兜底。Android 读取和渲染继续要求正好 3 条，聊天页不提供链接点击、关闭叉号或“今日不再显示”，用户发送消息时先退出卡片再插入用户消息。
+- 今日农情提示词再按“固定 3 条、宽搜索、少硬过滤”收口：后端提示词版本升到 `2026-06-09-v22`，JSON 示例直接给满 3 条，规则明确 `items` 必须正好 3 条、标题 12-16 个中文字符一行读完、摘要约 3-4 行体量。检索仍用 `qwen-plus + turbo + enable_source + freshness=7`，不传 `assigned_site_list`，不限定固定网站；种植侧、养殖水产不要、排除广告软文 / 导购 / 假新闻 / 标题党主要靠提示词和内部探针控制，后端只保留 JSON 结构、正好 3 条、标题摘要非空、私网 / 明显电商 URL 清洗等低风险兜底。Android 读取和渲染继续要求正好 3 条，聊天页不提供链接点击、关闭叉号或“今日不再显示”，用户发送消息时先退出卡片再插入用户消息。
 
-- 今日农情提示词按“不限制固定网站”再次收口：根据阿里云百炼联网搜索文档，`assigned_site_list` 是限定来源站点的参数，默认空列表表示不限制来源；当前继续不传 `assigned_site_list`，用 `qwen-plus + turbo + enable_source + freshness=7` 做全网宽搜，并在 `prompt_intervene` 和主提示词里明确不要只围绕少数官网 / 媒体、不要按站点白名单思路检索。种植侧、普通天气、畜牧水产养殖、广告软文和低质内容主要靠提示词、内部探针和后台运营抽查控制；后端发布端只做 JSON 结构、正好 3 条、标题摘要完整、私网 / 明显电商 URL 清洗等低风险兜底。搜索来源只作为服务端事实核对、去重和后台排查，不下发给 Android 用户卡片。
+- 历史归档：今日农情提示词曾按“不限制固定网站”收口，当时根据阿里云百炼联网搜索文档不传 `assigned_site_list`，用 `qwen-plus + turbo + enable_source + freshness=7` 做全网宽搜，并在 `prompt_intervene` 和主提示词里明确不要只围绕少数官网 / 媒体、不要按站点白名单思路检索。该链路已被当前 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo` 替代；种植侧、普通天气、畜牧水产养殖、广告软文和低质内容仍主要靠提示词、内部探针和后台运营抽查控制，后端发布端仍只做低风险结构兜底。
 
-- 历史归档：今日农情联网模型边界曾按当时生产 ECS 探针修正为 `qwen-plus + turbo` 原生 Generation 强制联网链；中间短暂评估过低价模型和其它接口组合，但已按用户拍板撤回。当前代码只保留 `qwen-plus`，不再保留轻量模型实验配置、其它接口候选或环境变量切换入口。
+- 历史归档：今日农情联网模型边界曾按当时生产 ECS 探针修正为 `qwen-plus + turbo` 原生 Generation 强制联网链；中间短暂评估过低价模型和其它接口组合。当前代码只保留 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo` 生产链路，不再保留轻量模型实验配置、其它接口候选或环境变量切换入口。
 
 - 历史归档：今日农情曾短暂改为 `qwen-plus + turbo` 且发布 `2 到 3 条有效 item` 的宽口径。该条已被 2026-06-09 的固定 3 条方案替代，随后又被 2026-06-10 顶部 `v29` 口径继续放宽后端过滤：现在仍展示正好 3 条，但只做 JSON 可解析、标题 / 摘要非空和私网 / 本机 URL 安全兜底，方向主要靠提示词和探针控制。
 
-- Android 今日农情卡片位置和退出体验收口：`ChatTimelineItem.TodayAgriCard` 现在追加在真实消息后方，作为靠近输入框的聊天列表尾部 UI-only 卡片，不再插在历史消息前面；空闲态到底判断可识别这张视觉尾部卡，但最新真实消息锚点仍只认 `ChatTimelineItem.Message`。用户发送文字 / 图片 / 失败态消息时，发送入口会先让卡片按当天日期记录隐藏，并用约 180ms 淡出 / 垂直收起在原位置退出，再插入用户消息和 assistant 占位；卡片右上角不放关闭叉号，也不提供手动“今日不看”入口。卡片仍不进入本地聊天快照、A/B/C、归档、扣次或后端上下文。
+- 历史归档：今日农情卡片曾短暂采用“发送时淡出退出”方案。该方案已被当前“视觉时间线系统卡片”替代：当天 ready 卡片按加载时的真实消息尾部锚定，没有真实消息则作为首屏第一条视觉内容；用户后续发送文字 / 图片 / 失败态消息时，卡片不再隐藏或播放退出动画，新消息自然追加在卡片后方并把它往上顶。卡片右上角不放关闭叉号，也不提供手动“今日不看”入口，仍不进入本地聊天快照、记忆文档、归档、扣次或后端上下文。
 
 - App 自动日志继续补上测试包 / 正式包区分：Android 自动日志 payload 新增 `build_type=debug/release`，后端 `client_app_logs` 新增幂等迁移列和查询过滤，后台 App 日志页新增“包类型”筛选并在日志版本列显示 debug / release。该能力只用于明天真机排障和验证“测试包除预览面板外与正式包一致”，不改变登录、检查更新、聊天、图片、会员或额度业务链路，也不上传手机号、token、APK URL、图片 URL、聊天正文或礼品卡完整码。
 
@@ -67,11 +84,11 @@
 
 - 管理后台订单页从占位推进到只读核查入口：后端新增 `GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近订单 / 会员变更记录；前端订单页新增最近订单 KPI、成功 / 失败统计、金额粗略合计和账号ID列，导航文案改为“只读核查”。该能力只读读取现有开发期 `orders` 表，继续明确真实微信 / 支付宝支付、回调、退款、对账和自动补发权益未接入，不开放补发、退款或手动改权益按钮。
 
-- 历史归档：今日农情坏缓存兜底曾按 `2 到 3 条` 结构处理，并让 Android 标题最多 2 行、摘要完整展示。该条已被后续固定 3 条展示口径替代；当前 v29 仍要求用户侧展示正好 3 条，标题一行、摘要最多 3 行，坏 ready 缓存仍不会打成 500。
+- 历史归档：今日农情坏缓存兜底曾按 `2 到 3 条` 结构处理，并让 Android 标题最多 2 行、摘要完整展示。该条已被后续固定 3 条展示口径替代；当前 v29 仍要求用户侧展示正好 3 条，标题一行、摘要最多 4 行，坏 ready 缓存仍不会打成 500。
 
 - 一键登录失败提示继续按真机排障口径收口：Android SDK 初始化、授权页拉起、取号校验、超时等一键登录失败现在统一提示用户先关闭代理 / VPN、打开移动数据并确认默认数据卡，也可直接走验证码登录；后台监控“登录排障”卡同步加了这条检查顺序。该改动只改用户提示和后台说明，不改 100001 最终 `onVerifySuccess` token 登录主链、不调用半程 verify，也不改短信登录接口。
 
-- 账号管理补上“清理本机缓存”真实入口：Android 新增 `LocalAppCacheCleaner`，设置页账号管理内可一键清理 `cacheDir/app_updates` 检查更新下载残留和 `cacheDir/composer_camera` 外部相机临时文件；清理动作跑在 IO 线程并做 cache 根目录边界校验。该入口不删除登录态、后端聊天历史、A/B/C 记忆、会员权益、礼品卡、帮助反馈、待发送 WorkManager 图文、`files/composer_images` 私有上传副本或 `chat_ui_cache` 草稿 / 快照，和“删除所有历史对话”保持清晰分工。
+- 账号管理补上“清理本机缓存”真实入口：Android 新增 `LocalAppCacheCleaner`，设置页账号管理内可一键清理 `cacheDir/app_updates` 检查更新下载残留和 `cacheDir/composer_camera` 外部相机临时文件；清理动作跑在 IO 线程并做 cache 根目录边界校验。该入口不删除登录态、后端聊天历史、记忆文档、会员权益、礼品卡、帮助反馈、待发送 WorkManager 图文、`files/composer_images` 私有上传副本或 `chat_ui_cache` 草稿 / 快照，和“删除所有历史对话”保持清晰分工。
 
 - 检查更新链路补上真机排障闭环：Android 会把检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页等阶段用 `app_update.*` 自动日志上报；下载器同步返回更细失败原因，包括网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致、versionCode 不一致或未升版本、安装页 intent 打不开等。管理后台 `GET /admin-api/v1/monitoring` 新增 `app_update_logs` 聚合，监控页新增“检查更新排障”卡和直达 App 日志筛选按钮；日志只存阶段、版本号、是否强更、物料是否配置、失败原因和 HTTP 状态，不上传 APK URL、SHA-256、手机号、token 或密钥。
 
@@ -109,7 +126,7 @@
 
 - 今日农情和 App 更新继续往正式链路收口：Android 设置页现在会在进入主界面后静默请求一次 `GET /api/app/update`，如果服务端返回更高版本且当前设备还没对这个 `latest_version_code` 看过弹窗，就自动弹一次“发现新版本”；用户点“稍后 / 立即更新”即可，之后同一版本号不再重复骚扰，主链仍不是系统通知。今日农情后台新增 `POST /admin-api/v1/today-agri/generate`，`owner / content_ops` 可直接补跑；ECS 侧新增 [configure-ecs-daily-agri-job.ps1](D:/wuhao/scripts/configure-ecs-daily-agri-job.ps1) 安装 systemd service + timer，生产主线改为“云端定时生成 + 后台人工补跑兜底”。
 
-- 历史归档：当时曾把今日农情临时收成 `qwen3.5-plus + Responses web_search` 过渡方案，并记录“没有改成 `qwen-plus`”。该条已被 2026-06-09 当前口径替代：今日农情现为 `qwen-plus + turbo + enable_source + freshness=7` 原生 Generation 强制联网链，仍与主聊天 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false` 分开。
+- 历史归档：当时曾把今日农情临时收成 `qwen3.5-plus + Responses web_search` 过渡方案，并记录“没有改成 `qwen-plus`”。该条后来被 `qwen-plus + turbo + enable_source + freshness=7` 原生 Generation 强制联网链替代；当前又已切到 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo + forced_search=true`，仍与主聊天 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false` 分开。
 
 - 检查更新从“只读看板”推进到“后台可操作发布”：新增数据库表 `app_release_configs`，`/api/app/update` 现在优先读取后台写入的 Android 发布配置，无记录时才回退 `APP_ANDROID_*` 环境变量；后台新增 `POST /admin-api/v1/app-update/android`，`owner / release_ops` 可直接维护 versionCode、版本名、HTTPS APK、SHA-256、文件大小、更新说明、强制更新和停更状态，页面同步展示配置来源、最后操作人和最后更新时间。监控面板的安装包更新卡也会显示“已启用 / 已停更”，不再把“有物料但当前停更”误读成已经对外发布。当前主链仍是用户手动点“检查更新”，系统自动推送还未接通知权限和推送服务。
 
@@ -163,7 +180,7 @@
 
 - 管理后台方案细化：新增 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md) 作为后台页面级设计文档，覆盖总览、用户、地区与来源、会员与额度、订单、礼品卡、帮助与反馈、App 日志、今日农情、检查更新、产品洞察、审计日志和权限角色；新增 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)，明确后台采用 Vite 静态前端 + `server-go` 管理 API，不另起后台服务。产品洞察按脱敏聚合报表做，后续 Codex 优先读取洞察报表，不直接长期读取生产库完整聊天全文；后台初始账号只能通过一次性初始化脚本或环境变量写入 hash，不把明文账号密码写进仓库。
 
-- 用户已在全国互联网安全管理服务平台提交网站公安联网备案申请，当前处于待审核状态，公安备案号尚未下发；App 公安备案后续等 App 备案通过 / 正式信息齐后再补。仓库只记录提交状态和待办，不记录公安备案数据码、证件号或平台账号信息；官网 footer 仍只展示 ICP，等公安备案通过后再按平台提供的真实编号 / 图标 / HTML 代码补充。
+- 网站公安联网备案号已下发：`京公网安备11010602202723号`；官网 footer 已补真实编号、查询链接和警徽图标。公安备案数据码、证件号或平台账号信息不进入仓库；App 公安备案后续等 App 备案通过 / 正式信息齐后再补。
 
 - 继续按多代理巡检收口一批前后端和运维小坑：今日农情模型非 2xx 错误不再把上游原始 body 写入错误链 / 日志 / 数据库；App 自动日志 attrs 不只按敏感 key 过滤，也会丢弃普通字段名里包含 URL、token、AccessKey、手机号等敏感文本的 value；上传 multipart 超限明确返回 `413 body_too_large`，损坏 multipart 返回 `invalid multipart`。Android 图片导入和后台待发送补发在压缩前增加 32MB 原图读取上限，自更新 APK 下载增加默认 200MB 硬上限并按后端 file size 下载中断言；debug 测试包真实流式渲染速度与 release 对齐。内部客服回复不再对任意 `user_id` 自动创建用户资产行，必须已有帮助与反馈会话。运维侧 readiness 补 `dypns / dypns_fusion / dypns_sms / dev_order_endpoints=false` 断言，官网部署脚本改为断言 HTTP / HTTPS 状态码，回滚和 SLS 日志 runbook 修正为当前双端口 slot / 最小 SLS 真实入口；同时明确帮助与反馈图片当前仍复用 `/uploads/` 3 天生命周期，`support/` 30 天只是预留规则。
 
@@ -191,7 +208,7 @@
 
 - 轻量优化 Android App 低风险 UI：登录页补充产品副标题，主按钮和验证码按钮圆角统一为更柔和的 12dp，登录状态提示区分成功 / 进行中与错误提示色；会员中心把“相关功能未开放”提示从黑色强提示改成淡绿色说明条，并收小关闭按钮字形；设置菜单给账号管理、帮助与反馈、检查更新、礼品卡和服务协议补短副标题，提升扫读性。本轮不改主聊天滚动链、输入框状态机、图片发送或后端接口。
 
-- 按 Product Design 方向收紧农技千查官网：导航去掉图标和“备案”入口，正文删除“备案与服务说明”大块，只保留 App 介绍、图文问诊 / 农业大模型 / 原生 Android 体验三项能力和安卓版下载入口；下载待开放文案不再向普通用户暴露 App 备案、公安备案、真机回归等内部流程；footer 只保留 `京ICP备2026031728号-1`，公安备案号未下发前不展示占位。主视觉把 App 图标放在首屏主体位置，并用展示裁切让绿色叶片更大、黑底边界更轻；不改 Android launcher 图标资源，避免影响 App 备案和物料一致性。
+- 历史归档：按 Product Design 方向收紧农技千查官网：导航去掉图标和“备案”入口，正文删除“备案与服务说明”大块，只保留 App 介绍、图文问诊 / 农业大模型 / 原生 Android 体验三项能力和安卓版下载入口；下载待开放文案不再向普通用户暴露 App 备案、公安备案、真机回归等内部流程；footer 只保留 `京ICP备2026031728号-1`，公安备案号下发前不展示占位（现已下发并补 footer）。主视觉把 App 图标放在首屏主体位置，并用展示裁切让绿色叶片更大、黑底边界更轻；不改 Android launcher 图标资源，避免影响 App 备案和物料一致性。
 
 - 执行免费优先安全加固：确认阿里云云安全中心免费版已生效，ECS 安全中心 agent online、当前风险计数 0；阿里云 DDoS 基础防护按官方口径默认免费开启。通过 CLI 撤销生产安全组公网 `TCP 22 / 0.0.0.0/0`，并通过 Cloud Assistant 停止 / 禁用 ECS 本机 `ssh` 服务，当前公网只放行 `80 / 443` 和 ICMP；生产运维优先走阿里云 CLI + Cloud Assistant。通过 Cloud Assistant 写入 Nginx 全局安全头兜底 `/etc/nginx/conf.d/nongjiqiancha-security.conf` 并 reload；官网部署脚本也补 `Content-Security-Policy`、`Permissions-Policy` 和 HSTS。统一加固官网 / 后端部署、回滚、readiness、登录用量和安全巡检脚本的阿里云 CLI 错误捕获：失败时先捕获 stderr 并脱敏 `AccessKeyId / Signature / SignatureNonce / Content` 等签名参数，再输出错误。新增 [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md) 和 [harden-ecs-security.ps1](D:/wuhao/scripts/harden-ecs-security.ps1)，后续免费安全巡检和复刻加固走脚本。
 
@@ -213,7 +230,7 @@
 
 - 后端地点注入补免费离线 IP 粗定位：`ResolveRegionByIP` 从原来的固定“未知 / unreliable”升级为可选读取 ECS 本地 `ip2region` xdb（`IP2REGION_V4_XDB_PATH`，兼容 `IP2REGION_XDB_PATH`）做公网 IP 到省 / 市级地区解析，结果仍标记为 `region_source=ip / region_reliability=unreliable`，只作为主对话参考；私网 IP、库未配置、代理漂移或查询失败继续兜底未知。该方案不走收费 API、不调用第三方免费接口、不放 RDS、不把完整 IP 注入模型；新增 [ip-region.md](D:/wuhao/docs/runbooks/ip-region.md) 和 readiness 检查项，当前作为 Android 定位未授权 / 失败时的兜底链路。
 
-- 主对话锚点补 B/C 记忆静默使用规则：B/C 记忆只作后台参考，用于减少重复追问和保持连续性；除非用户明确要求回顾历史，否则主模型不要主动复述记忆内容、层级名称或用户画像。`/api/chat/stream` 注入给主模型的 B/C 标签同步改为“B层通用短期记忆（仅供参考）”和“C层长期通用记忆（仅供参考）”。同时复查时间 / 地点注入链路：每轮只注入当前时间、用户地点和地点可信度；Nginx 会透传真实客户端 IP 给 Go 服务，但 IP 只用于限流、脱敏日志和地区推断，不把完整 IP 注入模型。该条复查时 `ResolveRegionByIP` 仍返回未知；随后已在同日接入免费离线 `ip2region` 粗定位，见本日更新条目。
+- 历史归档：主对话锚点补 B/C 记忆静默使用规则：B/C 记忆只作后台参考，用于减少重复追问和保持连续性；除非用户明确要求回顾历史，否则主模型不要主动复述记忆内容、层级名称或用户画像。`/api/chat/stream` 注入给主模型的 B/C 标签同步改为“B层通用短期记忆（仅供参考）”和“C层长期通用记忆（仅供参考）”。同时复查时间 / 地点注入链路：每轮只注入当前时间、用户地点和地点可信度；Nginx 会透传真实客户端 IP 给 Go 服务，但 IP 只用于限流、脱敏日志和地区推断，不把完整 IP 注入模型。该条复查时 `ResolveRegionByIP` 仍返回未知；随后已在同日接入免费离线 `ip2region` 粗定位，见本日更新条目。
 
 - 历史归档：曾按分层记忆方案收口短期和长期画像。该方案已删除，当前只保留一份自然语言记忆文档，四段分别承接短期、长期背景、用户画像和农业重点事件。
 
@@ -221,7 +238,7 @@
 
 - 按 Product Design 轻量审查结果收紧 App 内几个占位 UI：礼品卡页输入后不再出现可兑换黑色按钮，按钮固定置灰显示“暂未开放”；会员中心加油包说明和按钮统一为未开放口径，不再出现“可订购但禁用”的冲突；帮助与反馈超过 2000 字会截断并提示，不再静默拒绝输入，且只在消息 / 加载状态变化时自动滚到底，避免点输入框或选图时打断用户查看旧记录；帮助与反馈空态图标从文本问号换成线性对话图标；账号管理“注销账号”弱化为不可点的“暂未开放”占位，避免像真实危险操作。
 
-- 部署农技千查官网到 ECS 根域名：新增 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1)，自动构建 Vite 静态站、同步 `@` / `www` A 记录到 `39.106.1.151`、分片上传 `site/dist`、发布到 `/var/www/nongjiqiancha-site/current`、写入 Nginx 静态站配置并通过 certbot 签发 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书。公网验证 `http://nongjiqiancha.cn/` 301 到 HTTPS，`https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/` 均返回官网首页 200，页面包含“农技千查 / 安卓下载 / 京ICP备2026031728号-1”；后续新版已改为公安备案号未下发前不展示占位，不伪造编号。
+- 部署农技千查官网到 ECS 根域名：新增 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1)，自动构建 Vite 静态站、同步 `@` / `www` A 记录到 `39.106.1.151`、分片上传 `site/dist`、发布到 `/var/www/nongjiqiancha-site/current`、写入 Nginx 静态站配置并通过 certbot 签发 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书。公网验证 `http://nongjiqiancha.cn/` 301 到 HTTPS，`https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/` 均返回官网首页 200，页面包含“农技千查 / 安卓下载 / 京ICP备2026031728号-1”；后续新版已改为公安备案号下发前不展示占位（现已下发并补 footer），不伪造编号。
 
 - 将 ECS 后端发布方式从单服务重启升级为单机双端口 slot 切换：`scripts/deploy-ecs-server.ps1` / `scripts/rollback-ecs-server.ps1` 现在共用远端互斥锁，自动判断 Nginx 当前上游 `3000/3001`，在非当前端口启动新 slot 并通过生产 healthz 断言后再切 Nginx；切换失败会恢复 Nginx 备份并停止新 slot，切换成功后禁用旧 slot / 历史 `nongji-server.service`，再延迟停止旧进程给 SSE 连接排空。2026-06-06 首次迁移当时 active upstream 为 `127.0.0.1:3001`；后续巡检以 `current-status.md` 和 readiness 输出为准。
 
@@ -239,7 +256,7 @@
 
 - 打磨未开放功能和帮助反馈体验：会员中心套餐区新增“会员购买暂未开放”提示，开通 / 升级 / 加油包订购按钮统一置灰显示暂未开放或当前状态，避免内测用户误以为已经可真实交易；礼品卡页提前显示“礼品卡暂未开放”和后续开放说明，输入后也只提示暂未开放，不调用后端、不发权益。帮助与反馈发送过程中新增“正在上传图片...”/“正在提交反馈...”状态文案，弱网多图时不再只有按钮置灰；后端固定自动回复文案从“尽快核实处理”收口为“已提交，可继续补充时间、步骤或截图”，不承诺即时客服或 SLA。
 
-- 新增农技千查官网首版 Vite 静态站：`site` 目录提供 App 介绍、安卓下载入口、服务边界说明和备案 footer，使用仓库内正式黑底绿色 App 图标，保持官网 / App / 备案材料识别一致。安卓下载链接不在代码里写死，可通过 `VITE_ANDROID_APK_URL` 在构建时注入；未配置时页面显示下载待开放，避免 App 备案、公安备案和真机回归完成前假链接。footer 已展示网站备案号 `京ICP备2026031728号-1` 并链接工信部备案系统；后续新版已改为公安备案号未下发前不展示占位，不伪造编号。新增 [official-website.md](D:/wuhao/docs/runbooks/official-website.md) 记录构建、下载链接和备案 footer 规则。
+- 新增农技千查官网首版 Vite 静态站：`site` 目录提供 App 介绍、安卓下载入口、服务边界说明和备案 footer，使用仓库内正式黑底绿色 App 图标，保持官网 / App / 备案材料识别一致。安卓下载链接不在代码里写死，可通过 `VITE_ANDROID_APK_URL` 在构建时注入；未配置时页面显示下载待开放，避免 App 备案、公安备案和真机回归完成前假链接。footer 已展示网站备案号 `京ICP备2026031728号-1` 并链接工信部备案系统；后续新版已改为公安备案号下发前不展示占位（现已下发并补 footer），不伪造编号。新增 [official-website.md](D:/wuhao/docs/runbooks/official-website.md) 记录构建、下载链接和备案 footer 规则。
 
 - 帮助与反馈补轻量自动回复和一轮 UI 打磨：用户首次提交反馈、提出可规则识别的常见 App 使用问题，或距上一条用户反馈已超过 24 小时再次提交时，后端会写入一条 `sender_type=system` 固定回复并随响应返回 `auto_reply`；Android 新版发送成功后会把用户消息和自动回复一次追加显示，并立即标记该自动回复已读，避免自己发完还亮红点。自动回复只按关键词兜住“你好 / 在吗 / 怎么用 / 登录验证码 / 检查更新 / 图片上传 / 会员次数 / 历史记录 / 隐私协议 / 农业问题请回主聊天”等轻量问答，不调用模型、不承诺 SLA、不替代后台人工回复；后台会话列表的 `needs_reply` 改按最新非 `system` 消息判断，自动回复不会盖掉用户待回复状态。前端同时给帮助与反馈页增加更清晰的空态说明、淡绿灰消息区、居中的“系统提示”气泡，并按消息 ID 合并历史拉取和发送返回，降低自动回复重复 / 被覆盖风险。
 
@@ -426,7 +443,7 @@
 
 - 巡检“账号 / 手机号登录与生产鉴权”链路：确认当前真实身份仍是 Android 本机 `IdManager` 生成的 UUID，经 `X-User-Id` 传给后端；后端支持 `APP_SECRET + Authorization: Bearer <签名token>`，`AUTH_STRICT=true` 时会关闭裸 `X-User-Id`，但 Android 还没有手机号登录、短信验证码、动态 token 签发、退出或注销账号主链。设置页账号管理里的手机号 / 退出设备 / 注销账号仍是占位，只有“删除所有历史对话”是真实动作。本轮不改业务代码，只把 `SESSION_API_TOKEN` 不能作为正式 release 共享静态 token、公开生产必须补 per-user token、本机 `user_id` 到账号迁移、账号注销 / 查询 / 删除入口和最小后台查询项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)、[deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md) 和风险记忆。
 
-- 历史归档：当时巡检“今日农情”时记录的是早期 `qwen3.5-plus + search_strategy=max + 严格 3 条 + https` 方案。该条只保留为历史过程，已被当前 `qwen-plus + turbo + enable_source + freshness=7`、正好 3 条、来源只做内部追溯、用户侧只展示标题摘要的方案替代；用户侧仍只读 ready 缓存，不在用户打开 App 时临时触发模型。
+- 历史归档：当时巡检“今日农情”时记录的是早期 `qwen3.5-plus + search_strategy=max + 严格 3 条 + https` 方案。该条只保留为历史过程，已被当前 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo + forced_search=true`、正好 3 条、来源只做内部追溯、用户侧只展示标题摘要的方案替代；用户侧仍只读 ready 缓存，不在用户打开 App 时临时触发模型。
 
 - 历史归档：曾巡检过旧分层记忆与模型调用链路。当前已被“一份记忆文档”替代，Android 没有摘要模型直连，旧完成接口仍不是主链；多实例前仍需补摘要数据库 claim / lease、SLS 观察项和只读查询项。
 
@@ -583,11 +600,11 @@
 
 - 历史归档：多代理审查“今日农情”后曾做过一轮偏严格的低风险加固，包括不接受未来 `published_date`、要求模型显式带 `card_name = 今日农情`、失败原因按 UTF-8 安全截断、Android 只在 `status=ready` 且正好 3 条有效 item 时展示。当前 v29 已按用户拍板最大限度放开：后端不再把 `card_name`、发布日期、重复标题、主题词、广告词或养殖关键词作为硬过滤，只保留 JSON 可解析、3 条标题 / 摘要非空和私网 / 本机 URL 安全兜底；今日农情仍不进 A/B/C、不扣问诊次数、不由用户打开 App 触发生成。
 
-- 历史归档：今日农情早期近 7 天去重曾写作给 `qwen3.5-plus` prompt 且过滤后不足 3 条不发布，随后又短暂允许 `2 到 3 条有效 item` 发布。当前已替换为 `qwen-plus + turbo`、正好 3 条、提示词控方向、后端低风险结构兜底。
+- 历史归档：今日农情早期近 7 天去重曾写作给 `qwen3.5-plus` prompt 且过滤后不足 3 条不发布，随后又短暂允许 `2 到 3 条有效 item` 发布。当前已替换为 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo`、正好 3 条、提示词控方向、后端低风险结构兜底。
 
 ## 2026-05-11
 
-- 历史归档：首版“今日农情”接入时使用过 `qwen3.5-plus + search_strategy=max`、3 条 item、https-only 的早期规则。当前已替换为 `qwen-plus + turbo + enable_source + freshness=7`，发布正好 3 条有效 item，来源 URL 只做内部追溯，用户侧只展示标题摘要；今日农情仍不是 `ChatMessage`，不进入本地聊天快照、A/B/C 上下文、归档、摘要或问诊扣次。
+- 历史归档：首版“今日农情”接入时使用过 `qwen3.5-plus + search_strategy=max`、3 条 item、https-only 的早期规则。当前已替换为 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo + forced_search=true`，发布正好 3 条有效 item，来源 URL 只做内部追溯，用户侧只展示标题摘要；今日农情仍不是 `ChatMessage`，不进入本地聊天快照、A/B/C 上下文、归档、摘要或问诊扣次。
 
 ## 2026-05-10
 

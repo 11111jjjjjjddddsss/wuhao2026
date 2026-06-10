@@ -318,7 +318,7 @@
 - 用户侧接口是 `GET /api/today-agri-card`，需要普通用户鉴权，只读取当天 ready 卡片；没有 ready 卡片时返回 `missing / pending / failed` 状态。
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只接受 `DAILY_AGRI_JOB_SECRET`，支持 `X-Internal-Job-Secret` 或 `Authorization: Bearer ...`。
 - 生成前会尝试获取同一天同 scope 的数据库 lease，lease TTL 当前 5 分钟；已有 ready 卡片时直接返回，不重复生成。
-- 生成链路固定使用 `qwen-plus + DashScope text-generation/generation + enable_search=true + search_strategy=turbo + enable_source=true + freshness=7 + prompt_intervene`，服务端从响应里读取完整文本、usage 和可用的 `search_info`。该链路更利于拿到稳定搜索来源；来源名由提示词要求模型写入 `source_name`，URL 只作为内部追溯和后台排查，不作为 Android 用户卡片展示字段。当前不保留其它模型候选、其它接口候选或环境变量切换入口。农业大类按种植和养殖理解，今日农情只取种植侧，养殖、水产不要；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和延迟，今日农情默认不使用。生成最多 2 次，第二次只在首轮解析校验失败后换检索提示补救，仍走 `turbo`。
+- 生成链路固定使用 `qwen3.5-plus + OpenAI compatible chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`，服务端读取完整文本和 usage；兼容 Chat 链路通常没有原生 `search_info.search_results` 结构化来源列表。来源名由提示词要求模型写入 `source_name`，URL 只作为内部追溯和后台排查，不作为 Android 用户卡片展示字段。当前不保留其它模型候选、其它接口候选或环境变量切换入口。农业大类按种植和养殖理解，今日农情只取种植侧，养殖、水产不要；普通天气预报不单独入选，只有明确影响作物、农时、田间管理或防灾减灾时才可选。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和延迟，今日农情默认不使用。生成最多 2 次，第二次只在首轮解析校验失败后换检索提示补救，仍走 `turbo`。
 - 生成时会读取过去 7 天已 ready 的卡片，把标题、摘要、来源、链接写进提示词，要求避免重复同链接、同标题或同一事件。
 - 后端解析时只要求 JSON 可解析、能取到 3 条标题 / 摘要非空 item；`card_name` 不再是发布硬要求。URL 只作为内部追溯和后台排查字段，公开响应不包含 URL、source_index 或条目日期，但会返回短来源名称 `source` 供 Android 展示“来源：xxx”。
 - 后端不再用可信域名、近 7 天链接、历史链接 / 标题、重复标题、主题词、发布日期、广告词或养殖关键词等大面积硬过滤卡死来源；只保留 JSON 结构、能取到 3 条标题 / 摘要非空 item 和私网 / 本机 URL 安全兜底。种植侧、养殖水产不要、排除广告软文 / 假新闻 / 标题党主要通过提示词、内部探针和后台运营抽查控制。

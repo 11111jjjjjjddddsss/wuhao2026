@@ -34,8 +34,8 @@ object FusionOneLoginClient {
     private const val PROTOCOL_ACTION = "com.nongjiqiancha.FUSION_AUTH_PROTOCOL"
     private const val LOGIN_TIMEOUT_MS = 30_000L
     private const val VERIFY_FAILED_FALLBACK_MS = 1_500L
-    private const val SERVICE_AGREEMENT_URL = "https://nongjiqiancha.cn/"
-    private const val PRIVACY_POLICY_URL = "https://nongjiqiancha.cn/"
+    private const val SERVICE_AGREEMENT_URL = "https://nongjiqiancha.cn/legal/user-agreement/"
+    private const val PRIVACY_POLICY_URL = "https://nongjiqiancha.cn/legal/privacy-policy/"
     private const val ONE_LOGIN_FALLBACK_MESSAGE = "一键登录未成功，请关闭代理/VPN、打开移动数据并确认默认数据卡；也可用验证码登录"
     private val mainHandler = Handler(Looper.getMainLooper())
     private val loginInFlight = AtomicBoolean(false)
@@ -192,6 +192,17 @@ object FusionOneLoginClient {
         val callbackAttached = runCatching {
             business.setAlicomFusionAuthCallBack(object : AlicomFusionAuthCallBack {
                 override fun onSDKTokenUpdate(): AlicomFusionAuthToken {
+                    if (Looper.myLooper() == Looper.getMainLooper()) {
+                        reportAuthLog(
+                            level = "info",
+                            event = "auth.fusion_token_refresh_skipped",
+                            stage = "token_refresh_main_thread",
+                            error = null
+                        )
+                        return AlicomFusionAuthToken().apply {
+                            setAuthToken(snapshot.authToken.orEmpty())
+                        }
+                    }
                     val fresh = SessionApi.requestFusionAuthTokenBlocking()
                     if (fresh?.usable != true) {
                         reportAuthLog(
@@ -458,6 +469,15 @@ object FusionOneLoginClient {
         }
         mainHandler.postDelayed({
             if (completed.get()) return@postDelayed
+            if (serverLoginStarted.get()) {
+                reportAuthLog(
+                    level = "info",
+                    event = "auth.fusion_timeout_ignored",
+                    stage = "server_login",
+                    error = null
+                )
+                return@postDelayed
+            }
             reportAuthLog(
                 level = "warn",
                 event = "auth.fusion_timeout",

@@ -173,6 +173,19 @@ try {
     Pop-Location
 }
 
+$requiredDistFiles = @(
+    "index.html",
+    "gongan.png",
+    "legal/user-agreement/index.html",
+    "legal/privacy-policy/index.html"
+)
+foreach ($relativePath in $requiredDistFiles) {
+    $distFile = Join-Path $distDir $relativePath
+    if (-not (Test-Path -LiteralPath $distFile -PathType Leaf)) {
+        throw "site build missing required file: $relativePath"
+    }
+}
+
 $archive = Join-Path $tmpDir "nongjiqiancha-site.tgz"
 if (Test-Path -LiteralPath $archive) {
     Remove-Item -LiteralPath $archive -Force
@@ -368,12 +381,56 @@ expect_status() {
     exit 20
   fi
 }
+expect_contains() {
+  local label="`$1"
+  local needle="`$2"
+  shift 2
+  local body
+  body=`$(curl -fsS "`$@")
+  if ! printf '%s' "`$body" | grep -Fq "`$needle"; then
+    echo "`$label missing expected text: `$needle" >&2
+    exit 21
+  fi
+  echo "`$label contains expected text"
+}
+expect_min_bytes() {
+  local label="`$1"
+  local min_bytes="`$2"
+  shift 2
+  local bytes
+  bytes=`$(curl -fsS "`$@" | wc -c | awk '{print `$1}')
+  echo "`$label bytes=`$bytes min=`$min_bytes"
+  if [ "`$bytes" -lt "`$min_bytes" ]; then
+    echo "`$label too small" >&2
+    exit 22
+  fi
+}
 if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_status "site-http-redirect" "301" -H "Host: `$domain" http://127.0.0.1/
+  expect_status "site-http-legal-user-redirect" "301" -H "Host: `$domain" http://127.0.0.1/legal/user-agreement/
+  expect_status "site-http-legal-privacy-redirect" "301" -H "Host: `$domain" http://127.0.0.1/legal/privacy-policy/
   expect_status "site-https-root" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/"
   expect_status "site-https-www" "200" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/"
+  expect_status "site-https-gongan" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/gongan.png"
+  expect_min_bytes "site-https-gongan" "100" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/gongan.png"
+  expect_contains "site-root-icp" "2026031728" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/"
+  expect_contains "site-root-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/"
+  expect_contains "site-root-mps-link" "beian.mps.gov.cn/#/query/webSearch?code=11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/"
+  expect_status "site-https-legal-user" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_status "site-https-legal-privacy" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_contains "site-legal-user-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_contains "site-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-legal-privacy-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-www-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
+  expect_contains "site-www-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
 else
   expect_status "site-http-root" "200" -H "Host: `$domain" http://127.0.0.1/
+  expect_status "site-http-legal-user" "200" -H "Host: `$domain" http://127.0.0.1/legal/user-agreement/
+  expect_status "site-http-legal-privacy" "200" -H "Host: `$domain" http://127.0.0.1/legal/privacy-policy/
+  expect_status "site-http-gongan" "200" -H "Host: `$domain" http://127.0.0.1/gongan.png
+  expect_contains "site-http-legal-user-marker" "nongji-page-user-agreement" -H "Host: `$domain" http://127.0.0.1/legal/user-agreement/
+  expect_contains "site-http-legal-privacy-marker" "nongji-page-privacy-policy" -H "Host: `$domain" http://127.0.0.1/legal/privacy-policy/
 fi
 "@
 

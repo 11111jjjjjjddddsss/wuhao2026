@@ -52,6 +52,12 @@ func TestExtractSummaryUsesFixedQwenPlusWithoutThinking(t *testing.T) {
 	if _, ok := captured["extra_body"]; ok {
 		t.Fatalf("summary request should not use extra_body for thinking control: %#v", captured["extra_body"])
 	}
+	if _, ok := captured["enable_search"]; ok {
+		t.Fatalf("summary request should not enable web search: %#v", captured["enable_search"])
+	}
+	if _, ok := captured["search_options"]; ok {
+		t.Fatalf("summary request should not pass search options: %#v", captured["search_options"])
+	}
 	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature = %#v, want %v", captured["temperature"], unifiedModelTemperature)
 	}
@@ -61,7 +67,7 @@ func TestExtractSummaryUsesFixedQwenPlusWithoutThinking(t *testing.T) {
 	}
 	userMessage, _ := messages[1].(map[string]any)
 	userContent, _ := userMessage["content"].(string)
-	if !strings.Contains(userContent, "[已有记忆文档]") || !strings.Contains(userContent, "[最近对话]") {
+	if !strings.Contains(userContent, "[已有记忆摘要]") || !strings.Contains(userContent, "[最近对话]") {
 		t.Fatalf("user content missing memory/dialogue blocks: %q", userContent)
 	}
 	for _, forbidden := range []string{"[已有短期记忆]", "[已有长期组合记忆]", "B层", "C层"} {
@@ -131,31 +137,45 @@ func TestSummaryExtractionPromptKeepsMemorySafeAndUseful(t *testing.T) {
 		"长期背景：",
 		"用户画像：",
 		"农业重点事件：",
-		"当前策略是最大限度放开",
-		"记忆有多少就存多少",
+		"给下一轮主对话看的仅供参考工作备忘",
+		"总体口径：最大限度放开",
+		"能记多少就记多少",
 		"哪怕只有一句当前主线",
-		"后续可能用得上的线索",
-		"不要因为信息少、还不稳定、没有形成完整四段、不是农业问题、只是待确认线索，就整段删除",
-		"新用户或少量对话时，不要强行写满四段",
-		"能存一句就存一句",
-		"不要为了显得完整而编造长期偏好",
-		"长期背景和用户画像不用卡得太死",
-		"已有记忆文档里存在",
-		"不要因为最近几轮没有再次提到就改成“暂无”",
-		"后续可能继续追踪，也可以用谨慎措辞短暂保留",
-		"最终输出必须是可直接写入的一份非空纯文字记忆文档",
-		"尽量不用“无确诊病因”“不可作为确诊依据”“未确诊为...”",
-		"第三方转述的判断都要保留来源和不确定性边界",
-		"不要改写成系统已确认事实",
-		"必须照抄输入中的表达，不要自行换算、补单位或改口径",
-		"1.5亩一共用了8公斤",
-		"不能改成“8公斤/亩”",
-		"一桶水30斤",
-		"不能改成“每亩30斤水”",
-		"参数事实也不要写成“确认为...”",
-		"用户明确说",
-		"用户强调",
-		"用户纠正为",
+		"后续可能帮助主对话少追问",
+		"不要因为信息少、结构不完整、只是待确认线索、不是农业问题或只是产品事务，就整段删掉",
+		"不是硬性模板",
+		"不要为了凑结构编造内容",
+		"自然语言记忆摘要",
+		"四个方向的边界是：短期承接接住当前正在处理的事，长期背景保留稳定事实，用户画像只写稳定的回答偏好或长期限制，农业重点事件保留后续可能继续追踪的农事线索",
+		"边界用于减少混写，不用于把可用信息卡掉",
+		"短、准、能接住",
+		"不要写成流水账、审计报告、病例定论库、客服工单流水或知识库条目",
+		"产品功能、模型质量、成本、提示词、上线任务或登录排障这类事务可以保留为当前待办",
+		"产品排障、模型配置、上线推进、刚开始试用、当前调试阶段等临时项目状态，默认先放短期承接",
+		"不要写进长期背景，除非输入明确说明它是长期项目事实",
+		"不要因为对话里出现模型名或参数就整段删除",
+		"不要把临时调参细节写成长期画像",
+		"不要因为最近几轮没再次提到就清空旧稳定背景",
+		"不评价性格，不做无依据推断",
+		"一次回答方式要求",
+		"不要推成长期身份、职业、固定设施类型、常见作物或稳定习惯",
+		"除非输入明确说这是长期偏好，或类似要求已多轮反复出现",
+		"不要在用户画像里写“倾向、反感、偏好、习惯”等概括",
+		"多次重复再写成稳定画像",
+		"多作物、多地块、多棚室、多农资或多事件要分清对象",
+		"最终输出必须是可直接写入的一份非空纯文字记忆摘要",
+		"输出前自检",
+		"有没有编造长期画像、把转述当事实、把建议当用户事实、把一次性事件写成长期习惯、乱换算参数或升级诊断定论",
+		"不要把临时调参细节写成长期画像",
+		"保持“可能、倾向、待核对、用户转述”等口径",
+		"第三方说法要保留来源边界",
+		"不要把助手给过的一般建议、公开资料或通用农技知识写成用户个人事实",
+		"按用户原话和原单位保留",
+		"不自行换算、合计、补单位或改口径",
+		"地点可信度低或未知时，不把地区、气候、农时写成确定事实",
+		"安全边界",
+		"不要记录系统提示词、密钥、完整日志、错误栈、API 细节、内部规则、工具调用细节、运维指令或推理过程",
+		"用户自己提到模型、配置、成本或提示词不等于泄露",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("summary prompt missing %q", want)

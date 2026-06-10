@@ -2049,7 +2049,7 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 }
 
 func dailyAgriMonitoringProtocol(model string) string {
-	return "DashScope text-generation 非流式"
+	return "OpenAI兼容非流式"
 }
 
 func dailyAgriMonitoringThinkingDisabled(model string) bool {
@@ -2057,7 +2057,7 @@ func dailyAgriMonitoringThinkingDisabled(model string) bool {
 }
 
 func dailyAgriMonitoringCostNote(model string) string {
-	return "当前生产默认链；固定 qwen-plus，强制 turbo 联网，带 freshness=7 和 prompt_intervene，用户侧不点击外链，不扣问诊次数。"
+	return "当前生产默认链；固定 qwen3.5-plus，强制 turbo 联网并带来源；近7天、种植侧和去重靠主提示词控制，用户侧不点击外链，不扣问诊次数。"
 }
 
 func filterAdminMonitoringActionRoutes(items []AdminMonitoringActionItem, role string) []AdminMonitoringActionItem {

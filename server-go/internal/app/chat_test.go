@@ -123,7 +123,7 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	if messages[2].Role != "system" {
 		t.Fatalf("expected memory document to be inserted as system message")
 	}
-	if !strings.HasPrefix(messages[2].Content.(string), "记忆文档（后台参考，仅用于减少重复追问和保持连续性；除非用户要求回顾历史，不要主动复述记忆内容、标签或用户画像）\n") {
+	if !strings.HasPrefix(messages[2].Content.(string), "记忆摘要（仅供参考；用于上下文承接和减少重复追问；除非用户要求回顾历史，不要主动复述摘要内容、小标题或用户画像）\n") {
 		t.Fatalf("expected memory document label, got %#v", messages[2].Content)
 	}
 	if strings.Contains(messages[2].Content.(string), "B层") || strings.Contains(messages[2].Content.(string), "C层") {

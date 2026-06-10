@@ -3358,7 +3358,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "会清空聊天记录、问诊摘要和长期记忆。会员、加油包、礼品卡和帮助与反馈不会删除。此操作不可恢复。",
+                text = "会清空聊天记录和记忆摘要。会员、加油包、礼品卡和帮助与反馈不会删除。此操作不可恢复。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp

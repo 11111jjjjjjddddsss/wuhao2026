@@ -59,16 +59,15 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
 	}
-	extraBody, ok := captured["extra_body"].(map[string]any)
-	if !ok {
-		t.Fatalf("missing extra_body: %#v", captured["extra_body"])
+	if _, ok := captured["extra_body"]; ok {
+		t.Fatalf("OpenAI-compatible HTTP request should pass web search options at top level, got extra_body=%#v", captured["extra_body"])
 	}
-	if got := extraBody["enable_search"]; got != true {
+	if got := captured["enable_search"]; got != true {
 		t.Fatalf("enable_search mismatch: %#v", got)
 	}
-	searchOptions, ok := extraBody["search_options"].(map[string]any)
+	searchOptions, ok := captured["search_options"].(map[string]any)
 	if !ok {
-		t.Fatalf("missing search_options: %#v", extraBody["search_options"])
+		t.Fatalf("missing search_options: %#v", captured["search_options"])
 	}
 	if got := searchOptions["search_strategy"]; got != "turbo" {
 		t.Fatalf("search_strategy mismatch: %#v", got)
@@ -482,30 +481,28 @@ func TestOpenStreamFailoverStatusBoundaries(t *testing.T) {
 	}
 }
 
-func TestGenerateDailyAgriCardQwenPlusUsesUnifiedTemperature(t *testing.T) {
+func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/services/aigc/text-generation/generation" {
+		if r.URL.Path != "/chat/completions" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"output":{"choices":[{"message":{"content":"{\"card_name\":\"今日农情\",\"items\":[]}"}}],"search_info":{"search_results":[{"index":1,"title":"news 1","url":"https://www.example.com/news-1","site_name":"示例网"},{"index":2,"title":"news 2","url":"https://www.example.com/news-2","site_name":"示例网"}]}},"usage":{"input_tokens":123,"output_tokens":45,"total_tokens":168,"plugins":{"search":{"count":1}}}}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"card_name\":\"今日农情\",\"items\":[]}"}}],"usage":{"prompt_tokens":123,"completion_tokens":45,"total_tokens":168,"output_tokens_details":{"reasoning_tokens":0},"plugins":{"search":{"count":1}}}}`))
 	}))
 	defer modelServer.Close()
 
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
 
+	messages := buildDailyAgriMessages(time.Date(2026, 6, 10, 9, 0, 0, 0, time.FixedZone("Asia/Shanghai", 8*60*60)), nil)
 	content, sources, usage, err := NewBailianClient().GenerateDailyAgriCard(
 		context.Background(),
 		"qwen-plus",
-		[]BailianMessage{
-			{Role: "system", Content: "你是一个只输出 JSON 的助手。"},
-			{Role: "user", Content: "生成今日农情"},
-		},
+		messages,
 	)
 	if err != nil {
 		t.Fatalf("generate daily agri card: %v", err)
@@ -513,37 +510,32 @@ func TestGenerateDailyAgriCardQwenPlusUsesUnifiedTemperature(t *testing.T) {
 	if content != "{\"card_name\":\"今日农情\",\"items\":[]}" {
 		t.Fatalf("content mismatch: %q", content)
 	}
-	if len(sources) != 2 {
+	if len(sources) != 0 {
 		t.Fatalf("source count mismatch: %d", len(sources))
 	}
 	if usage.normalizedInputTokens() != 123 || usage.normalizedOutputTokens() != 45 || usage.normalizedTotalTokens() != 168 || usage.searchCount() != 1 {
 		t.Fatalf("usage mismatch: %#v", usage)
 	}
 
-	if got := captured["model"]; got != "qwen-plus" {
-		t.Fatalf("model mismatch: %#v", got)
+	if got := captured["model"]; got != defaultDailyAgriCardModel {
+		t.Fatalf("model mismatch: %#v, want %q", got, defaultDailyAgriCardModel)
 	}
-	input, ok := captured["input"].(map[string]any)
-	if !ok {
-		t.Fatalf("input mismatch: %#v", captured["input"])
+	capturedMessages, ok := captured["messages"].([]any)
+	if !ok || len(capturedMessages) != 2 {
+		t.Fatalf("messages mismatch: %#v", captured["messages"])
 	}
-	messages, ok := input["messages"].([]any)
-	if !ok || len(messages) != 2 {
-		t.Fatalf("messages mismatch: %#v", input["messages"])
-	}
-	parameters, ok := captured["parameters"].(map[string]any)
-	if !ok {
-		t.Fatalf("parameters mismatch: %#v", captured["parameters"])
-	}
-	if got := parameters["temperature"]; got != unifiedModelTemperature {
+	if got := captured["temperature"]; got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", got)
 	}
-	if got := parameters["enable_search"]; got != true {
+	if got := captured["enable_thinking"]; got != false {
+		t.Fatalf("enable_thinking mismatch: %#v", got)
+	}
+	if got := captured["enable_search"]; got != true {
 		t.Fatalf("enable_search mismatch: %#v", got)
 	}
-	searchOptions, ok := parameters["search_options"].(map[string]any)
+	searchOptions, ok := captured["search_options"].(map[string]any)
 	if !ok {
-		t.Fatalf("search_options mismatch: %#v", parameters["search_options"])
+		t.Fatalf("search_options mismatch: %#v", captured["search_options"])
 	}
 	if got := searchOptions["search_strategy"]; got != dailyAgriSearchStrategy {
 		t.Fatalf("search_strategy mismatch: %#v", got)
@@ -554,61 +546,41 @@ func TestGenerateDailyAgriCardQwenPlusUsesUnifiedTemperature(t *testing.T) {
 	if got := searchOptions["enable_source"]; got != true {
 		t.Fatalf("enable_source mismatch: %#v", got)
 	}
-	if got := searchOptions["freshness"]; got != float64(7) {
-		t.Fatalf("freshness mismatch: %#v", got)
+	if _, ok := searchOptions["freshness"]; ok {
+		t.Fatalf("qwen3.5-plus compatible turbo path should not pass unsupported freshness: %#v", searchOptions)
 	}
 	if _, ok := searchOptions["assigned_site_list"]; ok {
 		t.Fatalf("assigned_site_list should not be set for daily agri wide search: %#v", searchOptions["assigned_site_list"])
 	}
-	intentionOptions, ok := searchOptions["intention_options"].(map[string]any)
-	if !ok {
-		t.Fatalf("intention_options mismatch: %#v", searchOptions["intention_options"])
+	if _, ok := searchOptions["intention_options"]; ok {
+		t.Fatalf("qwen3.5-plus compatible turbo path should not pass unsupported intention_options: %#v", searchOptions)
 	}
-	promptIntervene, _ := intentionOptions["prompt_intervene"].(string)
-	if !strings.Contains(promptIntervene, "近7天") ||
-		!strings.Contains(promptIntervene, "全网宽搜") ||
-		!strings.Contains(promptIntervene, "不要限定固定网站") ||
-		!strings.Contains(promptIntervene, "来源不限定固定站点") ||
-		!strings.Contains(promptIntervene, "分散覆盖") ||
-		!strings.Contains(promptIntervene, "今日农情只取种植侧") ||
-		!strings.Contains(promptIntervene, "养殖、水产不要") ||
-		!strings.Contains(promptIntervene, "如果结果偏这些方向就继续换词找种植侧") ||
-		!strings.Contains(promptIntervene, "种子/种苗") ||
-		!strings.Contains(promptIntervene, "品种审定推广") ||
-		!strings.Contains(promptIntervene, "病虫草害/植保") ||
-		!strings.Contains(promptIntervene, "农药/除草剂") ||
-		!strings.Contains(promptIntervene, "肥料/化肥") ||
-		!strings.Contains(promptIntervene, "普通天气预报") ||
-		!strings.Contains(promptIntervene, "同等质量下优先今天或昨天") ||
-		!strings.Contains(promptIntervene, "用户端只展示标题、摘要和来源名称") ||
-		!strings.Contains(promptIntervene, "不点击链接") ||
-		!strings.Contains(promptIntervene, "不要因为URL像首页或栏目页就丢弃事实清楚") ||
-		!strings.Contains(promptIntervene, "不要因为日期字段不确定就少于3条") {
-		t.Fatalf("prompt_intervene mismatch: %#v", promptIntervene)
-	}
-	for _, forbidden := range []string{"畜牧水产/动物疫病/养殖"} {
-		if strings.Contains(promptIntervene, forbidden) {
-			t.Fatalf("prompt_intervene should not include out-of-scope positive topic %q: %#v", forbidden, promptIntervene)
-		}
+	userContent := capturedMessages[1].(map[string]any)["content"].(string)
+	if !strings.Contains(userContent, "质量优先级：近 7 天真实公开材料 > 种植侧相关 > 对生产、农资、农时或流通有直接意义 > 三条尽量不重复 > 手机卡片好读") ||
+		!strings.Contains(userContent, "最大限度全网宽搜") ||
+		!strings.Contains(userContent, "小类不要卡死") ||
+		!strings.Contains(userContent, "若当天某类材料明显更真实、更新、更有直接影响，可以出现两条") ||
+		!strings.Contains(userContent, "是否有养殖水产、广告软文、传言、旧闻或编造数字") {
+		t.Fatalf("daily agri prompt should carry freshness/diversity guidance without prompt_intervene: %q", userContent)
 	}
 }
 
-func TestGenerateDailyAgriCardIgnoresRequestedModelAndUsesQwenPlus(t *testing.T) {
+func TestGenerateDailyAgriCardIgnoresRequestedModelAndUsesDefault(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/services/aigc/text-generation/generation" {
+		if r.URL.Path != "/chat/completions" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"output":{"choices":[{"message":{"content":"{\"card_name\":\"今日农情\",\"items\":[]}"}}],"search_info":{"search_results":[]}},"usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2}}`))
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"{\"card_name\":\"今日农情\",\"items\":[]}"}}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`))
 	}))
 	defer modelServer.Close()
 
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
 
 	_, _, _, err := NewBailianClient().GenerateDailyAgriCard(
 		context.Background(),
@@ -625,7 +597,7 @@ func TestGenerateDailyAgriCardIgnoresRequestedModelAndUsesQwenPlus(t *testing.T)
 
 func TestGenerateDailyAgriCardStatusErrorIsSanitized(t *testing.T) {
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/services/aigc/text-generation/generation" {
+		if r.URL.Path != "/chat/completions" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusBadGateway)
@@ -634,7 +606,7 @@ func TestGenerateDailyAgriCardStatusErrorIsSanitized(t *testing.T) {
 	defer modelServer.Close()
 
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
-	t.Setenv("DASHSCOPE_BASE_URL", modelServer.URL)
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
 
 	_, _, _, err := NewBailianClient().GenerateDailyAgriCard(
 		context.Background(),

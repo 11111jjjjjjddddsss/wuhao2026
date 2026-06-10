@@ -98,11 +98,11 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 	if dailyRow == nil {
 		t.Fatalf("missing daily agri model usage policy: %#v", rows)
 	}
-	if dailyRow.Protocol != "DashScope text-generation 非流式" {
+	if dailyRow.Protocol != "OpenAI兼容非流式" {
 		t.Fatalf("daily agri protocol = %q", dailyRow.Protocol)
 	}
 	if !dailyRow.ThinkingDisabled {
-		t.Fatalf("daily agri thinking should be disabled for default qwen-plus path: %#v", dailyRow)
+		t.Fatalf("daily agri thinking should be disabled for default qwen3.5-plus path: %#v", dailyRow)
 	}
 	if !strings.Contains(dailyRow.CostNote, "当前生产默认链") {
 		t.Fatalf("daily agri cost note should mention current default path: %#v", dailyRow)
@@ -171,7 +171,7 @@ func TestAdminMonitoringSummaryModelPolicyUsesFixedQwenPlus(t *testing.T) {
 	}
 }
 
-func TestAdminMonitoringDailyAgriUsesFixedQwenPlus(t *testing.T) {
+func TestAdminMonitoringDailyAgriUsesDefaultQwen35Plus(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
 	dailyRow := findAdminMonitoringModelPolicy(rows, "今日农情")
 	if dailyRow == nil {
@@ -180,11 +180,16 @@ func TestAdminMonitoringDailyAgriUsesFixedQwenPlus(t *testing.T) {
 	if dailyRow.Model != defaultDailyAgriCardModel {
 		t.Fatalf("daily agri model = %q", dailyRow.Model)
 	}
-	if dailyRow.Protocol != "DashScope text-generation 非流式" {
+	if dailyRow.Protocol != "OpenAI兼容非流式" {
 		t.Fatalf("daily agri protocol = %q", dailyRow.Protocol)
 	}
 	if !dailyRow.ThinkingDisabled {
 		t.Fatalf("daily agri thinking should be disabled: %#v", dailyRow)
+	}
+	if !strings.Contains(dailyRow.CostNote, "qwen3.5-plus") ||
+		!strings.Contains(dailyRow.CostNote, "turbo") ||
+		!strings.Contains(dailyRow.CostNote, "主提示词") {
+		t.Fatalf("daily agri cost note should describe qwen3.5-plus turbo prompt-controlled path: %#v", dailyRow)
 	}
 }
 

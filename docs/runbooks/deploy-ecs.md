@@ -1,6 +1,6 @@
 # ECS 发版 Runbook
 
-最后更新：2026-06-08
+最后更新：2026-06-10
 
 ## 目的
 
@@ -22,7 +22,7 @@
 - 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉
 - 2026-06-01 已通过 Cloud Assistant 将包含手机号登录 / 融合认证后端改动的源码包部署到 ECS：分片上传源码包、ECS 上校验 SHA-256、运行 `go test ./...`、编译、备份旧二进制、替换并重启 `nongji-server`；重启瞬间 Nginx healthz 曾短暂 502，随后 readiness 复查显示 systemd active、Nginx 配置 OK、Host healthz 200。
 - 生产 ECS 已切到 OSS 上传后端，并已配置 Redis 认证限流、阿里云 DYPNS 融合认证、短信验证码环境变量、DashScope 主 / 副模型 Key 主备槽位和 `ip2region` v4 xdb 本地库路径。当前健康检查应走本机 HTTPS：`curl --resolve api.nongjiqiancha.cn:443:127.0.0.1 https://api.nongjiqiancha.cn/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`dev_order_endpoints=false`、`redis=ok`、`upload_storage=oss`。
-- 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、HTTPS healthz、关键环境变量是否 set/missing/empty、本机上传目录、`ip2region` v4 xdb 是否可读和端口监听；脚本只输出脱敏状态，不打印真实密钥值。当前脚本会在 active upstream slot 未 active、HTTPS healthz 非 200，或生产 healthz 缺少 `ok/auth_strict/bailian/dypns/dypns_fusion/dypns_sms/dev_order_endpoints=false/redis/upload_storage` 关键标记时直接失败，避免 502、登录认证配置异常或开发订单入口误开被误判成通过。2026-06-10 最新检查显示 active upstream 为 `3001`，`nongji-server-3001 active/enabled`，Nginx 配置 OK、HTTPS healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`
+- 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、HTTPS healthz、关键环境变量是否 set/missing/empty、本机上传目录、`ip2region` v4 xdb 是否可读、端口监听和后台 `/admin-api/` 上游是否跟随 API active slot；脚本只输出脱敏状态，不打印真实密钥值。当前脚本会在 active upstream slot 未 active、后台上游端口与 API active slot 不一致、HTTPS healthz 非 200、未登录后台鉴权接口不是 401，或生产 healthz 缺少 `ok/auth_strict/bailian/dypns/dypns_fusion/dypns_sms/dev_order_endpoints=false/redis/upload_storage` 关键标记时直接失败，避免 502、登录认证配置异常、后台反代漂移或开发订单入口误开被误判成通过。2026-06-10 最新检查显示 active upstream 为 `3000`，`nongji-server-3000 active/enabled`，后台 upstream 同为 `3000`，Nginx 配置 OK、HTTPS healthz 200、`bailian=ok`、`dypns=ok`、`dypns_fusion=ok`、`dypns_sms=ok`、`redis=ok`、`upload_storage=oss`，未登录 `/admin-api/v1/auth/me` 返回 401
 - 今日农情每日生成当前推荐走 ECS systemd timer：本机脚本 [configure-ecs-daily-agri-job.ps1](D:/wuhao/scripts/configure-ecs-daily-agri-job.ps1) 会通过 Cloud Assistant 在 ECS 写入 `nongji-daily-agri.service` / `nongji-daily-agri.timer` 和 `/usr/local/bin/nongji-generate-today-agri.sh`，脚本从 `/etc/nongjiqiancha/server.env` 读取 `DAILY_AGRI_JOB_SECRET` 并调用 `POST /internal/jobs/today-agri-card/generate`；默认 `OnCalendar=*-*-* 21:35:00 UTC`，对应北京时间约 `05:35`
 - 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 会解析到本机；HTTPS healthz 返回 200，HTTP healthz 返回 301 跳 HTTPS 属于预期。本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - DashScope 主 / 副模型 Key 已通过 Cloud Assistant 写入 ECS 主备槽位并重启，真实 Key 值不进入仓库、文档、提交信息或聊天记忆；后端代码按 `DASHSCOPE_API_KEY_1` 主 Key、`DASHSCOPE_API_KEY_2` 副 Key 主备优先使用，旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 仅作兼容入口
@@ -93,7 +93,7 @@ Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Andr
 4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum
 5. 读取 Nginx 当前上游端口，选择另一个端口作为新 slot
 6. 启动 `nongji-server-3000.service` 或 `nongji-server-3001.service` 中的非当前 slot，并先检查该端口本机 `/healthz`
-7. 通过 `nginx -t` 后把 Nginx 上游切到新 slot，reload Nginx，再检查本机 HTTPS healthz
+7. 通过 `nginx -t` 后把 API Nginx 上游和后台 `/admin-api/` 上游一起切到新 slot，reload Nginx，再检查本机 HTTPS healthz 和后台未登录鉴权接口
 8. 新入口健康后启用新 slot、禁用旧 slot / 历史 `nongji-server.service`，并通过 transient systemd timer 延迟停止旧进程，给已有 SSE 连接排空时间；每次部署 / 回滚前都会先清理旧 `nongji-drain-stop-*` transient 任务，避免多次发布叠加后把当前 active slot 误停成 502
 
 只验证打包不部署：
@@ -161,8 +161,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 
 ## 下一步
 
-1. 部署当前主备 Key 优先代码并复查 readiness，确保生产二进制按 `DASHSCOPE_API_KEY_1` 主用、`DASHSCOPE_API_KEY_2` 备用执行。
-2. 跟进 App 备案审核通过、网站公安联网备案审核 / 公安备案号和后续 App 公安备案；网站 ICP 已于 2026-06-05 通过，网站公安联网备案已于 2026-06-07 提交待审核，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配置完成。
-3. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限 RAM 用户，并重新写入 ECS `DYPNS_*` 环境变量。
-4. 用真实 App 链路验证手机号一键登录、验证码登录、`/upload`、`/uploads/`、模型拉图、主聊天流和历史图片过期占位。
-5. 后续若要做到跨实例高可用，再升级为多 ECS / SLB 滚动发布；当前双端口只解决单机重启空窗，不等于多机容灾。
+1. 跟进 App 备案审核通过、后续 App 公安备案；网站 ICP 已于 2026-06-05 通过，网站公安联网备案号已于 2026-06-10 下发并已补官网 footer，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配置完成。
+2. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限 RAM 用户，并重新写入 ECS `DYPNS_*` 环境变量。
+3. 用真实 App 链路验证手机号一键登录、验证码登录、`/upload`、`/uploads/`、模型拉图、主聊天流和历史图片过期占位。
+4. 后续若要做到跨实例高可用，再升级为多 ECS / SLB 滚动发布；当前双端口只解决单机重启空窗，不等于多机容灾。

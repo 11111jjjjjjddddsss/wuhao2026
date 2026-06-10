@@ -48,7 +48,7 @@ const (
 	defaultDashScopeAutoRRHold            = 60 * time.Second
 	defaultDashScopeAutoRRMinRequests     = 20
 	bailianBodyPreviewLimit               = 64 * 1024
-	dashScopeGenerationBodyLimit          = 1024 * 1024
+	dailyAgriModelResponseBodyLimit       = 1024 * 1024
 )
 
 type keySelectionMode int
@@ -95,12 +95,10 @@ func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessag
 		"stream_options": map[string]any{
 			"include_usage": true,
 		},
-		"extra_body": map[string]any{
-			"enable_search": true,
-			"search_options": map[string]any{
-				"search_strategy": mainChatSearchStrategy,
-				"forced_search":   false,
-			},
+		"enable_search": true,
+		"search_options": map[string]any{
+			"search_strategy": mainChatSearchStrategy,
+			"forced_search":   false,
 		},
 		"messages": messages,
 	}
@@ -120,41 +118,33 @@ func summaryExtractionModelPolicyLabel() string {
 }
 
 func (c *BailianClient) GenerateDailyAgriCard(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, bailianModelUsage, error) {
-	return c.generateDailyAgriCardWithGeneration(ctx, defaultDailyAgriCardModel, messages)
+	model = dailyAgriCardModel()
+	return c.generateDailyAgriCardWithChatCompletions(ctx, model, messages)
 }
 
-func (c *BailianClient) generateDailyAgriCardWithGeneration(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, bailianModelUsage, error) {
+func (c *BailianClient) generateDailyAgriCardWithChatCompletions(ctx context.Context, model string, messages []BailianMessage) (string, []DailyAgriSearchSource, bailianModelUsage, error) {
 	body := map[string]any{
-		"model": model,
-		"input": map[string]any{
-			"messages": messages,
-		},
-		"parameters": map[string]any{
-			"result_format":   "message",
-			"temperature":     unifiedModelTemperature,
-			"enable_thinking": false,
-			"enable_search":   true,
-			"search_options": map[string]any{
-				"search_strategy": dailyAgriSearchStrategy,
-				"forced_search":   true,
-				"enable_source":   true,
-				"freshness":       7,
-				"intention_options": map[string]any{
-					"prompt_intervene": dailyAgriPromptIntervene(),
-				},
-			},
+		"model":           model,
+		"messages":        messages,
+		"temperature":     unifiedModelTemperature,
+		"enable_thinking": false,
+		"enable_search":   true,
+		"search_options": map[string]any{
+			"search_strategy": dailyAgriSearchStrategy,
+			"forced_search":   true,
+			"enable_source":   true,
 		},
 	}
 	payload, err := json.Marshal(body)
 	if err != nil {
 		return "", nil, bailianModelUsage{}, err
 	}
-	resp, err := c.doJSONPayloadRequest(ctx, c.buildDashScopeGenerationURL(), "application/json", payload)
+	resp, err := c.doJSONPayloadRequest(ctx, c.buildURL(), "application/json", payload)
 	if err != nil {
 		return "", nil, bailianModelUsage{}, err
 	}
 	defer resp.Body.Close()
-	bodyBytes, err := readLimitedResponseBody(resp.Body, dashScopeGenerationBodyLimit)
+	bodyBytes, err := readLimitedResponseBody(resp.Body, dailyAgriModelResponseBodyLimit)
 	if err != nil {
 		return "", nil, bailianModelUsage{}, err
 	}
@@ -162,34 +152,21 @@ func (c *BailianClient) generateDailyAgriCardWithGeneration(ctx context.Context,
 		return "", nil, bailianModelUsage{}, formatDashScopeStatusError(resp.StatusCode, bodyBytes)
 	}
 
-	var decoded dashScopeGenerationResponse
+	var decoded openAIChatCompletionResponse
 	if err := json.Unmarshal(bodyBytes, &decoded); err != nil {
 		return "", nil, bailianModelUsage{}, err
 	}
-	if decoded.Code != "" {
-		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope error %s: %s", decoded.Code, decoded.Message)
+	if decoded.Error.Code != "" || decoded.Error.Message != "" {
+		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope error %s: %s", decoded.Error.Code, sanitizeDashScopeErrorMessage(decoded.Error.Message))
 	}
-	if len(decoded.Output.Choices) == 0 {
+	if len(decoded.Choices) == 0 {
 		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope response missing choices")
 	}
-	content := strings.TrimSpace(decoded.Output.Choices[0].Message.Content)
+	content := strings.TrimSpace(decoded.Choices[0].Message.Content)
 	if content == "" {
 		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope response empty content")
 	}
-	sources := make([]DailyAgriSearchSource, 0, len(decoded.Output.SearchInfo.SearchResults))
-	for _, source := range decoded.Output.SearchInfo.SearchResults {
-		url := strings.TrimSpace(source.URL)
-		if url == "" {
-			continue
-		}
-		sources = append(sources, DailyAgriSearchSource{
-			Index:    source.Index,
-			Title:    strings.TrimSpace(source.Title),
-			URL:      url,
-			SiteName: firstNonBlank(source.SiteName, source.Site, source.Host),
-		})
-	}
-	return content, sources, decoded.Usage, nil
+	return content, nil, decoded.Usage.normalized(), nil
 }
 
 func (c *BailianClient) doJSONRequest(ctx context.Context, accept string, body map[string]any) (*http.Response, error) {
@@ -293,14 +270,6 @@ func (c *BailianClient) buildURL() string {
 		baseURL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 	}
 	return strings.TrimRight(baseURL, "/") + "/chat/completions"
-}
-
-func (c *BailianClient) buildDashScopeGenerationURL() string {
-	baseURL := strings.TrimSpace(os.Getenv("DASHSCOPE_BASE_URL"))
-	if baseURL == "" {
-		baseURL = "https://dashscope.aliyuncs.com/api/v1"
-	}
-	return strings.TrimRight(baseURL, "/") + "/services/aigc/text-generation/generation"
 }
 
 func (c *BailianClient) keys() []string {
@@ -585,27 +554,17 @@ func cloneHTTPResponse(resp *http.Response, body []byte) *http.Response {
 	return cloned
 }
 
-type dashScopeGenerationResponse struct {
-	Code    string `json:"code,omitempty"`
-	Message string `json:"message,omitempty"`
-	Output  struct {
-		Choices []struct {
-			Message struct {
-				Content string `json:"content"`
-			} `json:"message"`
-		} `json:"choices"`
-		SearchInfo struct {
-			SearchResults []struct {
-				Index    int    `json:"index"`
-				Title    string `json:"title"`
-				URL      string `json:"url"`
-				SiteName string `json:"site_name"`
-				Site     string `json:"site"`
-				Host     string `json:"host"`
-			} `json:"search_results"`
-		} `json:"search_info"`
-	} `json:"output"`
+type openAIChatCompletionResponse struct {
+	Choices []struct {
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
 	Usage bailianModelUsage `json:"usage"`
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
 type bailianModelUsage struct {
@@ -627,6 +586,13 @@ type bailianModelUsage struct {
 			Count int `json:"count"`
 		} `json:"search"`
 	} `json:"plugins"`
+}
+
+func (u bailianModelUsage) normalized() bailianModelUsage {
+	if u.ReasoningTokens == 0 {
+		u.ReasoningTokens = u.OutputTokensDetails.ReasoningTokens
+	}
+	return u
 }
 
 func (u bailianModelUsage) normalizedInputTokens() int {

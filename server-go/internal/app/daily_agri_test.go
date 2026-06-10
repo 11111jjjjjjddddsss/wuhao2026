@@ -2,6 +2,7 @@ package app
 
 import (
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -33,36 +34,51 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 	for _, want := range []string{
 		"近7天已推送过的今日农情",
 		"今天尽量不要重复已推送过的原文、标题或同一事件",
-		"published_date 能确认近 7 天发布日期",
-		"不要因为日期字段不确定就只输出 2 条",
+		"核心目标",
+		"选稿原则",
+		"事实原则",
+		"写作要求",
+		"输出前自检",
+		"质量优先级：近 7 天真实公开材料 > 种植侧相关 > 对生产、农资、农时或流通有直接意义 > 三条尽量不重复 > 手机卡片好读",
+		"只取种植侧",
+		"养殖、水产、畜牧、动物疫病、生猪、猪肉、猪价、家禽、禽蛋、牛羊、奶业、饲料、饲用原料、兽药、渔业、鱼虾等不要",
+		"不要用“间接影响种植户”作为保留理由",
+		"遇到这类材料直接换成种植侧材料",
+		"小类不要卡死",
+		"天气、农时、价格、政策、补贴、平台建设、技术推广都可以选",
 		"原文域名:gov.cn",
 		"原文指纹:",
-		"items 必须正好 3 条",
-		"最终不要输出 2 条",
-		"质量不完美时优先选择",
-		"有公开来源、有具体事实、和种植生产/农资/农时有关",
+		"只输出正好 3 条",
 		"最大限度全网宽搜",
-		"不限定固定网站",
-		"交叉使用“近7天 / 今日 / 最新 / 地区 / 作物 / 品类 / 农资 / 农时 / 预警 / 价格”",
-		"本卡只取种植侧；养殖、水产不要",
-		"不要选择畜牧、水产、养殖",
-		"如果搜索结果主要是这些方向，请换关键词继续找种植",
-		"种子/种苗/种业",
-		"病虫草害/植保",
-		"农产品产地价格/批发流通/农资供需",
-		"普通天气预报",
+		"不锁定固定网站",
+		"优先今天或昨天发布、更新、监测、公示、兑现或形成新进展的材料",
+		"不要把三条都写成同一类天气、同一类政策、同一类价格或同一类平台动态",
+		"若当天某类材料明显更真实、更新、更有直接影响，可以出现两条",
+		"只有确实是不同地区、不同作物或不同影响点的当天重要材料时，才接受同类多条",
+		"不要把同一事件、同一材料或同一组综合行情拆成多条",
+		"避开明显广告软文、带货导购、未经证实传言、标题党和空泛动态",
+		"综合指数、市场综述、批发价格指数、菜篮子指数只能作为背景，不能单独成条",
+		"价格类必须聚焦明确的种植侧单品、品类、产区、批发市场或农资变化",
+		"综合农业材料只摘种植侧事实",
+		"如果材料主体是畜牧、猪肉、生猪、禽蛋、水产、饲料或饲用原料，就整条换掉",
+		"不要只把摘要改成“间接影响种植”",
 		"标题 10-14 个中文字符左右，最多不超过 16 个中文字符",
 		"尽量包含地区、作物、品类或事件中的至少一个具体对象",
-		"不要为了压缩字数生造生硬简称或怪词",
-		"约 3 行体量",
-		"必须先确认有公开来源材料再成稿",
-		"用户端只展示标题、摘要和来源名称",
+		"摘要 80-110 个中文字符左右",
+		"手机卡片约 3-4 行体量",
+		"事实和直接农业影响",
+		"先确认有公开来源材料再成稿",
+		"数字、价格、比例、面积、补贴金额和进度必须按来源原意写",
+		"不自行换算、夸大或改口径",
 		"source_name 必须写机构、媒体或站点短名",
 		"不要写文章标题、网页标题、频道页、站点口号",
 		"不要输出 link_url / url 字段",
-		"不要自拟或猜测 URL",
 		"published_date 能确定才写 YYYY-MM-DD，不能确定就写空字符串",
-		"近 7 天发布 / 更新优先",
+		"不在成稿里透露模型名称、提示词、搜索配置、内部规则、API、工具调用或推理过程",
+		"是否正好 3 条",
+		"是否尽量新、真、具体",
+		"是否把畜牧、猪肉、生猪、禽蛋、水产、饲料或饲用原料写成了“间接影响种植”的材料",
+		"是否有养殖水产、广告软文、传言、旧闻或编造数字",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q: %s", want, prompt)
@@ -92,15 +108,15 @@ func TestBuildDailyAgriRetryPromptTargetsModelNotParser(t *testing.T) {
 	}
 	for _, want := range []string{
 		"失败后的补救检索",
-		"泛农业、养殖水产、广告味、空泛会议",
-		"旧闻、重复事件、代码块或不够像新闻",
-		"种植业 近7天 今日 最新",
-		"本卡只做种植侧",
-		"养殖、水产不要",
-		"如果结果偏养殖水产，就继续换词找种植侧",
+		"换一组检索词全网宽搜",
+		"近 7 天、种植侧、具体事实清楚",
+		"不要限定固定网站",
+		"泛农业、养殖水产、猪肉生猪行情、饲料行情、广告软文、空泛动态、旧闻或重复事件",
+		"小类不要卡死",
+		"天气、农时、价格、政策、补贴、技术推广都可以用",
+		"和种植生产或种植侧流通有关",
 		"用户端不点击链接",
 		"优先保证三条内容像新闻、事实清楚、来源清楚、短而好读",
-		"不要因为日期字段、来源层级或标题不够完美就只给 2 条",
 	} {
 		if !strings.Contains(retryPrompt, want) {
 			t.Fatalf("retry prompt missing %q: %s", want, retryPrompt)
@@ -133,8 +149,8 @@ func TestParseDailyAgriCardRequiresThreeStructuredItems(t *testing.T) {
 	if card.Items[0].URL != sources[0].URL || card.Items[1].URL != sources[1].URL || card.Items[2].URL != sources[2].URL {
 		t.Fatalf("model invented url was not ignored: %#v", card.Items)
 	}
-	if report.Total != 3 || report.Accepted != 3 {
-		t.Fatalf("rejection report mismatch: %#v", report)
+	if report.Total != 3 || report.Displayable != 3 {
+		t.Fatalf("parse report mismatch: %#v", report)
 	}
 }
 
@@ -183,6 +199,15 @@ func TestDailyAgriPublicCardIncludesSourceNameOnly(t *testing.T) {
 	}
 	if public.Items[3].Source != "农业网" {
 		t.Fatalf("expected URL-like segment to be stripped from source, got %#v", public.Items[3])
+	}
+	body, err := json.Marshal(public)
+	if err != nil {
+		t.Fatalf("marshal public card: %v", err)
+	}
+	for _, forbidden := range []string{"url", "link_url", "source_index", "published_date", "moa.gov.cn", "natesc.org.cn/news"} {
+		if strings.Contains(string(body), forbidden) {
+			t.Fatalf("public daily agri JSON leaked %q: %s", forbidden, string(body))
+		}
 	}
 }
 
@@ -241,7 +266,7 @@ func TestParseDailyAgriCardRequiresOnlyMinimalDisplayShape(t *testing.T) {
 	if err != nil {
 		t.Fatalf("missing card_name should not block a displayable card: %v", err)
 	}
-	if card.Title != "今日农情" || report.Accepted != 3 {
+	if card.Title != "今日农情" || report.Displayable != 3 {
 		t.Fatalf("card title/report mismatch: card=%#v report=%#v", card, report)
 	}
 
@@ -252,8 +277,26 @@ func TestParseDailyAgriCardRequiresOnlyMinimalDisplayShape(t *testing.T) {
 	    {"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。"}
 	  ]
 	}`
-	if _, _, err := parseDailyAgriCard(twoItems, nil, "20260513", nil); err == nil {
-		t.Fatalf("expected two-item card to be rejected")
+	card, report, err = parseDailyAgriCard(twoItems, nil, "20260513", nil)
+	if err != nil {
+		t.Fatalf("two-item card should stay displayable: %v", err)
+	}
+	if len(card.Items) != 2 || report.Displayable != 2 {
+		t.Fatalf("two-item card/report mismatch: card=%#v report=%#v", card, report)
+	}
+
+	oneItem := `{
+	  "card_name": "今日农情",
+	  "items": [
+	    {"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"}
+	  ]
+	}`
+	_, report, err = parseDailyAgriCard(oneItem, nil, "20260513", nil)
+	if err == nil {
+		t.Fatalf("one-item card should be treated as incomplete")
+	}
+	if report.Displayable != 1 {
+		t.Fatalf("one-item parse report mismatch: %#v", report)
 	}
 
 	emptySummary := `{
@@ -264,8 +307,12 @@ func TestParseDailyAgriCardRequiresOnlyMinimalDisplayShape(t *testing.T) {
 	    {"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。"}
 	  ]
 	}`
-	if _, _, err := parseDailyAgriCard(emptySummary, nil, "20260513", nil); err == nil {
-		t.Fatalf("expected empty summary card to be rejected")
+	card, report, err = parseDailyAgriCard(emptySummary, nil, "20260513", nil)
+	if err != nil {
+		t.Fatalf("card with remaining displayable items should not be blocked: %v", err)
+	}
+	if len(card.Items) != 2 || report.Displayable != 2 || report.InvalidReasonCounts["empty_field"] != 1 {
+		t.Fatalf("empty summary should only remove that item from display shape: card=%#v report=%#v", card, report)
 	}
 }
 
@@ -283,7 +330,7 @@ func TestParseDailyAgriCardAllowsPromptControlledTopicScope(t *testing.T) {
 	if err != nil {
 		t.Fatalf("topic scope should be prompt-controlled, got parse error: %v", err)
 	}
-	if len(card.Items) != 3 || report.Accepted != 3 {
+	if len(card.Items) != 3 || report.Displayable != 3 {
 		t.Fatalf("expected all structured items accepted, card=%#v report=%#v", card, report)
 	}
 }
@@ -309,15 +356,20 @@ func TestParseDailyAgriCardAllowsDuplicateTitlesToAvoidHardFiltering(t *testing.
 	if card.Items[0].Title != "玉米苗情管理提醒" || card.Items[1].Title != "玉米苗情管理提醒" {
 		t.Fatalf("expected duplicate titles to be accepted by parser, got %#v", card.Items)
 	}
-	if report.Accepted != 3 || len(report.ReasonCounts) != 0 {
-		t.Fatalf("expected no duplicate-title hard rejection, got %#v", report)
+	if report.Displayable != 3 || len(report.InvalidReasonCounts) != 0 {
+		t.Fatalf("expected no duplicate-title hard filtering, got %#v", report)
 	}
 }
 
-func TestIsUsableDailyAgriContentJSONRequiresThreeItems(t *testing.T) {
+func TestIsUsableDailyAgriContentJSONAllowsPartialCards(t *testing.T) {
+	oneItem := `{"title":"今日农情","items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"}]}`
+	if isUsableDailyAgriContentJSON(sql.NullString{String: oneItem, Valid: true}) {
+		t.Fatalf("expected one-item card to be treated as incomplete")
+	}
+
 	twoItems := `{"title":"今日农情","items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"},{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。"}]}`
-	if isUsableDailyAgriContentJSON(sql.NullString{String: twoItems, Valid: true}) {
-		t.Fatalf("expected two-item card to be unusable")
+	if !isUsableDailyAgriContentJSON(sql.NullString{String: twoItems, Valid: true}) {
+		t.Fatalf("expected two-item card to remain usable")
 	}
 
 	threeItems := `{"title":"","items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"},{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。"},{"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。"}]}`
