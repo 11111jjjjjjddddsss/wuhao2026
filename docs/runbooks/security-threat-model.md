@@ -30,7 +30,7 @@
 - 主聊天有用户级 Redis 限流、单用户活跃 SSE 租约、`client_msg_id` 幂等、64KiB JSON body 上限和 30 分钟 SSE 时长兜底
 - 融合认证、短信、上传、App 日志、帮助与反馈均有 Redis / IP 或用户级短期限流
 - 内部 secret 接口已新增 Redis / IP 频控；第一版后台 API 已有后台账号、HttpOnly session、CSRF、角色校验和 `admin_audit_logs`
-- Android release 要求固定签名和 HTTPS 后端，Auto Backup / Data Extraction 已关闭，检查更新只接受 HTTPS APK 并校验包名、版本和可选 SHA-256
+- Android release 要求固定签名和 HTTPS 后端，Auto Backup / Data Extraction 已关闭，检查更新只在 HTTPS APK、SHA-256 和文件大小齐全时下发，并校验包名、版本、文件大小和 SHA-256
 - SLS 只采集 Go JSON 请求日志和 Nginx error log，不采聊天正文、图片 URL、手机号、token 或模型 Key
 
 ## 本轮修复

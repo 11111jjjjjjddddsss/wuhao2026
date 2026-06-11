@@ -55,6 +55,28 @@ func TestBuildAndroidUpdateInfoRejectsNonHTTPSAPKURL(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoRequiresDownloadArtifacts(t *testing.T) {
+	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
+	})
+	if info.HasUpdate {
+		t.Fatalf("expected missing artifacts to disable update, got %#v", info)
+	}
+	if info.APKURL != "" {
+		t.Fatalf("apk url = %q, want empty", info.APKURL)
+	}
+	if got := androidUpdateIgnoredReason(androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
+	}); got != "missing_release_artifacts" {
+		t.Fatalf("ignored reason = %q, want missing_release_artifacts", got)
+	}
+}
+
 func TestBuildAndroidUpdateInfoHidesChecksumWhenNoUpdate(t *testing.T) {
 	info := buildAndroidUpdateInfo(4, "1.0.4", androidUpdateConfig{
 		Enabled:           true,

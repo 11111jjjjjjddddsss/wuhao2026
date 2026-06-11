@@ -168,13 +168,13 @@
 
 - Android 设置页点击“检查更新”后，请求 `GET /api/app/update?platform=android&version_code=<当前versionCode>&version_name=<当前versionName>`。
 - 无更新时提示“已是最新版本”；有更新时弹“发现新版本”卡片，按钮为“稍后 / 立即更新”，更新说明兜底为“优化产品体验”。
-- 后端由 `APP_ANDROID_LATEST_VERSION_CODE / APP_ANDROID_LATEST_VERSION_NAME / APP_ANDROID_APK_URL / APP_ANDROID_APK_SHA256 / APP_ANDROID_RELEASE_NOTES / APP_ANDROID_FORCE_UPDATE / APP_ANDROID_FILE_SIZE_BYTES` 控制 Android 最新版本；只有新版本号大于客户端当前版本号，且 APK 链接是公网 https，才返回可用更新。
-- Android 下载 APK 到 App cache 后，会在调起系统安装页前校验最终响应仍是 https、可选文件大小、可选 SHA-256、包名等于当前 App 包名、APK `versionCode` 等于后端最新版本号且大于当前安装版本。
+- 后端优先由后台 `app_release_configs` 控制 Android 最新版本，无数据库记录时才回退 `APP_ANDROID_LATEST_VERSION_CODE / APP_ANDROID_LATEST_VERSION_NAME / APP_ANDROID_APK_URL / APP_ANDROID_APK_SHA256 / APP_ANDROID_RELEASE_NOTES / APP_ANDROID_FORCE_UPDATE / APP_ANDROID_FILE_SIZE_BYTES`；只有新版本号大于客户端当前版本号，且 HTTPS APK、SHA-256、文件大小都齐全，才返回可用更新。
+- Android 下载 APK 到 App cache 后，会在调起系统安装页前校验最终响应仍是 https、文件大小、SHA-256、包名等于当前 App 包名、APK `versionCode` 等于后端最新版本号且大于当前安装版本。
 - Android 8+ 未授权安装未知应用时，会先打开系统授权页；普通 Android App 不能静默安装，最终仍由系统安装器让用户确认。
 
 本轮已补的保护：
 
-- 后端新增可选 `APP_ANDROID_APK_SHA256` 并透出 `apk_sha256`；无更新或 APK 链接无效时不会下发哈希。
+- 后端要求正式更新物料同时具备 SHA-256 和文件大小才会透出 `apk_sha256`、`file_size_bytes` 和 APK 地址；物料不齐、无更新或 APK 链接无效时不会下发下载信息。
 - Android 下载后新增文件大小 / SHA-256 / 包名 / versionCode 校验，避免错包、坏包、半截包或低版本包进入系统安装页。
 
 上线前必须注意：

@@ -141,6 +141,7 @@ if ($failures.Count -eq 0) {
     )
     foreach ($manifestPath in $mergedManifestPaths) {
         if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            Add-Failure $failures "Missing generated Android manifest for parity validation: $manifestPath. Run :app:processDebugManifest :app:processReleaseManifest :app:processDebugManifestForPackage :app:processReleaseManifestForPackage before this script."
             continue
         }
         $mergedManifest = Get-Content -LiteralPath $manifestPath -Raw

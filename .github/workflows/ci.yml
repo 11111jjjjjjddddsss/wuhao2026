@@ -104,13 +104,30 @@ jobs:
         run: |
           python3 scripts/check_project_memory.py --base "$BASE_SHA" --head "$HEAD_SHA"
 
+      - name: Generate Android manifests for parity checks
+        run: |
+          chmod +x ./gradlew
+          ./gradlew \
+            :app:processDebugManifest \
+            :app:processReleaseManifest \
+            :app:processDebugManifestForPackage \
+            :app:processReleaseManifestForPackage \
+            --no-daemon --stacktrace
+
       - name: Android debug/release parity check
         run: pwsh -NoProfile -File scripts/check-android-build-parity.ps1
 
       - name: Ensure WebView demo entry removed
         run: |
-          if git grep -n "gpt-demo|android_asset|WebView" -- app/src/main; then
+          if git grep -n -E "gpt-demo|android_asset" -- app/src/main; then
             echo "Found forbidden WebView/demo references in app/src/main"
+            exit 1
+          fi
+          webview_refs="$(git grep -n -E '\bWebView\b' -- app/src/main || true)"
+          unexpected_webview_refs="$(printf "%s\n" "$webview_refs" | grep -v 'app/src/main/kotlin/com/nongjiqianwen/FusionAuthProtocolActivity.kt' || true)"
+          if [ -n "$unexpected_webview_refs" ]; then
+            printf "%s\n" "$unexpected_webview_refs"
+            echo "Found unexpected WebView references outside FusionAuthProtocolActivity"
             exit 1
           fi
 

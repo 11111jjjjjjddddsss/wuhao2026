@@ -67,13 +67,7 @@ func (s *Server) handleAppUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 	info := buildAndroidUpdateInfo(currentVersionCode, currentVersionName, cfg)
 	if cfg.LatestVersionCode > currentVersionCode && !info.HasUpdate && s.logger != nil {
-		reason := "disabled"
-		if cfg.Enabled {
-			reason = "missing_apk_url"
-		}
-		if cfg.Enabled && strings.TrimSpace(cfg.APKURL) != "" && !isHTTPSURL(cfg.APKURL) {
-			reason = "invalid_apk_url"
-		}
+		reason := androidUpdateIgnoredReason(cfg)
 		s.logger.Warn(
 			"android update config ignored",
 			"reason", reason,
@@ -113,7 +107,7 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 		latestVersionName = currentVersionName
 	}
 	apkURL := cfg.APKURL
-	hasUpdate := cfg.Enabled && latestVersionCode > currentVersionCode && apkURL != "" && isHTTPSURL(apkURL)
+	hasUpdate := cfg.Enabled && latestVersionCode > currentVersionCode && androidUpdateDownloadArtifactsComplete(cfg)
 	apkChecksumSHA256 := cfg.APKChecksumSHA256
 	releaseNotes := cfg.ReleaseNotes
 	fileSizeBytes := cfg.FileSizeBytes
@@ -136,6 +130,22 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 		ReleaseNotes:       releaseNotes,
 		FileSizeBytes:      fileSizeBytes,
 	}
+}
+
+func androidUpdateIgnoredReason(cfg androidUpdateConfig) string {
+	if !cfg.Enabled {
+		return "disabled"
+	}
+	if strings.TrimSpace(cfg.APKURL) == "" {
+		return "missing_apk_url"
+	}
+	if !isHTTPSURL(cfg.APKURL) {
+		return "invalid_apk_url"
+	}
+	if strings.TrimSpace(cfg.APKChecksumSHA256) == "" || cfg.FileSizeBytes <= 0 {
+		return "missing_release_artifacts"
+	}
+	return "not_available"
 }
 
 func androidUpdateConfigValid(cfg androidUpdateConfig) bool {

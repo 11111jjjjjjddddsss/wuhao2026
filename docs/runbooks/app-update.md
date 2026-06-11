@@ -1,6 +1,6 @@
 # App 更新 Runbook
 
-最后更新：2026-06-09
+最后更新：2026-06-12
 
 当前 Android “检查更新”走自有服务器 APK 分发，不走应用商店，也不做静默安装。
 
@@ -37,7 +37,7 @@ Codex 默认按下面流程处理：
 2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
 3. Codex 负责记录 APK 文件大小、SHA-256、包名、`versionCode`、签名指纹和更新说明
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接
-5. Codex 或运维把后端运行环境里的 `APP_ANDROID_*` 环境变量改成新版本和新 APK 链接，并用旧版 App 点“检查更新”验证
+5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256、文件大小和更新说明；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小，再用旧版 App 点“检查更新”验证
 6. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
 
 这件事不需要你手写接口，也不需要你自己拼 JSON。
@@ -72,15 +72,15 @@ Codex 默认按下面流程处理：
 - `APP_ANDROID_LATEST_VERSION_CODE`：最新 APK 的 `versionCode`，必须大于客户端当前 `versionCode` 才会返回有更新
 - `APP_ANDROID_LATEST_VERSION_NAME`：最新 APK 的展示版本名
 - `APP_ANDROID_APK_URL`：APK 下载地址，必须是公网 `https://` URL；非 https 会被后端视为无可用更新
-- `APP_ANDROID_APK_SHA256`：可选但正式发布建议填写；APK 文件的 SHA-256，用于客户端下载后校验文件是否被传错、截断或替换
+- `APP_ANDROID_APK_SHA256`：必填；APK 文件的 SHA-256，用于客户端下载后校验文件是否被传错、截断或替换。缺失或格式不合法时，后端不会对外返回可用更新
 - `APP_ANDROID_RELEASE_NOTES`：更新说明，直接展示在更新卡片里；当前默认建议写“优化产品体验”
 - `APP_ANDROID_FORCE_UPDATE`：可选，`true / 1 / yes / on` 表示强制更新；强制更新卡片不展示“稍后”
-- `APP_ANDROID_FILE_SIZE_BYTES`：可选，APK 字节大小，用于更新卡片展示；填写后客户端会要求下载后的文件大小一致
-- `APP_ANDROID_UPDATE_ENABLED`：可选，兼容环境变量开关；未配置时若版本号和 APK URL 都存在，默认视为启用
+- `APP_ANDROID_FILE_SIZE_BYTES`：必填，APK 字节大小，用于更新卡片展示和下载后校验；缺失或小于等于 0 时，后端不会对外返回可用更新
+- `APP_ANDROID_UPDATE_ENABLED`：可选，兼容环境变量开关；未配置时若版本号和 APK URL 都存在，默认视为启用，但仍必须同时具备 SHA-256 和文件大小才会下发
 
 管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明、是否强制更新、是否对外启用。后台保存后立即写入 `app_release_configs`，`/api/app/update` 会优先按这份配置对外返回；取消“对外启用更新”并保存，就是停更。
 
-管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL 这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”。
+管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL 这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts`。
 
 管理后台“监控面板”已新增“检查更新排障”卡，聚合最近 24 小时 `app_update.*` 自动日志，并提供直达 App 日志筛选按钮。若真机测试更新失败，优先按下面顺序看：
 
@@ -93,8 +93,8 @@ Codex 默认按下面流程处理：
 客户端下载后会在调起系统安装页前做基础校验：
 
 - 下载最终响应仍必须是 https。
-- 如果配置了 `APP_ANDROID_FILE_SIZE_BYTES`，下载文件大小必须一致。
-- 如果配置了 `APP_ANDROID_APK_SHA256`，下载文件哈希必须一致。
+- 后端只会在文件大小和 SHA-256 都已配置时下发更新；客户端下载后文件大小必须一致。
+- 后端只会在 SHA-256 合法时下发更新；客户端下载后文件哈希必须一致。
 - APK 包名必须等于当前 App 包名，APK `versionCode` 必须等于后端下发的最新版本号，且大于当前已安装版本。
 
 ## 发布流程
