@@ -176,6 +176,54 @@ func TestLegacyMergeCoversAccountDeletionRequests(t *testing.T) {
 	}
 }
 
+func TestLegacyMergeCoversLongLivedIdentityTables(t *testing.T) {
+	source, err := os.ReadFile("auth_accounts.go")
+	if err != nil {
+		t.Fatalf("read auth_accounts.go: %v", err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"topup_packs",
+		"orders",
+		"support_messages",
+		"syncMergedSupportConversationTx",
+		"client_app_logs",
+		"account_deletion_requests",
+		"gift_cards",
+		"gift_card_redemption_attempts",
+		"daily_usage",
+		"quota_ledger",
+		"session_round_ledger",
+		"session_round_archive",
+		"upgrade_credits",
+		"session_generation",
+		"session_ab",
+		"user_entitlement",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("legacy account merge must cover %s", want)
+		}
+	}
+}
+
+func TestLegacyMergePreservesSessionABMemoryWhenTargetExists(t *testing.T) {
+	normalized := strings.ToLower(mergeSessionABSQL)
+	for _, want := range []string{
+		"update session_ab as target",
+		"join session_ab as source",
+		"target.b_summary",
+		"source.b_summary",
+		"concat",
+		"target.pending_retry_b",
+		"source.pending_retry_b",
+		"json_length(target.a_json)",
+	} {
+		if !strings.Contains(normalized, want) {
+			t.Fatalf("session_ab merge must preserve source memory and pending state, missing %q in %s", want, mergeSessionABSQL)
+		}
+	}
+}
+
 func TestAuthSMSSendProviderFailureKeepsCachedCode(t *testing.T) {
 	source, err := os.ReadFile("auth_handlers.go")
 	if err != nil {

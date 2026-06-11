@@ -3,6 +3,18 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-12
+
+- 本轮后端已部署到 ECS 双端口 slot，最终 Nginx active upstream 为 `3000`，后台 `/admin-api/` upstream 同步跟随 `3000`；`scripts/check-ecs-readiness.ps1` 显示 HTTPS healthz 200、未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后 `scripts/probe-ecs-today-agri.ps1 -Runs 2` 验证 v62：`ok_count=2/2`，每次 3 条可展示 item，无 `reasoning_tokens`，标题主体已避开调研 / 平台过程词和养殖水产，但摘要长度仍约 71-77 字，低于 90-130 字目标；当前记录为质量观察项，不加后端字数硬过滤。ECS 日志尾部显示新部署后只有 readiness / 探针和公网扫描 404，旧短信 503 / 登录 500 都是部署前错误。
+
+- 手机号登录环境策略按真机可用性再校准：验证码登录继续作为 WiFi、系统代理、VPN、移动数据环境都必须能走的正式兜底；一键登录仍避开 VPN / 系统代理和纯 WiFi / 无可用移动数据，直接切 App 验证码页；但 4G+WiFi 或当前活动网络不是蜂窝、同时系统仍检测到可用移动数据能力时，不再一概当成 WiFi-only 阻断，而是上报 `auth.fusion_env_warning` 后允许一键登录尝试。`check-android-build-parity.ps1` 同步拦截回归：必须检测全部网络的蜂窝数据能力，VPN / 系统代理必须阻断，纯 WiFi / 无蜂窝数据必须回验证码，4G+WiFi 只能 warning 不能硬禁。
+
+- 后台监控和 runbook 同步把登录排障文案改成普通用户能理解的两段：`auth.fusion_env_blocked` 是无网络、无 SIM、SIM 未就绪、VPN / 系统代理或没有可用移动数据导致一键登录不该硬拉 SDK；`auth.fusion_env_warning` 是 4G+WiFi 或混合网络下已放行一键登录尝试。验证码登录不再被文案误导成必须关闭 WiFi / 代理，只要生产 HTTPS 后端可达就应作为正式兜底可用。
+
+- 旧本机 ID 合并到 `acct_...` 时继续补账号资产护栏：如果目标账号已经有 `session_ab`，现在不会直接删除旧本机 A 层滑窗 / 记忆文档；目标为空时继承旧值，目标已有记忆时把旧记忆追加并标记 `pending_retry_b`，后续由摘要模型重整，避免登录迁移时静默丢记忆。回归测试新增长期身份表覆盖清单和 `session_ab` 合并 SQL 护栏，继续锁住会员、额度、加油包、订单、礼品卡、帮助反馈、App 日志、聊天归档、记忆文档和注销申请都归同一个账号ID。
+
+- 今日农情提示词升到 `2026-06-12-v62`，仍坚持“不加后端内容过滤、主要靠提示词控制方向”：提示词优先输出 3 条，但质量优先，确实只有 2 条可靠种植侧材料时可只输出 2 条，并明确 JSON 示例里的 3 个对象只代表 3 条时的格式，不为了凑数选择养殖、水产、旧闻、广告软文、弱材料或泛泛动态；动物类边界补充鸡肉、鸡蛋、牛羊、奶业、奶价和动物类价格等例子，继续要求材料主体是养殖、水产、饲料、饲用原料或动物类价格时换成种植侧材料。v62 额外要求调研、会议、平台上线和成果展示类材料必须有具体种植事实和直接影响，标题不要用“调研推动”“场景上新”“即将投用”“成果展示”这类过程词掩盖空泛材料；每条摘要至少包含三个具体事实要素。后端发布门槛不变，仍只保留 JSON 结构、至少 2 条标题 / 摘要非空 item 和私网 / 本机 URL 安全兜底。
+
 ## 2026-06-11
 
 - 手机号登录继续按“明天真机必须能测”收口：后端短信发送在调用普通 Dysms `SendSms` 前仍先缓存 6 位验证码摘要，但如果供应商返回超时 / 异常，不再主动清掉 Redis 验证码，避免“短信实际已送达、用户填码时后端已删码”的情况；账号登录成功后才清码的规则不变。DYPNS / Dysms SDK 返回空 body 时现在返回稳定错误码，不再可能因 nil body 触发 panic。旧本机 ID 合并到 `acct_...` 时补迁移 `account_deletion_requests`，让注销申请也归到同一个账号ID。Android 一键登录环境预检把 VPN / 代理和当前活动网络非蜂窝从 warning 升为直接阻断并回 App 验证码登录，避免 WiFi / 代理环境继续硬拉阿里云 SDK 出图形验证 / 怪页 / ROM 闪退；构建一致性脚本新增已生成 merged / packaged manifest 检查，确认融合认证 SDK Activity 最终都有本地主题和 `exported=false`。

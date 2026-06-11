@@ -189,8 +189,16 @@ if ($failures.Count -eq 0) {
         "Aliyun SDK built-in switch/more-login entry must stay hidden so SMS fallback remains in the app page."
     Require-Match $failures $fusionClient '\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)[\s\S]*?\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)' `
         "Custom Aliyun protocolAction must also set packageName to the app applicationId."
-    Require-Match $failures $fusionClient 'hasVpnTransport\s*->\s*"vpn_active"[\s\S]*?!hasCellularTransport\s*->\s*"no_active_cellular"' `
-        "Fusion one-click login must block VPN/proxy and non-cellular active networks before starting the Aliyun SDK."
+    Require-Match $failures $fusionClient 'hasVpnTransport\s*->\s*"vpn_active"' `
+        "Fusion one-click login must block VPN/proxy before starting the Aliyun SDK."
+    Require-Match $failures $fusionClient 'hasProxyConfigured\s*->\s*"proxy_active"' `
+        "Fusion one-click login must block configured system proxies before starting the Aliyun SDK."
+    Require-Match $failures $fusionClient 'hasAnyCellularInternetTransport' `
+        "Fusion one-click login must inspect all networks so 4G+WiFi mixed environments are not treated as WiFi-only."
+    Require-Match $failures $fusionClient 'blockReason\(\):\s*String\?\s*=[\s\S]*?!hasAnyCellularInternetTransport\s*->\s*"no_cellular_data"' `
+        "Fusion one-click login must fall back to SMS when no usable cellular data path is available."
+    Require-Match $failures $fusionClient 'fun\s+warningReason\(\):\s*String\?\s*=[\s\S]*?!hasCellularTransport\s*&&\s*hasAnyCellularInternetTransport\s*->\s*"wifi_with_cellular_available"' `
+        "Fusion one-click login should warn, not hard-block, 4G+WiFi mixed environments."
 
     Require-Match $failures $chatScreen 'BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible' `
         "Debug-only preview panel must stay behind BuildConfig.DEBUG."

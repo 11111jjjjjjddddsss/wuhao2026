@@ -396,6 +396,9 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	} else if err != nil {
 		return err
 	} else {
+		if _, err := tx.ExecContext(ctx, mergeSessionABSQL, oldUserID, nowMs, newUserID); err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM session_ab WHERE user_id = ?", oldUserID); err != nil {
 			return err
 		}
@@ -455,6 +458,30 @@ const mergeSessionGenerationSQL = `INSERT INTO session_generation(user_id, gener
    generation = GREATEST(session_generation.generation, VALUES(generation)),
    cleared_at = GREATEST(COALESCE(session_generation.cleared_at, 0), COALESCE(VALUES(cleared_at), 0)),
    updated_at = VALUES(updated_at)`
+
+const mergeSessionABSQL = `UPDATE session_ab AS target
+ JOIN session_ab AS source ON source.user_id = ?
+ SET
+   target.a_json = CASE
+     WHEN (target.a_json IS NULL OR JSON_LENGTH(target.a_json) = 0) AND source.a_json IS NOT NULL THEN source.a_json
+     ELSE target.a_json
+   END,
+   target.b_summary = CASE
+     WHEN NULLIF(TRIM(COALESCE(source.b_summary, '')), '') IS NULL THEN target.b_summary
+     WHEN NULLIF(TRIM(COALESCE(target.b_summary, '')), '') IS NULL THEN source.b_summary
+     WHEN TRIM(target.b_summary) = TRIM(source.b_summary) THEN target.b_summary
+     ELSE TRIM(CONCAT(TRIM(target.b_summary), CHAR(10), CHAR(10), TRIM(source.b_summary)))
+   END,
+   target.pending_retry_b = CASE
+     WHEN COALESCE(source.pending_retry_b, 0) <> 0 THEN 1
+     WHEN NULLIF(TRIM(COALESCE(source.b_summary, '')), '') IS NOT NULL
+       AND NULLIF(TRIM(COALESCE(target.b_summary, '')), '') IS NOT NULL
+       AND TRIM(target.b_summary) <> TRIM(source.b_summary) THEN 1
+     ELSE target.pending_retry_b
+   END,
+   target.round_total = GREATEST(COALESCE(target.round_total, 0), COALESCE(source.round_total, 0)),
+   target.updated_at = ?
+ WHERE target.user_id = ?`
 
 func effectiveEntitlementForUserTx(ctx context.Context, tx *sql.Tx, userID string, nowMs int64) (Tier, *int64, error) {
 	var tier sql.NullString

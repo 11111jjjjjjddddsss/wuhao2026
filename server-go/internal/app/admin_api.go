@@ -1693,7 +1693,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	if report.AuthLogs.EnvBlocked > 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "一键登录环境不满足",
-			Body:  "测试机存在无网络、无 SIM、无蜂窝模块或 SIM 未就绪，先确认移动数据和默认数据卡，再重测一键登录。",
+			Body:  "测试机存在无网络、无 SIM、SIM 未就绪、VPN / 系统代理或没有可用移动数据，一键登录先处理手机环境；验证码登录只要生产 HTTPS 可达仍应可用。",
 			Level: "warn",
 			Route: "app-logs",
 			Count: report.AuthLogs.EnvBlocked,
@@ -1701,8 +1701,8 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	}
 	if report.AuthLogs.EnvWarnings > 0 {
 		items = append(items, AdminMonitoringActionItem{
-			Title: "一键登录环境可疑",
-			Body:  "测试机存在代理、无蜂窝或网络状态可疑，优先关闭 VPN、切到目标手机号的默认数据卡，再重测一键登录。",
+			Title: "一键登录混合网络",
+			Body:  "测试机处在 4G+WiFi 或当前活动网络非蜂窝但移动数据可用的状态，App 已放行一键登录尝试；若失败再看 SDK 事件或改用验证码。",
 			Level: "warn",
 			Route: "app-logs",
 			Count: report.AuthLogs.EnvWarnings,

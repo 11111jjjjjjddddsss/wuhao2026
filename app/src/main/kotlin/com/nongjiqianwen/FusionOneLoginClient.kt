@@ -36,7 +36,7 @@ object FusionOneLoginClient {
     private const val VERIFY_FAILED_FALLBACK_MS = 1_500L
     private const val SERVICE_AGREEMENT_URL = "https://nongjiqiancha.cn/legal/user-agreement/"
     private const val PRIVACY_POLICY_URL = "https://nongjiqiancha.cn/legal/privacy-policy/"
-    private const val ONE_LOGIN_FALLBACK_MESSAGE = "一键登录未成功，请关闭代理/VPN、打开移动数据并确认默认数据卡；也可用验证码登录"
+    private const val ONE_LOGIN_FALLBACK_MESSAGE = "一键登录未成功，已切换到验证码登录；验证码登录可在 WiFi 或代理环境下继续使用"
     private val mainHandler = Handler(Looper.getMainLooper())
     private val loginInFlight = AtomicBoolean(false)
     private val loginGeneration = AtomicLong(0L)
@@ -688,8 +688,10 @@ object FusionOneLoginClient {
         val hasActiveNetwork: Boolean,
         val hasInternetCapability: Boolean,
         val hasCellularTransport: Boolean,
+        val hasAnyCellularInternetTransport: Boolean,
         val hasWifiTransport: Boolean,
         val hasVpnTransport: Boolean,
+        val hasProxyConfigured: Boolean,
         val simState: Int?,
         val simCount: Int?
     ) {
@@ -713,15 +715,15 @@ object FusionOneLoginClient {
                 "active".takeIf { hasActiveNetwork },
                 "internet".takeIf { hasInternetCapability },
                 "cellular".takeIf { hasCellularTransport },
+                "cellular_available".takeIf { hasAnyCellularInternetTransport && !hasCellularTransport },
                 "wifi".takeIf { hasWifiTransport },
-                "vpn".takeIf { hasVpnTransport }
+                "vpn".takeIf { hasVpnTransport },
+                "proxy".takeIf { hasProxyConfigured }
             ).ifEmpty { listOf("none") }.joinToString(separator = "+")
 
         fun blockReason(): String? =
             when {
                 !hasActiveNetwork || !hasInternetCapability -> "no_network"
-                hasVpnTransport -> "vpn_active"
-                !hasCellularTransport -> "no_active_cellular"
                 simCount == 0 -> "no_sim"
                 simState == TelephonyManager.SIM_STATE_ABSENT -> "no_sim"
                 simState in setOf(
@@ -733,19 +735,27 @@ object FusionOneLoginClient {
                     TelephonyManager.SIM_STATE_CARD_IO_ERROR,
                     TelephonyManager.SIM_STATE_CARD_RESTRICTED
                 ) -> "sim_not_ready"
+                hasVpnTransport -> "vpn_active"
+                hasProxyConfigured -> "proxy_active"
+                !hasAnyCellularInternetTransport -> "no_cellular_data"
                 else -> null
             }
 
         fun warningReason(): String? =
-            null
+            when {
+                !hasCellularTransport && hasAnyCellularInternetTransport -> "wifi_with_cellular_available"
+                hasWifiTransport -> "wifi_and_cellular"
+                else -> null
+            }
 
         fun userMessageFor(reason: String): String =
             when (reason) {
                 "no_network" -> "当前网络不可用，请联网后重试，或使用验证码登录"
                 "no_sim" -> "未检测到可用 SIM 卡，请插卡并打开移动数据，或使用验证码登录"
                 "sim_not_ready" -> "SIM 卡暂不可用，请确认默认移动数据卡正常，或使用验证码登录"
-                "vpn_active" -> "检测到代理或 VPN，先关闭后再试一键登录；也可直接使用验证码登录"
-                "no_active_cellular" -> "当前未走移动数据，请打开移动数据并确认默认数据卡，再试一键登录；也可用验证码登录"
+                "vpn_active" -> "检测到代理或 VPN，一键取号可能失败，已切换到验证码登录；验证码登录可继续使用"
+                "proxy_active" -> "检测到系统代理，一键取号可能失败，已切换到验证码登录；验证码登录可继续使用"
+                "no_cellular_data" -> "一键登录需要可用移动数据，已切换到验证码登录；验证码登录可继续使用"
                 else -> ONE_LOGIN_FALLBACK_MESSAGE
             }
     }
@@ -754,6 +764,12 @@ object FusionOneLoginClient {
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val network = connectivity?.activeNetwork
         val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
+        val hasAnyCellularInternetTransport = connectivity?.allNetworks.orEmpty().any { candidate ->
+            val candidateCapabilities = connectivity?.getNetworkCapabilities(candidate)
+            candidateCapabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true &&
+                candidateCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
+        val hasProxyConfigured = isSystemProxyConfigured()
         val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
         val simState = runCatching { telephony?.simState }.getOrNull()
         val simCount = runCatching {
@@ -768,12 +784,23 @@ object FusionOneLoginClient {
             hasActiveNetwork = network != null,
             hasInternetCapability = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
             hasCellularTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true,
+            hasAnyCellularInternetTransport = hasAnyCellularInternetTransport,
             hasWifiTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true,
             hasVpnTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true,
+            hasProxyConfigured = hasProxyConfigured,
             simState = simState,
             simCount = simCount
         )
     }
+
+    private fun isSystemProxyConfigured(): Boolean =
+        listOf(
+            "http.proxyHost",
+            "https.proxyHost",
+            "socksProxyHost"
+        ).any { key ->
+            !System.getProperty(key).isNullOrBlank()
+        }
 
     private fun finish(
         business: AlicomFusionBusiness,

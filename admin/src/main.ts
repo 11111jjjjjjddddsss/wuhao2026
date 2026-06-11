@@ -2682,10 +2682,10 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           <span class="small muted">最近24小时</span>
           <strong>${failures}</strong>
           <p>认证失败；一键登录 ${authLogs.fusion_failures ?? 0}，短信 ${authLogs.sms_failures ?? 0}，登录前日志 ${authLogs.preauth_count ?? 0}，闪退补报 ${crashReports}。</p>
-          <p class="small muted">真机先确认关闭代理 / VPN、打开移动数据、默认数据卡是要登录的手机号；仍失败再按下面事件筛选。</p>
+          <p class="small muted">一键登录先确认移动数据和默认数据卡；验证码登录只要生产 HTTPS 可达，WiFi 或代理环境下也应可用。</p>
           <div class="auth-debug-metrics">
             ${authDebugMetric("环境不满足", envBlocked, envBlocked ? "warn" : "ok")}
-            ${authDebugMetric("可疑环境", envWarnings, envWarnings ? "warn" : "ok")}
+            ${authDebugMetric("混合网络", envWarnings, envWarnings ? "warn" : "ok")}
             ${authDebugMetric("请求网络失败", loginNetworkFailures, loginNetworkFailures ? "warn" : "ok")}
           </div>
           <p class="small muted">最近出现：${authLogs.last_seen_at ? formatTime(authLogs.last_seen_at) : "暂无"}</p>
@@ -2694,7 +2694,7 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           ${filterButton("全部登录日志", { eventPrefix: "auth.", window: "24h" })}
           ${filterButton("登录前日志", { userID: "preauth", window: "24h" })}
           ${filterButton("环境不满足", { event: "auth.fusion_env_blocked", window: "24h" })}
-          ${filterButton("可疑环境", { event: "auth.fusion_env_warning", window: "24h" })}
+          ${filterButton("4G+WiFi提示", { event: "auth.fusion_env_warning", window: "24h" })}
           ${filterButton("请求网络失败", { event: "auth.login_network_failed", window: "24h" })}
           ${filterButton("取 Token 失败", { event: "auth.fusion_token_failed", window: "24h" })}
           ${filterButton("SDK 初始化失败", { event: "auth.fusion_sdk_init_failed", window: "24h" })}
@@ -2936,7 +2936,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ? "已有登录环境、网络、SDK 或闪退信号，先看 App 日志里的 auth.*。"
       : recentLoginSessions > 0
         ? "24 小时内已有新登录 session；仍要分别回归一键登录和验证码登录。"
-        : "云端配置正常不等于真机已过；明天测试时重点看一键登录、验证码收码、默认数据卡和代理。";
+        : "云端配置正常不等于真机已过；明天测试时重点看一键登录、验证码收码、默认数据卡和生产 HTTPS 可达性。";
   const appQualityLevel = crashReports > 0 || appErrors >= 10 || authFailures >= 10 ? "bad" : appErrors > 0 || authFailures > 0 ? "warn" : "ok";
   return `
     <section class="decision-grid">
@@ -3009,7 +3009,7 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
       title: "一键登录 / 短信登录",
       status: authTrouble > 0 ? "看日志" : recentLoginSessions > 0 ? "有登录" : "待真机",
       level: authTrouble > 0 ? "warn" : recentLoginSessions > 0 ? "ok" : "info",
-      body: authTrouble > 0 ? "已有登录环境、网络、SDK 或闪退信号，先点 App 日志看 auth.*。" : recentLoginSessions > 0 ? "24 小时内已有新登录 session；继续用真机分别回归一键登录和验证码登录。" : "云端配置正常不等于真机已过；测试时重点看默认数据卡、移动数据、代理和验证码收码。",
+      body: authTrouble > 0 ? "已有登录环境、网络、SDK 或闪退信号，先点 App 日志看 auth.*。" : recentLoginSessions > 0 ? "24 小时内已有新登录 session；继续用真机分别回归一键登录和验证码登录。" : "云端配置正常不等于真机已过；测试时重点看默认数据卡、移动数据、验证码收码和生产 HTTPS 可达性。",
       route: "app-logs",
       appLogFilter: { eventPrefix: "auth.", window: "24h" },
     },
