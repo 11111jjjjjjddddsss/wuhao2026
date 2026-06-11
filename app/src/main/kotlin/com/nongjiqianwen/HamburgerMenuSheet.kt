@@ -2,7 +2,6 @@ package com.nongjiqianwen
 
 import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.net.Uri
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
@@ -133,13 +132,6 @@ private fun normalizeSupportLinkTarget(raw: String): String {
         "https://$trimmed"
     }
 }
-
-private tailrec fun Context.findActivityForHamburger(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivityForHamburger()
-        else -> null
-    }
 
 private fun Context.loadLastPromptedUpdateVersionCode(): Int =
     applicationContext
@@ -509,7 +501,13 @@ internal fun HamburgerMenuSheet(
                         HamburgerMenuPage.Account -> {
                             HamburgerAccountManagementPage(
                                 onPendingAction = ::showNotice,
-                                onClearChatHistory = onClearChatHistory
+                                onClearChatHistory = onClearChatHistory,
+                                onAuthSessionCleared = {
+                                    supportAttachmentMenuVisible = false
+                                    legalSubpage = false
+                                    page = HamburgerMenuPage.Menu
+                                    onDismiss()
+                                }
                             )
                         }
                         HamburgerMenuPage.Redeem -> {
@@ -1808,11 +1806,13 @@ private fun HamburgerMenuPreviewGroups() {
 @Composable
 private fun HamburgerAccountManagementPage(
     onPendingAction: (String) -> Unit,
-    onClearChatHistory: () -> Unit
+    onClearChatHistory: () -> Unit,
+    onAuthSessionCleared: () -> Unit
 ) {
     HamburgerAccountManagementContent(
         onPendingAction = onPendingAction,
         onClearChatHistory = onClearChatHistory,
+        onAuthSessionCleared = onAuthSessionCleared,
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -1827,6 +1827,7 @@ private fun HamburgerAccountManagementPage(
 private fun HamburgerAccountManagementContent(
     onPendingAction: (String) -> Unit,
     onClearChatHistory: () -> Unit,
+    onAuthSessionCleared: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var deleteHistoryDialogVisible by rememberSaveable { mutableStateOf(false) }
@@ -1908,7 +1909,7 @@ private fun HamburgerAccountManagementContent(
                         if (ok) {
                             PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
                             onPendingAction("已退出当前设备")
-                            context.findActivityForHamburger()?.recreate()
+                            onAuthSessionCleared()
                         } else {
                             onPendingAction("退出失败，请检查网络后重试")
                         }
@@ -1974,7 +1975,7 @@ private fun HamburgerAccountManagementContent(
                         accountDeletionDialogVisible = false
                         PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
                         onPendingAction("注销申请已提交，已退出当前账号")
-                        context.findActivityForHamburger()?.recreate()
+                        onAuthSessionCleared()
                     } else {
                         onPendingAction("提交失败，请检查网络后重试")
                     }
@@ -1994,6 +1995,7 @@ internal fun HamburgerAccountManagementPagePreview() {
         HamburgerAccountManagementContent(
             onPendingAction = {},
             onClearChatHistory = {},
+            onAuthSessionCleared = {},
             modifier = Modifier.padding(14.dp)
         )
     }
