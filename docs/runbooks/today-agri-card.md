@@ -133,7 +133,7 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-cards" `
 
 探针用于验证当前固定 `qwen3.5-plus + compatible chat/completions + turbo` 的 JSON 执行力、来源名、解析通过率、usage 和新闻质量。探针不会写入 `daily_agri_cards`，也不会改变用户当天看到的卡片。该入口同样必须带 `DAILY_AGRI_JOB_SECRET`，`runs` 默认 1，最多 5。
 
-2026-06-11 生产环境曾用 `qwen3.5-plus + turbo + v52` 跑过探针：`runs=3`，`ok_count=3/3`，每次均得到 3 条可解析 item，未见 `reasoning_tokens`，单次 total tokens 约 6.3k-6.6k。样本没有链接下发、代码块、养殖水产主体或明显广告软文；有一组出现两条农业天气 / 农事风险相关内容，但都明确服务种植生产，不是生活天气。v54 在此基础上只做表达和摘要长度微调，代码路径、模型和后端兜底不变；兼容 Chat 链路返回的结构化 `sources[]` 可能为空，质量判断仍要看 `source_name`、正文事实和后台抽查。
+2026-06-11 生产环境曾用 `qwen3.5-plus + turbo + v52` 跑过探针：`runs=3`，`ok_count=3/3`，每次均得到 3 条可解析 item，未见 `reasoning_tokens`，单次 total tokens 约 6.3k-6.6k。样本没有链接下发、代码块、养殖水产主体或明显广告软文；有一组出现两条农业天气 / 农事风险相关内容，但都明确服务种植生产，不是生活天气。v53 线上 `runs=2` 仍为 `ok_count=2/2`，但有一组摘要只有 76-79 字，偏薄；v54 小幅加强摘要厚度提示后，线上 `runs=2` 继续 `ok_count=2/2`，6 条摘要长度约 94-112 字，未返回 `reasoning_tokens`，单次 total tokens 约 7.16k-7.18k。兼容 Chat 链路返回的结构化 `sources[]` 可能为空，质量判断仍要看 `source_name`、正文事实和后台抽查；本轮没有为摘要字数或综合价格类材料增加后端内容拦截。
 
 ```powershell
 curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/probe?runs=3" `
