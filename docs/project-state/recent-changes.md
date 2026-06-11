@@ -5,6 +5,8 @@
 
 ## 2026-06-11
 
+- Android 一键登录入口又收掉了一层不必要前置拦截：登录页点击“本机号码一键登录”后不再先弹 `READ_PHONE_STATE` 运行时权限审批窗，而是保持用户同意协议后直接走现有网络 / SIM 环境预检、后端 fusion token 和阿里云融合认证 SDK 主链。仓库仍保留 manifest 里的 `READ_PHONE_STATE` 声明，先不同时删除，避免对当前融合认证 AAR / ROM 组合做过猛改动；后续以真机回归确认该声明是否还需要。同步删除已无调用的 `auth.fusion_permission_denied` 客户端日志口径，并更新当前状态 / 风险 / phone-auth runbook，避免后续窗口继续按“先弹电话权限”排障。
+
 - Android 账号管理页退出 / 注销成功后的本地 UI 收口继续简化：`SessionApi.logoutCurrentSession()` 和 `requestAccountDeletion()` 成功后本来就会清本地 auth session、取消当前 SSE 并通过 `LoginGate` 的 auth invalid listener 自然切回登录页，因此账号管理页不再额外 `Activity.recreate()` 强刷整页。当前改为成功后只取消该账号的待发送 Work、收起设置页并交给登录门禁自然退回登录，避免整页重建造成的闪屏、状态重置和后续误把 `recreate()` 当成登录闭环必需步骤。`HamburgerMenuSheet` 内为此删除了仅服务旧重建方案的 `findActivityForHamburger()` 辅助函数；`./gradlew.bat :app:compileDebugKotlin` 已通过。
 
 - 监控面板“正式上架检查”汇总口径补了一处状态一致性修复：后台 `launch_readiness` 之前把“注销申请”写成 `partial`，但前端汇总只按 `ready / attention / blocked` 统计，导致“需处理”数量和“下一步”选择可能漏算。现已统一为上线检查专用三态，前端汇总也改成把所有非 `ready`、非 `blocked` 状态都归到“需处理”，并新增后端单测锁住这条约束，避免后续再把 capability 的 `partial` 状态误混进 launch readiness。

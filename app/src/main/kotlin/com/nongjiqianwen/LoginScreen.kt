@@ -1,13 +1,9 @@
 package com.nongjiqianwen
 
-import android.Manifest
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -73,7 +69,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.core.content.ContextCompat
 import kotlinx.coroutines.delay
 
 @Composable
@@ -130,28 +125,6 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                 smsMode = true
                 message = error ?: "一键登录未完成，请使用验证码登录"
             }
-        }
-    }
-
-    val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val activity = context.findActivity()
-        if (granted && activity != null) {
-            startFusionOneLogin(activity)
-        } else {
-            AppCrashReporter.clearAuthStage()
-            SessionApi.reportAuthClientLog(
-                level = "warn",
-                event = "auth.fusion_permission_denied",
-                message = "fusion phone state permission denied",
-                attrs = mapOf(
-                    "permission" to "read_phone_state",
-                    "activity_available" to (activity != null)
-                )
-            )
-            smsMode = true
-            message = "未授予本机号码登录所需权限，请使用验证码登录"
         }
     }
 
@@ -223,17 +196,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 message = "一键登录暂不可用，请使用验证码登录"
                                 return@Button
                             }
-                            if (
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.READ_PHONE_STATE
-                                ) != PackageManager.PERMISSION_GRANTED
-                            ) {
-                                phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-                            } else {
-                                startFusionOneLogin(activity)
-                            }
+                            startFusionOneLogin(activity)
                         },
                         enabled = !busy,
                         shape = RoundedCornerShape(12.dp),

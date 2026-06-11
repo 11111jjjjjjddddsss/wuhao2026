@@ -45,7 +45,6 @@
 - `auth.fusion_scene_start_failed`
 - `auth.fusion_ui_model_null`
 - `auth.fusion_ui_config_failed`
-- `auth.fusion_permission_denied`
 - `auth.fusion_empty_verify_token`
 - `auth.fusion_verify_duplicate`
 - `auth.fusion_verify_failed`
