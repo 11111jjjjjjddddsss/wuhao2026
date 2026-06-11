@@ -702,6 +702,8 @@ object FusionOneLoginClient {
                 !hasActiveNetwork || !hasInternetCapability -> "no_network"
                 simCount == 0 -> "no_sim"
                 simState == TelephonyManager.SIM_STATE_ABSENT -> "no_sim"
+                hasVpnTransport -> "vpn_active"
+                !hasCellularTransport -> "no_active_cellular"
                 simState in setOf(
                     TelephonyManager.SIM_STATE_NETWORK_LOCKED,
                     TelephonyManager.SIM_STATE_PIN_REQUIRED,
@@ -716,8 +718,6 @@ object FusionOneLoginClient {
 
         fun warningReason(): String? =
             when {
-                hasVpnTransport -> "vpn_active"
-                !hasCellularTransport -> "no_active_cellular"
                 else -> null
             }
 
@@ -726,6 +726,8 @@ object FusionOneLoginClient {
                 "no_network" -> "当前网络不可用，请联网后重试，或使用验证码登录"
                 "no_sim" -> "未检测到可用 SIM 卡，请插卡并打开移动数据，或使用验证码登录"
                 "sim_not_ready" -> "SIM 卡暂不可用，请确认默认移动数据卡正常，或使用验证码登录"
+                "vpn_active" -> "检测到代理或 VPN，先关闭后再试一键登录；也可直接使用验证码登录"
+                "no_active_cellular" -> "当前未走移动数据，请打开移动数据并确认默认数据卡，再试一键登录；也可用验证码登录"
                 else -> ONE_LOGIN_FALLBACK_MESSAGE
             }
     }

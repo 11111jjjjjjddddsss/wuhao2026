@@ -5,6 +5,20 @@
 
 ## 2026-06-11
 
+- 手机号登录再收一刀保可用：Android 登录页重新改成“用户点一键登录时按需申请 `READ_PHONE_STATE`，拒绝就直接切验证码登录并记 `auth.fusion_permission_denied`”，`FusionOneLoginClient` 也把 `vpn_active`、`no_active_cellular` 从 warning 升成前置 `auth.fusion_env_blocked`，不再让明显高风险环境继续硬拉融合认证授权页；同时在 App manifest 覆盖 `com.mobile.auth.gatewayauth.LoginAuthActivity` / `PrivacyDialogActivity` 主题为本地 translucent 兼容主题，尽量降低荣耀 / 华为 / Android 15+ 授权页拉起闪退风险。服务端短信链路同步修正：`DYPNS_SMS_TEMPLATE_PARAM` 不再默认强塞 `{\"code\":\"##code##\"}`，只有显式配置模板变量时才传 `TemplateParam`，避免阿里云 `SendSmsVerifyCode` 因验证码模板变量不匹配先报“非法参数”再触发频控。`./gradlew.bat :app:compileDebugKotlin` 和 `cd server-go && go build ./...` 已通过。
+
+- 今日农情提示词升到 `2026-06-11-v59`，继续坚持“不要坑用户，也不要过度压模型”的折中口径：不加后端内容过滤，不恢复可信域名白名单、固定站点限制、字数拦截或正好 3 条硬闸门，只在提示词里把摘要厚度再轻轻往上托一档。新要求是手机卡片继续按 3-4 行、偏 3.5 行来写，宁可接近 100 字，也不要收成 70 多字薄摘要；第二句不能只剩“需关注”“可留意”这类很短的收尾；如果某条仍只有 70 多字，就先补足具体事实和直接影响再输出。记忆文档这轮继续维持单份纯文字记忆摘要方案，真实样本复测仍稳定，不再大改。
+
+- 今日农情线上 v58 探针 `runs=2` 继续 `ok_count=2/2`，`prompt_version=2026-06-11-v58`，无 reasoning tokens，单次 total tokens 约 7.22k；6 条标题和来源名可展示，本轮未再混入养殖 / 水产 / 猪肉主体，说明核心边界比 v57 稳一些。残余问题是摘要仍约 73-79 字，模型没有完全执行“不低于 85 字”；当前先记录为质量观察项，不继续无限堆提示词，也不加后端字数过滤。
+
+- 今日农情线上 v57 探针 `runs=2` 继续 `ok_count=2/2`，`prompt_version=2026-06-11-v57`，无 reasoning tokens，单次 total tokens 约 7.2k；摘要长度略有改善但仍有 77-81 字样本，且第二轮混入“瘦肉型白条猪肉出厂价微涨”，踩到“养殖水产不要”的核心边界。提示词升到 `2026-06-11-v58`：仍不加后端关键词过滤，只在事实原则和输出前自检里要求最终标题 / 摘要若以猪肉、生猪、猪价、禽蛋、水产、饲料、饲用原料、兽药或鱼虾为主体，必须重写为种植侧材料。
+
+- 今日农情线上 v56 探针 `runs=2` 继续 `ok_count=2/2`，响应已正确返回 `prompt_version=2026-06-11-v56` 和 `total_runs=2`，无 reasoning tokens，单次 total tokens 约 7.15k；但 6 条摘要仍约 68-84 字，偏薄问题没有被“通常至少两句”完全压住。提示词继续小幅升到 `2026-06-11-v57`：仍不加后端字数过滤，只把写作要求改成摘要必须像新闻短讯、至少两句、不低于 85 字，并在输出前自检里要求不足先重写该条；如果 v57 仍偶发偏短，后续先按运营抽查观察，不继续无限堆硬规则。
+
+- 今日农情线上 v55 探针 `runs=2` 继续 `ok_count=2/2`，每轮 3 条可展示 item，`reasoning_tokens=null`，单次 total tokens 约 7.1k；标题和来源名能展示，但摘要仍有 69-83 字偏薄样本。提示词小幅升到 `2026-06-11-v56`：仍不加后端内容过滤或字数拦截，只在提示词里要求摘要通常至少两句，第一句写事实，第二句补直接影响、农时窗口、风险点、供应变化、农资 / 流通影响或基层可留意事项；内部探针响应同步返回 `prompt_version` 和 `total_runs`，方便后续巡查。
+
+- 继续给今日农情和记忆文档主链补防回归护栏，不改变生产逻辑：今日农情测试名从“三条必需”改成“结构化内容可解析且忽略模型自带 URL”，避免后续窗口误以为发布仍硬要求正好 3 条；新增测试确认本机 / 内网来源 URL 只会被剥离，不会把整条可展示内容拦掉，继续符合“最大限度放开，提示词控方向”的口径。记忆文档新增旧快照写回失败的测试，确保 stale 摘要不会覆盖现有记忆，也不会误清 `pending_retry_b`；主对话记忆注入测试扩展为禁止旧“后台参考 / 后台摘要 / B层 / C层 / 内部机制”标签回流。`go test ./...` 和 Android `:app:compileDebugKotlin` 已通过。
+
 - Android 一键登录入口又收掉了一层不必要前置拦截：登录页点击“本机号码一键登录”后不再先弹 `READ_PHONE_STATE` 运行时权限审批窗，而是保持用户同意协议后直接走现有网络 / SIM 环境预检、后端 fusion token 和阿里云融合认证 SDK 主链。仓库仍保留 manifest 里的 `READ_PHONE_STATE` 声明，先不同时删除，避免对当前融合认证 AAR / ROM 组合做过猛改动；后续以真机回归确认该声明是否还需要。同步删除已无调用的 `auth.fusion_permission_denied` 客户端日志口径，并更新当前状态 / 风险 / phone-auth runbook，避免后续窗口继续按“先弹电话权限”排障。
 
 - Android 账号管理页退出 / 注销成功后的本地 UI 收口继续简化：`SessionApi.logoutCurrentSession()` 和 `requestAccountDeletion()` 成功后本来就会清本地 auth session、取消当前 SSE 并通过 `LoginGate` 的 auth invalid listener 自然切回登录页，因此账号管理页不再额外 `Activity.recreate()` 强刷整页。当前改为成功后只取消该账号的待发送 Work、收起设置页并交给登录门禁自然退回登录，避免整页重建造成的闪屏、状态重置和后续误把 `recreate()` 当成登录闭环必需步骤。`HamburgerMenuSheet` 内为此删除了仅服务旧重建方案的 `findActivityForHamburger()` 辅助函数；`./gradlew.bat :app:compileDebugKotlin` 已通过。

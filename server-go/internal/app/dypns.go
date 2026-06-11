@@ -53,7 +53,7 @@ func NewDypnsClientFromEnv() (*DypnsClient, error) {
 		packageSign:   strings.ToLower(strings.ReplaceAll(strings.TrimSpace(os.Getenv("DYPNS_ANDROID_PACKAGE_SIGN")), ":", "")),
 		smsSignName:   strings.TrimSpace(os.Getenv("DYPNS_SMS_SIGN_NAME")),
 		smsTemplate:   strings.TrimSpace(os.Getenv("DYPNS_SMS_TEMPLATE_CODE")),
-		smsParam:      strings.TrimSpace(firstNonEmpty(os.Getenv("DYPNS_SMS_TEMPLATE_PARAM"), `{"code":"##code##"}`)),
+		smsParam:      strings.TrimSpace(os.Getenv("DYPNS_SMS_TEMPLATE_PARAM")),
 		smsSchemeName: dypnsOptionalSMSSchemeName(),
 	}, nil
 }
@@ -71,7 +71,7 @@ func (c *DypnsClient) HasFusionConfigured() bool {
 }
 
 func (c *DypnsClient) HasSMSConfigured() bool {
-	return c.HasClientConfigured() && c.smsSignName != "" && c.smsTemplate != "" && c.smsParam != ""
+	return c.HasClientConfigured() && c.smsSignName != "" && c.smsTemplate != ""
 }
 
 func (c *DypnsClient) FusionSchemeCode() string {
@@ -138,7 +138,9 @@ func (c *DypnsClient) SendSMSCode(ctx context.Context, phone string, outID strin
 	req.SetPhoneNumber(phone)
 	req.SetSignName(c.smsSignName)
 	req.SetTemplateCode(c.smsTemplate)
-	req.SetTemplateParam(c.smsParam)
+	if strings.TrimSpace(c.smsParam) != "" {
+		req.SetTemplateParam(c.smsParam)
+	}
 	if c.smsSchemeName != "" {
 		req.SetSchemeName(c.smsSchemeName)
 	}

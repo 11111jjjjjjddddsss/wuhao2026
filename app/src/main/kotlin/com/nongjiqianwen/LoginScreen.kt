@@ -1,9 +1,14 @@
 package com.nongjiqianwen
 
 import android.app.Activity
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -128,6 +133,38 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
         }
     }
 
+    val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val activity = context.findActivity()
+            if (activity == null) {
+                SessionApi.reportAuthClientLog(
+                    level = "warn",
+                    event = "auth.fusion_activity_unavailable",
+                    message = "fusion login activity unavailable",
+                    attrs = mapOf("stage" to "permission_granted")
+                )
+                smsMode = true
+                busy = false
+                message = "一键登录暂不可用，请使用验证码登录"
+            } else {
+                startFusionOneLogin(activity)
+            }
+        } else {
+            SessionApi.reportAuthClientLog(
+                level = "info",
+                event = "auth.fusion_permission_denied",
+                message = "fusion phone state permission denied",
+                attrs = mapOf("permission" to "READ_PHONE_STATE")
+            )
+            AppCrashReporter.clearAuthStage("auth.fusion_start")
+            smsMode = true
+            busy = false
+            message = "未授予电话状态权限，已切换到验证码登录"
+        }
+    }
+
     LaunchedEffect(countdown) {
         if (countdown > 0) {
             delay(1000)
@@ -196,7 +233,19 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 message = "一键登录暂不可用，请使用验证码登录"
                                 return@Button
                             }
-                            startFusionOneLogin(activity)
+                            val hasPhoneStatePermission =
+                                ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.READ_PHONE_STATE
+                                ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPhoneStatePermission || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                                startFusionOneLogin(activity)
+                            } else {
+                                AppCrashReporter.setAuthStage("auth.fusion_start")
+                                busy = true
+                                message = "请先授权电话状态权限，以便尝试本机号码登录"
+                                phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
+                            }
                         },
                         enabled = !busy,
                         shape = RoundedCornerShape(12.dp),

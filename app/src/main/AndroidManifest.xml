@@ -66,5 +66,13 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <activity
+            android:name="com.mobile.auth.gatewayauth.LoginAuthActivity"
+            android:theme="@style/Theme.NongjiQianwen.FusionAuthDialog"
+            tools:replace="android:theme" />
+        <activity
+            android:name="com.mobile.auth.gatewayauth.PrivacyDialogActivity"
+            android:theme="@style/Theme.NongjiQianwen.FusionAuthDialog"
+            tools:replace="android:theme" />
     </application>
 </manifest>
