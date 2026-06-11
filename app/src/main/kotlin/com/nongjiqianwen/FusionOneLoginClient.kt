@@ -169,6 +169,12 @@ object FusionOneLoginClient {
         currentCompleted = completed
 
         AlicomFusionLog.setLogEnable(BuildConfig.DEBUG)
+        reportAuthLog(
+            level = "info",
+            event = "auth.fusion_sdk_init_start",
+            stage = "sdk_init_start",
+            error = null
+        )
         val token = AlicomFusionAuthToken().apply {
             setAuthToken(snapshot.authToken.orEmpty())
         }
@@ -240,6 +246,12 @@ object FusionOneLoginClient {
                                 )
                                 return@runOnUiThread
                             }
+                            reportAuthLog(
+                                level = "info",
+                                event = "auth.fusion_scene_starting",
+                                stage = "scene_start",
+                                error = null
+                            )
                             val startResult = runCatching {
                                 AppCrashReporter.setAuthStage("auth.fusion_scene_start")
                                 business.startSceneWithTemplateId(
@@ -262,6 +274,13 @@ object FusionOneLoginClient {
                                     false,
                                     ONE_LOGIN_FALLBACK_MESSAGE,
                                     onResult
+                                )
+                            } else {
+                                reportAuthLog(
+                                    level = "info",
+                                    event = "auth.fusion_scene_start_invoked",
+                                    stage = "scene_start",
+                                    error = null
                                 )
                             }
                         }
@@ -561,11 +580,12 @@ object FusionOneLoginClient {
                 .setLogBtnBackgroundDrawable(loginButtonBackground())
                 .setLogBtnHeight(50)
                 .setLogBtnMarginLeftAndRight(32)
-                .setLogBtnOffsetY(230)
+                .setLogBtnOffsetY(224)
+                .hiddenSwtichLogin(true)
                 .setSwitchAccText("其他手机号登录")
                 .setSwitchAccTextColor(Color.rgb(17, 17, 17))
                 .setSwitchAccTextSizeDp(15)
-                .setSwitchOffsetY(300)
+                .setSwitchOffsetY(340)
                 .setCheckboxHidden(false)
                 .setCheckBoxWidth(18)
                 .setCheckBoxHeight(18)
@@ -574,7 +594,7 @@ object FusionOneLoginClient {
                 .setPrivacyEnd("")
                 .setPrivacyTextSizeDp(11)
                 .setPrivacyMargin(20)
-                .setPrivacyOffsetY_B(64)
+                .setPrivacyOffsetY_B(36)
                 .setAppPrivacyOne("《服务协议》", SERVICE_AGREEMENT_URL)
                 .setAppPrivacyTwo("《隐私政策》", PRIVACY_POLICY_URL)
                 .setAppPrivacyColor(Color.rgb(17, 17, 17), Color.rgb(87, 93, 102))
@@ -700,10 +720,10 @@ object FusionOneLoginClient {
         fun blockReason(): String? =
             when {
                 !hasActiveNetwork || !hasInternetCapability -> "no_network"
-                simCount == 0 -> "no_sim"
-                simState == TelephonyManager.SIM_STATE_ABSENT -> "no_sim"
                 hasVpnTransport -> "vpn_active"
                 !hasCellularTransport -> "no_active_cellular"
+                simCount == 0 -> "no_sim"
+                simState == TelephonyManager.SIM_STATE_ABSENT -> "no_sim"
                 simState in setOf(
                     TelephonyManager.SIM_STATE_NETWORK_LOCKED,
                     TelephonyManager.SIM_STATE_PIN_REQUIRED,
@@ -717,9 +737,7 @@ object FusionOneLoginClient {
             }
 
         fun warningReason(): String? =
-            when {
-                else -> null
-            }
+            null
 
         fun userMessageFor(reason: String): String =
             when (reason) {

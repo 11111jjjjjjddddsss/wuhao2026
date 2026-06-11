@@ -3023,7 +3023,7 @@ func (s *Server) adminHealthStatus() AdminHealthStatus {
 		Bailian:           ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
 		Dypns:             ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		DypnsFusion:       ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
-		DypnsSMS:          ternary(s.dypns.HasSMSConfigured(), "ok", "missing_config"),
+		DypnsSMS:          ternary(s.sms.HasConfigured() && s.redisClient != nil, "ok", "missing_config"),
 		Redis:             ternary(s.redisClient != nil, "ok", "missing_config"),
 		UploadStorage:     uploadStoreHealthStatus(s.uploadStore),
 		AuthStrict:        IsAuthStrict(),

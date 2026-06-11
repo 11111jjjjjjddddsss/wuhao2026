@@ -212,6 +212,9 @@ func issueAuthToken(userID string, sessionID string, now time.Time, ttl time.Dur
 	if userID == "" || sessionID == "" {
 		return "", 0, fmt.Errorf("auth token identity missing")
 	}
+	if !isAccountUserID(userID) {
+		return "", 0, fmt.Errorf("auth token user id must be account scoped")
+	}
 	if secret == "" {
 		return "", 0, fmt.Errorf("APP_SECRET is missing")
 	}
@@ -263,6 +266,10 @@ func signAuthPayload(encodedPayload string, secret string) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	_, _ = mac.Write([]byte(encodedPayload))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func isAccountUserID(userID string) bool {
+	return strings.HasPrefix(strings.TrimSpace(userID), "acct_")
 }
 
 func randomHexString(bytesCount int) (string, error) {

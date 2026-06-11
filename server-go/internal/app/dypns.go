@@ -96,7 +96,10 @@ func (c *DypnsClient) GetFusionAuthToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if resp == nil || resp.Body == nil || !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" || stringPtrValue(resp.Body.Model) == "" {
+	if resp == nil || resp.Body == nil {
+		return "", fmt.Errorf("fusion_auth_token_failed:empty_response")
+	}
+	if !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" || stringPtrValue(resp.Body.Model) == "" {
 		return "", fmt.Errorf("fusion_auth_token_failed:%s", stringPtrValue(resp.Body.GetMessage()))
 	}
 	return stringPtrValue(resp.Body.Model), nil
@@ -117,7 +120,10 @@ func (c *DypnsClient) VerifyFusionToken(ctx context.Context, verifyToken string)
 	if err != nil {
 		return "", err
 	}
-	if resp == nil || resp.Body == nil || !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" || resp.Body.Model == nil {
+	if resp == nil || resp.Body == nil {
+		return "", fmt.Errorf("fusion_verify_failed:empty_response")
+	}
+	if !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" || resp.Body.Model == nil {
 		return "", fmt.Errorf("fusion_verify_failed:%s", stringPtrValue(resp.Body.GetMessage()))
 	}
 	if stringPtrValue(resp.Body.Model.VerifyResult) != "PASS" {
@@ -158,7 +164,10 @@ func (c *DypnsClient) SendSMSCode(ctx context.Context, phone string, outID strin
 	if err != nil {
 		return err
 	}
-	if resp == nil || resp.Body == nil || !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" {
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("sms_send_failed:empty_response")
+	}
+	if !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" {
 		return fmt.Errorf("sms_send_failed:%s", stringPtrValue(resp.Body.GetMessage()))
 	}
 	return nil
@@ -181,7 +190,10 @@ func (c *DypnsClient) CheckSMSCode(ctx context.Context, phone string, verifyCode
 	if err != nil {
 		return err
 	}
-	if resp == nil || resp.Body == nil || !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" || resp.Body.Model == nil {
+	if resp == nil || resp.Body == nil {
+		return fmt.Errorf("sms_check_failed:empty_response")
+	}
+	if !boolPtrValue(resp.Body.Success) || stringPtrValue(resp.Body.Code) != "OK" || resp.Body.Model == nil {
 		return fmt.Errorf("sms_check_failed:%s", stringPtrValue(resp.Body.GetMessage()))
 	}
 	if stringPtrValue(resp.Body.Model.VerifyResult) != "PASS" {

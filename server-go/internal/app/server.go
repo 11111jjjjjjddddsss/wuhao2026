@@ -34,6 +34,7 @@ type Server struct {
 	summary               *SummaryService
 	dailyAgri             *DailyAgriCardService
 	dypns                 *DypnsClient
+	sms                   *SMSClient
 	shanghai              *time.Location
 	assetDir              string
 	uploadsDir            string
@@ -127,6 +128,10 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	sms, err := NewSMSClientFromEnv()
+	if err != nil {
+		return nil, err
+	}
 	uploadStore, err := NewUploadStoreFromEnv(uploadsDir)
 	if err != nil {
 		return nil, err
@@ -144,6 +149,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		summary:               NewSummaryService(store, prompts, bailian, logger),
 		dailyAgri:             NewDailyAgriCardService(store, bailian, logger, shanghai),
 		dypns:                 dypns,
+		sms:                   sms,
 		shanghai:              shanghai,
 		assetDir:              assetDir,
 		uploadsDir:            uploadsDir,
@@ -253,7 +259,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 		"bailian":             ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
 		"dypns":               ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		"dypns_fusion":        ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
-		"dypns_sms":           ternary(s.dypns.HasSMSConfigured(), "ok", "missing_config"),
+		"dypns_sms":           ternary(s.sms.HasConfigured() && s.redisClient != nil, "ok", "missing_config"),
+		"sms":                 ternary(s.sms.HasConfigured() && s.redisClient != nil, "ok", "missing_config"),
 		"redis":               ternary(s.redisClient != nil, "ok", "missing_config"),
 		"upload_storage":      uploadStoreHealthStatus(s.uploadStore),
 		"auth_strict":         IsAuthStrict(),
@@ -720,6 +727,11 @@ func (s *Server) requireAuth(w http.ResponseWriter, r *http.Request) (*AuthInfo,
 		return nil, false
 	}
 	if auth.AuthMode == AuthModeToken && auth.SessionID != "" {
+		if IsAuthStrict() && !isAccountUserID(auth.UserID) {
+			s.logger.Warn("auth session non-account user rejected", "userId", auth.UserID, "masked_ip", auth.MaskedIP)
+			s.writeError(w, http.StatusUnauthorized, "unauthorized")
+			return nil, false
+		}
 		active, err := s.store.IsAuthSessionActive(r.Context(), auth.UserID, auth.SessionID, time.Now().UnixMilli())
 		if err != nil {
 			s.logger.Error("auth session check failed", "userId", auth.UserID, "error", err)

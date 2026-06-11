@@ -73,7 +73,7 @@ object IdManager {
         val prefs = prefs() ?: return
         val normalizedUserId = userId.trim()
         val normalizedToken = token.trim()
-        if (normalizedUserId.isEmpty() || normalizedToken.isEmpty()) return
+        if (!normalizedUserId.startsWith("acct_") || normalizedToken.isEmpty()) return
         prefs.edit()
             .putString(KEY_AUTH_USER_ID, normalizedUserId)
             .putString(KEY_AUTH_TOKEN, normalizedToken)
@@ -132,6 +132,10 @@ object IdManager {
 
     private fun SharedPreferences.hasValidAuthSession(): Boolean {
         val expiresAt = getLong(KEY_AUTH_EXPIRES_AT, 0L)
-        return expiresAt > System.currentTimeMillis()
+        val authUserId = getString(KEY_AUTH_USER_ID, null)?.trim().orEmpty()
+        val token = getString(KEY_AUTH_TOKEN, null)?.trim().orEmpty()
+        return expiresAt > System.currentTimeMillis() &&
+            authUserId.startsWith("acct_") &&
+            token.isNotEmpty()
     }
 }

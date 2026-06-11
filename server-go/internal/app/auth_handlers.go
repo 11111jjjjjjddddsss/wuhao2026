@@ -37,6 +37,7 @@ const (
 	defaultAuthSMSLoginRateLimitPruneInterval = 10 * time.Minute
 
 	defaultFusionVerifiedPhoneTTL = 2 * time.Minute
+	defaultSMSCodeCacheTimeout    = time.Second
 )
 
 type authLoginRequest struct {
@@ -198,15 +199,27 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	code, err := randomSMSCode(defaultSMSCodeLength)
+	if err != nil {
+		s.logger.Error("sms code generate failed", "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if err := s.cacheSMSCode(r.Context(), phone, code); err != nil {
+		s.logger.Warn("sms code cache failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
+		s.writeError(w, http.StatusServiceUnavailable, "sms_cache_unavailable")
+		return
+	}
 	outID, err := randomHexString(12)
 	if err != nil {
+		_ = s.clearSMSCode(r.Context(), phone)
 		s.logger.Error("sms out id failed", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if err := s.dypns.SendSMSCode(r.Context(), phone, outID); err != nil {
+	if err := s.sms.SendLoginCode(r.Context(), phone, code, outID); err != nil {
 		s.logger.Warn("sms send failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
-		s.writeError(w, http.StatusServiceUnavailable, "sms_auth_not_configured")
+		s.writeError(w, http.StatusServiceUnavailable, smsSendErrorCode(err))
 		return
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
@@ -304,12 +317,22 @@ func (s *Server) handleAuthSMSLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err := s.dypns.CheckSMSCode(r.Context(), phone, body.VerifyCode); err != nil {
-		s.logger.Warn("sms login verify failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
+	ok, err := s.verifySMSCode(r.Context(), phone, body.VerifyCode)
+	if err != nil {
+		s.logger.Warn("sms login cache verify failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
+		s.writeError(w, http.StatusServiceUnavailable, "sms_cache_unavailable")
+		return
+	}
+	if !ok {
+		s.logger.Warn("sms login verify failed", "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
 		s.writeError(w, http.StatusUnauthorized, "auth_verify_failed")
 		return
 	}
-	s.finishPhoneLogin(w, r, phone, body.LegacyUserID, body.DeviceID)
+	if s.finishPhoneLogin(w, r, phone, body.LegacyUserID, body.DeviceID) {
+		if err := s.clearSMSCode(r.Context(), phone); err != nil {
+			s.logger.Warn("sms code clear after login failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
+		}
+	}
 }
 
 func (s *Server) handleAuthLogout(w http.ResponseWriter, r *http.Request) {
@@ -388,6 +411,75 @@ func (s *Server) consumeCachedFusionVerifiedPhone(ctx context.Context, verifyTok
 	return normalizeMainlandPhone(phone), nil
 }
 
+func (s *Server) cacheSMSCode(ctx context.Context, phone string, code string) error {
+	if s == nil || s.redisClient == nil {
+		return fmt.Errorf("sms_cache_not_configured")
+	}
+	key := smsCodeCacheKey(phone)
+	digest := smsCodeDigest(phone, code)
+	if key == "" || digest == "" {
+		return fmt.Errorf("sms_invalid_request")
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", defaultSMSCodeCacheTimeout))
+	defer cancel()
+	ttl := envDurationWithDefault("AUTH_SMS_CODE_TTL_SECONDS", defaultSMSCodeTTL)
+	return s.redisClient.Set(cacheCtx, key, digest, ttl).Err()
+}
+
+func (s *Server) verifySMSCode(ctx context.Context, phone string, code string) (bool, error) {
+	if s == nil || s.redisClient == nil {
+		return false, fmt.Errorf("sms_cache_not_configured")
+	}
+	key := smsCodeCacheKey(phone)
+	digest := smsCodeDigest(phone, code)
+	if key == "" || digest == "" {
+		return false, nil
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", defaultSMSCodeCacheTimeout))
+	defer cancel()
+	value, err := s.redisClient.Get(cacheCtx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return false, nil
+		}
+		return false, err
+	}
+	if !hmac.Equal([]byte(strings.TrimSpace(value)), []byte(digest)) {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (s *Server) clearSMSCode(ctx context.Context, phone string) error {
+	if s == nil || s.redisClient == nil {
+		return nil
+	}
+	key := smsCodeCacheKey(phone)
+	if key == "" {
+		return nil
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", defaultSMSCodeCacheTimeout))
+	defer cancel()
+	return s.redisClient.Del(cacheCtx, key).Err()
+}
+
+func smsSendErrorCode(err error) string {
+	if err == nil {
+		return "sms_send_failed"
+	}
+	text := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(text, "not_configured"):
+		return "sms_send_not_configured"
+	case strings.Contains(text, "isv.businesslimitcontrol"), strings.Contains(text, "frequency"), strings.Contains(text, "rate"):
+		return "sms_provider_rate_limited"
+	case strings.Contains(text, "invalid"), strings.Contains(text, "template"), strings.Contains(text, "sign"):
+		return "sms_provider_config_invalid"
+	default:
+		return "sms_send_failed"
+	}
+}
+
 func fusionVerifiedPhoneCacheKey(verifyToken string) string {
 	hash := sensitiveTokenHash(verifyToken)
 	if hash == "" {
@@ -462,7 +554,7 @@ func (s *Server) handleAuthSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone string, legacyUserID string, deviceID string) {
+func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone string, legacyUserID string, deviceID string) bool {
 	acceptedLegacyUserID := acceptedLegacyUserIDFromLoginRequest(r, legacyUserID)
 	result, err := s.store.LoginWithVerifiedPhone(
 		r.Context(),
@@ -475,7 +567,7 @@ func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone 
 	if err != nil {
 		s.logger.Error("finish phone login failed", "phone_mask", maskPhone(phone), "legacyMigrationRequested", normalizeUserID(legacyUserID) != "", "legacyMigrationAccepted", acceptedLegacyUserID != "", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
+		return false
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":    result.UserID,
@@ -483,6 +575,7 @@ func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone 
 		"token":      result.Token,
 		"expires_at": result.ExpiresAt,
 	})
+	return true
 }
 
 func acceptedLegacyUserIDFromLoginRequest(r *http.Request, requestedLegacyUserID string) string {

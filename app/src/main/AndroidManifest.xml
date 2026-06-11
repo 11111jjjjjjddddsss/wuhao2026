@@ -79,5 +79,21 @@
             android:theme="@style/Theme.NongjiQianwen.FusionAuthDialog"
             android:exported="false"
             tools:replace="android:theme,android:exported" />
+        <activity
+            android:name="com.alicom.fusion.auth.numberauth.FusionNumberAuthActivity"
+            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
+            tools:replace="android:theme" />
+        <activity
+            android:name="com.alicom.fusion.auth.smsauth.FusionSmsActivity"
+            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
+            tools:replace="android:theme" />
+        <activity
+            android:name="com.alicom.fusion.auth.upsms.AlicomFusionUpSmsActivity"
+            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
+            tools:replace="android:theme" />
+        <activity
+            android:name="com.alicom.fusion.auth.graphauth.FusionGraphAuthActivity"
+            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
+            tools:replace="android:theme" />
     </application>
 </manifest>

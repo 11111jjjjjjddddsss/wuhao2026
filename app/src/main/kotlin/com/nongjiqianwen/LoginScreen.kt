@@ -118,7 +118,13 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     fun startFusionOneLogin(activity: Activity) {
         AppCrashReporter.setAuthStage("auth.fusion_start")
         busy = true
-        message = "正在拉起本机号码登录"
+        message = "正在打开运营商手机号授权页"
+        SessionApi.reportAuthClientLog(
+            level = "info",
+            event = "auth.fusion_start_requested",
+            message = "fusion one login requested",
+            attrs = mapOf("stage" to "login_screen_start")
+        )
         FusionOneLoginClient.start(
             activity = activity,
             verificationPhone = phone.takeIf(::isValidMainlandPhone)
@@ -239,8 +245,20 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                     Manifest.permission.READ_PHONE_STATE
                                 ) == PackageManager.PERMISSION_GRANTED
                             if (hasPhoneStatePermission || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+                                SessionApi.reportAuthClientLog(
+                                    level = "info",
+                                    event = "auth.fusion_permission_ready",
+                                    message = "fusion phone state permission already granted",
+                                    attrs = mapOf("permission" to "READ_PHONE_STATE")
+                                )
                                 startFusionOneLogin(activity)
                             } else {
+                                SessionApi.reportAuthClientLog(
+                                    level = "info",
+                                    event = "auth.fusion_permission_request",
+                                    message = "fusion phone state permission requested",
+                                    attrs = mapOf("permission" to "READ_PHONE_STATE")
+                                )
                                 AppCrashReporter.setAuthStage("auth.fusion_start")
                                 busy = true
                                 message = "请先授权电话状态权限，以便尝试本机号码登录"
@@ -260,6 +278,10 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     Spacer(Modifier.height(14.dp))
                     OutlinedButton(
                         onClick = {
+                            if (busy) {
+                                FusionOneLoginClient.cancelActiveScene("switch_to_sms")
+                                busy = false
+                            }
                             smsMode = !smsMode
                             message = null
                         },

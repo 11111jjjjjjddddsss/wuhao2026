@@ -247,6 +247,7 @@ func TestProcessSessionSummariesKeepsPendingOnTimeout(t *testing.T) {
 type summaryFakeStore struct {
 	mu           sync.Mutex
 	writeCalls   int
+	writeOK      bool
 	pendingSet   bool
 	pendingValue bool
 }
@@ -255,6 +256,9 @@ func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.writeCalls++
+	if !s.writeOK {
+		return false, nil
+	}
 	return true, nil
 }
 
@@ -264,6 +268,46 @@ func (s *summaryFakeStore) SetUserMemoryPending(ctx context.Context, userID stri
 	s.pendingSet = true
 	s.pendingValue = pending
 	return nil
+}
+
+func TestProcessSessionSummariesKeepsPendingWhenSnapshotStale(t *testing.T) {
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"短期承接：用户正在核对番茄叶片发黄，下一轮继续追问新叶老叶差异。\n农业重点事件：番茄叶片发黄仍需核对水肥、根系和病虫害线索。"}}],"usage":{"prompt_tokens":120,"completion_tokens":30}}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	store := &summaryFakeStore{writeOK: false}
+	service := &SummaryService{
+		store:   store,
+		prompts: summaryTestPromptLoader(t),
+		bailian: NewBailianClient(),
+		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	snapshot := &SessionSnapshot{
+		UserID:         "u1",
+		PendingMemory:  true,
+		MemoryDocument: "短期承接：旧短期",
+		RoundTotal:     6,
+		ARoundsFull: []SessionRound{
+			{User: "番茄叶片发黄", Assistant: "先看新叶老叶差异"},
+		},
+	}
+
+	service.ProcessSessionSummaries("u1", snapshot)
+
+	if store.writeCalls != 1 {
+		t.Fatalf("expected one stale write attempt, got %d", store.writeCalls)
+	}
+	if store.pendingSet {
+		t.Fatalf("stale snapshot should leave pending for a later trigger without rewriting pending flag: %#v", store)
+	}
+	if !snapshot.PendingMemory || snapshot.MemoryDocument != "短期承接：旧短期" {
+		t.Fatalf("stale snapshot should not update in-memory snapshot: %#v", snapshot)
+	}
 }
 
 func summaryTestPromptLoader(t *testing.T) *PromptLoader {

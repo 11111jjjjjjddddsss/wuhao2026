@@ -36,18 +36,35 @@ function Require-NoMatch {
     }
 }
 
+function Require-Manifest-Activity {
+    param(
+        [System.Collections.Generic.List[string]]$Failures,
+        [string]$Content,
+        [string]$ManifestPath,
+        [string]$ActivityName,
+        [string]$ThemeName
+    )
+    $escapedActivity = [regex]::Escape($ActivityName)
+    $escapedTheme = [regex]::Escape($ThemeName)
+    $pattern = '<activity\b(?=[^>]*android:name="' + $escapedActivity + '")(?=[^>]*android:theme="' + $escapedTheme + '")(?=[^>]*android:exported="false")[^>]*>'
+    if ($Content -notmatch $pattern) {
+        Add-Failure $Failures "Merged manifest $ManifestPath must keep $ActivityName exported=false with theme $ThemeName."
+    }
+}
+
 $failures = [System.Collections.Generic.List[string]]::new()
 
 $buildFile = Join-Path $RepoRoot "app/build.gradle.kts"
 $manifestFile = Join-Path $RepoRoot "app/src/main/AndroidManifest.xml"
 $networkSecurityFile = Join-Path $RepoRoot "app/src/main/res/xml/network_security_config.xml"
+$idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdManager.kt"
 $sessionApiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
 $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $sessionApiFile, $fusionClientFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -57,6 +74,7 @@ if ($failures.Count -eq 0) {
     $build = Get-Content -LiteralPath $buildFile -Raw
     $manifest = Get-Content -LiteralPath $manifestFile -Raw
     $networkSecurity = Get-Content -LiteralPath $networkSecurityFile -Raw
+    $idManager = Get-Content -LiteralPath $idManagerFile -Raw
     $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
     $fusionClient = Get-Content -LiteralPath $fusionClientFile -Raw
     $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
@@ -115,10 +133,42 @@ if ($failures.Count -eq 0) {
         Add-Failure $failures "Debug network security config must not diverge from release: $debugNetworkSecurityFile"
     }
 
+    $mergedManifestPaths = @(
+        (Join-Path $RepoRoot "app/build/intermediates/merged_manifests/debug/processDebugManifest/AndroidManifest.xml"),
+        (Join-Path $RepoRoot "app/build/intermediates/merged_manifests/release/processReleaseManifest/AndroidManifest.xml"),
+        (Join-Path $RepoRoot "app/build/intermediates/packaged_manifests/debug/processDebugManifestForPackage/AndroidManifest.xml"),
+        (Join-Path $RepoRoot "app/build/intermediates/packaged_manifests/release/processReleaseManifestForPackage/AndroidManifest.xml")
+    )
+    foreach ($manifestPath in $mergedManifestPaths) {
+        if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            continue
+        }
+        $mergedManifest = Get-Content -LiteralPath $manifestPath -Raw
+        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.mobile.auth.gatewayauth.LoginAuthActivity" "@style/Theme.NongjiQianwen.FusionAuthDialog"
+        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.mobile.auth.gatewayauth.PrivacyDialogActivity" "@style/Theme.NongjiQianwen.FusionAuthDialog"
+        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.mobile.auth.gatewayauth.PrivacyActivity" "@style/Theme.NongjiQianwen.FusionAuthDialog"
+        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.numberauth.FusionNumberAuthActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
+        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.smsauth.FusionSmsActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
+        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.upsms.AlicomFusionUpSmsActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
+        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.graphauth.FusionGraphAuthActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
+    }
+
     Require-Match $failures $sessionApi 'endpoint\s*=\s*"/api/auth/fusion/login"' `
         "Android one-click login must submit the final SDK token to /api/auth/fusion/login."
     Require-NoMatch $failures $sessionApi '/api/auth/fusion/verify' `
         "Android 100001 one-click login must not call the half-way /api/auth/fusion/verify endpoint."
+    Require-Match $failures $sessionApi 'accountUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
+        "Android login must only persist backend account IDs with the acct_ prefix."
+    Require-Match $failures $sessionApi 'non_account_user_id' `
+        "Android login must report and reject non-account user IDs instead of saving a legacy UUID session."
+    Require-Match $failures $idManager 'saveAuthSession[\s\S]*?!normalizedUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
+        "IdManager must refuse to save a logged-in session for non-account user IDs."
+    Require-Match $failures $idManager 'hasValidAuthSession[\s\S]*?authUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
+        "IdManager must treat stale non-account auth_user_id values as logged-out."
+    Require-Match $failures $sessionApi 'auth\.sms_login_success' `
+        "Android SMS login success should be logged for login handoff diagnostics."
+    Require-Match $failures $sessionApi 'auth\.fusion_login_success' `
+        "Android fusion login success should be logged for login handoff diagnostics."
     Require-Match $failures $fusionClient 'override\s+fun\s+onVerifySuccess[\s\S]*?SessionApi\.loginWithFusionVerifyToken' `
         "Fusion one-click login must exchange the final onVerifySuccess token through the backend login endpoint."
     Require-Match $failures $fusionClient 'override\s+fun\s+onHalfWayVerifySuccess[\s\S]*?auth\.fusion_halfway_unexpected[\s\S]*?verifyResult\?\.verifyResult' `
@@ -135,8 +185,12 @@ if ($failures.Count -eq 0) {
     }
     Require-Match $failures $fusionClient 'model\.setProtocolChecked\s*\(\s*false\s*\)' `
         "Aliyun SDK protocol checkbox must remain visible and unchecked by default."
+    Require-Match $failures $fusionClient '\.hiddenSwtichLogin\s*\(\s*true\s*\)' `
+        "Aliyun SDK built-in switch/more-login entry must stay hidden so SMS fallback remains in the app page."
     Require-Match $failures $fusionClient '\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)[\s\S]*?\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)' `
         "Custom Aliyun protocolAction must also set packageName to the app applicationId."
+    Require-Match $failures $fusionClient 'hasVpnTransport\s*->\s*"vpn_active"[\s\S]*?!hasCellularTransport\s*->\s*"no_active_cellular"' `
+        "Fusion one-click login must block VPN/proxy and non-cellular active networks before starting the Aliyun SDK."
 
     Require-Match $failures $chatScreen 'BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible' `
         "Debug-only preview panel must stay behind BuildConfig.DEBUG."

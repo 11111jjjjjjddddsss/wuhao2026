@@ -5,7 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"io"
+	"log/slog"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -90,6 +94,30 @@ func TestResolveAuthUserIDAllowsV2BearerTokenWhenStrict(t *testing.T) {
 	}
 }
 
+func TestIssueAuthTokenRejectsNonAccountUserID(t *testing.T) {
+	if token, _, err := issueAuthToken("123e4567-e89b-12d3-a456-426614174000", "session_test", time.Now(), time.Hour, "test-secret"); err == nil || token != "" {
+		t.Fatalf("issueAuthToken must reject non-account user IDs, token=%q err=%v", token, err)
+	}
+}
+
+func TestRequireAuthRejectsNonAccountSessionWhenStrict(t *testing.T) {
+	secret := "test-secret"
+	t.Setenv("AUTH_STRICT", "true")
+	t.Setenv("APP_SECRET", secret)
+
+	req := httptest.NewRequest("GET", "/api/me", nil)
+	req.Header.Set("Authorization", "Bearer "+makeV2AuthTestToken("123e4567-e89b-12d3-a456-426614174000", "session_test", secret))
+	rec := httptest.NewRecorder()
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	if auth, ok := server.requireAuth(rec, req); ok || auth != nil {
+		t.Fatalf("strict auth must reject non-account v2 sessions, auth=%#v ok=%v", auth, ok)
+	}
+	if rec.Code != 401 {
+		t.Fatalf("strict auth rejection status=%d, want 401", rec.Code)
+	}
+}
+
 func TestAcceptedLegacyUserIDAllowsLocalUUIDBridge(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
 	legacyID := "123e4567-e89b-12d3-a456-426614174000"
@@ -122,6 +150,49 @@ func TestAcceptedLegacyUserIDRejectsUnknownNonUUID(t *testing.T) {
 	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
 	if got := acceptedLegacyUserIDFromLoginRequest(req, "legacy-short-id"); got != "" {
 		t.Fatalf("unsigned non-UUID legacy id should be rejected, got %q", got)
+	}
+}
+
+func TestLegacyMergeSQLUsesDerivedSources(t *testing.T) {
+	for name, query := range map[string]string{
+		"daily_usage":        mergeDailyUsageSQL,
+		"upgrade_credits":    mergeUpgradeCreditsSQL,
+		"session_generation": mergeSessionGenerationSQL,
+	} {
+		normalized := strings.ToLower(query)
+		if !strings.Contains(normalized, "from (select ") || !strings.Contains(normalized, ") as source") {
+			t.Fatalf("%s merge SQL must use a derived source table to avoid same-table INSERT SELECT ambiguity: %s", name, query)
+		}
+	}
+}
+
+func TestLegacyMergeCoversAccountDeletionRequests(t *testing.T) {
+	source, err := os.ReadFile("auth_accounts.go")
+	if err != nil {
+		t.Fatalf("read auth_accounts.go: %v", err)
+	}
+	if !strings.Contains(string(source), "UPDATE account_deletion_requests") {
+		t.Fatalf("legacy account merge must migrate account_deletion_requests owner")
+	}
+}
+
+func TestAuthSMSSendProviderFailureKeepsCachedCode(t *testing.T) {
+	source, err := os.ReadFile("auth_handlers.go")
+	if err != nil {
+		t.Fatalf("read auth_handlers.go: %v", err)
+	}
+	text := string(source)
+	blockStart := strings.Index(text, "if err := s.sms.SendLoginCode")
+	if blockStart < 0 {
+		t.Fatalf("SMS send block not found")
+	}
+	blockEnd := strings.Index(text[blockStart:], "s.writeJSON")
+	if blockEnd < 0 {
+		t.Fatalf("SMS send block end not found")
+	}
+	sendBlock := text[blockStart : blockStart+blockEnd]
+	if strings.Contains(sendBlock, "clearSMSCode") {
+		t.Fatalf("SMS provider failure must not clear the cached code; provider timeouts can still deliver the SMS")
 	}
 }
 
@@ -246,4 +317,16 @@ func makeAuthTestToken(userID string, secret string) string {
 	_, _ = mac.Write([]byte(userID + ":" + ts))
 	signature := hex.EncodeToString(mac.Sum(nil))
 	return base64.StdEncoding.EncodeToString([]byte(userID + ":" + ts + ":" + signature))
+}
+
+func makeV2AuthTestToken(userID string, sessionID string, secret string) string {
+	payload := authTokenPayload{
+		UserID:    userID,
+		SessionID: sessionID,
+		IssuedAt:  time.Now().UnixMilli(),
+		ExpiresAt: time.Now().Add(time.Hour).UnixMilli(),
+	}
+	payloadJSON, _ := json.Marshal(payload)
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	return "v2." + encodedPayload + "." + signAuthPayload(encodedPayload, secret)
 }

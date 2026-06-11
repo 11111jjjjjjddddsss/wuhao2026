@@ -5,6 +5,10 @@
 
 ## 2026-06-11
 
+- 手机号登录继续按“明天真机必须能测”收口：后端短信发送在调用普通 Dysms `SendSms` 前仍先缓存 6 位验证码摘要，但如果供应商返回超时 / 异常，不再主动清掉 Redis 验证码，避免“短信实际已送达、用户填码时后端已删码”的情况；账号登录成功后才清码的规则不变。DYPNS / Dysms SDK 返回空 body 时现在返回稳定错误码，不再可能因 nil body 触发 panic。旧本机 ID 合并到 `acct_...` 时补迁移 `account_deletion_requests`，让注销申请也归到同一个账号ID。Android 一键登录环境预检把 VPN / 代理和当前活动网络非蜂窝从 warning 升为直接阻断并回 App 验证码登录，避免 WiFi / 代理环境继续硬拉阿里云 SDK 出图形验证 / 怪页 / ROM 闪退；构建一致性脚本新增已生成 merged / packaged manifest 检查，确认融合认证 SDK Activity 最终都有本地主题和 `exported=false`。
+
+- 登录账号 ID 和资产归属上线前收紧：生产库只读审计确认 `app_accounts=0`、`auth_sessions=0`，只有 1 个旧测试本机 ID 残留在 `user_entitlement` 和 `daily_usage`；已按用户“没正式用户、无用 ID 可删”的口径清理旧测试归属，清理后用户资产表非 `acct_...` 归属合计为 0。后端新增保险丝：正式 v2 auth token 只允许签给 `acct_...`，生产严格鉴权下带 `session_id` 的非账号 token 也会直接 401；Android `SessionApi` 和 `IdManager` 都拒绝保存 / 认可非 `acct_...` 登录态。账号迁移 SQL 中 `daily_usage`、`upgrade_credits`、`session_generation` 改为派生 source 表，避免 MySQL 同表 `INSERT SELECT ... ON DUPLICATE KEY UPDATE` 歧义再次把短信登录打成 500。后端已部署到 ECS active slot `3000`，readiness 显示 `auth_strict=true / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok`；Android debug 包已重新 assemble，通过 `check-android-build-parity.ps1`。
+
 - 手机号登录再收一刀保可用：Android 登录页重新改成“用户点一键登录时按需申请 `READ_PHONE_STATE`，拒绝就直接切验证码登录并记 `auth.fusion_permission_denied`”，`FusionOneLoginClient` 也把 `vpn_active`、`no_active_cellular` 从 warning 升成前置 `auth.fusion_env_blocked`，不再让明显高风险环境继续硬拉融合认证授权页；同时在 App manifest 覆盖 `com.mobile.auth.gatewayauth.LoginAuthActivity` / `PrivacyDialogActivity` 主题为本地 translucent 兼容主题，尽量降低荣耀 / 华为 / Android 15+ 授权页拉起闪退风险。服务端短信链路同步修正：`DYPNS_SMS_TEMPLATE_PARAM` 不再默认强塞 `{\"code\":\"##code##\"}`，只有显式配置模板变量时才传 `TemplateParam`，避免阿里云 `SendSmsVerifyCode` 因验证码模板变量不匹配先报“非法参数”再触发频控。`./gradlew.bat :app:compileDebugKotlin` 和 `cd server-go && go build ./...` 已通过。
 
 - 今日农情提示词升到 `2026-06-11-v59`，继续坚持“不要坑用户，也不要过度压模型”的折中口径：不加后端内容过滤，不恢复可信域名白名单、固定站点限制、字数拦截或正好 3 条硬闸门，只在提示词里把摘要厚度再轻轻往上托一档。新要求是手机卡片继续按 3-4 行、偏 3.5 行来写，宁可接近 100 字，也不要收成 70 多字薄摘要；第二句不能只剩“需关注”“可留意”这类很短的收尾；如果某条仍只有 70 多字，就先补足具体事实和直接影响再输出。记忆文档这轮继续维持单份纯文字记忆摘要方案，真实样本复测仍稳定，不再大改。

@@ -329,12 +329,17 @@ object SessionApi {
             override fun onResponse(call: Call, response: Response) {
                 response.use {
                     val statusCode = it.code
+                    val body = it.body?.string().orEmpty()
+                    val errorCode = if (it.isSuccessful) "" else parseApiErrorCode(body)
                     if (!it.isSuccessful) {
                         reportAuthClientLog(
                             level = if (statusCode >= 500) "error" else "warn",
                             event = "auth.sms_send_failed",
                             message = "sms send failed",
-                            attrs = mapOf("http_status" to statusCode)
+                            attrs = mapOf(
+                                "http_status" to statusCode,
+                                "error" to errorCode
+                            )
                         )
                     }
                     mainHandler.post {
@@ -344,6 +349,9 @@ object SessionApi {
                                 it.isSuccessful -> null
                                 statusCode == 429 -> "操作太频繁，请稍后再试"
                                 statusCode == 400 -> "请输入正确的手机号"
+                                errorCode == "sms_send_not_configured" -> "短信服务暂未配置，请稍后再试"
+                                errorCode == "sms_provider_config_invalid" -> "短信模板配置异常，请稍后再试"
+                                errorCode == "sms_provider_rate_limited" -> "验证码发送太频繁，请稍后再试"
                                 else -> "验证码暂时发送失败，请稍后再试"
                             }
                         )
@@ -815,16 +823,50 @@ object SessionApi {
                     } else {
                         null
                     }
-                    if (!session?.userId.isNullOrBlank() && !session?.token.isNullOrBlank()) {
+                    val accountUserId = session?.userId.orEmpty().trim()
+                    val sessionToken = session?.token.orEmpty().trim()
+                    if (accountUserId.isNotBlank() && sessionToken.isNotBlank()) {
+                        if (!accountUserId.startsWith("acct_")) {
+                            reportAuthClientLog(
+                                level = "error",
+                                event = when {
+                                    endpoint.contains("/sms/") -> "auth.sms_login_failed"
+                                    endpoint.contains("/fusion/") -> "auth.fusion_login_failed"
+                                    else -> "auth.login_failed"
+                                },
+                                message = "auth login returned non-account user id",
+                                attrs = mapOf(
+                                    "endpoint" to endpoint.substringAfterLast('/').take(48),
+                                    "http_status" to statusCode,
+                                    "error" to "non_account_user_id"
+                                )
+                            )
+                            mainHandler.post { onResult(false, "登录状态异常，请稍后再试") }
+                            return
+                        }
                         if (!shouldCommitSession()) {
                             mainHandler.post { onResult(false, "登录已取消，请重新尝试") }
                             return
                         }
                         IdManager.saveAuthSession(
-                            userId = session!!.userId.orEmpty(),
-                            token = session.token.orEmpty(),
-                            expiresAt = session.expiresAt ?: 0L,
-                            phoneMask = session.phoneMask
+                            userId = accountUserId,
+                            token = sessionToken,
+                            expiresAt = session?.expiresAt ?: 0L,
+                            phoneMask = session?.phoneMask
+                        )
+                        reportAuthClientLog(
+                            level = "info",
+                            event = when {
+                                endpoint.contains("/sms/") -> "auth.sms_login_success"
+                                endpoint.contains("/fusion/") -> "auth.fusion_login_success"
+                                else -> "auth.login_success"
+                            },
+                            message = "auth login success",
+                            attrs = mapOf(
+                                "endpoint" to endpoint.substringAfterLast('/').take(48),
+                                "http_status" to statusCode,
+                                "account_id_kind" to "acct"
+                            )
                         )
                         mainHandler.post { onResult(true, null) }
                     } else {

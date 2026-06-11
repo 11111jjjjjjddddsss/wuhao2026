@@ -126,8 +126,10 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	if !strings.HasPrefix(messages[2].Content.(string), "记忆摘要（仅供参考；用于上下文承接和减少重复追问；除非用户要求回顾历史，不要主动复述摘要内容、小标题或用户画像）\n") {
 		t.Fatalf("expected memory document label, got %#v", messages[2].Content)
 	}
-	if strings.Contains(messages[2].Content.(string), "B层") || strings.Contains(messages[2].Content.(string), "C层") {
-		t.Fatalf("memory document prompt should not expose legacy layer labels: %#v", messages[2].Content)
+	for _, forbidden := range []string{"后台参考", "后台摘要", "B层", "C层", "内部机制"} {
+		if strings.Contains(messages[2].Content.(string), forbidden) {
+			t.Fatalf("memory document prompt should not expose legacy label %q: %#v", forbidden, messages[2].Content)
+		}
 	}
 	if messages[3].Content != "hello" {
 		t.Fatalf("expected current text-only user message, got %#v", messages[3].Content)

@@ -306,6 +306,28 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	if _, err := tx.ExecContext(ctx, "UPDATE client_app_logs SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
 		return err
 	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`UPDATE account_deletion_requests
+		    SET user_id = ?,
+		        phone_mask = CASE
+		          WHEN phone_mask IS NULL OR phone_mask = '' THEN (
+		            SELECT phone_mask FROM app_accounts WHERE user_id = ? LIMIT 1
+		          )
+		          ELSE phone_mask
+		        END,
+		        updated_at = CASE
+		          WHEN status IN ('pending','processing') THEN ?
+		          ELSE updated_at
+		        END
+		  WHERE user_id = ?`,
+		newUserID,
+		newUserID,
+		nowMs,
+		oldUserID,
+	); err != nil {
+		return err
+	}
 	var phoneMask string
 	_ = tx.QueryRowContext(ctx, "SELECT phone_mask FROM app_accounts WHERE user_id = ? LIMIT 1", newUserID).Scan(&phoneMask)
 	if _, err := tx.ExecContext(
@@ -334,14 +356,7 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return err
 	}
 
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO daily_usage(user_id, day_cn, used)
-		 SELECT ?, day_cn, used FROM daily_usage WHERE user_id = ?
-		 ON DUPLICATE KEY UPDATE used = daily_usage.used + VALUES(used)`,
-		newUserID,
-		oldUserID,
-	); err != nil {
+	if _, err := tx.ExecContext(ctx, mergeDailyUsageSQL, newUserID, oldUserID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM daily_usage WHERE user_id = ?", oldUserID); err != nil {
@@ -358,40 +373,14 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return err
 	}
 
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
-		 SELECT ?, remaining, expire_at, ? FROM upgrade_credits WHERE user_id = ?
-		 ON DUPLICATE KEY UPDATE
-		   remaining = upgrade_credits.remaining + VALUES(remaining),
-		   expire_at = CASE
-		     WHEN upgrade_credits.expire_at IS NULL OR VALUES(expire_at) IS NULL THEN NULL
-		     WHEN upgrade_credits.expire_at > VALUES(expire_at) THEN upgrade_credits.expire_at
-		     ELSE VALUES(expire_at)
-		   END,
-		   updated_at = VALUES(updated_at)`,
-		newUserID,
-		nowMs,
-		oldUserID,
-	); err != nil {
+	if _, err := tx.ExecContext(ctx, mergeUpgradeCreditsSQL, newUserID, nowMs, oldUserID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM upgrade_credits WHERE user_id = ?", oldUserID); err != nil {
 		return err
 	}
 
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO session_generation(user_id, generation, cleared_at, updated_at)
-		 SELECT ?, generation, cleared_at, ? FROM session_generation WHERE user_id = ?
-		 ON DUPLICATE KEY UPDATE
-		   generation = GREATEST(session_generation.generation, VALUES(generation)),
-		   cleared_at = GREATEST(COALESCE(session_generation.cleared_at, 0), COALESCE(VALUES(cleared_at), 0)),
-		   updated_at = VALUES(updated_at)`,
-		newUserID,
-		nowMs,
-		oldUserID,
-	); err != nil {
+	if _, err := tx.ExecContext(ctx, mergeSessionGenerationSQL, newUserID, nowMs, oldUserID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM session_generation WHERE user_id = ?", oldUserID); err != nil {
@@ -441,6 +430,31 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	}
 	return nil
 }
+
+const mergeDailyUsageSQL = `INSERT INTO daily_usage(user_id, day_cn, used)
+ SELECT ?, source.day_cn, source.used
+ FROM (SELECT day_cn, used FROM daily_usage WHERE user_id = ?) AS source
+ ON DUPLICATE KEY UPDATE used = daily_usage.used + VALUES(used)`
+
+const mergeUpgradeCreditsSQL = `INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
+ SELECT ?, source.remaining, source.expire_at, ?
+ FROM (SELECT remaining, expire_at FROM upgrade_credits WHERE user_id = ?) AS source
+ ON DUPLICATE KEY UPDATE
+   remaining = upgrade_credits.remaining + VALUES(remaining),
+   expire_at = CASE
+     WHEN upgrade_credits.expire_at IS NULL OR VALUES(expire_at) IS NULL THEN NULL
+     WHEN upgrade_credits.expire_at > VALUES(expire_at) THEN upgrade_credits.expire_at
+     ELSE VALUES(expire_at)
+   END,
+   updated_at = VALUES(updated_at)`
+
+const mergeSessionGenerationSQL = `INSERT INTO session_generation(user_id, generation, cleared_at, updated_at)
+ SELECT ?, source.generation, source.cleared_at, ?
+ FROM (SELECT generation, cleared_at FROM session_generation WHERE user_id = ?) AS source
+ ON DUPLICATE KEY UPDATE
+   generation = GREATEST(session_generation.generation, VALUES(generation)),
+   cleared_at = GREATEST(COALESCE(session_generation.cleared_at, 0), COALESCE(VALUES(cleared_at), 0)),
+   updated_at = VALUES(updated_at)`
 
 func effectiveEntitlementForUserTx(ctx context.Context, tx *sql.Tx, userID string, nowMs int64) (Tier, *int64, error) {
 	var tier sql.NullString
