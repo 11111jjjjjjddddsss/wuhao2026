@@ -5,6 +5,8 @@
 
 ## 2026-06-12
 
+- 管理后台监控页把“明天真机回归清单”改成长期可用的“上线前真机回归清单”，并把今日农情回归说明从“App 首页”校准为“聊天页卡片和设置入口”，避免测试人员按过期时间或错误位置理解；这只改后台 UI 文案和项目记忆，不改变 Android / 后端业务链路。
+
 - 本轮后端已部署到 ECS 双端口 slot，最终 Nginx active upstream 为 `3000`，后台 `/admin-api/` upstream 同步跟随 `3000`；`scripts/check-ecs-readiness.ps1` 显示 HTTPS healthz 200、未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后 `scripts/probe-ecs-today-agri.ps1 -Runs 2` 验证 v62：`ok_count=2/2`，每次 3 条可展示 item，无 `reasoning_tokens`，标题主体已避开调研 / 平台过程词和养殖水产，但摘要长度仍约 71-77 字，低于 90-130 字目标；当前记录为质量观察项，不加后端字数硬过滤。ECS 日志尾部显示新部署后只有 readiness / 探针和公网扫描 404，旧短信 503 / 登录 500 都是部署前错误。
 
 - 手机号登录环境策略按真机可用性再校准：验证码登录继续作为 WiFi、系统代理、VPN、移动数据环境都必须能走的正式兜底；一键登录仍避开 VPN / 系统代理和纯 WiFi / 无可用移动数据，直接切 App 验证码页；但 4G+WiFi 或当前活动网络不是蜂窝、同时系统仍检测到可用移动数据能力时，不再一概当成 WiFi-only 阻断，而是上报 `auth.fusion_env_warning` 后允许一键登录尝试。`check-android-build-parity.ps1` 同步拦截回归：必须检测全部网络的蜂窝数据能力，VPN / 系统代理必须阻断，纯 WiFi / 无蜂窝数据必须回验证码，4G+WiFi 只能 warning 不能硬禁。

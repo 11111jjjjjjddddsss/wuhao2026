@@ -390,7 +390,7 @@ async function monitoringPage(): Promise<string> {
       <div class="card-body">${modelUsagePolicyBlock(report.model_usage_policy || [])}</div>
     </section>
     <section class="card" style="margin-bottom:12px">
-      <div class="card-head"><div class="card-title">明天真机回归清单</div><span class="small muted">按这几个主链看后台信号</span></div>
+      <div class="card-head"><div class="card-title">上线前真机回归清单</div><span class="small muted">按登录、问诊、图片和运营主链看后台信号</span></div>
       <div class="card-body">${monitoringRegressionChecklist(report)}</div>
     </section>
     <section class="card" style="margin-bottom:12px">
@@ -2936,7 +2936,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ? "已有登录环境、网络、SDK 或闪退信号，先看 App 日志里的 auth.*。"
       : recentLoginSessions > 0
         ? "24 小时内已有新登录 session；仍要分别回归一键登录和验证码登录。"
-        : "云端配置正常不等于真机已过；明天测试时重点看一键登录、验证码收码、默认数据卡和生产 HTTPS 可达性。";
+        : "云端配置正常不等于真机已过；真机测试时重点看一键登录、验证码收码、默认数据卡和生产 HTTPS 可达性。";
   const appQualityLevel = crashReports > 0 || appErrors >= 10 || authFailures >= 10 ? "bad" : appErrors > 0 || authFailures > 0 ? "warn" : "ok";
   return `
     <section class="decision-grid">
@@ -3038,7 +3038,7 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
       title: "今日农情显示",
       status: dailyAgriStatusText(report.queues.daily_agri_status),
       level: report.queues.daily_agri_status === "ready" ? "ok" : report.queues.daily_agri_status === "failed" ? "bad" : "warn",
-      body: report.queues.daily_agri_status === "ready" ? "App 首页应能展示完整摘要；后台可看来源和 Raw JSON 状态。" : "未 ready 时先在今日农情页补跑，不让 App 打开时临时生成。",
+      body: report.queues.daily_agri_status === "ready" ? "聊天页卡片和设置入口应能展示标题、摘要和来源；后台可看来源和 Raw JSON 状态。" : "未 ready 时先在今日农情页补跑，不让 App 打开时临时生成。",
       route: "today-agri",
     },
     {
