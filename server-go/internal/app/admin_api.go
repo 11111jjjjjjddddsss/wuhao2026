@@ -1930,7 +1930,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "支付接入",
 		Status: "blocked",
-		Body:   "微信 / 支付宝支付申请和真实回调未完成；不能把会员订单当正式收费功能，礼品卡先支撑正式权益发放。",
+		Body:   "微信 / 支付宝支付申请和真实回调未完成；真实收费前阻塞，不阻塞免费版和礼品卡内测，礼品卡先支撑正式权益发放。",
 		Route:  "orders",
 		Owner:  "外部申请 / 后端",
 	})
@@ -1947,7 +1947,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "日志告警",
 		Status: slsStatus,
-		Body:   "Go 日志和 Nginx error 已进 SLS；App 自动日志已覆盖登录前失败和闪退补报；5 条 AlertHub 最小告警已接，外部通知和仪表盘仍需补。",
+		Body:   "Go 日志和 Nginx error 已进 SLS；App 自动日志已覆盖登录前失败和闪退补报；5 条 AlertHub 最小告警已接，可用 check-sls-alert-readiness 巡检，外部通知行动策略和仪表盘仍需补。",
 		Route:  "app-logs",
 		Owner:  "运维",
 	})
@@ -2008,7 +2008,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
-		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已接 AlertHub；外部通知、仪表盘和资源水位告警仍待补。", Route: "health"},
+		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已接 AlertHub；只读巡检脚本可确认规则状态，外部通知行动策略、仪表盘和资源水位告警仍待补。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
 }

@@ -5,6 +5,8 @@
 
 ## 2026-06-12
 
+- 继续按上线总负责人视角收口监控：新增 `scripts/check-sls-alert-readiness.ps1` 只读巡检 SLS 5 条最小告警是否存在、启用、进入 AlertHub、绑定行动策略和仪表盘；`scripts/setup-sls-alerts.ps1` 新增可选 `-ActionPolicyId` / `-DashboardId`，方便后续用户在 SLS 控制台建好行动策略和仪表盘后统一绑定，不把联系人手机号、机器人 webhook 或通知密钥写进仓库。当前云上巡检结果是 5 条规则均启用且进入 AlertHub，但外部通知行动策略和仪表盘仍为 `0/5`，状态为 attention；本轮后端和后台已重新部署，`scripts/check-ecs-readiness.ps1` 显示 Nginx active upstream 与后台 `/admin-api/` upstream 均为 `3001`。后台监控页也校准了两处容易误导的上线判断：首屏和“当前结论”会区分“运行监控正常”和“正式上架仍有阻塞项”，今日农情后台预览从必须 3 条改为至少 2 条可展示 item，并在只有 2 条时提示人工抽查；支付接入文案改成“真实收费前阻塞，不阻塞免费版和礼品卡内测”。
+
 - 管理后台监控页把“明天真机回归清单”改成长期可用的“上线前真机回归清单”，并把今日农情回归说明从“App 首页”校准为“聊天页卡片和设置入口”，避免测试人员按过期时间或错误位置理解；这只改后台 UI 文案和项目记忆，不改变 Android / 后端业务链路。
 
 - 本轮后端已部署到 ECS 双端口 slot，最终 Nginx active upstream 为 `3000`，后台 `/admin-api/` upstream 同步跟随 `3000`；`scripts/check-ecs-readiness.ps1` 显示 HTTPS healthz 200、未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后 `scripts/probe-ecs-today-agri.ps1 -Runs 2` 验证 v62：`ok_count=2/2`，每次 3 条可展示 item，无 `reasoning_tokens`，标题主体已避开调研 / 平台过程词和养殖水产，但摘要长度仍约 71-77 字，低于 90-130 字目标；当前记录为质量观察项，不加后端字数硬过滤。ECS 日志尾部显示新部署后只有 readiness / 探针和公网扫描 404，旧短信 503 / 登录 500 都是部署前错误。

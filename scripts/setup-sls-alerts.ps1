@@ -1,6 +1,8 @@
 param(
     [string]$RegionId = "cn-beijing",
     [string]$ProjectName = "nongjiqiancha-prod-1159547719787456",
+    [string]$ActionPolicyId = "",
+    [string]$DashboardId = "",
     [switch]$DryRun
 )
 
@@ -87,7 +89,7 @@ function New-SlsAlertConfiguration {
     return [ordered]@{
         type = "default"
         version = "2.0"
-        dashboard = ""
+        dashboard = $DashboardId
         threshold = 1
         noDataFire = $false
         noDataSeverity = 6
@@ -97,7 +99,7 @@ function New-SlsAlertConfiguration {
         queryList = @(
             [ordered]@{
                 chartTitle = $DisplayName
-                dashboardId = ""
+                dashboardId = $DashboardId
                 project = $ProjectName
                 store = $Logstore
                 storeType = "log"
@@ -139,7 +141,7 @@ function New-SlsAlertConfiguration {
         )
         policyConfiguration = [ordered]@{
             alertPolicyId = "sls.builtin.dynamic"
-            actionPolicyId = ""
+            actionPolicyId = $ActionPolicyId
             repeatInterval = $RepeatInterval
         }
         sinkAlerthub = [ordered]@{
@@ -313,6 +315,13 @@ foreach ($alert in $alerts) {
         -Condition ($(if ($alert.ContainsKey("Condition")) { $alert.Condition } else { "cnt > 0" })) `
         -RepeatInterval ($(if ($alert.ContainsKey("RepeatInterval")) { $alert.RepeatInterval } else { "30m" })) `
         -Runbook ($(if ($alert.ContainsKey("Runbook")) { $alert.Runbook } else { "docs/runbooks/logs-sls.md" }))
+}
+
+if ([string]::IsNullOrWhiteSpace($ActionPolicyId)) {
+    Write-Warning "No ActionPolicyId was provided. Alerts will still enter SLS AlertHub, but external notification delivery remains unconfigured."
+}
+if ([string]::IsNullOrWhiteSpace($DashboardId)) {
+    Write-Warning "No DashboardId was provided. Alerts are not associated with a custom SLS dashboard yet."
 }
 
 Write-Host

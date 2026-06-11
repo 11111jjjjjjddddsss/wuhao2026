@@ -794,7 +794,7 @@ function isPreviewableTodayAgriCard(row: AdminDailyAgriEntry): boolean {
     return false;
   }
   const itemCount = todayAgriItems(row.content).length;
-  return itemCount === 3;
+  return itemCount >= 2;
 }
 
 async function appUpdatePage(): Promise<string> {
@@ -2290,6 +2290,9 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
 
 function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
   const items = todayAgriItems(row.content);
+  const itemCountNotice = items.length === 2
+    ? notice("可展示但低于目标", "当前卡片已有 2 条可展示农情，符合发布底线；目标仍是 3 条，正式抽查时建议看主题和摘要厚度。", "info")
+    : "";
   return `
     <section class="card today-agri-preview">
       <div class="card-head">
@@ -2300,6 +2303,7 @@ function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
         ${statusPill(row.status)}
       </div>
       <div class="card-body">
+        ${itemCountNotice}
         <div class="today-agri-items">
           ${items.map((item, index) => todayAgriItemCard(item, index)).join("")}
         </div>
@@ -2869,10 +2873,22 @@ function userRegionPanel(
 
 function monitoringHero(report: AdminMonitoring): string {
   const worst = monitoringWorstLevel(report);
-  const title = worst === "bad" ? "需要马上处理" : worst === "warn" ? "有事项要关注" : "整体正常";
+  const readinessRows = report.launch_readiness || [];
+  const readinessBlocked = readinessRows.filter((row) => row.status === "blocked").length;
+  const readinessAttention = readinessRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
+  const title =
+    worst === "bad"
+      ? "需要马上处理"
+      : readinessBlocked > 0
+        ? "运行正常，上架仍有阻塞"
+        : worst === "warn" || readinessAttention > 0
+          ? "可推进但要盯"
+          : "整体正常";
   const body =
     worst === "bad"
       ? "先处理红色事项，再看 App 错误 Top 和审计失败。"
+      : readinessBlocked > 0
+        ? `当前服务没有明显中断，但正式上架还有 ${readinessBlocked} 个阻塞项和 ${readinessAttention} 个需处理项。`
       : worst === "warn"
         ? "当前没有明确服务中断，但有运营队列需要跟进。"
         : "关键健康项、App 报错、反馈和礼品卡队列暂时没有明显异常。";
@@ -2915,6 +2931,9 @@ function monitoringReadinessSummary(report: AdminMonitoring): string {
 function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring["windows"][number] | undefined, day24: AdminMonitoring["windows"][number] | undefined): string {
   const worst = monitoringWorstLevel(report);
   const primaryRoute = primaryMonitoringActionRoute(report, worst);
+  const readinessRows = report.launch_readiness || [];
+  const readinessBlocked = readinessRows.filter((row) => row.status === "blocked").length;
+  const readinessAttention = readinessRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
   const loginDepsOK = loginHealthOK(report.health);
   const giftReady = (report.queues.gift_card_batch_count ?? 0) > 0 && (report.queues.gift_card_active ?? 0) > 0;
   const giftWarn = report.queues.gift_card_failed_attempts > 0 || !giftReady;
@@ -2942,9 +2961,9 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
     <section class="decision-grid">
       ${decisionCard(
         "当前结论",
-        worst === "bad" ? "先处理" : worst === "warn" ? "可推进但要盯" : "可以继续推进",
-        worst === "bad" ? "有红色事项，先点下面入口处理。" : worst === "warn" ? "没有明确中断，但有队列或配置需要看。" : `今日 ${today?.chat_rounds ?? 0} 轮问诊，关键服务正常。`,
-        worst,
+        worst === "bad" ? "先处理" : readinessBlocked > 0 ? "运行正常 / 上架有阻塞" : worst === "warn" || readinessAttention > 0 ? "可推进但要盯" : "可以继续推进",
+        worst === "bad" ? "有红色事项，先点下面入口处理。" : readinessBlocked > 0 ? `服务运行信号暂稳，但正式上架还有 ${readinessBlocked} 个阻塞项和 ${readinessAttention} 个需处理项。` : worst === "warn" ? "没有明确中断，但有队列或配置需要看。" : `今日 ${today?.chat_rounds ?? 0} 轮问诊，关键服务正常。`,
+        worst === "bad" ? "bad" : readinessBlocked > 0 || readinessAttention > 0 ? "warn" : worst,
         primaryRoute,
       )}
       ${decisionCard(

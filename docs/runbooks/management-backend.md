@@ -1,6 +1,6 @@
 # 统一管理后台 Runbook
 
-最后更新：2026-06-10
+最后更新：2026-06-12
 
 ## 目的
 
@@ -60,7 +60,7 @@
 - 继续用 runbook、内部接口和只读脚本规划兜底。
 - 继续按功能巡检，把当前真相和后续必补项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
-该阶段已经结束：ECS / RDS / Redis / OSS / DNS、内部接口和第一版网页后台代码已经落地。P1 后台生产入口也已部署到 `admin.nongjiqiancha.cn`，并完成管理员 bootstrap、清理 bootstrap 环境变量、HTTPS、首页、登录和总览 API 验收；SLS 已有 5 条 AlertHub 最小告警，后续重点是补 SLS 外部通知 / 仪表盘、数据库只读脚本和更细的运营动作。
+该阶段已经结束：ECS / RDS / Redis / OSS / DNS、内部接口和第一版网页后台代码已经落地。P1 后台生产入口也已部署到 `admin.nongjiqiancha.cn`，并完成管理员 bootstrap、清理 bootstrap 环境变量、HTTPS、首页、登录和总览 API 验收；SLS 已有 5 条 AlertHub 最小告警，`scripts/check-sls-alert-readiness.ps1` 可只读巡检规则是否启用、是否绑定行动策略和仪表盘，后续重点是补 SLS 外部通知 / 仪表盘、数据库只读脚本和更细的运营动作。
 
 ## P1：服务器落地后的最小网站后台
 
@@ -102,7 +102,7 @@
 
 | 模块 | 当前能否直接接 | 当前真源 | 第一版要补 |
 |---|---|---|---|
-| 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计、`auth_logs`、`app_update_logs`、SLS 5 条 AlertHub 最小告警 | SLS 外部通知 / 仪表盘、Nginx access 聚合、登录精准漏斗 |
+| 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计、`auth_logs`、`app_update_logs`、SLS 5 条 AlertHub 最小告警、SLS 告警只读巡检脚本 | SLS 外部通知 / 仪表盘、Nginx access 聚合、登录精准漏斗 |
 | 帮助与反馈 | 已接入首版 | `support_messages`、`support_conversations`、`/internal/support/*`、`/admin-api/v1/support/*` | 正式坐席分配、标签、站外通知、客服绩效、保存 / 删除规则 |
 | 注销申请 | 已接入申请队列 | `account_deletion_requests`、`/api/account/deletion-requests`、`/admin-api/v1/account-deletion-requests*` | 物理删除 / 匿名化规则、法定留存、处理责任和批量清理脚本 |
 | App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs`、监控页登录排障卡、检查更新排障卡 | 更细的版本 / 设备 / 地区聚合和告警 |

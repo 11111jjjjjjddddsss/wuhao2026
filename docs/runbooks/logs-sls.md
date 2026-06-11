@@ -1,6 +1,6 @@
 # 日志排查 Runbook
 
-最后更新：2026-06-10
+最后更新：2026-06-12
 
 ## 目的
 
@@ -38,10 +38,28 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1
 ```
 
+如果已经在 SLS 控制台创建好行动策略 / 仪表盘，可以把对应 ID 传给脚本，把 5 条规则统一绑定；不要把联系人手机号、机器人 webhook、邮箱或通知模板密钥写进仓库：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1 -ActionPolicyId <sls-action-policy-id> -DashboardId <sls-dashboard-id>
+```
+
 只预演、不创建或更新：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1 -DryRun
+```
+
+只读巡检当前告警闭环，不修改云上配置：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1
+```
+
+若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；当前生产会因为尚未绑定 action policy / dashboard 返回失败：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard
 ```
 
 当前已创建的最小规则：
@@ -65,6 +83,7 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 
 - 这些规则是“最小生产兜底”，不是完整告警中心
 - 当前只投递到 AlertHub，后台不会自动弹窗，用户也不会收到系统通知
+- 2026-06-12 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，但 `actionPolicyId=空`、未关联 dashboard；这不是脚本失败，而是外部通知和仪表盘尚未闭环
 - 后续仍需配置 action policy / 联系人 / 通知渠道、仪表盘、ECS / RDS / Redis / OSS 资源水位、DYPNS 认证用量和模型成本告警
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 
