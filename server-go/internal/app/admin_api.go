@@ -1964,7 +1964,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Route:  "support",
 		Owner:  "客服 / 运营",
 	})
-	accountDeletionStatus := "partial"
+	accountDeletionStatus := "attention"
 	accountDeletionBody := "App 内已提供注销申请入口，用户提交后退出当前设备；后台可核验并标记处理进度，物理删除 / 匿名化规则仍需合规收口。"
 	if queues.AccountDeletionPending > 0 {
 		accountDeletionStatus = "attention"

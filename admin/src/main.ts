@@ -2894,9 +2894,9 @@ function monitoringHero(report: AdminMonitoring): string {
 function monitoringReadinessSummary(report: AdminMonitoring): string {
   const rows = report.launch_readiness || [];
   const ready = rows.filter((row) => row.status === "ready").length;
-  const attention = rows.filter((row) => row.status === "attention").length;
+  const attention = rows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
   const blocked = rows.filter((row) => row.status === "blocked").length;
-  const next = rows.find((row) => row.status === "blocked") || rows.find((row) => row.status === "attention");
+  const next = rows.find((row) => row.status === "blocked") || rows.find((row) => row.status !== "ready");
   return `
     <section class="readiness-summary">
       <div class="readiness-count ok"><span>就绪</span><strong>${ready}</strong></div>

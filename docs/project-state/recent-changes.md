@@ -5,6 +5,8 @@
 
 ## 2026-06-11
 
+- 监控面板“正式上架检查”汇总口径补了一处状态一致性修复：后台 `launch_readiness` 之前把“注销申请”写成 `partial`，但前端汇总只按 `ready / attention / blocked` 统计，导致“需处理”数量和“下一步”选择可能漏算。现已统一为上线检查专用三态，前端汇总也改成把所有非 `ready`、非 `blocked` 状态都归到“需处理”，并新增后端单测锁住这条约束，避免后续再把 capability 的 `partial` 状态误混进 launch readiness。
+
 - 今日农情线上 v53 探针 `runs=2` 得到 `ok_count=2/2`，每次 3 条可展示 item，未返回 reasoning tokens，单次 total tokens 约 7.1k-7.3k；来源名能写出，兼容 Chat 链路结构化 `source_count=0` 仍属预期。样本质量总体能跑通，但第一组摘要只有 76-79 个中文字符，偏薄。已把今日农情提示词小幅升到 `2026-06-11-v54`：仍不加后端字数过滤、不按内容拦截，只在提示词里要求摘要 90-130 字左右、尽量不低于 85 字，材料足够时补清楚进度、影响范围、农时窗口、风险点、供应变化或农资 / 流通影响，不能用套话凑字。v54 已部署到 ECS，生产探针 `runs=2` 继续 `ok_count=2/2`，6 条摘要约 94-112 字，无 reasoning tokens，单次 total tokens 约 7.16k-7.18k；第二组仍有一条综合价格类材料，后续靠探针和运营抽查观察，不为此恢复硬过滤。
 
 - 阿里云云安全中心在 2026-06-11 07:49 左右报 3 条 CRITICAL“云助手异常命令”。只读排查确认事件命中的是本项目通过 Cloud Assistant `RunCommand` 下发的 `base64 | bash` 形态今日农情运维脚本：脚本会在 ECS 内读取 `DAILY_AGRI_JOB_SECRET` 并调用本机 `127.0.0.1` 的今日农情内部接口，云盾因此判断“命令内容包含恶意文本”。已把 Cloud Assistant 运维脚本统一改为先用 `SendFile` 投递脚本文件，再用短命令 `bash /tmp/*.sh` 执行；涉及 `check-ecs-readiness`、`deploy-ecs-server`、`deploy-ecs-admin`、`deploy-ecs-site`、`configure-ecs-daily-agri-job`、`query-ecs-logs`、`rollback-ecs-server`、`setup-sls-logging` 和 `harden-ecs-security`。本轮不在聊天或文档打印命令中的真实密钥。由于事件详情显示调用 AK 为主账号 AK 且调用 IP 与当前本机出口不完全一致，仍按“主账号 AccessKey 上线前必须轮换”处理，待用户确认后在控制台 / CLI 完成轮换并处理安全中心告警。

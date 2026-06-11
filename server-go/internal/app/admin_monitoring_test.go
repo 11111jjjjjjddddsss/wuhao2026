@@ -160,6 +160,43 @@ func TestAdminMonitoringLaunchReadinessRequiresRealChatEvidence(t *testing.T) {
 	}
 }
 
+func TestAdminMonitoringLaunchReadinessStatusContract(t *testing.T) {
+	report := AdminMonitoring{
+		Health: AdminHealthStatus{
+			API:               "ok",
+			Bailian:           "ok",
+			Dypns:             "ok",
+			DypnsFusion:       "ok",
+			DypnsSMS:          "ok",
+			Redis:             "ok",
+			UploadStorage:     "oss",
+			AuthStrict:        true,
+			DevOrderEndpoints: false,
+		},
+		Queues: AdminMonitoringQueues{
+			AppUpdate:              AdminMonitoringAppUpdate{ConfigValid: true, DownloadArtifactsComplete: true, Enabled: true},
+			AccountDeletionPending: 1,
+			GiftCardBatchCount:     1,
+			GiftCardTotal:          1,
+			GiftCardActive:         1,
+		},
+	}
+	items := buildAdminMonitoringLaunchReadiness(report)
+	validStatuses := map[string]bool{"ready": true, "attention": true, "blocked": true}
+	for _, item := range items {
+		if !validStatuses[item.Status] {
+			t.Fatalf("unexpected launch readiness status %q for %#v", item.Status, item)
+		}
+	}
+	accountDeletion := findAdminMonitoringLaunchItem(items, "注销申请")
+	if accountDeletion == nil {
+		t.Fatalf("missing account deletion launch item: %#v", items)
+	}
+	if accountDeletion.Status != "attention" {
+		t.Fatalf("account deletion launch item status = %q, want attention", accountDeletion.Status)
+	}
+}
+
 func TestAdminMonitoringSummaryModelPolicyUsesFixedQwenPlus(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
 	summaryRow := findAdminMonitoringModelPolicy(rows, "记忆文档摘要")
