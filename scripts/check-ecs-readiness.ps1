@@ -86,6 +86,8 @@ function Wait-RunCommand {
     throw "Timed out waiting for RunCommand $InvokeId"
 }
 
+. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+
 $remoteScript = @'
 set -u
 env_file='/etc/nongjiqiancha/server.env'
@@ -235,16 +237,14 @@ echo '== ports =='
 ss -ltnp 2>/dev/null | grep -E '(:80|:443|:3000|:3001)[[:space:]]' || true
 '@
 
-$remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))
-$remoteBase64 = [Convert]::ToBase64String($remoteBytes)
-$command = "printf '%s' '$remoteBase64' | base64 -d >/tmp/nongji-readiness-check.sh && bash /tmp/nongji-readiness-check.sh"
+Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-readiness-check.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
 
 $run = Invoke-JsonCommand @(
     "aliyun", "ecs", "RunCommand",
     "--RegionId", $RegionId,
     "--Type", "RunShellScript",
     "--InstanceId.1", $InstanceId,
-    "--CommandContent", $command,
+    "--CommandContent", "bash /tmp/nongji-readiness-check.sh",
     "--Timeout", "180"
 )
 

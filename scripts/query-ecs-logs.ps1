@@ -87,6 +87,8 @@ function Wait-RunCommand {
     throw "Timed out waiting for RunCommand $InvokeId"
 }
 
+. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+
 if ($Lines -le 0) {
     $Lines = 240
 }
@@ -146,15 +148,13 @@ awk '$9 ~ /^(429|5[0-9][0-9])$/ {print}' /var/log/nginx/access.log 2>/dev/null \
   | redact || true
 '@
 
-$remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))
-$remoteBase64 = [Convert]::ToBase64String($remoteBytes)
-$command = "printf '%s' '$remoteBase64' | base64 -d >/tmp/nongji-query-logs.sh && NONGJI_LOG_LINES=$Lines bash /tmp/nongji-query-logs.sh"
+Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-query-logs.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
 $run = Invoke-JsonCommand @(
     "aliyun", "ecs", "RunCommand",
     "--RegionId", $RegionId,
     "--Type", "RunShellScript",
     "--InstanceId.1", $InstanceId,
-    "--CommandContent", $command,
+    "--CommandContent", "NONGJI_LOG_LINES=$Lines bash /tmp/nongji-query-logs.sh",
     "--Timeout", "180"
 )
 

@@ -88,6 +88,8 @@ function Wait-RunCommand {
     throw "Timed out waiting for RunCommand $InvokeId"
 }
 
+. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+
 if ([string]::IsNullOrWhiteSpace($BackupName)) {
     $remoteScript = @"
 set -euo pipefail
@@ -292,15 +294,13 @@ systemctl is-active "`$inactive_service"
 "@
 }
 
-$remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))
-$remoteBase64 = [Convert]::ToBase64String($remoteBytes)
-$command = "printf '%s' '$remoteBase64' | base64 -d >/tmp/nongji-rollback.sh && bash /tmp/nongji-rollback.sh"
+Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-rollback.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
 $run = Invoke-JsonCommand @(
     "aliyun", "ecs", "RunCommand",
     "--RegionId", $RegionId,
     "--Type", "RunShellScript",
     "--InstanceId.1", $InstanceId,
-    "--CommandContent", $command,
+    "--CommandContent", "bash /tmp/nongji-rollback.sh",
     "--Timeout", "180"
 )
 

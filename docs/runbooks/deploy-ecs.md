@@ -1,6 +1,6 @@
 # ECS 发版 Runbook
 
-最后更新：2026-06-10
+最后更新：2026-06-11
 
 ## 目的
 
@@ -95,6 +95,8 @@ Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Andr
 6. 启动 `nongji-server-3000.service` 或 `nongji-server-3001.service` 中的非当前 slot，并先检查该端口本机 `/healthz`
 7. 通过 `nginx -t` 后把 API Nginx 上游和后台 `/admin-api/` 上游一起切到新 slot，reload Nginx，再检查本机 HTTPS healthz 和后台未登录鉴权接口
 8. 新入口健康后启用新 slot、禁用旧 slot / 历史 `nongji-server.service`，并通过 transient systemd timer 延迟停止旧进程，给已有 SSE 连接排空时间；每次部署 / 回滚前都会先清理旧 `nongji-drain-stop-*` transient 任务，避免多次发布叠加后把当前 active slot 误停成 502
+
+2026-06-11 起，仓库内 Cloud Assistant 运维脚本使用 [cloud-assistant-safe.ps1](D:/wuhao/scripts/cloud-assistant-safe.ps1) 的 `SendFile` 辅助函数下发脚本正文，再用短 `RunCommand` 执行远端脚本文件。不要新增 `echo <base64> | base64 -d | bash` 形态的长命令；该形态已触发过云安全中心“云助手异常命令”高危告警，也更容易在终端和审计里夹带内部命令细节。需要读取 ECS 环境变量的运维脚本只能在远端本机读取，并输出脱敏状态，不打印真实密钥。
 
 只验证打包不部署：
 

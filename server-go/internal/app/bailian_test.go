@@ -558,7 +558,8 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 	userContent := capturedMessages[1].(map[string]any)["content"].(string)
 	if !strings.Contains(userContent, "质量优先级：近 7 天真实公开材料 > 种植侧相关 > 对生产、农资、农时或流通有直接意义 > 三条尽量不重复 > 手机卡片好读") ||
 		!strings.Contains(userContent, "最大限度全网宽搜") ||
-		!strings.Contains(userContent, "小类不要卡死") ||
+		!strings.Contains(userContent, "大类边界要清楚，小类不要抠太细") ||
+		!strings.Contains(userContent, "摘要 90-130 个中文字符左右") ||
 		!strings.Contains(userContent, "若当天某类材料明显更真实、更新、更有直接影响，可以出现两条") ||
 		!strings.Contains(userContent, "是否有养殖水产、广告软文、传言、旧闻或编造数字") {
 		t.Fatalf("daily agri prompt should carry freshness/diversity guidance without prompt_intervene: %q", userContent)

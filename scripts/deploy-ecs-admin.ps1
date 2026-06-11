@@ -112,6 +112,8 @@ function Wait-RunCommand {
     throw "Timed out waiting for RunCommand $InvokeId"
 }
 
+. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+
 function Sync-ARecord {
     param(
         [string]$Rr,
@@ -412,15 +414,13 @@ else
 fi
 "@
 
-$remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))
-$remoteBase64 = [Convert]::ToBase64String($remoteBytes)
-$command = "printf '%s' '$remoteBase64' | base64 -d >/tmp/nongji-admin-deploy.sh && bash /tmp/nongji-admin-deploy.sh"
+Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-admin-deploy.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
 $run = Invoke-JsonCommand @(
     "aliyun", "ecs", "RunCommand",
     "--RegionId", $RegionId,
     "--Type", "RunShellScript",
     "--InstanceId.1", $InstanceId,
-    "--CommandContent", $command,
+    "--CommandContent", "bash /tmp/nongji-admin-deploy.sh",
     "--Timeout", "600"
 )
 

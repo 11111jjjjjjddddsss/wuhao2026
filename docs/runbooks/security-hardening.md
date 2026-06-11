@@ -1,6 +1,6 @@
 # ECS / 官网基础安全加固 Runbook
 
-最后更新：2026-06-10
+最后更新：2026-06-11
 
 ## 当前结论
 
@@ -46,6 +46,14 @@
 - 2026-06-06 后端补内部 secret 入口 Redis / IP 短期限流，覆盖 `SUPPORT_ADMIN_SECRET` 保护的内部查询 / 回复接口和 `DAILY_AGRI_JOB_SECRET` 保护的今日农情生成接口
 - 2026-06-06 后端补 `client_msg_id` 长度上限 128，对齐 MySQL `VARCHAR(128)`，避免恶意超长幂等 ID 打到数据库层制造错误
 
+2026-06-11 云安全中心告警处置：
+
+- 阿里云云安全中心在 07:49 左右报 3 条 CRITICAL “云助手异常命令”，事件名为 `Suspicious:CloudThreatDetection`。只读排查确认命中的是本项目通过 Cloud Assistant `RunCommand` 下发的 `base64 | bash` 形态运维命令，其中包括今日农情内部生成 / 探针相关脚本；该形态容易被云盾按“异常命令”识别
+- 本轮未在仓库、文档、提交信息或聊天里打印真实 `AccessKey`、`DAILY_AGRI_JOB_SECRET`、完整命令内容或内部接口密钥
+- 已把本仓库 Cloud Assistant 运维脚本统一改为先使用 `SendFile` 下发脚本文本，再用短命令执行远端脚本文件，避免继续下发 `echo <base64> | base64 -d | bash` 这类高误报形态
+- 涉及脚本包括：`check-ecs-readiness.ps1`、`configure-ecs-daily-agri-job.ps1`、`deploy-ecs-admin.ps1`、`deploy-ecs-server.ps1`、`deploy-ecs-site.ps1`、`harden-ecs-security.ps1`、`query-ecs-logs.ps1`、`rollback-ecs-server.ps1`、`setup-sls-logging.ps1`
+- 因事件详情显示由主账号 AccessKey 调用云助手，且调用来源 IP 需要继续核对，仍按上线前安全项处理：轮换已暴露或用于生产运维的主账号 AccessKey，优先改成最小权限 RAM 用户，并在安全中心确认或处理对应告警
+
 ## 自动加固脚本
 
 本机执行：
@@ -64,6 +72,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\harden-ecs-
 6. 输出当前安全组入站放行列表
 
 脚本不读取、不打印、不修改任何密钥。
+
+## Cloud Assistant 使用规范
+
+- 默认使用本仓库 `scripts/cloud-assistant-safe.ps1` 中的 `Send-CloudAssistantScriptFile` 投递脚本正文，再通过短 `RunCommand` 执行远端文件
+- 不再新增 `echo <base64> | base64 -d | bash`、`curl ... | bash`、把长脚本塞进一条 `RunCommand` 的写法
+- 运维脚本可以在 ECS 内读取 `/etc/nongjiqiancha/server.env` 供本机服务调用使用，但不得把密钥值、完整环境变量、完整命令行或内部接口 secret 打到日志、文档或终端输出
+- 如果云安全中心再次报“云助手异常命令”，先核对时间、调用者 AK、调用 IP、命令摘要和本仓库脚本调用时间；能确认是本项目运维命令时，记录原因并优化脚本形态，不要简单忽略；不能确认时，立刻按 AK 泄露和入侵排查处理
 
 ## 付费产品判断
 
@@ -98,3 +113,4 @@ tail -n 120 /var/log/nginx/error.log
 - 同行恶意刷接口时，优先看 Nginx 429、Go 侧限流日志、模型调用量和 DYPNS / OSS / RDS 成本曲线
 - 真正大流量 DDoS 超过基础防护能力时，免费策略无法保证持续可用，需要临时购买高防或让云厂商清洗
 - 管理后台已完成后台域名 / Nginx / bootstrap 验收；后续继续保持账号、权限、审计和限流，不能把内部 secret 暴露给浏览器前端
+- 生产运维仍在使用阿里云主账号 AK 的场景必须逐步替换为最小权限 RAM 用户；出现云安全中心高危告警后，不要继续扩大主账号 AK 使用范围

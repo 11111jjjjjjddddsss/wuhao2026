@@ -70,6 +70,9 @@ func TestAdminMonitoringCapabilitiesContract(t *testing.T) {
 	if !hasAdminMonitoringCapabilityStatus(capabilities, "SLS 告警", "partial") {
 		t.Fatalf("SLS alerts capability should be partial after AlertHub minimum alerts: %#v", capabilities)
 	}
+	if !hasAdminMonitoringCapabilityStatus(capabilities, "账号登录", "partial") {
+		t.Fatalf("login capability should stay partial until one-click and SMS are validated on real devices: %#v", capabilities)
+	}
 }
 
 func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {

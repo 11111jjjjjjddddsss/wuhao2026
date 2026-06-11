@@ -231,6 +231,8 @@ function Wait-RunCommand {
     throw "Timed out waiting for RunCommand $InvokeId"
 }
 
+. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+
 function Ensure-RemoteLogtail {
     $remoteScript = @'
 set -eu
@@ -284,15 +286,13 @@ echo '== log dir =='
 ls -ld /var/log/nongjiqiancha
 ls -l /var/log/nongjiqiancha/server.log
 '@
-    $remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))
-    $remoteBase64 = [Convert]::ToBase64String($remoteBytes)
-    $command = "printf '%s' '$remoteBase64' | base64 -d >/tmp/nongji-setup-logtail.sh && bash /tmp/nongji-setup-logtail.sh"
+    Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-setup-logtail.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
     $run = Invoke-JsonCommand @(
         "aliyun", "ecs", "RunCommand",
         "--RegionId", $RegionId,
         "--Type", "RunShellScript",
         "--InstanceId.1", $InstanceId,
-        "--CommandContent", $command,
+        "--CommandContent", "bash /tmp/nongji-setup-logtail.sh",
         "--Timeout", "300"
     )
     Write-Host "Remote SLS setup invoke: $($run.InvokeId)"

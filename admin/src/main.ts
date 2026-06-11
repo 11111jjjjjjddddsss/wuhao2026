@@ -2915,12 +2915,28 @@ function monitoringReadinessSummary(report: AdminMonitoring): string {
 function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring["windows"][number] | undefined, day24: AdminMonitoring["windows"][number] | undefined): string {
   const worst = monitoringWorstLevel(report);
   const primaryRoute = primaryMonitoringActionRoute(report, worst);
-  const loginOK = loginHealthOK(report.health);
+  const loginDepsOK = loginHealthOK(report.health);
   const giftReady = (report.queues.gift_card_batch_count ?? 0) > 0 && (report.queues.gift_card_active ?? 0) > 0;
   const giftWarn = report.queues.gift_card_failed_attempts > 0 || !giftReady;
   const appErrors = day24?.app_errors ?? 0;
   const authFailures = day24?.auth_failures ?? report.queues.auth_failures ?? 0;
   const crashReports = day24?.crash_reports ?? report.queues.crash_reports ?? 0;
+  const recentLoginSessions = day24?.recent_auth_sessions ?? 0;
+  const authTrouble =
+    authFailures +
+    (report.auth_logs?.crash_reports ?? 0) +
+    (report.auth_logs?.env_blocked ?? 0) +
+    (report.auth_logs?.env_warnings ?? 0) +
+    (report.auth_logs?.login_network_failures ?? 0);
+  const loginLevel: "ok" | "warn" | "bad" | "info" = !loginDepsOK ? "bad" : authTrouble > 0 ? "warn" : recentLoginSessions > 0 ? "ok" : "warn";
+  const loginValue = !loginDepsOK ? "检查登录" : authTrouble > 0 ? "看日志" : recentLoginSessions > 0 ? "有登录记录" : "待真机";
+  const loginBody = !loginDepsOK
+    ? "登录依赖或严格鉴权异常，先打开服务健康。"
+    : authTrouble > 0
+      ? "已有登录环境、网络、SDK 或闪退信号，先看 App 日志里的 auth.*。"
+      : recentLoginSessions > 0
+        ? "24 小时内已有新登录 session；仍要分别回归一键登录和验证码登录。"
+        : "云端配置正常不等于真机已过；明天测试时重点看一键登录、验证码收码、默认数据卡和代理。";
   const appQualityLevel = crashReports > 0 || appErrors >= 10 || authFailures >= 10 ? "bad" : appErrors > 0 || authFailures > 0 ? "warn" : "ok";
   return `
     <section class="decision-grid">
@@ -2933,10 +2949,10 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       )}
       ${decisionCard(
         "登录与账号ID",
-        loginOK ? "配置正常" : "检查登录",
-        loginOK ? "严格鉴权、Redis 和登录服务配置正常；登录后主 ID 为账号ID，一键登录和短信登录仍以真机成功回归为准。" : "登录依赖或严格鉴权异常，先打开服务健康。",
-        loginOK ? "ok" : "bad",
-        "health",
+        loginValue,
+        loginBody,
+        loginLevel,
+        authTrouble > 0 ? "app-logs" : "health",
       )}
       ${decisionCard(
         "礼品卡与权益",

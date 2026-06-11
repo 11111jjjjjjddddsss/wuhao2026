@@ -123,6 +123,8 @@ function Wait-RunCommand {
     throw "Timed out waiting for RunCommand $InvokeId"
 }
 
+. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $serverDir = Join-Path $repoRoot "server-go"
 if ([string]::IsNullOrWhiteSpace($Commit)) {
@@ -428,15 +430,13 @@ systemd-run --unit="`$drain_unit" --on-active="`${drain_seconds}s" /bin/sh -c "s
 systemctl is-active "`$inactive_service"
 "@
 
-$remoteBytes = [Text.Encoding]::UTF8.GetBytes(($remoteScript -replace "`r`n", "`n"))
-$remoteBase64 = [Convert]::ToBase64String($remoteBytes)
-$command = "printf '%s' '$remoteBase64' | base64 -d >/tmp/nongji-deploy-$Commit.sh && bash /tmp/nongji-deploy-$Commit.sh"
+Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-deploy-$Commit.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
 $run = Invoke-JsonCommand @(
     "aliyun", "ecs", "RunCommand",
     "--RegionId", $RegionId,
     "--Type", "RunShellScript",
     "--InstanceId.1", $InstanceId,
-    "--CommandContent", $command,
+    "--CommandContent", "bash /tmp/nongji-deploy-$Commit.sh",
     "--Timeout", "600"
 )
 

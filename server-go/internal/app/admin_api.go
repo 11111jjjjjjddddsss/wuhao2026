@@ -2000,7 +2000,7 @@ func recentMonitoringChatEvidence(report AdminMonitoring) (int64, int64) {
 func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 	return []AdminMonitoringCapability{
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
-		{Title: "账号登录", Status: "ready", Body: "手机号、一键登录、短信登录统一归到账号ID；旧本机 UUID 只做迁移桥。", Route: "users"},
+		{Title: "账号登录", Status: "partial", Body: "账号ID收敛、云端登录配置和日志排障入口已接入；一键登录和短信登录仍需真机分别跑通后才算上线验收。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
 		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，发送后台回复并关闭或重开会话。", Route: "support"},
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
