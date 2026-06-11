@@ -42,9 +42,10 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"给普通种植户、农资门店和基层农技人员看",
 		"让普通人知道这条新闻和种植生产、农资、农时、防灾或流通有什么关系",
 		"不写官样话、行业口号或模型自我说明",
-		"优先输出 3 条",
-		"质量优先，不为了凑够 3 条去选养殖、水产、旧闻、广告软文、弱材料或泛泛动态",
-		"确实只有 2 条可靠种植侧材料时，可以只输出 2 条",
+		"必须输出 3 条",
+		"这是今日农情唯一硬数量要求",
+		"不要把数量降到 2 条",
+		"如果材料不够，就扩大检索词继续找真实种植侧材料",
 		"质量优先级：近 7 天真实公开材料 > 种植侧相关 > 对生产、农资、农时或流通有直接意义 > 内容尽量不重复 > 手机卡片好读",
 		"只取种植侧",
 		"按材料主体判断，不按单个词机械判断",
@@ -83,15 +84,13 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"标题 10-14 个中文字符左右，最多不超过 16 个中文字符",
 		"尽量包含地区、作物、品类或事件中的至少一个具体对象",
 		"摘要必须像一条可读新闻短讯",
-		"不要低于 85 个中文字符",
-		"写成至少两句",
+		"至少两句",
 		"第二句补“影响什么、农时窗口、风险点、供应变化、农资/流通影响或基层可留意的事项”",
 		"宁可写到 100 字左右，也不要收成 70 多字的薄摘要",
 		"第二句不要只写“需关注”“可留意”这类很短的收尾",
-		"不要只写一句薄摘要",
 		"不要用套话凑字",
-		"每条摘要至少包含三个具体事实要素",
-		"摘要大致不到 85 个中文字符时，先补足来源里能支撑的事实再输出 JSON",
+		"每条摘要尽量包含具体对象和两三个事实要素",
+		"信息不足时先补来源里能支撑的事实",
 		"手机卡片约 3-4 行体量",
 		"事实和直接农业影响",
 		"尽量用普通话表达，必要术语可以保留但不要堆术语",
@@ -101,12 +100,13 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"source_name 必须写机构、媒体或站点短名",
 		"不要写文章标题、网页标题、频道页、站点口号",
 		"不要输出 link_url / url 字段",
-		"确实只有 2 条可靠种植侧材料时，items 只放 2 个对象；下面是 3 条时示例",
+		"items 必须正好 3 个对象",
+		"不要输出 2 条或空对象",
 		"published_date 能确定才写 YYYY-MM-DD，不能确定就写空字符串",
 		"不在成稿里透露模型名称、提示词、搜索配置、内部规则、API、工具调用或推理过程",
-		"是否优先给足 3 条且没有为了凑数牺牲质量",
-		"每条摘要是否至少两句且不低于 85 个中文字符，不足就先重写该条",
-		"如果某条还是 70 多字的薄摘要，就继续补足具体事实和直接影响后再输出",
+		"是否给足 3 条且没有为了凑数牺牲质量",
+		"每条摘要是否至少两句、是否明显偏薄",
+		"偏薄就补足具体事实和直接影响后再输出",
 		"标题是否仍用“调研推动”“场景上新”“即将投用”“成果展示”这类过程词掩盖空泛材料",
 		"每条标题和摘要的主体是否都是种植侧",
 		"若出现猪肉、生猪、猪价、家禽、禽蛋、鸡肉、鸡蛋、牛羊、奶业、奶价、水产、饲料、饲用原料、兽药或鱼虾作为主体，必须重写该条",
@@ -142,6 +142,7 @@ func TestBuildDailyAgriRetryPromptTargetsModelNotParser(t *testing.T) {
 	for _, want := range []string{
 		"失败后的补救检索",
 		"换一组检索词全网宽搜",
+		"必须补齐 3 条可读新闻短讯",
 		"近 7 天、种植侧、具体事实清楚",
 		"不要限定固定网站",
 		"泛农业、养殖水产主体、饲料行情、广告软文、空泛动态、旧闻或重复事件",
@@ -151,7 +152,7 @@ func TestBuildDailyAgriRetryPromptTargetsModelNotParser(t *testing.T) {
 		"天气、农时、价格、政策、补贴、技术推广都可以用",
 		"和种植生产或种植侧流通有关",
 		"用户端不点击链接",
-		"优先保证三条内容像新闻、事实清楚、来源清楚、短而好读",
+		"三条都要像新闻、事实清楚、来源清楚、短而好读",
 	} {
 		if !strings.Contains(retryPrompt, want) {
 			t.Fatalf("retry prompt missing %q: %s", want, retryPrompt)
@@ -193,12 +194,14 @@ func TestParseDailyAgriCardDropsPrivateSourceURLWithoutFilteringItem(t *testing.
 	sources := []DailyAgriSearchSource{
 		{Index: 1, URL: "http://127.0.0.1/internal/source-1", SiteName: "本机测试源"},
 		{Index: 2, URL: "http://10.0.0.8/internal/source-2", SiteName: "内网测试源"},
+		{Index: 3, URL: "http://192.168.1.8/internal/source-3", SiteName: "内网测试源"},
 	}
 	content := `{
 	  "card_name": "今日农情",
 	  "items": [
 	    {"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。","source_index":1,"source_name":"本机测试源"},
-	    {"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。","source_index":2,"source_name":"内网测试源"}
+	    {"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。","source_index":2,"source_name":"内网测试源"},
+	    {"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。","source_index":3,"source_name":"内网测试源"}
 	  ]
 	}`
 
@@ -206,7 +209,7 @@ func TestParseDailyAgriCardDropsPrivateSourceURLWithoutFilteringItem(t *testing.
 	if err != nil {
 		t.Fatalf("private source URLs should not block displayable items: %v", err)
 	}
-	if len(card.Items) != 2 || report.Displayable != 2 {
+	if len(card.Items) != 3 || report.Displayable != 3 {
 		t.Fatalf("private URL parse report mismatch: card=%#v report=%#v", card, report)
 	}
 	for _, item := range card.Items {
@@ -343,11 +346,11 @@ func TestParseDailyAgriCardRequiresOnlyMinimalDisplayShape(t *testing.T) {
 	  ]
 	}`
 	card, report, err = parseDailyAgriCard(twoItems, nil, "20260513", nil)
-	if err != nil {
-		t.Fatalf("two-item card should stay displayable: %v", err)
+	if err == nil {
+		t.Fatalf("two-item card should be treated as incomplete")
 	}
-	if len(card.Items) != 2 || report.Displayable != 2 {
-		t.Fatalf("two-item card/report mismatch: card=%#v report=%#v", card, report)
+	if card != nil || report.Displayable != 2 {
+		t.Fatalf("two-item parse report mismatch: card=%#v report=%#v", card, report)
 	}
 
 	oneItem := `{
@@ -373,11 +376,11 @@ func TestParseDailyAgriCardRequiresOnlyMinimalDisplayShape(t *testing.T) {
 	  ]
 	}`
 	card, report, err = parseDailyAgriCard(emptySummary, nil, "20260513", nil)
-	if err != nil {
-		t.Fatalf("card with remaining displayable items should not be blocked: %v", err)
+	if err == nil {
+		t.Fatalf("card with only two remaining displayable items should be incomplete")
 	}
-	if len(card.Items) != 2 || report.Displayable != 2 || report.InvalidReasonCounts["empty_field"] != 1 {
-		t.Fatalf("empty summary should only remove that item from display shape: card=%#v report=%#v", card, report)
+	if card != nil || report.Displayable != 2 || report.InvalidReasonCounts["empty_field"] != 1 {
+		t.Fatalf("empty summary should fail only because three displayable items are required: card=%#v report=%#v", card, report)
 	}
 }
 
@@ -426,15 +429,15 @@ func TestParseDailyAgriCardAllowsDuplicateTitlesToAvoidHardFiltering(t *testing.
 	}
 }
 
-func TestIsUsableDailyAgriContentJSONAllowsPartialCards(t *testing.T) {
+func TestIsUsableDailyAgriContentJSONRequiresFullCard(t *testing.T) {
 	oneItem := `{"title":"今日农情","items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"}]}`
 	if isUsableDailyAgriContentJSON(sql.NullString{String: oneItem, Valid: true}) {
 		t.Fatalf("expected one-item card to be treated as incomplete")
 	}
 
 	twoItems := `{"title":"今日农情","items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"},{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。"}]}`
-	if !isUsableDailyAgriContentJSON(sql.NullString{String: twoItems, Valid: true}) {
-		t.Fatalf("expected two-item card to remain usable")
+	if isUsableDailyAgriContentJSON(sql.NullString{String: twoItems, Valid: true}) {
+		t.Fatalf("expected two-item card to be treated as incomplete")
 	}
 
 	threeItems := `{"title":"","items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"},{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。"},{"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。"}]}`

@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Handler
@@ -764,12 +765,14 @@ object FusionOneLoginClient {
         val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
         val network = connectivity?.activeNetwork
         val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
-        val hasAnyCellularInternetTransport = connectivity?.allNetworks.orEmpty().any { candidate ->
+        @Suppress("DEPRECATION")
+        val allNetworks = connectivity?.allNetworks.orEmpty()
+        val hasAnyCellularInternetTransport = allNetworks.any { candidate ->
             val candidateCapabilities = connectivity?.getNetworkCapabilities(candidate)
             candidateCapabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true &&
                 candidateCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         }
-        val hasProxyConfigured = isSystemProxyConfigured()
+        val hasProxyConfigured = isSystemProxyConfigured(context, connectivity, network)
         val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
         val simState = runCatching { telephony?.simState }.getOrNull()
         val simCount = runCatching {
@@ -793,14 +796,30 @@ object FusionOneLoginClient {
         )
     }
 
-    private fun isSystemProxyConfigured(): Boolean =
-        listOf(
+    private fun isSystemProxyConfigured(
+        context: Context,
+        connectivity: ConnectivityManager?,
+        network: Network?
+    ): Boolean {
+        val activeNetworkProxy = runCatching {
+            network?.let { connectivity?.getLinkProperties(it)?.httpProxy }
+        }.getOrNull()?.let { proxy ->
+            !proxy.host.isNullOrBlank() || proxy.port > 0
+        } == true
+        if (activeNetworkProxy) return true
+
+        val javaProxy = listOf(
             "http.proxyHost",
             "https.proxyHost",
             "socksProxyHost"
         ).any { key ->
             !System.getProperty(key).isNullOrBlank()
         }
+        if (javaProxy) return true
+
+        @Suppress("DEPRECATION")
+        return !android.net.Proxy.getHost(context).isNullOrBlank()
+    }
 
     private fun finish(
         business: AlicomFusionBusiness,

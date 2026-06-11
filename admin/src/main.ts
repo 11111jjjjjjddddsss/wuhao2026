@@ -794,7 +794,7 @@ function isPreviewableTodayAgriCard(row: AdminDailyAgriEntry): boolean {
     return false;
   }
   const itemCount = todayAgriItems(row.content).length;
-  return itemCount >= 2;
+  return itemCount >= 3;
 }
 
 async function appUpdatePage(): Promise<string> {
@@ -2290,9 +2290,6 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
 
 function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
   const items = todayAgriItems(row.content);
-  const itemCountNotice = items.length === 2
-    ? notice("可展示但低于目标", "当前卡片已有 2 条可展示农情，符合发布底线；目标仍是 3 条，正式抽查时建议看主题和摘要厚度。", "info")
-    : "";
   return `
     <section class="card today-agri-preview">
       <div class="card-head">
@@ -2303,7 +2300,6 @@ function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
         ${statusPill(row.status)}
       </div>
       <div class="card-body">
-        ${itemCountNotice}
         <div class="today-agri-items">
           ${items.map((item, index) => todayAgriItemCard(item, index)).join("")}
         </div>

@@ -41,7 +41,7 @@
 
 ## D7 今日农情失败告警、重试和个性化怎么落
 
-- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card`、`GET /api/today-agri-cards`、内部 `POST /internal/jobs/today-agri-card/generate` 和后台 `POST /admin-api/v1/today-agri/generate`；ECS systemd timer 已作为生产主线落地，Android 只展示已 ready 的“今日农情”标题 + 摘要，缺失时静默不展示。提示词目标是 3 条，但发布和 Android 展示不再把正好 3 条作为硬闸门，至少 2 条标题 / 摘要完整 item 即可成卡，1 条视为不完整。生成模型固定 `qwen3.5-plus`，联网入口为 OpenAI 兼容 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`；不保留其它模型候选、其它接口候选或环境变量切换入口。`agent / agent_max` 会带来更多检索和 token 成本，今日农情默认不使用；生成最多 2 次，第二次仍走 `turbo`；只做种植侧，养殖侧主要靠提示词排除；来源 URL 只做内部追溯和后台排查，不作为用户可点击入口；兼容 Chat 链路通常没有结构化搜索来源列表，来源名主要来自模型 JSON 的 `source_name`
+- 当前事实：代码已接入 `daily_agri_cards`、`GET /api/today-agri-card`、`GET /api/today-agri-cards`、内部 `POST /internal/jobs/today-agri-card/generate` / `probe` 和后台 `POST /admin-api/v1/today-agri/generate`；ECS systemd timer 已作为生产主线落地，Android 只展示已 ready 的“今日农情”标题 + 摘要，缺失时静默不展示。当前唯一硬数量要求是 3 条，后端发布、Android 展示和后台预览都要求 3 条标题 / 摘要完整 item，少于 3 条视为不完整；主题方向仍靠提示词、探针和后台复核，不做后端内容过滤。生成模型固定 `qwen3.5-plus`，联网入口为 OpenAI 兼容 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`；不保留其它模型候选、其它接口候选或环境变量切换入口。`agent / agent_max` 会带来更多检索和 token 成本，今日农情默认不使用；生成最多 2 次，第二次仍走 `turbo`；只做种植侧，养殖侧主要靠提示词排除；来源 URL 只做内部追溯和后台排查，不作为用户可点击入口；兼容 Chat 链路通常没有结构化搜索来源列表，来源名主要来自模型 JSON 的 `source_name`。
 - 当前倾向：继续保持“云端定时生成 + 后台人工补跑兜底”的主线，不让用户打开 App 时触发生成风暴
 - 仍待决策：失败是否做自动重试、告警先走 SLS 还是继续人工巡检、是否允许后台下架单条或重发当天卡片、未来是否做地区 / 作物个性化。当前首版只做全国 `CN` 卡片，不做按用户画像推送
 

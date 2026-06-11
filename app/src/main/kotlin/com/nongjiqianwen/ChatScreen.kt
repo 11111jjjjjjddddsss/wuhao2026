@@ -318,7 +318,7 @@ private fun buildChatTimelineItems(
 private fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
     val cardItems = items.orEmpty()
     return title == "今日农情" &&
-        cardItems.size >= 2 &&
+        cardItems.size >= 3 &&
         cardItems.all { item ->
             !item.title.isNullOrBlank() &&
                 !item.summary.isNullOrBlank()

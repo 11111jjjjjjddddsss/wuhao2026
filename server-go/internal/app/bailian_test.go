@@ -557,15 +557,16 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 	}
 	userContent := capturedMessages[1].(map[string]any)["content"].(string)
 	if !strings.Contains(userContent, "质量优先级：近 7 天真实公开材料 > 种植侧相关 > 对生产、农资、农时或流通有直接意义 > 内容尽量不重复 > 手机卡片好读") ||
-		!strings.Contains(userContent, "确实只有 2 条可靠种植侧材料时，可以只输出 2 条") ||
-		!strings.Contains(userContent, "确实只有 2 条可靠种植侧材料时，items 只放 2 个对象；下面是 3 条时示例") ||
+		!strings.Contains(userContent, "必须输出 3 条") ||
+		!strings.Contains(userContent, "这是今日农情唯一硬数量要求") ||
+		!strings.Contains(userContent, "items 必须正好 3 个对象") ||
 		!strings.Contains(userContent, "最大限度全网宽搜") ||
 		!strings.Contains(userContent, "大类边界要清楚，小类不要抠太细") ||
 		!strings.Contains(userContent, "调研、会议、活动、平台上线和成果展示类材料") ||
 		!strings.Contains(userContent, "标题不要用“调研推动”“场景上新”“即将投用”“成果展示”这类过程词当主体") ||
 		!strings.Contains(userContent, "摘要必须像一条可读新闻短讯") ||
-		!strings.Contains(userContent, "每条摘要至少包含三个具体事实要素") ||
-		!strings.Contains(userContent, "每条摘要是否至少两句且不低于 85 个中文字符，不足就先重写该条") ||
+		!strings.Contains(userContent, "每条摘要尽量包含具体对象和两三个事实要素") ||
+		!strings.Contains(userContent, "每条摘要是否至少两句、是否明显偏薄") ||
 		!strings.Contains(userContent, "宁可写到 100 字左右，也不要收成 70 多字的薄摘要") ||
 		!strings.Contains(userContent, "若当天某类材料明显更真实、更新、更有直接影响，可以出现两条") ||
 		!strings.Contains(userContent, "是否有养殖水产、动物类价格、广告软文、传言、旧闻或编造数字") {

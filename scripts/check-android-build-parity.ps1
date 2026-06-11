@@ -193,6 +193,10 @@ if ($failures.Count -eq 0) {
         "Fusion one-click login must block VPN/proxy before starting the Aliyun SDK."
     Require-Match $failures $fusionClient 'hasProxyConfigured\s*->\s*"proxy_active"' `
         "Fusion one-click login must block configured system proxies before starting the Aliyun SDK."
+    Require-Match $failures $fusionClient 'getLinkProperties\s*\(\s*it\s*\)\?\.httpProxy' `
+        "Fusion one-click login must detect Android per-network proxy settings, not only Java proxy properties."
+    Require-Match $failures $fusionClient 'android\.net\.Proxy\.getHost\s*\(\s*context\s*\)' `
+        "Fusion one-click login must retain a legacy Android proxy fallback for ROMs that expose proxy settings outside LinkProperties."
     Require-Match $failures $fusionClient 'hasAnyCellularInternetTransport' `
         "Fusion one-click login must inspect all networks so 4G+WiFi mixed environments are not treated as WiFi-only."
     Require-Match $failures $fusionClient 'blockReason\(\):\s*String\?\s*=[\s\S]*?!hasAnyCellularInternetTransport\s*->\s*"no_cellular_data"' `
