@@ -227,6 +227,12 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 message = "请先同意服务协议和隐私政策"
                                 return@Button
                             }
+                            FusionOneLoginClient.precheckOneLoginEnvironment(context)?.let { fallbackMessage ->
+                                smsMode = true
+                                busy = false
+                                message = fallbackMessage
+                                return@Button
+                            }
                             val activity = context.findActivity()
                             if (activity == null) {
                                 SessionApi.reportAuthClientLog(

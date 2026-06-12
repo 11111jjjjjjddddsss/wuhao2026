@@ -124,6 +124,10 @@ func (s *SummaryService) keepPending(ctx context.Context, userID string, snapsho
 
 type extractedMemoryDocument struct {
 	MemoryDocument string
+	Model          string
+	PromptChars    int
+	UserChars      int
+	Usage          bailianModelUsage
 }
 
 func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument string, dialogueText string) (extractedMemoryDocument, error) {
@@ -134,10 +138,12 @@ func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument s
 
 	userContent := buildSummaryExtractionUserContent(oldMemoryDocument, dialogueText)
 	model := summaryExtractionModelName()
+	promptChars := utf8.RuneCountInString(prompt)
+	userContentChars := utf8.RuneCountInString(userContent)
 	s.log().Info("memory document extraction started",
 		"model", model,
-		"prompt_chars", utf8.RuneCountInString(prompt),
-		"user_content_chars", utf8.RuneCountInString(userContent),
+		"prompt_chars", promptChars,
+		"user_content_chars", userContentChars,
 	)
 
 	response, err := s.bailian.OpenCompletion(ctx, map[string]any{
@@ -171,7 +177,9 @@ func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument s
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return extractedMemoryDocument{}, err
 	}
+	var modelUsage bailianModelUsage
 	if usage, ok := parseBailianUsagePayload(payload["usage"]); ok {
+		modelUsage = usage
 		s.log().Info("memory document model usage", appendBailianUsageLogAttrs([]any{}, usage)...)
 	}
 	choices, _ := payload["choices"].([]any)
@@ -184,7 +192,15 @@ func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument s
 	if content == "" {
 		return extractedMemoryDocument{}, fmt.Errorf("SUMMARY_EXTRACT_EMPTY")
 	}
-	return normalizeMemoryDocumentExtraction(content, oldMemoryDocument)
+	result, err := normalizeMemoryDocumentExtraction(content, oldMemoryDocument)
+	if err != nil {
+		return extractedMemoryDocument{}, err
+	}
+	result.Model = model
+	result.PromptChars = promptChars
+	result.UserChars = userContentChars
+	result.Usage = modelUsage
+	return result, nil
 }
 
 func buildSummaryExtractionUserContent(oldMemoryDocument string, dialogueText string) string {

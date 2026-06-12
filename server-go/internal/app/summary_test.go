@@ -77,6 +77,60 @@ func TestExtractSummaryUsesFixedQwenPlusWithoutThinking(t *testing.T) {
 	}
 }
 
+func TestProbeMemoryDocumentUsesSyntheticSampleWithoutWriting(t *testing.T) {
+	var captured map[string]any
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"短期承接：用户正在核对河南周口两亩露地番茄老叶发黄问题，下一轮需继续看叶片照片、根系和包装用量。\n长期背景：用户偏好通俗、直接、少术语的回答，关键用量和面积要求按原话保留。\n用户画像：用户用中文沟通，自述不是大农户，是家里种点地。\n农业重点事件：番茄老叶发黄发生在雨后，用户转述农资店认为像早疫病，但未检测，已喷过一次代森锰锌，具体兑水量待补照片确认。"}}],"usage":{"prompt_tokens":300,"completion_tokens":90,"total_tokens":390}}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+	service := &SummaryService{
+		prompts: summaryTestPromptLoader(t),
+		bailian: NewBailianClient(),
+		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+
+	result, err := service.ProbeMemoryDocument(context.Background(), "", "")
+	if err != nil {
+		t.Fatalf("probe memory document: %v", err)
+	}
+	if result.Status != "ok" || result.Model != summaryExtractionModel {
+		t.Fatalf("probe metadata mismatch: %#v", result)
+	}
+	if result.ModelTotalTokens != 390 {
+		t.Fatalf("usage not surfaced: %#v", result)
+	}
+	if !strings.Contains(result.MemoryDocument, "用户画像：用户用中文沟通") {
+		t.Fatalf("memory document missing user portrait: %q", result.MemoryDocument)
+	}
+	if got := captured["enable_thinking"]; got != false {
+		t.Fatalf("enable_thinking = %#v, want false at top level", got)
+	}
+	if _, ok := captured["enable_search"]; ok {
+		t.Fatalf("summary probe should not enable search: %#v", captured["enable_search"])
+	}
+	messages, ok := captured["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages mismatch: %#v", captured["messages"])
+	}
+	userMessage, _ := messages[1].(map[string]any)
+	userContent, _ := userMessage["content"].(string)
+	for _, want := range []string{"两亩露地番茄", "药量别帮我乱折算", "[已有记忆摘要]", "[最近对话]"} {
+		if !strings.Contains(userContent, want) {
+			t.Fatalf("probe user content missing %q: %q", want, userContent)
+		}
+	}
+}
+
 func TestNormalizeMemoryDocumentStoresModelOutputWithoutSectionFallback(t *testing.T) {
 	oldMemory := "短期承接：旧短期\n长期背景：旧长期\n用户画像：旧画像\n农业重点事件：旧农业事件"
 
@@ -172,6 +226,11 @@ func TestSummaryExtractionPromptKeepsMemorySafeAndUseful(t *testing.T) {
 		"通用用户画像",
 		"个人信息和稳定特征",
 		"称呼、所在地区或常活动范围、身份角色、家庭 / 工作 / 经营背景、常用语言和单位、时间精力、预算或设备限制、风险偏好、回答详略偏好、长期忌讳或长期要求",
+		"身份和角色尽量沿用用户自己的说法",
+		"不给普通描述硬贴职业标签",
+		"如果用户没有明确认可某个身份",
+		"刚刚否定、弱化某个身份",
+		"更中性的生活、工作或经营背景描述",
 		"不要评价性格、能力、消费水平，不做无依据推断",
 		"一次回答方式要求",
 		"不要推成长期身份、职业、固定设施类型、常见作物或稳定习惯",

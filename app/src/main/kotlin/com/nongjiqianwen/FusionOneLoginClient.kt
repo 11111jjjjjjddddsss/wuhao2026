@@ -48,6 +48,19 @@ object FusionOneLoginClient {
     @Volatile
     private var currentCompleted: AtomicBoolean? = null
 
+    fun precheckOneLoginEnvironment(context: Context): String? {
+        val environment = inspectAuthEnvironment(context)
+        val blockReason = environment.blockReason() ?: return null
+        reportAuthEnvironment(
+            level = "warn",
+            event = "auth.fusion_env_blocked",
+            stage = "pre_permission_env_check",
+            environment = environment,
+            reason = blockReason
+        )
+        return environment.userMessageFor(blockReason)
+    }
+
     fun cancelActiveScene(reason: String) {
         loginGeneration.incrementAndGet()
         val business = currentBusiness

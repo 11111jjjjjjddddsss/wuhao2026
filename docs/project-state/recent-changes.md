@@ -5,6 +5,12 @@
 
 ## 2026-06-12
 
+- 用户记忆和今日农情按最新“通用化表达、别过度强压”口径收口：用户记忆提示词保留“短期承接 / 长期背景 / 用户画像 / 农业重点事件”四个方向，但继续声明它们只是归位方向，不是后端硬结构；后端只清理外层代码块和空白，模型非空输出整体覆盖写入，不做四段解析、缺段保留、诊断词、作物词、主题词或画像完整度筛选。新增内部只读探针 `POST /internal/jobs/memory-document/probe` 和 `scripts/probe-ecs-memory-document.ps1`，使用合成样本真实调用 `qwen-plus`，不写用户数据；生产探针显示四块均能自然输出、`reasoning_tokens=null`、未暴露模型机制词，偶发“普通小农户”这类身份措辞泛化先按运营观察，不为单个词继续增加硬规则。
+
+- 今日农情提示词升到 `2026-06-12-v70` 并部署到 ECS：继续固定 `qwen3.5-plus + OpenAI兼容 chat/completions + search_strategy=turbo + forced_search=true + enable_source=true + 顶层 enable_thinking=false`，唯一硬数量要求仍是 3 条；摘要保留 90-130 字左右、一般不要明显低于 90 字的产品要求，但用“正常新闻短讯、避免太薄、不要套话”这类通用表达，不继续为个别小瑕疵堆细则。选题口径统一写成“养殖、水产不要”，不再用“动物类价格”这种不接地气的说法；后端仍不按养殖词、广告词、可信域名、发布日期、重复标题或字数做内容过滤，只做 JSON、3 条标题 / 摘要非空和私网 URL 安全兜底。生产探针 `scripts/probe-ecs-today-agri.ps1 -Runs 3` 验证 v70 为 `ok_count=3/3`、每轮 3 条完整 item、无 reasoning tokens，摘要长度约 89-115 字，样本主体为小麦机收、夏收天气、晒粮、尿素价格等种植侧材料。
+
+- 一键登录体验按“能一键就尽量一键、明显不该拉 SDK 就直接验证码”再收口：登录页在申请 `READ_PHONE_STATE` 前先调用 `FusionOneLoginClient.precheckOneLoginEnvironment`，无网络、无 SIM、SIM 未就绪、纯 WiFi / 没有可用移动数据、VPN 或系统代理会直接切验证码登录并上报 `auth.fusion_env_blocked`，不先弹电话权限；有 SIM 且检测到可用移动数据能力时，即使当前 WiFi 开着也允许申请权限并尝试一键登录。`check-android-build-parity.ps1` 同步拦截删除前置预检或把 4G+WiFi 误判成 WiFi-only 的回归。本轮后端已重新部署到 ECS，active upstream 为 `3000`，readiness 显示 HTTPS healthz 200、`auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`，后台 upstream 同步跟随 `3000`。
+
 - Android 主聊天删除残留本地假流式 / 假文案链路：无后端地址、远端失败或生命周期中断时，不再用固定农业示例文案伪装成 AI 回复；保留真实后端 SSE 的逐字展示、远端归档 snapshot 恢复和“回复未完成 · 点击重试”失败入口。极端切后台 / 系统杀进程时，如果本地保存过真实 streaming draft，冷启动会把已吐出的真实半截内容恢复为同一轮失败气泡并继续拉远端 snapshot，拉不到完整答案也不清成空白、不伪装完成。主界面动态链路复查后补了 pending finalize fresh bounds 约 1500ms 绝对超时兜底，正常仍等 settled renderer fresh bounds 再停止 streaming，极端切后台 / 布局回调丢失 / bottom reserve 迟迟不 ready 时不再无限停在生成态，超时路径不强拉底部，避免读旧几何大跳。今日农情 Android 展示也收成只校验并渲染前 3 条，且必须 3 条标题 / 摘要完整才展示，和后端“三条硬数量”保持一致。`check-android-build-parity.ps1` 同步拦截本地假流式残留和 Android 备份 / 数据迁移配置回退。后续排查聊天时以真实后端、归档和失败态为准，debug 包也不再用本地假回答绕过后端真相。
 
 - 本轮后端已重新部署到 ECS，active upstream 切到 `3001`，`scripts/check-ecs-readiness.ps1` 显示 HTTPS healthz 200、`auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`，后台同域上游也跟随 `3001`。`scripts/probe-ecs-today-agri.ps1 -Runs 2` 验证 v67 为 `ok_count=2/2`、每轮 3 条完整 item、无 reasoning tokens，来源样本为农业农村部、山东农机化网、中国农资流通网，摘要长度约 76-92 字；三条硬要求已过生产探针，但摘要厚度仍按提示词和后台复核继续观察，不恢复后端字数硬过滤。

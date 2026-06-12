@@ -565,11 +565,13 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 		!strings.Contains(userContent, "调研、会议、活动、平台上线和成果展示类材料") ||
 		!strings.Contains(userContent, "标题不要用“调研推动”“场景上新”“即将投用”“成果展示”这类过程词当主体") ||
 		!strings.Contains(userContent, "摘要必须像一条可读新闻短讯") ||
+		!strings.Contains(userContent, "一般不要明显低于 90 个中文字符") ||
 		!strings.Contains(userContent, "每条摘要尽量包含具体对象和两三个事实要素") ||
-		!strings.Contains(userContent, "每条摘要是否至少两句、是否明显偏薄") ||
-		!strings.Contains(userContent, "宁可写到 100 字左右，也不要收成 70 多字的薄摘要") ||
+		!strings.Contains(userContent, "每条摘要是否接近正常新闻短讯体量、是否有具体事实和直接影响、是否过薄") ||
+		!strings.Contains(userContent, "不要为了凑字堆套话") ||
+		!strings.Contains(userContent, "拿不准时按网页发布者、站点名或机构名写") ||
 		!strings.Contains(userContent, "若当天某类材料明显更真实、更新、更有直接影响，可以出现两条") ||
-		!strings.Contains(userContent, "是否有养殖水产、动物类价格、广告软文、传言、旧闻或编造数字") {
+		!strings.Contains(userContent, "是否有养殖水产、养殖类价格、广告软文、传言、旧闻或编造数字") {
 		t.Fatalf("daily agri prompt should carry freshness/diversity guidance without prompt_intervene: %q", userContent)
 	}
 }

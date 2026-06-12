@@ -228,6 +228,10 @@ if ($failures.Count -eq 0) {
         "Fusion one-click login must retain a legacy Android proxy fallback for ROMs that expose proxy settings outside LinkProperties."
     Require-Match $failures $fusionClient 'hasAnyCellularInternetTransport' `
         "Fusion one-click login must inspect all networks so 4G+WiFi mixed environments are not treated as WiFi-only."
+    Require-Match $failures $fusionClient 'fun\s+precheckOneLoginEnvironment\s*\(\s*context:\s*Context\s*\):\s*String\?' `
+        "Fusion one-click login must expose a pre-permission environment check for obvious SMS fallback cases."
+    Require-Match $failures $loginScreen 'precheckOneLoginEnvironment\s*\(\s*context\s*\)[\s\S]*?ContextCompat\.checkSelfPermission' `
+        "LoginScreen must check one-click environment before requesting READ_PHONE_STATE, so WiFi/VPN users go straight to SMS fallback."
     Require-Match $failures $fusionClient 'blockReason\(\):\s*String\?\s*=[\s\S]*?!hasAnyCellularInternetTransport\s*->\s*"no_cellular_data"' `
         "Fusion one-click login must fall back to SMS when no usable cellular data path is available."
     Require-Match $failures $fusionClient 'fun\s+warningReason\(\):\s*String\?\s*=[\s\S]*?!hasCellularTransport\s*&&\s*hasAnyCellularInternetTransport\s*->\s*"wifi_with_cellular_available"' `
