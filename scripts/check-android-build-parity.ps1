@@ -65,12 +65,13 @@ $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/F
 $mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MainActivity.kt"
 $privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentGate.kt"
 $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendWorker.kt"
+$todayAgriCardUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/TodayAgriCardUi.kt"
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -88,6 +89,7 @@ if ($failures.Count -eq 0) {
     $mainActivity = Get-Content -LiteralPath $mainActivityFile -Raw
     $privacyConsent = Get-Content -LiteralPath $privacyConsentFile -Raw
     $pendingWorker = Get-Content -LiteralPath $pendingWorkerFile -Raw
+    $todayAgriCardUi = Get-Content -LiteralPath $todayAgriCardUiFile -Raw
     $loginScreen = Get-Content -LiteralPath $loginScreenFile -Raw
     $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
 
@@ -222,6 +224,12 @@ if ($failures.Count -eq 0) {
         "First-launch privacy gate must let users read the same service agreement and privacy policy content as settings/login."
     Require-Match $failures $pendingWorker '!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)[\s\S]*?Result\.retry\(\)[\s\S]*?IdManager\.init' `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
+    Require-Match $failures $todayAgriCardUi 'fun\s+TodayAgriNewsCard\s*\(' `
+        "Today agri card rendering must stay in TodayAgriCardUi.kt instead of bloating ChatScreen."
+    Require-Match $failures $todayAgriCardUi 'fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\s*\(' `
+        "Today agri card display validation must stay near the card UI renderer."
+    Require-NoMatch $failures $chatScreen 'private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard' `
+        "ChatScreen must not re-embed today agri UI rendering or preview fixtures; keep UI-only card code isolated."
     Require-Match $failures $fusionClient 'override\s+fun\s+onVerifySuccess[\s\S]*?SessionApi\.loginWithFusionVerifyToken' `
         "Fusion one-click login must exchange the final onVerifySuccess token through the backend login endpoint."
     Require-Match $failures $fusionClient 'override\s+fun\s+onHalfWayVerifySuccess[\s\S]*?auth\.fusion_halfway_unexpected[\s\S]*?verifyResult\?\.verifyResult' `

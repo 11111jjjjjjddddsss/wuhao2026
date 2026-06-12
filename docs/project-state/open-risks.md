@@ -38,9 +38,9 @@
 ## R5 聊天页主文件偏重但暂不影响运行时主链
 
 - 状态：未关闭
-- 说明：`ChatScreen.kt` 当前承担聊天列表装配、滚动几何、发送 / 恢复、图片导入 / 重试、会员入口接线和 debug-only 文案预览等多类职责，文件偏长，后续维护成本高。当前已排查：会员中心 UI 本体在 `MembershipCenterSheet.kt`，图片全屏预览在 `ImagePreviewPager.kt`，都没有并入滚动主链；旧 active-zone / overlay / raw delta 方案未在运行时残留
+- 说明：`ChatScreen.kt` 当前承担聊天列表装配、滚动几何、发送 / 恢复、图片导入 / 重试、会员入口接线和 debug-only 文案预览等多类职责，文件偏长，后续维护成本高。当前已排查：会员中心 UI 本体在 `MembershipCenterSheet.kt`，图片全屏预览在 `ImagePreviewPager.kt`，今日农情卡片渲染已拆到 `TodayAgriCardUi.kt`，都没有并入滚动主链；旧 active-zone / overlay / raw delta 方案未在运行时残留
 - 风险：这属于可维护性风险，不等于用户端一定卡顿。真正运行时风险仍来自高频测量、Selection、Markdown、图片缩略图解码和滚动锚点状态；若为了“瘦身”贸然拆滚动几何或发送事务，反而可能把已稳定的工作线 / AutoFollow 打坏
-- 后续动作：短期不拆 debug-only 文案预览面板，不动滚动主链。后续若要瘦身，优先搬无状态 / 低耦合 UI 片段，例如消息菜单、用户图片 strip、debug 预览 UI；不要第一刀拆 `commitSendMessage`、两阶段 finalize、滚动 coordinator 闭包或 `ChatRecyclerViewHost`
+- 后续动作：短期不拆 debug-only 文案预览面板，不动滚动主链。后续若要瘦身，优先搬无状态 / 低耦合 UI 片段，例如消息菜单、用户图片 strip、debug 预览 UI；不要第一刀拆 `commitSendMessage`、两阶段 finalize、滚动 coordinator 闭包或 `ChatRecyclerViewHost`。`scripts/check-android-build-parity.ps1` 已开始拦截今日农情 UI 渲染重新塞回 `ChatScreen.kt` 的回归。
 
 ## R6 外部会诊仍依赖人工转发上下文
 
