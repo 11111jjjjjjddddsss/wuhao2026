@@ -153,6 +153,15 @@ func TestAcceptedLegacyUserIDRejectsUnknownNonUUID(t *testing.T) {
 	}
 }
 
+func TestLegacyUserIDLogKindAvoidsRawIDs(t *testing.T) {
+	if got := legacyUserIDLogKind("123e4567-e89b-12d3-a456-426614174000"); got != "local_uuid" {
+		t.Fatalf("uuid legacy id log kind=%q, want local_uuid", got)
+	}
+	if got := legacyUserIDLogKind("legacy-short-id"); got != "signed_legacy_token" {
+		t.Fatalf("signed legacy id log kind=%q, want signed_legacy_token", got)
+	}
+}
+
 func TestLegacyMergeSQLUsesDerivedSources(t *testing.T) {
 	for name, query := range map[string]string{
 		"daily_usage":        mergeDailyUsageSQL,

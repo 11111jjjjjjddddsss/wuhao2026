@@ -18,6 +18,13 @@ function Invoke-JsonCommand {
     if ($CommandArgs.Length -gt 1) {
         $arguments = $CommandArgs[1..($CommandArgs.Length - 1)]
     }
+    if ($exe -eq "aliyun") {
+        $arguments += @(
+            "--connect-timeout", "20",
+            "--read-timeout", "120",
+            "--retry-count", "3"
+        )
+    }
     $stderrPath = [IO.Path]::GetTempFileName()
     $stdout = @()
     $stderr = ""

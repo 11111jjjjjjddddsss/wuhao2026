@@ -60,11 +60,12 @@ $networkSecurityFile = Join-Path $RepoRoot "app/src/main/res/xml/network_securit
 $idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdManager.kt"
 $sessionApiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
 $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
+$loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -77,6 +78,7 @@ if ($failures.Count -eq 0) {
     $idManager = Get-Content -LiteralPath $idManagerFile -Raw
     $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
     $fusionClient = Get-Content -LiteralPath $fusionClientFile -Raw
+    $loginScreen = Get-Content -LiteralPath $loginScreenFile -Raw
     $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
 
     Require-Match $failures $build 'val\s+defaultUploadBaseUrl\s*=\s*"https://api\.nongjiqiancha\.cn"' `
@@ -170,6 +172,10 @@ if ($failures.Count -eq 0) {
         "Android SMS login success should be logged for login handoff diagnostics."
     Require-Match $failures $sessionApi 'auth\.fusion_login_success' `
         "Android fusion login success should be logged for login handoff diagnostics."
+    Require-Match $failures $loginScreen 'code\.length\s*!=\s*6' `
+        "SMS login must require exactly 6 verification-code digits before calling the backend."
+    Require-NoMatch $failures $loginScreen 'code\.length\s*<\s*4' `
+        "SMS login must not accept 4/5 digit codes and send avoidable failed backend requests."
     Require-Match $failures $fusionClient 'override\s+fun\s+onVerifySuccess[\s\S]*?SessionApi\.loginWithFusionVerifyToken' `
         "Fusion one-click login must exchange the final onVerifySuccess token through the backend login endpoint."
     Require-Match $failures $fusionClient 'override\s+fun\s+onHalfWayVerifySuccess[\s\S]*?auth\.fusion_halfway_unexpected[\s\S]*?verifyResult\?\.verifyResult' `
@@ -204,6 +210,8 @@ if ($failures.Count -eq 0) {
         "Fusion one-click login must fall back to SMS when no usable cellular data path is available."
     Require-Match $failures $fusionClient 'fun\s+warningReason\(\):\s*String\?\s*=[\s\S]*?!hasCellularTransport\s*&&\s*hasAnyCellularInternetTransport\s*->\s*"wifi_with_cellular_available"' `
         "Fusion one-click login should warn, not hard-block, 4G+WiFi mixed environments."
+    Require-Match $failures $fusionClient 'if\s*\(\s*BuildConfig\.DEBUG\s*\)\s*\{[\s\S]*?getErrorMsg\(\)[\s\S]*?getInnerMsg\(\)[\s\S]*?\}' `
+        "Fusion release logcat must not print raw Aliyun SDK errorMsg/innerMsg; keep them debug-only."
 
     Require-Match $failures $chatScreen 'BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible' `
         "Debug-only preview panel must stay behind BuildConfig.DEBUG."

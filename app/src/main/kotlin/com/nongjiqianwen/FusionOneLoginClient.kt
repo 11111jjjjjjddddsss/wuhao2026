@@ -185,7 +185,7 @@ object FusionOneLoginClient {
             business.adapterPageShape(true)
         }
         if (initResult.isFailure) {
-            Log.w(TAG, "fusion sdk init failed", initResult.exceptionOrNull())
+            logFusionWarning("fusion sdk init failed", initResult.exceptionOrNull())
             reportAuthLog(
                 level = "error",
                 event = "auth.fusion_sdk_init_failed",
@@ -262,7 +262,7 @@ object FusionOneLoginClient {
                                 )
                             }
                             if (startResult.isFailure) {
-                                Log.w(TAG, "fusion scene start failed", startResult.exceptionOrNull())
+                                logFusionWarning("fusion scene start failed", startResult.exceptionOrNull())
                                 reportAuthLog(
                                     level = "error",
                                     event = "auth.fusion_scene_start_failed",
@@ -477,7 +477,7 @@ object FusionOneLoginClient {
             })
         }.isSuccess
         if (!callbackAttached) {
-            Log.w(TAG, "fusion callback attach failed")
+            logFusionWarning("fusion callback attach failed")
             reportAuthLog(
                 level = "error",
                 event = "auth.fusion_callback_attach_failed",
@@ -862,14 +862,25 @@ object FusionOneLoginClient {
 
     private fun describeEvent(event: AlicomFusionEvent?): String {
         if (event == null) return "event=null"
-        return listOf(
+        val parts = mutableListOf(
             "template=${event.templatedId}",
             "node=${event.nodeId}",
             "code=${event.getErrorCode()}",
-            "inner=${event.getInnerCode()}",
-            "msg=${event.getErrorMsg()}",
-            "innerMsg=${event.getInnerMsg()}"
-        ).joinToString(separator = " ")
+            "inner=${event.getInnerCode()}"
+        )
+        if (BuildConfig.DEBUG) {
+            parts += "msg=${event.getErrorMsg()}"
+            parts += "innerMsg=${event.getInnerMsg()}"
+        }
+        return parts.joinToString(separator = " ")
+    }
+
+    private fun logFusionWarning(message: String, throwable: Throwable? = null) {
+        if (BuildConfig.DEBUG && throwable != null) {
+            Log.w(TAG, message, throwable)
+        } else {
+            Log.w(TAG, message)
+        }
     }
 
     private fun isValidMainlandPhoneNumber(raw: String): Boolean =

@@ -370,8 +370,8 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                                 message = "请先同意服务协议和隐私政策"
                                 return@Button
                             }
-                            if (!isValidMainlandPhone(phone) || code.length < 4) {
-                                message = "请填写手机号和验证码"
+                            if (!isValidMainlandPhone(phone) || code.length != 6) {
+                                message = "请填写手机号和6位验证码"
                                 return@Button
                             }
                             AppCrashReporter.setAuthStage("auth.sms_login")

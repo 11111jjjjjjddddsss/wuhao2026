@@ -569,6 +569,14 @@ func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone 
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return false
 	}
+	if acceptedLegacyUserID != "" {
+		s.logger.Info(
+			"auth legacy user migration accepted",
+			"legacy_user_id_hash", sensitiveTokenHash(acceptedLegacyUserID),
+			"legacy_user_id_kind", legacyUserIDLogKind(acceptedLegacyUserID),
+			"target_user_id", result.UserID,
+		)
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":    result.UserID,
 		"phone_mask": result.PhoneMask,
@@ -618,4 +626,11 @@ func isLocalLegacyUserID(value string) bool {
 		}
 	}
 	return true
+}
+
+func legacyUserIDLogKind(value string) string {
+	if isLocalLegacyUserID(value) {
+		return "local_uuid"
+	}
+	return "signed_legacy_token"
 }

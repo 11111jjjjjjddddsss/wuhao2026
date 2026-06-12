@@ -5,6 +5,8 @@
 
 ## 2026-06-12
 
+- 登录细节继续按上线前体验 / 安全收口：Android 验证码登录现在只允许提交 6 位验证码，避免 4 / 5 位输入也打到后端造成无意义失败；一键登录 release logcat 不再打印阿里云 SDK 原始 `errorMsg / innerMsg`，只保留 template / node / error code / inner code，完整 SDK 文案仅 debug 包保留，`check-android-build-parity.ps1` 也同步拦截这两类回归。后端手机号登录成功触发旧本机 ID 迁移时新增脱敏结构化日志，记录 legacy ID hash、迁移来源类型和目标账号ID，方便以后核查资产合并；runbook 同步说明旧 bearer token 证明只用于迁移，不代表生产业务接口可以开启旧 token 鉴权，并把“未证明 UUID 迁移桥”列为公开放量后需要窗口化 / 审计 / 关闭的风险。本次后端已部署到 ECS，active upstream 从 `3001` 切到 `3000`；`deploy-ecs-server.ps1` 同步给阿里云 CLI 调用加 `connect/read timeout` 和重试，避免控制面短抖动反复打断分片上传。
+
 - 后台监控页继续按产品负责人视角校准“上线前真机回归清单”：检查更新项现在先看配置是否合法、是否停更、HTTPS APK / SHA-256 / 文件大小是否齐全，再决定状态；即使 24 小时内已有 `app_update.*` 检查日志，只要正式下载物料未齐或更新停用，也不会显示为绿色验收。后端监控 action / launch readiness 文案同步从“建议补物料”收紧为“必须补 HTTPS APK、SHA-256 和文件大小；物料不齐时后端不会向旧版 App 下发新包”，并新增单测锁住安装包更新物料不齐只能保持 attention。运维蓝图和功能巡检文档同步改为后台 `app_release_configs` 是发布主链，`APP_ANDROID_*` 只是兜底。
 
 - 继续按上线前“不要坑用户、测试包/正式包尽量一致”口径补护栏：GitHub Android CI 会先生成 debug / release 的 merged 和 packaged manifest，再跑 `scripts/check-android-build-parity.ps1`；parity 脚本不再在缺少生成 manifest 时静默跳过，必须确认阿里云融合认证 SDK Activity 最终主题和 `exported=false` 进入产物。CI 的 WebView 检查改为只禁旧 `gpt-demo` / `android_asset` 和非协议页 WebView，避免误杀合法的 `FusionAuthProtocolActivity`。检查更新后端改为只有更高版本号、HTTPS APK、SHA-256 和文件大小都齐全时才下发可用更新，物料不齐会返回无更新并记录 `missing_release_artifacts`；`gradle.properties` 和上传工具日志也同步去掉“可用 Gradle 属性 / 环境变量切换后端”的旧口径。
