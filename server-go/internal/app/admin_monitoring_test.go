@@ -223,6 +223,32 @@ func TestAdminMonitoringLaunchReadinessRequiresCompleteAppUpdateArtifacts(t *tes
 	}
 }
 
+func TestAdminMonitoringLaunchReadinessKeepsAppUpdateAttentionUntilDeviceInstall(t *testing.T) {
+	report := AdminMonitoring{
+		Health: AdminHealthStatus{
+			API:               "ok",
+			Bailian:           "ok",
+			Dypns:             "ok",
+			DypnsFusion:       "ok",
+			DypnsSMS:          "ok",
+			Redis:             "ok",
+			AuthStrict:        true,
+			DevOrderEndpoints: false,
+		},
+		Queues: AdminMonitoringQueues{
+			AppUpdate: AdminMonitoringAppUpdate{Enabled: true, ConfigValid: true, DownloadArtifactsComplete: true},
+		},
+	}
+	items := buildAdminMonitoringLaunchReadiness(report)
+	updateItem := findAdminMonitoringLaunchItem(items, "安装包更新")
+	if updateItem == nil {
+		t.Fatalf("missing app update launch item: %#v", items)
+	}
+	if updateItem.Status != "attention" || !strings.Contains(updateItem.Body, "覆盖安装") || !strings.Contains(updateItem.Body, "正式验收") {
+		t.Fatalf("complete app update artifacts should still require device install validation, got %#v", updateItem)
+	}
+}
+
 func TestAdminMonitoringSummaryModelPolicyUsesFixedQwenPlus(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
 	summaryRow := findAdminMonitoringModelPolicy(rows, "记忆文档摘要")

@@ -3023,14 +3023,14 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
     "可测";
   const updateLevel: "ok" | "warn" | "bad" | "info" =
     updateTrouble > 0 ? "warn" :
-    updateReady ? "ok" :
+    updateReady ? "info" :
     "warn";
   const updateBody =
     updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" :
     !appUpdate.config_valid ? "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。" :
     !appUpdate.enabled ? "当前处于停更状态，旧版 App 点“检查更新”不会拿到新包；发版前需要启用并完成真机覆盖安装验证。" :
     !appUpdate.download_artifacts_complete ? "正式下载物料未齐，后端不会下发新包；必须补 HTTPS APK、SHA-256 和文件大小。" :
-    updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号。" :
+    updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号，覆盖安装未跑完前不算正式验收。" :
     "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。";
   const items: Array<{
     title: string;

@@ -64,7 +64,7 @@ func defaultMemoryDocumentProbeSample() (string, string) {
 
 	dialogue := strings.TrimSpace(`time: 2026-06-12 08:20:00（Asia/Shanghai）
 region: 河南省周口市; reliability: user
-user: 我在河南周口，家里有两亩露地番茄，不是大农户，就是家里种点地。最近下过雨，老叶发黄，新叶还行。
+user: 我在河南周口，家里有两亩露地番茄，不是专业搞这个，就是家里种点地。最近下过雨，老叶发黄，新叶还行。
 assistant: 先别急着下结论，需要看黄叶位置、根系、土壤湿度和叶片有没有斑点。
 
 time: 2026-06-12 08:24:00（Asia/Shanghai）

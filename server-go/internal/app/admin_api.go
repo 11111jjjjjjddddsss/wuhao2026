@@ -1908,8 +1908,8 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Route:  "gift-cards",
 		Owner:  "运营 / 后端",
 	})
-	updateStatus := "ready"
-	updateBody := "版本号、HTTPS APK、SHA-256 和文件大小已齐，可进入真机覆盖安装验证。"
+	updateStatus := "attention"
+	updateBody := "版本号、HTTPS APK、SHA-256 和文件大小已齐，可进入真机覆盖安装验证；完成旧包覆盖安装前不要标成正式验收。"
 	if !queues.AppUpdate.ConfigValid {
 		updateStatus = "blocked"
 		updateBody = "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。"
