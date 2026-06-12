@@ -10,11 +10,11 @@
 
 ## 2026-06-12 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组和 9 条资源水位告警。剩余更该补的是 ECS 自动快照、SLS 应用日志 action policy / 仪表盘和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警和 ECS 系统盘自动快照。剩余更该补的是 SLS 应用日志 action policy / 仪表盘和帮助反馈图片生命周期取舍。
 
 - ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.8 GiB，系统盘 79 GiB 已用约 9.9 GiB（14%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
-- ECS 系统盘：80 GiB ESSD Entry，未启用自动快照策略；这是当前资源巡检 warning，不是容量告警。ECS 是包年包月 `PrePaid`，删除保护接口不适用，不能把 `deletion_protection=false` 当成未买保护
+- ECS 系统盘：80 GiB ESSD Entry，已绑定普通低频自动快照策略 `sp-2ze9ufwsu2i5hxm2wmrk` / `nongjiqiancha-prod-basic-7d`：每周二、周六北京时间 04:00 创建，保留 7 天，不启用跨地域复制或归档。ECS 是包年包月 `PrePaid`，删除保护接口不适用，不能把 `deletion_protection=false` 当成未买保护
 - RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 2.98 GiB（约 5.96%）；近 30 分钟 QPS/TPS 峰值约 9.25、IOPS 约 5.4、内存 / CPU 指标约 11.6%、连接 0；备份保留 7 天，日志备份已启用
 - Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.08 MiB / 256 MiB（约 1.99%），CPU 峰值约 0.16%，连接使用约 0.05%；释放保护已开启
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 0、占用 0 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
@@ -31,10 +31,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 
 当前脚本汇总状态为 `attention`，原因是：
 
-- `ecs_disk_no_automatic_snapshot_policy`
 - `sls_alert_external_notification_or_dashboard_may_need_attention`
 
-这些不是“资源不够用”，而是运维保护还没完全补齐。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。是否开启 ECS 自动快照要结合成本、恢复流程和实际运维习惯单独拍板；SLS 应用日志 action policy / 仪表盘仍应优先补。
+这不是“资源不够用”，而是应用日志通知和仪表盘还没完全闭环。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘仍应优先补。
 
 ## 资源水位邮件告警
 
@@ -151,7 +150,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 
 ## 后续动作
 
-- 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；继续补 ECS 自动快照、SLS 应用日志外部通知 / 仪表盘，以及 API healthz / Go 服务 inactive 这类应用可用性告警
+- 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；ECS 系统盘已开启普通低频自动快照；继续补 SLS 应用日志外部通知 / 仪表盘，以及 API healthz / Go 服务 inactive 这类应用可用性告警
 - 登录链路监控至少覆盖 DYPNS 一键登录次数 / 成功率 / 失败率 / 账单、短信认证次数 / 账单、后端 `/api/auth/fusion/*` 和 `/api/auth/sms/*` 入口错误率
 - 若继续使用单 ECS 双端口发布，部署 / 回滚前必须清理旧 `nongji-drain-stop-*` transient systemd 任务，避免多个排空任务叠加
 - 管理后台上线后，容量快照、到期时间、5xx 和 App 自动日志应做成只读运维面板

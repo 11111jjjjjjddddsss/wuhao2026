@@ -475,23 +475,25 @@ $expectedMetricRules = @(
     [pscustomobject]@{ RuleId = "nq-redis-memory-high"; Namespace = "acs_kvstore"; MetricName = "StandardMemoryUsage" },
     [pscustomobject]@{ RuleId = "nq-redis-connection-high"; Namespace = "acs_kvstore"; MetricName = "StandardConnectionUsage" }
 )
+$metricRuleList = $null
+try {
+    $metricRuleList = Invoke-JsonCommand @("aliyun", "cms", "DescribeMetricRuleList", "--PageSize", "100")
+} catch {
+    Write-Host "metric_rule_list_check_failed=$($_.Exception.Message)"
+    Add-WarningItem "cloudmonitor_metric_rule_list_check_failed"
+}
 foreach ($rule in $expectedMetricRules) {
     try {
-        $ruleList = Invoke-JsonCommand @(
-            "aliyun", "cms", "DescribeMetricRuleList",
-            "--RuleIds", "[`"$($rule.RuleId)`"]",
-            "--PageSize", "10"
-        )
-        $foundRule = @($ruleList.Alarms.Alarm) | Where-Object { $_.RuleId -eq $rule.RuleId } | Select-Object -First 1
+        $foundRule = @($metricRuleList.Alarms.Alarm) | Where-Object { $_.RuleId -eq $rule.RuleId } | Select-Object -First 1
         if ($null -eq $foundRule) {
             Add-WarningItem "cloudmonitor_metric_rule_missing:$($rule.RuleId)"
             continue
         }
-        Write-Host "rule=$($foundRule.RuleId) namespace=$($foundRule.Namespace) metric=$($foundRule.MetricName) state=$($foundRule.State) contacts=$($foundRule.ContactGroups)"
+        Write-Host "rule=$($foundRule.RuleId) namespace=$($foundRule.Namespace) metric=$($foundRule.MetricName) alert_state=$($foundRule.AlertState) enabled=$($foundRule.EnableState) contacts=$($foundRule.ContactGroups)"
         if ($foundRule.Namespace -ne $rule.Namespace -or $foundRule.MetricName -ne $rule.MetricName) {
             Add-WarningItem "cloudmonitor_metric_rule_unexpected_target:$($rule.RuleId)"
         }
-        if ([string]$foundRule.State -ne "OK" -and [string]$foundRule.EnableState -ne "true") {
+        if (-not [bool]$foundRule.EnableState) {
             Add-WarningItem "cloudmonitor_metric_rule_not_enabled:$($rule.RuleId)"
         }
         if ([string]$foundRule.ContactGroups -notmatch [regex]::Escape($contactGroupName)) {
