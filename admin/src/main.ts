@@ -3012,6 +3012,26 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
   const giftCardRedeems = day24?.gift_card_redeems ?? 0;
   const supportMessages = day24?.support_messages ?? 0;
   const updateLogCount = report.app_update_logs?.total ?? 0;
+  const appUpdate = report.queues.app_update;
+  const updateReady = appUpdate.enabled && appUpdate.config_valid && appUpdate.download_artifacts_complete;
+  const updateStatus =
+    updateTrouble > 0 ? "看日志" :
+    !appUpdate.config_valid ? "配置异常" :
+    !appUpdate.enabled ? "已停更" :
+    !appUpdate.download_artifacts_complete ? "物料未齐" :
+    updateLogCount > 0 ? "有检查" :
+    "可测";
+  const updateLevel: "ok" | "warn" | "bad" | "info" =
+    updateTrouble > 0 ? "warn" :
+    updateReady ? "ok" :
+    "warn";
+  const updateBody =
+    updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" :
+    !appUpdate.config_valid ? "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。" :
+    !appUpdate.enabled ? "当前处于停更状态，旧版 App 点“检查更新”不会拿到新包；发版前需要启用并完成真机覆盖安装验证。" :
+    !appUpdate.download_artifacts_complete ? "正式下载物料未齐，后端不会下发新包；必须补 HTTPS APK、SHA-256 和文件大小。" :
+    updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号。" :
+    "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。";
   const items: Array<{
     title: string;
     status: string;
@@ -3058,9 +3078,9 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
     },
     {
       title: "检查更新",
-      status: updateTrouble > 0 ? "看日志" : updateLogCount > 0 ? "有检查" : updateStatusLine(report.queues.app_update),
-      level: updateTrouble > 0 ? "warn" : updateLogCount > 0 || report.queues.app_update.download_artifacts_complete ? "ok" : "warn",
-      body: updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" : updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号。" : "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。",
+      status: updateStatus,
+      level: updateLevel,
+      body: updateBody,
       route: updateTrouble > 0 ? "app-logs" : "app-update",
       appLogFilter: updateTrouble > 0 ? { eventPrefix: "app_update.", window: "24h" } : undefined,
     },

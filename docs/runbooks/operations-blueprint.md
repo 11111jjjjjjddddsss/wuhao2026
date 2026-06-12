@@ -22,7 +22,7 @@
 
 - 版本号和 `versionCode` 管理
 - debug / release 构建、签名、APK 产物检查
-- 自有服务器 APK 检查更新：`GET /api/app/update`、APK 下载链接、SHA-256、后端 `APP_ANDROID_*` 环境变量
+- 自有服务器 APK 检查更新：`GET /api/app/update`、后台 `app_release_configs` 发布配置、HTTPS APK 下载链接、SHA-256、文件大小和 `APP_ANDROID_*` 环境变量兜底
 - 真机回归：聊天、图片、会员中心、帮助与反馈、礼品卡、检查更新、设置页、预览面板
 - Baseline Profile / 关键路径性能回归
 - 崩溃、弱网、清数据、后台恢复、输入法和不同导航模式检查
@@ -84,7 +84,7 @@
 ## 你以后怎么说就行
 
 - “发一个新版本”：Codex 检查 Android 和后端改动，构建 APK，更新发布 runbook，配置检查更新
-- “先停这个更新”：Codex 清空或下调 `APP_ANDROID_*`，验证旧 App 不再提示坏包
+- “先停这个更新”：Codex 优先在管理后台取消“对外启用更新”并验证旧 App 不再提示坏包；必要时再清空兜底 `APP_ANDROID_*`
 - “查一下今天为什么发不出去”：Codex 查 App 现象、后端日志、SLS、数据库和相关接口
 - “给某个用户补次数”：Codex 先查用户状态，提出变更 SQL / 后台操作，等你确认后执行并记录
 - “客服有新消息吗”：Codex 查帮助与反馈后台入口或未来管理后台

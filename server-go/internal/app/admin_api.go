@@ -1818,7 +1818,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	if queues.AppUpdate.ConfigValid && !queues.AppUpdate.DownloadArtifactsComplete {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "正式 APK 下载物料未齐",
-			Body:  "上架前建议同时配置 HTTPS APK、SHA-256 和文件大小，避免用户下载不可控文件。",
+			Body:  "上架前必须同时配置 HTTPS APK、SHA-256 和文件大小；物料不齐时后端不会向旧版 App 下发新包。",
 			Level: "warn",
 			Route: "app-update",
 		})
@@ -1918,7 +1918,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		updateBody = "检查更新当前处于停更状态；用户点“检查更新”不会拿到新包。"
 	} else if !queues.AppUpdate.DownloadArtifactsComplete {
 		updateStatus = "attention"
-		updateBody = "检查更新配置合法，但正式下载物料未齐；上架前补 HTTPS APK、SHA-256 和文件大小。"
+		updateBody = "检查更新配置合法，但正式下载物料未齐；上架前必须补 HTTPS APK、SHA-256 和文件大小，否则后端不会下发新包。"
 	}
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "安装包更新",

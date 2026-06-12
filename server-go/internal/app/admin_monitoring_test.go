@@ -197,6 +197,32 @@ func TestAdminMonitoringLaunchReadinessStatusContract(t *testing.T) {
 	}
 }
 
+func TestAdminMonitoringLaunchReadinessRequiresCompleteAppUpdateArtifacts(t *testing.T) {
+	report := AdminMonitoring{
+		Health: AdminHealthStatus{
+			API:               "ok",
+			Bailian:           "ok",
+			Dypns:             "ok",
+			DypnsFusion:       "ok",
+			DypnsSMS:          "ok",
+			Redis:             "ok",
+			AuthStrict:        true,
+			DevOrderEndpoints: false,
+		},
+		Queues: AdminMonitoringQueues{
+			AppUpdate: AdminMonitoringAppUpdate{Enabled: true, ConfigValid: true, DownloadArtifactsComplete: false},
+		},
+	}
+	items := buildAdminMonitoringLaunchReadiness(report)
+	updateItem := findAdminMonitoringLaunchItem(items, "安装包更新")
+	if updateItem == nil {
+		t.Fatalf("missing app update launch item: %#v", items)
+	}
+	if updateItem.Status != "attention" || !strings.Contains(updateItem.Body, "不会下发新包") {
+		t.Fatalf("incomplete app update artifacts should stay attention with explicit body, got %#v", updateItem)
+	}
+}
+
 func TestAdminMonitoringSummaryModelPolicyUsesFixedQwenPlus(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
 	summaryRow := findAdminMonitoringModelPolicy(rows, "记忆文档摘要")
