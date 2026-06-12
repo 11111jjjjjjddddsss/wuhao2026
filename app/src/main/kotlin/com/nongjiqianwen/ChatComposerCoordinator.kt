@@ -24,14 +24,7 @@ internal data class ChatComposerRuntimeState(
     val composerSettlingMinHeightPx: MutableIntState,
     val composerSettlingChromeHeightPx: MutableIntState,
     val sendUiSettling: MutableState<Boolean>,
-    val inputFieldBoundsInWindow: MutableState<Rect?>,
-    val composerHostBoundsInWindow: MutableState<Rect?>,
-    val composerChromeBoundsInWindow: MutableState<Rect?>,
-    val composerCollapseOverlayVisible: MutableState<Boolean>,
-    val composerCollapseOverlayHostBoundsSnapshot: MutableState<Rect?>,
-    val composerCollapseOverlayChromeBoundsSnapshot: MutableState<Rect?>,
-    val composerCollapseOverlayBottomHeightPx: MutableIntState,
-    val composerCollapseOverlayPrewarmed: MutableState<Boolean>
+    val inputFieldBoundsInWindow: MutableState<Rect?>
 )
 
 @Composable
@@ -53,13 +46,6 @@ internal fun rememberChatComposerRuntimeState(
     val composerSettlingChromeHeightPx = remember(chatScopeId) { mutableIntStateOf(0) }
     val sendUiSettling = remember(chatScopeId) { mutableStateOf(false) }
     val inputFieldBoundsInWindow = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    val composerHostBoundsInWindow = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    val composerChromeBoundsInWindow = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    val composerCollapseOverlayVisible = remember(chatScopeId) { mutableStateOf(false) }
-    val composerCollapseOverlayHostBoundsSnapshot = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    val composerCollapseOverlayChromeBoundsSnapshot = remember(chatScopeId) { mutableStateOf<Rect?>(null) }
-    val composerCollapseOverlayBottomHeightPx = remember(chatScopeId) { mutableIntStateOf(0) }
-    val composerCollapseOverlayPrewarmed = remember(chatScopeId) { mutableStateOf(false) }
     return remember(chatScopeId, startupInputContentHeightEstimatePx) {
         ChatComposerRuntimeState(
             inputLimitHintVisible = inputLimitHintVisible,
@@ -73,14 +59,7 @@ internal fun rememberChatComposerRuntimeState(
             composerSettlingMinHeightPx = composerSettlingMinHeightPx,
             composerSettlingChromeHeightPx = composerSettlingChromeHeightPx,
             sendUiSettling = sendUiSettling,
-            inputFieldBoundsInWindow = inputFieldBoundsInWindow,
-            composerHostBoundsInWindow = composerHostBoundsInWindow,
-            composerChromeBoundsInWindow = composerChromeBoundsInWindow,
-            composerCollapseOverlayVisible = composerCollapseOverlayVisible,
-            composerCollapseOverlayHostBoundsSnapshot = composerCollapseOverlayHostBoundsSnapshot,
-            composerCollapseOverlayChromeBoundsSnapshot = composerCollapseOverlayChromeBoundsSnapshot,
-            composerCollapseOverlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
-            composerCollapseOverlayPrewarmed = composerCollapseOverlayPrewarmed
+            inputFieldBoundsInWindow = inputFieldBoundsInWindow
         )
     }
 }
@@ -143,36 +122,11 @@ internal fun shouldReleaseComposerSettling(
     return kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx) <= jitterTolerancePx
 }
 
-internal fun shouldDismissComposerCollapseOverlay(
-    overlayVisible: Boolean,
-    inputText: String,
-    inputFieldFocused: Boolean,
-    sendUiSettling: Boolean,
-    imeVisible: Boolean,
-    composerSettlingChromeHeightPx: Int,
-    bottomBarHeightPx: Int,
-    stableBottomBarHeightPx: Int,
-    jitterTolerancePx: Int
-): Boolean {
-    if (!overlayVisible) return false
-    if (inputText.isNotEmpty() || inputFieldFocused) return true
-    if (sendUiSettling || imeVisible) return false
-    if (composerSettlingChromeHeightPx > 0) return false
-    return kotlin.math.abs(bottomBarHeightPx - stableBottomBarHeightPx) <= jitterTolerancePx
-}
-
 internal fun resolveBottomContentReservedHeightPx(
-    overlayVisible: Boolean,
-    overlayBottomHeightPx: Int,
     effectiveBottomBarHeightPx: Int,
     extraReservedHeightPx: Int
 ): Int {
-    val baseReservedHeightPx = if (overlayVisible && overlayBottomHeightPx > 0) {
-        overlayBottomHeightPx
-    } else {
-        effectiveBottomBarHeightPx
-    }
-    return baseReservedHeightPx + extraReservedHeightPx.coerceAtLeast(0)
+    return effectiveBottomBarHeightPx + extraReservedHeightPx.coerceAtLeast(0)
 }
 
 internal fun resolveComposerOverlayHintText(
@@ -199,8 +153,7 @@ internal fun BindComposerRuntimeEffects(
     bottomBarHeightPxState: MutableIntState,
     inputChromeRowHeightPx: Int,
     stableBottomBarHeightPx: Int,
-    jitterTolerancePx: Int,
-    composerCollapseOverlayVisibleState: MutableState<Boolean>
+    jitterTolerancePx: Int
 ) {
     LaunchedEffect(
         inputChromeMeasured,
@@ -268,66 +221,4 @@ internal fun BindComposerRuntimeEffects(
         }
     }
 
-    LaunchedEffect(
-        composerCollapseOverlayVisibleState.value,
-        sendUiSettling,
-        imeVisible,
-        composerSettlingChromeHeightPxState.intValue,
-        bottomBarHeightPxState.intValue,
-        inputChromeRowHeightPx,
-        inputFieldFocused,
-        inputText
-    ) {
-        if (
-            shouldDismissComposerCollapseOverlay(
-                overlayVisible = composerCollapseOverlayVisibleState.value,
-                inputText = inputText,
-                inputFieldFocused = inputFieldFocused,
-                sendUiSettling = sendUiSettling,
-                imeVisible = imeVisible,
-                composerSettlingChromeHeightPx = composerSettlingChromeHeightPxState.intValue,
-                bottomBarHeightPx = bottomBarHeightPxState.intValue,
-                stableBottomBarHeightPx = stableBottomBarHeightPx,
-                jitterTolerancePx = jitterTolerancePx
-            )
-        ) {
-            composerCollapseOverlayVisibleState.value = false
-            return@LaunchedEffect
-        }
-        if (!composerCollapseOverlayVisibleState.value) return@LaunchedEffect
-        if (inputText.isNotEmpty() || inputFieldFocused) {
-            composerCollapseOverlayVisibleState.value = false
-            return@LaunchedEffect
-        }
-        if (
-            shouldDismissComposerCollapseOverlay(
-                overlayVisible = composerCollapseOverlayVisibleState.value,
-                inputText = inputText,
-                inputFieldFocused = inputFieldFocused,
-                sendUiSettling = sendUiSettling,
-                imeVisible = imeVisible,
-                composerSettlingChromeHeightPx = composerSettlingChromeHeightPxState.intValue,
-                bottomBarHeightPx = bottomBarHeightPxState.intValue,
-                stableBottomBarHeightPx = stableBottomBarHeightPx,
-                jitterTolerancePx = jitterTolerancePx
-            )
-        ) {
-            repeat(2) { withFrameNanos { } }
-            if (
-                shouldDismissComposerCollapseOverlay(
-                    overlayVisible = composerCollapseOverlayVisibleState.value,
-                    inputText = inputText,
-                    inputFieldFocused = inputFieldFocused,
-                    sendUiSettling = sendUiSettling,
-                    imeVisible = imeVisible,
-                    composerSettlingChromeHeightPx = composerSettlingChromeHeightPxState.intValue,
-                    bottomBarHeightPx = bottomBarHeightPxState.intValue,
-                    stableBottomBarHeightPx = stableBottomBarHeightPx,
-                    jitterTolerancePx = jitterTolerancePx
-                )
-            ) {
-                composerCollapseOverlayVisibleState.value = false
-            }
-        }
-    }
 }

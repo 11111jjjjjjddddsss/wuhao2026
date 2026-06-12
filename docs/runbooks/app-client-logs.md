@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-10
+最后更新：2026-06-12
 
 ## 当前定位
 
@@ -14,6 +14,7 @@
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
 - 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。两个查询入口都支持按精确 `event`、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号和等级过滤，精确事件名优先于前缀筛选
+- `client_app_logs` 已补面向后台监控和排障的 `level + created_at`、`event + level + created_at` 索引，便于最近 24 小时错误、登录整组事件、检查更新整组事件和按版本 / 机型筛选；索引只优化查询，不改变日志脱敏和保留边界
 - SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 5 条 AlertHub 最小告警；5 条应用告警已绑定邮件行动策略和最小仪表盘；后续仍要补更细的版本 / 设备 / 地区聚合趋势
 
 ## 当前自动上报事件

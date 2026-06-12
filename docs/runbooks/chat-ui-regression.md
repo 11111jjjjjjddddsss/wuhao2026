@@ -1,6 +1,6 @@
 # Chat UI 回归与接手 Runbook
 
-最后更新：2026-05-30
+最后更新：2026-06-12
 
 ## 目的
 
@@ -48,8 +48,10 @@
 - `SparseBottomSpacer`
 - `cleanStateSparseLayoutActive`
 - 动态稀疏 bottom padding / spacer
+- `ChatComposerCollapseOverlay`
+- `composerCollapseOverlay*`
 
-说明：输入框收口相关的 `ChatComposerCollapseOverlay` 属于 composer 自己的残影 / 回缩链，不是消息运行时主人。排查旧链残留时不要把 composer overlay 和已废弃的 streaming message overlay 混为一谈。
+说明：输入框收口不再保留 `ChatComposerCollapseOverlay` / `composerCollapseOverlay*` 旧链；composer collapse 只走底部固定 composer 的单一实测 reserve。发现这些符号回潮，也按旧链恢复处理。
 
 ## 快速回归场景
 

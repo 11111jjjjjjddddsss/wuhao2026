@@ -117,7 +117,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
@@ -2376,10 +2375,7 @@ fun ChatScreen() {
     var composerSettlingMinHeightPx by composerRuntime.composerSettlingMinHeightPx
     var composerSettlingChromeHeightPx by composerRuntime.composerSettlingChromeHeightPx
     var sendUiSettling by composerRuntime.sendUiSettling
-    var composerCollapseOverlayVisible by composerRuntime.composerCollapseOverlayVisible
     var persistTick by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var chatRootWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var chatRootHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var messageViewportWidthPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var messageViewportHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var chatRootLeftPx by remember(uiRuntimeResetKey) { mutableStateOf(0f) }
@@ -2633,7 +2629,6 @@ fun ChatScreen() {
         val collapsedStable =
             !sendStartBottomPaddingLockActive &&
                 !isComposerSettling &&
-                !composerCollapseOverlayVisible &&
                 !isStreaming &&
                 !hasStreamingItem &&
                 pendingStreamingFinalizeMessageId.isNullOrBlank() &&
@@ -2667,7 +2662,6 @@ fun ChatScreen() {
         val collapsedStable =
             !sendStartBottomPaddingLockActive &&
             !isComposerSettling &&
-                !composerCollapseOverlayVisible &&
                 !isStreaming &&
                 !hasStreamingItem &&
                 pendingStreamingFinalizeMessageId.isNullOrBlank() &&
@@ -3040,11 +3034,6 @@ fun ChatScreen() {
     }
     var inputSelectionMenuBoundsInRoot by remember(uiRuntimeResetKey) { mutableStateOf<Rect?>(null) }
     var inputFieldBoundsInWindow by composerRuntime.inputFieldBoundsInWindow
-    var composerHostBoundsInWindow by composerRuntime.composerHostBoundsInWindow
-    var composerChromeBoundsInWindow by composerRuntime.composerChromeBoundsInWindow
-    var composerCollapseOverlayHostBoundsSnapshot by composerRuntime.composerCollapseOverlayHostBoundsSnapshot
-    var composerCollapseOverlayChromeBoundsSnapshot by composerRuntime.composerCollapseOverlayChromeBoundsSnapshot
-    var composerCollapseOverlayBottomHeightPx by composerRuntime.composerCollapseOverlayBottomHeightPx
     var uiCopyPreviewVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var hamburgerMenuVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipCenterVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -3106,8 +3095,7 @@ fun ChatScreen() {
         bottomBarHeightPxState = scrollRuntime.bottomBarHeightPx,
         inputChromeRowHeightPx = inputChromeRowHeightPx,
         stableBottomBarHeightPx = stableComposerBottomBarHeightPx,
-        jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX,
-        composerCollapseOverlayVisibleState = composerRuntime.composerCollapseOverlayVisible
+        jitterTolerancePx = BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX
     )
     val streamingExtraReservedHeightPx = 0
     val jumpButtonBottomPadding = with(density) {
@@ -3585,13 +3573,6 @@ fun ChatScreen() {
         composerSettlingMinHeightPx = 0
         composerSettlingChromeHeightPx = 0
         inputFieldBoundsInWindow = null
-        composerHostBoundsInWindow = null
-        composerChromeBoundsInWindow = null
-        composerCollapseOverlayVisible = false
-        composerCollapseOverlayHostBoundsSnapshot = null
-        composerCollapseOverlayChromeBoundsSnapshot = null
-        composerCollapseOverlayBottomHeightPx = 0
-        composerRuntime.composerCollapseOverlayPrewarmed.value = false
         sendUiSettling = false
         sendStartViewportHeightPx = 0
         sendStartAnchorActive = false
@@ -5019,7 +5000,6 @@ fun ChatScreen() {
     ) {
         if ((text.isEmpty() && imageUris.isEmpty() && imageUrls.isEmpty()) || isStreaming || sendUiSettling) return
         val shouldUseInitialTopFlow = shouldUseInitialTopFlowForSend()
-        composerCollapseOverlayVisible = false
         sendUiSettling = true
         snackbarScope.launch {
             try {
@@ -5087,7 +5067,6 @@ fun ChatScreen() {
             } else {
                 null
             }
-        composerCollapseOverlayVisible = false
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
@@ -5178,7 +5157,6 @@ fun ChatScreen() {
             } else {
                 null
             }
-        composerCollapseOverlayVisible = false
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
         hasStartedConversation = true
@@ -5664,14 +5642,6 @@ fun ChatScreen() {
         modifier = Modifier
             .fillMaxSize()
             .background(appCenterTint)
-            .onSizeChanged {
-                if (chatRootWidthPx != it.width) {
-                    chatRootWidthPx = it.width
-                }
-                if (chatRootHeightPx != it.height) {
-                    chatRootHeightPx = it.height
-                }
-            }
             .onGloballyPositioned { coordinates ->
                 val bounds = coordinates.boundsInWindow()
                 if (chatRootLeftPx != bounds.left) {
@@ -6107,18 +6077,6 @@ fun ChatScreen() {
         val inputChromeBorder = Color(0xFFB9C0C8).copy(alpha = 0.88f)
         val inputFieldSurface = Color.White
         val inputFieldBorder = Color(0xFFD7DCE2).copy(alpha = 0.98f)
-        val composerHostBounds =
-            if (composerCollapseOverlayVisible) {
-                composerCollapseOverlayHostBoundsSnapshot ?: composerHostBoundsInWindow
-            } else {
-                composerHostBoundsInWindow
-            }
-        val composerChromeBounds =
-            if (composerCollapseOverlayVisible) {
-                composerCollapseOverlayChromeBoundsSnapshot ?: composerChromeBoundsInWindow
-            } else {
-                composerChromeBoundsInWindow
-            }
         val composerOverlayHintText = resolveComposerOverlayHintText(
             composerStatusHintVisible = composerStatusHintVisible,
             composerStatusHintText = composerStatusHintText,
@@ -6396,7 +6354,6 @@ fun ChatScreen() {
                 val collapsedStable =
                     !sendStartBottomPaddingLockActive &&
                         !isComposerSettling &&
-                        !composerCollapseOverlayVisible &&
                         !isStreaming &&
                         !hasStreamingItem &&
                         pendingStreamingFinalizeMessageId.isNullOrBlank() &&
@@ -6562,13 +6519,11 @@ fun ChatScreen() {
                     .fillMaxWidth()
                     .navigationBarsPadding()
                     .imePadding()
-                    .alpha(if (composerCollapseOverlayVisible) 0f else 1f)
                     .zIndex(55f)
                     .onSizeChanged { size ->
                         val canRecordCollapsedComposerHeight =
                             !sendStartBottomPaddingLockActive &&
                                 !isComposerSettling &&
-                                !composerCollapseOverlayVisible &&
                                 !inputFieldFocused &&
                                 !imeVisible &&
                                 selectedComposerImages.isEmpty() &&
@@ -6579,12 +6534,6 @@ fun ChatScreen() {
                             measuredComposerHostHeightPx != size.height
                         ) {
                             measuredComposerHostHeightPx = size.height
-                        }
-                    }
-                    .onGloballyPositioned { coordinates ->
-                        val bounds = coordinates.boundsInWindow()
-                        if (composerHostBoundsInWindow != bounds) {
-                            composerHostBoundsInWindow = bounds
                         }
                     },
                 onChromeMeasured = { height ->
@@ -6599,11 +6548,6 @@ fun ChatScreen() {
                     }
                     if (canRecordChromeHeight && height > 0 && !inputChromeMeasured) {
                         inputChromeMeasured = true
-                    }
-                },
-                onChromeBoundsChanged = { bounds ->
-                    if (composerChromeBoundsInWindow != bounds) {
-                        composerChromeBoundsInWindow = bounds
                     }
                 },
                 onInputBoundsChanged = { bounds ->
@@ -6682,7 +6626,6 @@ fun ChatScreen() {
         val canUseMeasuredCollapsedComposerReserve =
             !sendStartBottomPaddingLockActive &&
                 !isComposerSettling &&
-                !composerCollapseOverlayVisible &&
                 !inputFieldFocused &&
                 !imeVisible &&
                 selectedComposerImages.isEmpty() &&
@@ -6699,8 +6642,6 @@ fun ChatScreen() {
             }
         val stableBottomReservePx =
             resolveBottomContentReservedHeightPx(
-                overlayVisible = composerCollapseOverlayVisible,
-                overlayBottomHeightPx = composerCollapseOverlayBottomHeightPx,
                 effectiveBottomBarHeightPx = collapsedConversationReservePx,
                 extraReservedHeightPx = streamingExtraReservedHeightPx
             ).coerceAtLeast(0)
@@ -6795,24 +6736,6 @@ fun ChatScreen() {
                 renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)
                 renderWelcomePlaceholder(listBottomPaddingPx)
                 renderComposerBar(Modifier.align(Alignment.BottomCenter))
-
-                ChatComposerCollapseOverlay(
-                    visible = composerCollapseOverlayVisible,
-                    chatRootLeftPx = chatRootLeftPx,
-                    chatRootTopPx = chatRootTopPx,
-                    hostBoundsInWindow = composerHostBounds,
-                    chromeBoundsInWindow = composerChromeBounds,
-                    pageSurface = pageSurface,
-                    addButtonSize = addButtonSize,
-                    addIconSize = addIconSize,
-                    sendButtonSize = sendButtonSize,
-                    inputChromeSurface = inputChromeSurface,
-                    inputChromeBorder = inputChromeBorder,
-                    inputFieldSurface = inputFieldSurface,
-                    inputFieldBorder = inputFieldBorder,
-                    inputBarHeight = inputBarHeight,
-                    inputBarMaxHeight = inputBarMaxHeight
-                )
 
                 ComposerAttachmentBottomSheet(
                     visible = attachmentMenuVisible,

@@ -249,7 +249,6 @@ internal fun ChatComposerBottomBar(
     selectedImages: List<ComposerImageAttachment>,
     hostModifier: Modifier = Modifier,
     onChromeMeasured: (Int) -> Unit,
-    onChromeBoundsChanged: (Rect) -> Unit,
     onInputBoundsChanged: (Rect) -> Unit,
     onInputFocused: (Boolean) -> Unit,
     onInputContentHeightChanged: (Int) -> Unit,
@@ -287,17 +286,14 @@ internal fun ChatComposerBottomBar(
             ComposerChromeRow(
                 modifier = Modifier
                     .fillMaxWidth()
-                .heightIn(min = composerSettlingChromeMinHeight)
-                .onSizeChanged { onChromeMeasured(it.height) }
-                .onGloballyPositioned { coordinates ->
-                    onChromeBoundsChanged(coordinates.boundsInWindow())
-                }
-                .padding(
-                    start = inputChromeHorizontalPadding,
-                    end = inputChromeHorizontalPadding,
-                    top = 0.dp,
-                    bottom = inputChromeBottomPadding
-                ),
+                    .heightIn(min = composerSettlingChromeMinHeight)
+                    .onSizeChanged { onChromeMeasured(it.height) }
+                    .padding(
+                        start = inputChromeHorizontalPadding,
+                        end = inputChromeHorizontalPadding,
+                        top = 0.dp,
+                        bottom = inputChromeBottomPadding
+                    ),
             addButtonSize = addButtonSize,
             addIconSize = addIconSize,
             sendButtonSize = sendButtonSize,
@@ -425,87 +421,6 @@ internal fun ChatComposerBottomBar(
                 )
             }
         }
-    }
-}
-
-@Composable
-internal fun ChatComposerCollapseOverlay(
-    visible: Boolean,
-    chatRootLeftPx: Float,
-    chatRootTopPx: Float,
-    hostBoundsInWindow: Rect?,
-    chromeBoundsInWindow: Rect?,
-    pageSurface: Color,
-    addButtonSize: Dp,
-    addIconSize: Dp,
-    sendButtonSize: Dp,
-    inputChromeSurface: Color,
-    inputChromeBorder: Color,
-    inputFieldSurface: Color,
-    inputFieldBorder: Color,
-    inputBarHeight: Dp,
-    inputBarMaxHeight: Dp
-) {
-    if (!visible || hostBoundsInWindow == null || chromeBoundsInWindow == null) return
-    val density = LocalDensity.current
-    val composerCollapseOverlayHostTop =
-        with(density) { (hostBoundsInWindow.top - chatRootTopPx).toDp() }
-    val composerCollapseOverlayHostStart =
-        with(density) { (hostBoundsInWindow.left - chatRootLeftPx).toDp() }
-    val composerCollapseOverlayHostWidth = with(density) { hostBoundsInWindow.width.toDp() }
-    val composerCollapseOverlayHostHeight = with(density) { hostBoundsInWindow.height.toDp() }
-    val composerCollapseOverlayWidth = with(density) { chromeBoundsInWindow.width.toDp() }
-    val composerCollapseOverlayHeight = with(density) { chromeBoundsInWindow.height.toDp() }
-    val composerCollapseOverlayRowTop =
-        with(density) { (chromeBoundsInWindow.top - hostBoundsInWindow.top).toDp() }
-    val composerCollapseOverlayRowStart =
-        with(density) { (chromeBoundsInWindow.left - hostBoundsInWindow.left).toDp() }
-
-    Box(
-        modifier = Modifier
-            .zIndex(44f)
-            .offset(
-                x = composerCollapseOverlayHostStart,
-                y = composerCollapseOverlayHostTop
-            )
-            .width(composerCollapseOverlayHostWidth)
-            .height(composerCollapseOverlayHostHeight)
-            .background(pageSurface.copy(alpha = 0f))
-    ) {
-        ComposerChromeRow(
-            modifier = Modifier
-                .offset(
-                    x = composerCollapseOverlayRowStart,
-                    y = composerCollapseOverlayRowTop
-                )
-                .width(composerCollapseOverlayWidth)
-                .heightIn(min = composerCollapseOverlayHeight),
-            addButtonSize = addButtonSize,
-            addIconSize = addIconSize,
-            sendButtonSize = sendButtonSize,
-            inputChromeSurface = inputChromeSurface,
-            inputChromeBorder = inputChromeBorder,
-            inputFieldSurface = inputFieldSurface,
-            inputFieldBorder = inputFieldBorder,
-            inputBarHeight = inputBarHeight,
-            inputBarMaxHeight = inputBarMaxHeight,
-            onAddClick = {},
-            inputContent = {
-                Text(
-                    text = COMPOSER_DEFAULT_PLACEHOLDER_TEXT,
-                    color = Color(0xFFAEAFB4),
-                    fontSize = 16.sp,
-                    lineHeight = 22.sp,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 18.dp)
-                )
-            },
-            sendButtonEnabled = false,
-            sendButtonBackgroundColor = Color(0xFFD3D4D6),
-            sendButtonTint = Color(0xFF7F8083),
-            onSendClick = {}
-        )
     }
 }
 

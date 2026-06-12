@@ -9,6 +9,7 @@
 - 风险：生产后台已上线并能登录，SLS 也已接入 5 条最小 AlertHub 告警，并可用 `scripts/check-sls-alert-readiness.ps1` 只读巡检规则启用、查询语句、行动策略和仪表盘绑定状态，但还不能把“长期运营后台完全闭环”写成完成态；2026-06-12 云上巡检确认 5 条规则均启用且进入 AlertHub，SLS 应用日志行动策略和仪表盘绑定已为 `5/5`，严格模式当前应通过；首封告警邮件仍需在真实或测试触发时确认送达。阿里云云监控已另建邮件联系人组 `NongjiQianchaOps` 和 9 条 ECS / RDS / Redis 资源水位告警，资源不足会先走邮件提醒；数据库只读脚本、客服正式坐席分配 / 标签、礼品卡批量发放 / 发放对象管理、检查更新发布记录等仍需继续补。
 - 补充：管理后台总方案见 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md)，详细页面设计见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)，架构决策见 [ADR-0004-admin-backend-architecture.md](D:/wuhao/docs/adr/ADR-0004-admin-backend-architecture.md)。后台当前覆盖登录、总览、监控面板、产品洞察、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康；监控面板已聚合真实业务表、App 自动日志、审计、健康状态和地区分布，并补了“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡，以及登录排障、检查更新排障卡和上线前真机回归清单；产品洞察首版已补脱敏聚合趋势、反馈主题命中、App 事件分类、Top App 事件和礼品卡失败原因，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码；礼品卡后台已补汇总、完整卡码加密保存后页面查看复制、尾号 / 批次 / 账号ID追溯和失败原因聚合；帮助反馈已补 open / replied / closed 队列、状态筛选、搜索、关闭和重开；今日农情补跑、检查更新停更、礼品卡作废、反馈状态更新等写操作已有按钮忙碌态和失败弹窗，长字段会换行，降低管理层试用时的误操作和表格撑破风险。真机回归清单只把登录、聊天、图片、礼品卡、今日农情、检查更新和反馈入口串起来辅助测试，不代表这些 Android 真机链路已经全部验收完成。SLS 已有 `nongji-server-5xx`、`nongji-server-slow`、`nongji-nginx-upstream`、`nongji-daily-agri-failed`、`nongji-model-auth-config` 5 条 AlertHub 最小告警，其中正常 200 的 `/api/chat/stream` 长连接已从慢请求事件分流为 `http_sse_stream`，避免污染慢请求告警；但第一封 SLS 告警邮件送达确认、登录精准漏斗、发布 / 回滚写操作、产品洞察日报 / 人工标签 / 处理状态仍未接入；内部共享密钥接口仍保留给脚本兼容，但浏览器后台不应持有内部 secret。
 - 后续动作：保留 `check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard` 作为巡检门槛，并在真实或测试告警触发时确认邮件送达；继续补数据库只读脚本，把真实发版、回滚、查日志、查库、客服回复、礼品卡或会员运营入口沉淀到 runbook，并按最小权限继续拆角色。
+- 性能补充：2026-06-12 后台总览 / 监控 / 产品洞察聚合接口已加 4 秒查询超时，且补了 App 日志、有效 session、待回复反馈相关索引，能降低后台刷新扫表和慢查询拖住请求的风险；但这只是后台读路径优化，不等于完成独立黑盒监控、自动自愈或真实高并发压测。
 
 ## R2 项目记忆已有程序化检查，但覆盖仍偏粗
 
@@ -31,16 +32,16 @@
 - 已验证：2026-04-28 用户真机反馈当前滚动链“确实很稳”。核心链路包括：`SideEffect` 同帧底部锚定压 streaming 下一行冒头闪；用户滑回正向列表物理底部后快速恢复 AutoFollow；96dp 工作线以下空白按当前贴底链露出；上滑 / 下滑整体不再抢手
 - 剩余风险：仍需在更长回复、不同输入法 / 设备、含免责声明答案、冷启动首次点输入框等边角场景继续观察；如果再次出现冒头闪、尾部收口微动或手动回底不跟随，下一刀优先检查当前正向列表底部锚点、reveal 提交节奏、工作线 bounds、contentPadding 与 item padding 的几何关系，不恢复 overlay、小分割或 raw delta
 - 风险补充：pending finalize 仍不主动 bottom align，主要依赖两阶段 fresh bounds、unified soft-wrap renderer 和 streaming 免责声明几何占位；极端切后台 / 布局回调丢失 / bottom reserve 迟迟不 ready 时有约 1500ms 绝对超时兜底，避免一直停在生成态，超时路径不会强制底部锚点。若含免责声明答案收口仍微跳，优先在同一消息主人内复核高度来源，不恢复完整 `scrollToBottom(false)` 精修
-- 风险补充：composer 当前已完成 P0 拆链、取消发送旧高度锁、统一收键盘路径为 `clearFocus(force = true)`，并删除死链 overlay prewarm snapshot 协程。若真机仍有输入框残影或冷启动首点迟钝，下一步才评估是否需要 `WindowInsetsAnimationCompat`；不要把 IME padding 挪到根容器去抬升消息列表，也不要动滚动主链
+- 风险补充：composer 当前已完成 P0 拆链、取消发送旧高度锁、统一收键盘路径为 `clearFocus(force = true)`，并删除已经没有 true 入口的 `ChatComposerCollapseOverlay` / `composerCollapseOverlay*` 旧链。若真机仍有输入框残影或冷启动首点迟钝，下一步才评估是否需要 `WindowInsetsAnimationCompat`；不要把 IME padding 挪到根容器去抬升消息列表，也不要动滚动主链
 - 风险补充：极端恢复链已做低风险兜底：断网连续发送同文复用已有失败用户消息；远端 streaming 重启恢复失败会补 assistant 重试入口；切后台会清消息 / 输入选择菜单；`SessionApi` 保留 active SSE call 引用直到读循环退出，方便 reset / cancel。剩余观察点是：弱网下 OkHttp `readTimeout(60s)` 仍可能让小球等待较久；额度用完前端锁当前是本地会话级，App 被系统杀掉后仍以第一次后端 quota 返回为准；图片入口首版已接入相机 / 照片、后台下采样预览、压缩上传和 URL 恢复显示，相机 FileProvider URI 已补读写 flags、ClipData 和显式包授权，但仍需继续真机验证第三方相机 / 相册 URI、弱网多图上传失败、后端图片生命周期和 OSS 权限
 - 后续动作：把当前正向列表滚动链作为稳定基线保留；短期只做边角验证和低风险清理，不再主动重构滚动主链
 
 ## R5 聊天页主文件偏重但暂不影响运行时主链
 
 - 状态：未关闭
-- 说明：`ChatScreen.kt` 当前承担聊天列表装配、滚动几何、发送 / 恢复、图片导入 / 重试、会员入口接线和 debug-only 文案预览等多类职责，文件仍偏长，后续维护成本高。当前已排查：会员中心 UI 本体在 `MembershipCenterSheet.kt`，图片全屏预览在 `ImagePreviewPager.kt`，今日农情卡片渲染已拆到 `TodayAgriCardUi.kt`，聊天区用户图片 strip / 过期占位 / 预览关闭按钮已拆到 `UserMessageImageUi.kt`，图片预览下采样和 LRU 缓存已拆到 `ChatImagePreview.kt`，都没有并入滚动主链；旧 active-zone / overlay / raw delta 方案未在运行时残留
+- 说明：`ChatScreen.kt` 当前承担聊天列表装配、滚动几何、发送 / 恢复、图片导入 / 重试、会员入口接线和 debug-only 文案预览等多类职责，文件仍偏长，后续维护成本高。当前已排查：会员中心 UI 本体在 `MembershipCenterSheet.kt`，图片全屏预览在 `ImagePreviewPager.kt`，今日农情卡片渲染已拆到 `TodayAgriCardUi.kt`，聊天区用户图片 strip / 过期占位 / 预览关闭按钮已拆到 `UserMessageImageUi.kt`，图片预览下采样和 LRU 缓存已拆到 `ChatImagePreview.kt`，输入框无入口的 `ChatComposerCollapseOverlay` 旧链已删除，都没有并入滚动主链；旧 active-zone / overlay / raw delta 方案未在运行时残留
 - 风险：这属于可维护性风险，不等于用户端一定卡顿。真正运行时风险仍来自高频测量、Selection、Markdown、图片缩略图解码和滚动锚点状态；若为了“瘦身”贸然拆滚动几何或发送事务，反而可能把已稳定的工作线 / AutoFollow 打坏
-- 后续动作：短期不拆 debug-only 文案预览面板，不动滚动主链。后续若要继续瘦身，优先搬消息菜单、debug 预览 UI 等无状态 / 低耦合片段；不要第一刀拆 `commitSendMessage`、两阶段 finalize、滚动 coordinator 闭包或 `ChatRecyclerViewHost`。`scripts/check-android-build-parity.ps1` 已开始拦截今日农情 UI、用户图片 strip 和图片预览解码缓存重新塞回 `ChatScreen.kt` 的回归。
+- 后续动作：短期不拆 debug-only 文案预览面板，不动滚动主链。后续若要继续瘦身，优先搬消息菜单、debug 预览 UI 等无状态 / 低耦合片段；不要第一刀拆 `commitSendMessage`、两阶段 finalize、滚动 coordinator 闭包或 `ChatRecyclerViewHost`。`scripts/check-android-build-parity.ps1` 已开始拦截今日农情 UI、用户图片 strip、图片预览解码缓存重新塞回 `ChatScreen.kt`，以及 `ChatComposerCollapseOverlay` / `composerCollapseOverlay*` 旧链回潮。
 
 ## R6 外部会诊仍依赖人工转发上下文
 

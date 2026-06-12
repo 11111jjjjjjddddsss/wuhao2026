@@ -14,6 +14,7 @@ const (
 	defaultAdminListLimit = 50
 	maxAdminListLimit     = 100
 	adminExcerptRunes     = 96
+	adminDashboardTimeout = 4 * time.Second
 )
 
 type AdminOverview struct {
@@ -463,7 +464,9 @@ func (s *Server) handleAdminOverview(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	overview, err := s.store.BuildAdminOverview(r.Context(), s.adminHealthStatus(), GetTodayKeyCN(s.shanghai, time.Now()), adminDayStartMs(s.shanghai, time.Now()), time.Now().UnixMilli())
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	overview, err := s.store.BuildAdminOverview(ctx, s.adminHealthStatus(), GetTodayKeyCN(s.shanghai, time.Now()), adminDayStartMs(s.shanghai, time.Now()), time.Now().UnixMilli())
 	if err != nil {
 		s.logger.Error("admin overview failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.overview", "dashboard", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -480,7 +483,9 @@ func (s *Server) handleAdminMonitoring(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	updateRecord, err := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	updateRecord, err := s.store.ReadAndroidUpdateConfigRecord(ctx)
 	if err != nil {
 		s.logger.Error("admin monitoring update config failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.monitoring", "dashboard", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -488,7 +493,7 @@ func (s *Server) handleAdminMonitoring(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	report, err := s.store.BuildAdminMonitoring(
-		r.Context(),
+		ctx,
 		s.adminHealthStatus(),
 		GetTodayKeyCN(s.shanghai, now),
 		adminDayStartMs(s.shanghai, now),
@@ -518,7 +523,9 @@ func (s *Server) handleAdminInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := time.Now()
-	updateRecord, err := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	updateRecord, err := s.store.ReadAndroidUpdateConfigRecord(ctx)
 	if err != nil {
 		s.logger.Error("admin insights update config failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.insights", "dashboard", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -526,7 +533,7 @@ func (s *Server) handleAdminInsights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	report, err := s.store.BuildAdminInsights(
-		r.Context(),
+		ctx,
 		GetTodayKeyCN(s.shanghai, now),
 		adminDayStartMs(s.shanghai, now),
 		now.UnixMilli(),

@@ -68,12 +68,14 @@ $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/
 $todayAgriCardUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/TodayAgriCardUi.kt"
 $userMessageImageUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/UserMessageImageUi.kt"
 $chatImagePreviewFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatImagePreview.kt"
+$chatComposerCoordinatorFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt"
+$chatComposerPanelFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt"
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -94,6 +96,8 @@ if ($failures.Count -eq 0) {
     $todayAgriCardUi = Get-Content -LiteralPath $todayAgriCardUiFile -Raw
     $userMessageImageUi = Get-Content -LiteralPath $userMessageImageUiFile -Raw
     $chatImagePreview = Get-Content -LiteralPath $chatImagePreviewFile -Raw
+    $chatComposerCoordinator = Get-Content -LiteralPath $chatComposerCoordinatorFile -Raw
+    $chatComposerPanel = Get-Content -LiteralPath $chatComposerPanelFile -Raw
     $loginScreen = Get-Content -LiteralPath $loginScreenFile -Raw
     $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
 
@@ -268,6 +272,9 @@ if ($failures.Count -eq 0) {
     $chatScreenImageImplementationPattern = "private\s+fun\s+UserMessageImageStrip|private\s+fun\s+UserMessageImageThumb|private\s+fun\s+UserMessageImagePreviewDialog|fun\s+Context\.decodeChatImagePreview|chatImagePreviewCache\s*=|CHAT_IMAGE_PREVIEW_CACHE_MAX_KB|CHAT_REMOTE_PREVIEW_MAX_BYTES"
     Require-NoMatch $failures $chatScreen $chatScreenImageImplementationPattern `
         "ChatScreen must not re-embed user image rendering or image preview cache/decode code; keep it isolated."
+    $composerCollapseOverlayPattern = "composerCollapseOverlay|ChatComposerCollapseOverlay|shouldDismissComposerCollapseOverlay|resolveBottomContentReservedHeightPx\s*\(\s*overlay"
+    Require-NoMatch $failures ($chatScreen + $chatComposerCoordinator + $chatComposerPanel) $composerCollapseOverlayPattern `
+        "Chat UI must not restore the dead composer collapse overlay chain; keep composer collapse on the single measured bottom-bar path."
     $fusionVerifySuccessPattern = "override\s+fun\s+onVerifySuccess(?s:.*?)SessionApi\.loginWithFusionVerifyToken"
     $fusionHalfwayUnexpectedPattern = "override\s+fun\s+onHalfWayVerifySuccess(?s:.*?)auth\.fusion_halfway_unexpected(?s:.*?)verifyResult\?\.verifyResult"
     Require-Match $failures $fusionClient $fusionVerifySuccessPattern `
