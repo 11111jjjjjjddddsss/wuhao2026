@@ -5,6 +5,10 @@
 
 ## 2026-06-12
 
+- 继续趁当前“还没有正式用户”的窗口收紧账号资产迁移：旧本机 ID 到 `acct_...` 的 `user_id_migrations` 映射改为不可改写，若同一个旧 ID 已经绑定到另一个账号，本次登录不再重映射、不再合并资产，避免账号之间互相吞会员、礼品卡、订单或记忆。会员权益合并同时补了 Plus 价值补偿：当 Pro 覆盖 Plus，或目标 Plus 被来源 Pro 覆盖时，剩余 Plus 当天次数和未来天数价值会转入 `upgrade_credits`，不让用户买过的 Plus 价值因为登录迁移被静默吃掉；新增单测锁住映射不可改写和补偿计算。
+
+- 主界面继续按“别把 `ChatScreen.kt` 堆成屎山、但也不乱拆滚动主链”的口径做低风险拆分：聊天区用户图片 strip / 过期占位 / 预览关闭按钮移到 `UserMessageImageUi.kt`，图片预览下采样和 12MB LRU 缓存移到 `ChatImagePreview.kt`，`ChatScreen.kt` 只保留消息接线和状态。清数据 / 删除历史时又补了前台照片选择、外部相机回调的清除 epoch 守卫：如果用户清空期间异步导入才回来，会删除刚导入的私有图片并丢弃回调，不再把旧图片塞回 clean-state。Android parity 脚本同步拦截这些 UI / 解码代码回流到 `ChatScreen.kt`，并已兼容 Windows `powershell.exe` 和当前 shell。
+
 - 主界面按“架构清晰、别把 `ChatScreen.kt` 继续堆成大泥团”的方向做第一刀低风险拆分：今日农情卡片的可展示校验、Compose 渲染和 debug 预览样本从 `ChatScreen.kt` 外移到 `TodayAgriCardUi.kt`，主聊天文件继续只负责视觉时间线插入、锚点和滚动接线；不改今日农情后端、拉取、三条硬要求、消息主链、工作线或发送 / 恢复事务。`scripts/check-android-build-parity.ps1` 同步新增架构护栏，防止今日农情 UI-only 代码又被塞回 `ChatScreen.kt`。
 
 - Android 首次启动隐私同意链路补齐：`MainActivity` 会先检查本机隐私同意版本，未同意时只展示独立同意门禁，用户勾选并点击“同意并继续”后才初始化 `IdManager`、补报待发送崩溃日志并进入登录 / 聊天；拒绝则退出 App。遗留的后台待发送图文 Worker 也会先等隐私同意，不在同意前初始化身份或调用后端。首启门禁复用登录 / 设置页同一套服务协议和隐私政策正文，不额外引入网页或新文案真相。`scripts/check-android-build-parity.ps1` 同步新增护栏，拦截首启门禁、登录页协议勾选、同意后初始化本机身份和补报崩溃日志、后台 Worker 同意前绕行这些链路被后续改回去；debug / release 仍保持同后端、同登录主链、同网络安全配置，差异只保留 debug-only 预览和调试日志。

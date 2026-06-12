@@ -215,6 +215,27 @@ func TestLegacyMergeCoversLongLivedIdentityTables(t *testing.T) {
 	}
 }
 
+func TestLegacyMigrationMappingIsImmutable(t *testing.T) {
+	source, err := os.ReadFile("auth_accounts.go")
+	if err != nil {
+		t.Fatalf("read auth_accounts.go: %v", err)
+	}
+	text := strings.ToLower(string(source))
+	if strings.Contains(text, "on duplicate key update new_user_id") {
+		t.Fatalf("legacy migration mapping must not update new_user_id for an existing old_user_id")
+	}
+	for _, want := range []string{
+		"select new_user_id from user_id_migrations",
+		"for update",
+		"existingmigrationtarget.string) != newuserid",
+		"return nil",
+	} {
+		if !strings.Contains(text, strings.ToLower(want)) {
+			t.Fatalf("legacy migration mapping immutability guard missing %q", want)
+		}
+	}
+}
+
 func TestLegacyMergePreservesSessionABMemoryWhenTargetExists(t *testing.T) {
 	normalized := strings.ToLower(mergeSessionABSQL)
 	for _, want := range []string{

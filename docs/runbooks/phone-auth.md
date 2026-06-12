@@ -104,7 +104,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-andro
 - 验证码登录放宽到 4 / 5 位也请求后端，或 release logcat 打印阿里云 SDK 原始 `errorMsg / innerMsg`
 - debug-only 预览面板脱离 `BuildConfig.DEBUG` 守卫
 
-CI 会自动执行同一脚本；如果 CI 在这一步失败，不要绕过检查，应先确认测试包和正式包仍保持同包名、同签名、同后端、同登录主链。
+CI 会自动执行同一脚本；本地既可以用当前 PowerShell，也可以用系统 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-android-build-parity.ps1` 复核。脚本失败时不要绕过检查，应先确认测试包和正式包仍保持同包名、同签名、同后端、同登录主链。
 
 ## 安全与成本边界
 

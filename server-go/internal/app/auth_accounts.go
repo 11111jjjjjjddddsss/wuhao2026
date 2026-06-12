@@ -279,15 +279,28 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	if strings.HasPrefix(oldUserID, "acct_") {
 		return nil
 	}
-	if _, err := tx.ExecContext(
+	var existingMigrationTarget sql.NullString
+	err := tx.QueryRowContext(
 		ctx,
-		`INSERT INTO user_id_migrations(old_user_id, new_user_id, migrated_at)
-		 VALUES (?, ?, ?)
-		 ON DUPLICATE KEY UPDATE new_user_id = VALUES(new_user_id)`,
+		"SELECT new_user_id FROM user_id_migrations WHERE old_user_id = ? LIMIT 1 FOR UPDATE",
 		oldUserID,
-		newUserID,
-		nowMs,
-	); err != nil {
+	).Scan(&existingMigrationTarget)
+	if err == nil {
+		if strings.TrimSpace(existingMigrationTarget.String) != newUserID {
+			return nil
+		}
+	} else if err == sql.ErrNoRows {
+		if _, err := tx.ExecContext(
+			ctx,
+			`INSERT INTO user_id_migrations(old_user_id, new_user_id, migrated_at)
+			 VALUES (?, ?, ?)`,
+			oldUserID,
+			newUserID,
+			nowMs,
+		); err != nil {
+			return err
+		}
+	} else {
 		return err
 	}
 
@@ -356,6 +369,30 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return err
 	}
 
+	targetTier, targetExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, newUserID, nowMs)
+	if err != nil {
+		return err
+	}
+	sourceTier, sourceExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, oldUserID, nowMs)
+	if err != nil {
+		return err
+	}
+	mergedTier, mergedExpireAt := mergeEffectiveEntitlements(targetTier, targetExpireAt, sourceTier, sourceExpireAt)
+	upgradeCompensation, err := s.legacyPlusUpgradeCompensationTx(
+		ctx,
+		tx,
+		oldUserID,
+		newUserID,
+		targetTier,
+		targetExpireAt,
+		sourceTier,
+		sourceExpireAt,
+		nowMs,
+	)
+	if err != nil {
+		return err
+	}
+
 	if _, err := tx.ExecContext(ctx, mergeDailyUsageSQL, newUserID, oldUserID); err != nil {
 		return err
 	}
@@ -379,6 +416,11 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	if _, err := tx.ExecContext(ctx, "DELETE FROM upgrade_credits WHERE user_id = ?", oldUserID); err != nil {
 		return err
 	}
+	if upgradeCompensation > 0 {
+		if _, err := tx.ExecContext(ctx, insertUpgradeCreditCompensationSQL, newUserID, upgradeCompensation, nowMs); err != nil {
+			return err
+		}
+	}
 
 	if _, err := tx.ExecContext(ctx, mergeSessionGenerationSQL, newUserID, nowMs, oldUserID); err != nil {
 		return err
@@ -388,7 +430,7 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	}
 
 	var targetSession string
-	err := tx.QueryRowContext(ctx, "SELECT user_id FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE", newUserID).Scan(&targetSession)
+	err = tx.QueryRowContext(ctx, "SELECT user_id FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE", newUserID).Scan(&targetSession)
 	if err == sql.ErrNoRows {
 		if _, err := tx.ExecContext(ctx, "UPDATE session_ab SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
 			return err
@@ -404,15 +446,6 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		}
 	}
 
-	targetTier, targetExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, newUserID, nowMs)
-	if err != nil {
-		return err
-	}
-	sourceTier, sourceExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, oldUserID, nowMs)
-	if err != nil {
-		return err
-	}
-	mergedTier, mergedExpireAt := mergeEffectiveEntitlements(targetTier, targetExpireAt, sourceTier, sourceExpireAt)
 	if _, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO user_entitlement(user_id, tier, tier_expire_at, updated_at)
@@ -449,6 +482,13 @@ const mergeUpgradeCreditsSQL = `INSERT INTO upgrade_credits(user_id, remaining, 
      WHEN upgrade_credits.expire_at > VALUES(expire_at) THEN upgrade_credits.expire_at
      ELSE VALUES(expire_at)
    END,
+   updated_at = VALUES(updated_at)`
+
+const insertUpgradeCreditCompensationSQL = `INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
+ VALUES (?, ?, NULL, ?)
+ ON DUPLICATE KEY UPDATE
+   remaining = upgrade_credits.remaining + VALUES(remaining),
+   expire_at = NULL,
    updated_at = VALUES(updated_at)`
 
 const mergeSessionGenerationSQL = `INSERT INTO session_generation(user_id, generation, cleared_at, updated_at)
@@ -511,6 +551,45 @@ func mergeEffectiveEntitlements(targetTier Tier, targetExpireAt *int64, sourceTi
 		return TierFree, nil
 	}
 	return targetTier, maxInt64Ptr(targetExpireAt, sourceExpireAt)
+}
+
+func (s *Store) legacyPlusUpgradeCompensationTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	oldUserID string,
+	newUserID string,
+	targetTier Tier,
+	targetExpireAt *int64,
+	sourceTier Tier,
+	sourceExpireAt *int64,
+	nowMs int64,
+) (int, error) {
+	if targetTier == TierPro && sourceTier == TierPlus {
+		return s.remainingPlusQuotaCompensationTx(ctx, tx, oldUserID, sourceExpireAt, nowMs)
+	}
+	if targetTier == TierPlus && sourceTier == TierPro {
+		return s.remainingPlusQuotaCompensationTx(ctx, tx, newUserID, targetExpireAt, nowMs)
+	}
+	return 0, nil
+}
+
+func (s *Store) remainingPlusQuotaCompensationTx(ctx context.Context, tx *sql.Tx, userID string, expireAt *int64, nowMs int64) (int, error) {
+	dayCN := GetTodayKeyCN(s.shanghai, time.UnixMilli(nowMs))
+	usedToday, err := s.getOrCreateDailyUsage(ctx, tx, userID, dayCN)
+	if err != nil {
+		return 0, err
+	}
+	return remainingPlusQuotaCompensation(usedToday, expireAt, nowMs, s.shanghai), nil
+}
+
+func remainingPlusQuotaCompensation(usedToday int, expireAt *int64, nowMs int64, loc *time.Location) int {
+	todayRemainingPlus := maxInt(0, tierLimits[TierPlus]-usedToday)
+	expireAtOld := nowMs
+	if expireAt != nil {
+		expireAtOld = *expireAt
+	}
+	remainingFullDays := maxInt(0, dayIndexFromTsCN(loc, expireAtOld)-dayIndexFromTsCN(loc, nowMs))
+	return todayRemainingPlus + remainingFullDays*tierLimits[TierPlus]
 }
 
 func cloneInt64Ptr(value *int64) *int64 {

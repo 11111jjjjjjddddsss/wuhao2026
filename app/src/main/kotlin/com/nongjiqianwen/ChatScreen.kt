@@ -14,7 +14,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.util.Log
-import android.util.LruCache
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -31,7 +30,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -126,10 +124,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
@@ -148,7 +144,6 @@ import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
@@ -178,8 +173,6 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
@@ -203,10 +196,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.withTimeoutOrNull
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.InputStream
-import java.net.URL
 import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
@@ -405,8 +395,6 @@ private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
-private const val CHAT_IMAGE_PREVIEW_CACHE_MAX_KB = 12 * 1024
-private const val CHAT_REMOTE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
@@ -482,12 +470,6 @@ private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
 private const val USER_RETRYING_STATUS_TEXT = "正在重发..."
 private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
-private val chatImagePreviewCache = object : LruCache<String, ImageBitmap>(CHAT_IMAGE_PREVIEW_CACHE_MAX_KB) {
-    override fun sizeOf(key: String, value: ImageBitmap): Int {
-        return ((value.width * value.height * 4) / 1024).coerceAtLeast(1)
-    }
-}
-private val chatImagePreviewCacheLock = Any()
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -508,17 +490,6 @@ private val blockMarkdownCache = object : LinkedHashMap<String, List<MarkdownUiB
         return size > BLOCK_MARKDOWN_CACHE_LIMIT
     }
 }
-
-private fun cachedChatImagePreview(source: String): ImageBitmap? =
-    synchronized(chatImagePreviewCacheLock) {
-        chatImagePreviewCache.get(source)
-    }
-
-private fun cacheChatImagePreview(source: String, bitmap: ImageBitmap): ImageBitmap =
-    synchronized(chatImagePreviewCacheLock) {
-        chatImagePreviewCache.put(source, bitmap)
-        bitmap
-    }
 
 private fun currentQuotaDayKey(): String {
     val calendar = java.util.Calendar.getInstance(
@@ -1848,20 +1819,6 @@ internal fun Context.readImageBytes(uri: Uri): ByteArray? {
     }.getOrNull()
 }
 
-private fun InputStream.readPreviewBytes(maxBytes: Int): ByteArray? {
-    val buffer = ByteArray(8 * 1024)
-    val output = ByteArrayOutputStream()
-    var total = 0
-    while (true) {
-        val read = read(buffer)
-        if (read < 0) break
-        total += read
-        if (total > maxBytes) return null
-        output.write(buffer, 0, read)
-    }
-    return output.toByteArray()
-}
-
 internal fun Context.importComposerImageToPrivateStorage(uri: Uri): ComposerImageAttachment? {
     return runCatching {
         val originalBytes = readImageBytes(uri) ?: return@runCatching null
@@ -1931,47 +1888,6 @@ private fun Context.deleteUnreferencedComposerImages(retainedUris: Collection<St
             ?.filter { file -> file.isFile && file.canonicalFile !in retainedFiles }
             ?.forEach { file -> file.delete() }
     }
-}
-
-private fun chatPreviewInSampleSize(width: Int, height: Int, targetSize: Int): Int {
-    var sampleSize = 1
-    if (width > targetSize || height > targetSize) {
-        var halfWidth = width / 2
-        var halfHeight = height / 2
-        while (halfWidth / sampleSize >= targetSize && halfHeight / sampleSize >= targetSize) {
-            sampleSize *= 2
-        }
-    }
-    return sampleSize.coerceAtLeast(1)
-}
-
-internal fun Context.decodeChatImagePreview(
-    source: String,
-    targetSize: Int = 512
-): ImageBitmap? {
-    cachedChatImagePreview(source)?.let { return it }
-    return runCatching {
-        val bytes = if (source.startsWith("http://") || source.startsWith("https://")) {
-            val connection = URL(source).openConnection().apply {
-                connectTimeout = 5000
-                readTimeout = 5000
-            }
-            connection.getInputStream().use { it.readPreviewBytes(CHAT_REMOTE_PREVIEW_MAX_BYTES) }
-        } else {
-            readImageBytes(Uri.parse(source))
-        } ?: return@runCatching null
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
-            return@runCatching null
-        }
-        val decodeOptions = BitmapFactory.Options().apply {
-            inSampleSize = chatPreviewInSampleSize(bounds.outWidth, bounds.outHeight, targetSize = targetSize)
-        }
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions)
-            ?.asImageBitmap()
-            ?.let { cacheChatImagePreview(source, it) }
-    }.getOrNull()
 }
 
 private fun assistantMessageIdForSourceUser(sourceUserMessageId: String): String =
@@ -3710,11 +3626,18 @@ fun ChatScreen() {
         attachmentMenuVisible = false
         suppressInputCursor = false
         val selectedUris = uris.take(remainingSlots)
+        val importClearEpoch = chatHistoryClearEpoch
         snackbarScope.launch {
             val importedImages = withContext(Dispatchers.IO) {
                 selectedUris.mapNotNull { uri ->
                     context.importComposerImageToPrivateStorage(uri)
                 }
+            }
+            if (importClearEpoch != chatHistoryClearEpoch) {
+                withContext(Dispatchers.IO) {
+                    importedImages.forEach(context::deleteComposerImageAttachment)
+                }
+                return@launch
             }
             if (importedImages.isEmpty()) {
                 showComposerStatusHint(ImageUploader.DECODE_FAIL_MESSAGE)
@@ -3778,6 +3701,7 @@ fun ChatScreen() {
         }
         val success = result.resultCode == Activity.RESULT_OK
         if (success && uri != null) {
+            val importClearEpoch = chatHistoryClearEpoch
             snackbarScope.launch {
                 val importedImage = withContext(Dispatchers.IO) {
                     val imported = context.importComposerImageToPrivateStorage(uri)
@@ -3796,6 +3720,14 @@ fun ChatScreen() {
                         deleteTemporaryComposerCameraImage(temporaryFilePath)
                     }
                     imported
+                }
+                if (importClearEpoch != chatHistoryClearEpoch) {
+                    if (importedImage != null) {
+                        withContext(Dispatchers.IO) {
+                            context.deleteComposerImageAttachment(importedImage)
+                        }
+                    }
+                    return@launch
                 }
                 if (importedImage == null) {
                     showComposerStatusHint(ImageUploader.DECODE_FAIL_MESSAGE)
@@ -4355,6 +4287,24 @@ fun ChatScreen() {
         failedAssistantMessageStates.clear()
         retryingUserMessageIds.clear()
         retryingAssistantMessageIds.clear()
+        val pendingCameraUri = pendingCameraImageUriString?.let(Uri::parse)
+        val pendingCameraGalleryBacked = pendingCameraImageGalleryBacked
+        val pendingCameraTemporaryFilePath = pendingCameraImageTemporaryFilePath
+        pendingCameraImageUriString = null
+        pendingCameraImageGalleryBacked = false
+        pendingCameraImageTemporaryFilePath = null
+        if (pendingCameraUri != null) {
+            context.revokeComposerCameraUri(pendingCameraUri)
+            snackbarScope.launch {
+                withContext(Dispatchers.IO) {
+                    if (pendingCameraGalleryBacked) {
+                        context.deleteGalleryComposerCameraImage(pendingCameraUri)
+                    } else {
+                        deleteTemporaryComposerCameraImage(pendingCameraTemporaryFilePath)
+                    }
+                }
+            }
+        }
         selectedComposerImages.clear()
         input.value = TextFieldValue("")
         startupRecoverableUserMessageId = null
@@ -8786,273 +8736,6 @@ private fun UiCopyPreviewPlainText(lines: List<String>) {
                 lineHeight = 18.sp
             )
         }
-    }
-}
-
-@Composable
-private fun UserMessageImageStrip(
-    imageUris: List<String>,
-    imageUrls: List<String>,
-    userBubbleMaxWidth: Dp
-) {
-    val imageSources = remember(imageUris, imageUrls) {
-        val localSources = imageUris.filter { it.isNotBlank() }
-        val remoteSources = imageUrls.filter { it.isNotBlank() }
-        val maxSourceCount = maxOf(localSources.size, remoteSources.size)
-        (0 until maxSourceCount)
-            .mapNotNull { index -> localSources.getOrNull(index) ?: remoteSources.getOrNull(index) }
-            .distinct()
-            .take(COMPOSER_MAX_IMAGE_COUNT)
-    }
-    if (imageSources.isEmpty()) return
-    var previewIndex by remember {
-        mutableStateOf<Int?>(null)
-    }
-    val unavailableSources = remember { mutableStateMapOf<String, Boolean>() }
-    LaunchedEffect(imageSources) {
-        unavailableSources.keys
-            .filterNot { it in imageSources }
-            .forEach { unavailableSources.remove(it) }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.End
-    ) {
-        Column(
-            modifier = Modifier.widthIn(max = userBubbleMaxWidth),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            imageSources.chunked(2).forEachIndexed { rowIndex, rowSources ->
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    rowSources.forEachIndexed { columnIndex, source ->
-                        val sourceIndex = rowIndex * 2 + columnIndex
-                        UserMessageImageThumb(
-                            source = source,
-                            onUnavailableChanged = { unavailable ->
-                                if (unavailable) {
-                                    unavailableSources[source] = true
-                                } else {
-                                    unavailableSources.remove(source)
-                                }
-                            },
-                            onPreviewImage = { previewIndex = sourceIndex }
-                        )
-                    }
-                }
-            }
-        }
-    }
-    previewIndex?.let { index ->
-        val unavailableIndexes = imageSources
-            .mapIndexedNotNull { sourceIndex, source ->
-                sourceIndex.takeIf { unavailableSources[source] == true }
-            }
-            .toSet()
-        UserMessageImagePreviewDialog(
-            sources = imageSources,
-            initialPage = index,
-            unavailableIndexes = unavailableIndexes,
-            onDismiss = { previewIndex = null }
-        )
-    }
-}
-
-@Composable
-private fun UserMessageImageThumb(
-    source: String,
-    onUnavailableChanged: (Boolean) -> Unit,
-    onPreviewImage: () -> Unit
-) {
-    val context = LocalContext.current
-    var bitmap by remember(source) {
-        mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
-    }
-    var loadUnavailable by remember(source) { mutableStateOf(false) }
-    LaunchedEffect(source) {
-        loadUnavailable = false
-        onUnavailableChanged(false)
-        val decoded = withContext(Dispatchers.IO) {
-            context.decodeChatImagePreview(source)
-        }
-        bitmap = decoded
-        loadUnavailable = decoded == null && source.isRemoteImageSource()
-        onUnavailableChanged(loadUnavailable)
-    }
-    Box(
-        modifier = Modifier
-            .size(112.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xFFF0F1F3))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) { onPreviewImage() }
-    ) {
-        if (bitmap != null) {
-            Image(
-                bitmap = bitmap!!,
-                contentDescription = "用户上传图片",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                if (loadUnavailable) {
-                    UserMessageExpiredImagePlaceholder()
-                } else {
-                    UserMessageImagePlaceholderIcon(
-                        tint = Color(0xFF8B8D93),
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun UserMessageImagePreviewDialog(
-    sources: List<String>,
-    initialPage: Int,
-    unavailableIndexes: Set<Int>,
-    onDismiss: () -> Unit
-) {
-    if (sources.isEmpty()) return
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color(0xE6000000))
-        ) {
-            ImagePreviewPager(
-                models = sources,
-                initialPage = initialPage,
-                contentDescription = "用户上传图片预览",
-                onDismiss = onDismiss,
-                unavailablePages = unavailableIndexes
-            )
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
-                    .statusBarsPadding()
-                    .padding(top = 10.dp, end = 22.dp)
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(Color(0x99111111))
-                    .zIndex(1f)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null
-                    ) { onDismiss() },
-                contentAlignment = Alignment.Center
-            ) {
-                UserMessagePreviewCloseIcon(tint = Color.White, modifier = Modifier.size(14.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun UserMessageExpiredImagePlaceholder() {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp)
-    ) {
-        UserMessageImagePlaceholderIcon(
-            tint = Color(0xFF8B8D93),
-            modifier = Modifier.size(24.dp)
-        )
-        Text(
-            text = IMAGE_EXPIRED_THUMB_TEXT,
-            color = Color(0xFF777C85),
-            fontSize = 11.sp,
-            lineHeight = 14.sp,
-            fontWeight = FontWeight.Medium,
-            textAlign = TextAlign.Center
-        )
-    }
-}
-
-@Composable
-private fun UserMessageImagePlaceholderIcon(
-    tint: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.085f
-        val left = size.width * 0.16f
-        val top = size.height * 0.18f
-        val right = size.width * 0.84f
-        val bottom = size.height * 0.82f
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(left, top),
-            size = androidx.compose.ui.geometry.Size(right - left, bottom - top),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-                size.minDimension * 0.14f,
-                size.minDimension * 0.14f
-            ),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
-        )
-        drawCircle(
-            color = tint,
-            radius = size.minDimension * 0.065f,
-            center = Offset(size.width * 0.65f, size.height * 0.36f)
-        )
-        drawLine(
-            color = tint,
-            start = Offset(size.width * 0.24f, size.height * 0.72f),
-            end = Offset(size.width * 0.42f, size.height * 0.53f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(size.width * 0.42f, size.height * 0.53f),
-            end = Offset(size.width * 0.55f, size.height * 0.66f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(size.width * 0.55f, size.height * 0.66f),
-            end = Offset(size.width * 0.78f, size.height * 0.56f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-    }
-}
-
-@Composable
-private fun UserMessagePreviewCloseIcon(
-    tint: Color,
-    modifier: Modifier = Modifier
-) {
-    Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.13f
-        drawLine(
-            color = tint,
-            start = Offset(size.width * 0.22f, size.height * 0.22f),
-            end = Offset(size.width * 0.78f, size.height * 0.78f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tint,
-            start = Offset(size.width * 0.78f, size.height * 0.22f),
-            end = Offset(size.width * 0.22f, size.height * 0.78f),
-            strokeWidth = stroke,
-            cap = StrokeCap.Round
-        )
     }
 }
 

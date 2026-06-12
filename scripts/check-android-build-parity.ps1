@@ -66,12 +66,14 @@ $mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/M
 $privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentGate.kt"
 $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendWorker.kt"
 $todayAgriCardUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/TodayAgriCardUi.kt"
+$userMessageImageUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/UserMessageImageUi.kt"
+$chatImagePreviewFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatImagePreview.kt"
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -90,6 +92,8 @@ if ($failures.Count -eq 0) {
     $privacyConsent = Get-Content -LiteralPath $privacyConsentFile -Raw
     $pendingWorker = Get-Content -LiteralPath $pendingWorkerFile -Raw
     $todayAgriCardUi = Get-Content -LiteralPath $todayAgriCardUiFile -Raw
+    $userMessageImageUi = Get-Content -LiteralPath $userMessageImageUiFile -Raw
+    $chatImagePreview = Get-Content -LiteralPath $chatImagePreviewFile -Raw
     $loginScreen = Get-Content -LiteralPath $loginScreenFile -Raw
     $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
 
@@ -105,9 +109,9 @@ if ($failures.Count -eq 0) {
         "USE_BACKEND_AB must remain enabled for debug and release."
     Require-NoMatch $failures $build 'buildConfigField\s*\(\s*"boolean"\s*,\s*"USE_BACKEND_AB"\s*,\s*[^)]*false' `
         "USE_BACKEND_AB must not be disabled in any build type."
-    Require-Match $failures $build 'debug\s*\{[\s\S]*?signingConfigs\.findByName\s*\(\s*"release"\s*\)\?\.let\s*\{\s*signingConfig\s*=\s*it\s*\}[\s\S]*?buildConfigField\s*\(\s*"boolean"\s*,\s*"ENABLE_FUSION_ONE_LOGIN"\s*,\s*releaseSigningConfigured\.toString\(\)\s*\)' `
+    Require-Match $failures $build 'debug\s*\{(?s:.*?)signingConfigs\.findByName\s*\(\s*"release"\s*\)\?\.let\s*\{\s*signingConfig\s*=\s*it\s*\}(?s:.*?)buildConfigField\s*\(\s*"boolean"\s*,\s*"ENABLE_FUSION_ONE_LOGIN"\s*,\s*releaseSigningConfigured\.toString\(\)\s*\)' `
         "Debug builds must use release signing when configured and enable one-click login only under that condition."
-    Require-Match $failures $build 'release\s*\{[\s\S]*?buildConfigField\s*\(\s*"boolean"\s*,\s*"ENABLE_FUSION_ONE_LOGIN"\s*,\s*"true"\s*\)' `
+    Require-Match $failures $build 'release\s*\{(?s:.*?)buildConfigField\s*\(\s*"boolean"\s*,\s*"ENABLE_FUSION_ONE_LOGIN"\s*,\s*"true"\s*\)' `
         "Release builds must keep one-click login enabled."
     Require-Match $failures $build 'Release signing is not configured' `
         "Release packaging must fail when release signing is missing."
@@ -194,9 +198,9 @@ if ($failures.Count -eq 0) {
         "Android login must only persist backend account IDs with the acct_ prefix."
     Require-Match $failures $sessionApi 'non_account_user_id' `
         "Android login must report and reject non-account user IDs instead of saving a legacy UUID session."
-    Require-Match $failures $idManager 'saveAuthSession[\s\S]*?!normalizedUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
+    Require-Match $failures $idManager 'saveAuthSession(?s:.*?)!normalizedUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
         "IdManager must refuse to save a logged-in session for non-account user IDs."
-    Require-Match $failures $idManager 'hasValidAuthSession[\s\S]*?authUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
+    Require-Match $failures $idManager 'hasValidAuthSession(?s:.*?)authUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
         "IdManager must treat stale non-account auth_user_id values as logged-out."
     Require-Match $failures $sessionApi 'auth\.sms_login_success' `
         "Android SMS login success should be logged for login handoff diagnostics."
@@ -206,76 +210,132 @@ if ($failures.Count -eq 0) {
         "SMS login must require exactly 6 verification-code digits before calling the backend."
     Require-NoMatch $failures $loginScreen 'code\.length\s*<\s*4' `
         "SMS login must not accept 4/5 digit codes and send avoidable failed backend requests."
-    Require-Match $failures $loginScreen 'if\s*\(\s*!agreed\s*\)[\s\S]*?请先同意服务协议和隐私政策' `
+    $loginAgreementGatePattern = "if\s*\(\s*!agreed\s*\)(?s:.*?)message\s*="
+    $mainActivityPrivacyCheckPattern = "PrivacyConsentStore\.isAccepted\s*\(\s*this\s*\)"
+    $mainActivityPostConsentInitPattern = "initializePostPrivacyConsentRuntime\s*\(\s*\)(?s:.*?)IdManager\.init\s*\(\s*this\s*\)(?s:.*?)AppCrashReporter\.flushPendingReport"
+    $mainActivityLoginAfterPrivacyPattern = "if\s*\(\s*privacyAccepted\s*\)(?s:.*?)LoginGate"
+    $privacyConsentVersionedStorePattern = "object\s+PrivacyConsentStore(?s:.*?)CURRENT_VERSION\s*=\s*1(?s:.*?)fun\s+isAccepted"
+    $privacyConsentAcceptActionPattern = "onAccepted\s*\(\s*\)"
+    $privacyConsentDeclineActionPattern = "onClick\s*=\s*onDeclined"
+    Require-Match $failures $loginScreen $loginAgreementGatePattern `
         "Login actions must remain gated by the service agreement/privacy checkbox."
-    Require-Match $failures $mainActivity 'PrivacyConsentStore\.isAccepted\s*\(\s*this\s*\)' `
+    Require-Match $failures $mainActivity $mainActivityPrivacyCheckPattern `
         "MainActivity must check first-launch privacy consent before entering login/chat."
-    Require-Match $failures $mainActivity 'initializePostPrivacyConsentRuntime\s*\(\s*\)[\s\S]*?IdManager\.init\s*\(\s*this\s*\)[\s\S]*?AppCrashReporter\.flushPendingReport' `
+    Require-Match $failures $mainActivity $mainActivityPostConsentInitPattern `
         "IdManager init and crash-log flushing must stay behind accepted privacy consent."
-    Require-Match $failures $mainActivity 'if\s*\(\s*privacyAccepted\s*\)[\s\S]*?LoginGate' `
+    Require-Match $failures $mainActivity $mainActivityLoginAfterPrivacyPattern `
         "MainActivity must render LoginGate only after privacy consent has been accepted."
-    Require-Match $failures $privacyConsent 'object\s+PrivacyConsentStore[\s\S]*?CURRENT_VERSION\s*=\s*1[\s\S]*?fun\s+isAccepted' `
+    Require-Match $failures $privacyConsent $privacyConsentVersionedStorePattern `
         "PrivacyConsentStore must keep a versioned local consent flag."
-    Require-Match $failures $privacyConsent '同意并继续' `
+    Require-Match $failures $privacyConsent $privacyConsentAcceptActionPattern `
         "First-launch privacy gate must provide an explicit agree-and-continue action."
-    Require-Match $failures $privacyConsent '不同意，退出' `
+    Require-Match $failures $privacyConsent $privacyConsentDeclineActionPattern `
         "First-launch privacy gate must provide an explicit decline/exit action."
-    Require-Match $failures $privacyConsent 'HamburgerServiceAgreementContent[\s\S]*?HamburgerPrivacyPolicyContent' `
+    $privacyConsentSharedTextPattern = "HamburgerServiceAgreementContent(?s:.*?)HamburgerPrivacyPolicyContent"
+    $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
+    $todayAgriCardPattern = "fun\s+TodayAgriNewsCard\b"
+    $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
+    $chatScreenTodayAgriImplementationPattern = "private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard"
+
+    Require-Match $failures $privacyConsent $privacyConsentSharedTextPattern `
         "First-launch privacy gate must let users read the same service agreement and privacy policy content as settings/login."
-    Require-Match $failures $pendingWorker '!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)[\s\S]*?Result\.retry\(\)[\s\S]*?IdManager\.init' `
+    Require-Match $failures $pendingWorker $pendingWorkerPrivacyGatePattern `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
-    Require-Match $failures $todayAgriCardUi 'fun\s+TodayAgriNewsCard\s*\(' `
+    Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
         "Today agri card rendering must stay in TodayAgriCardUi.kt instead of bloating ChatScreen."
-    Require-Match $failures $todayAgriCardUi 'fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\s*\(' `
+    Require-Match $failures $todayAgriCardUi $todayAgriRenderablePattern `
         "Today agri card display validation must stay near the card UI renderer."
-    Require-NoMatch $failures $chatScreen 'private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard' `
+    Require-NoMatch $failures $chatScreen $chatScreenTodayAgriImplementationPattern `
         "ChatScreen must not re-embed today agri UI rendering or preview fixtures; keep UI-only card code isolated."
-    Require-Match $failures $fusionClient 'override\s+fun\s+onVerifySuccess[\s\S]*?SessionApi\.loginWithFusionVerifyToken' `
+    $userMessageImageStripPattern = "fun\s+UserMessageImageStrip\b"
+    $userMessageExpiredPlaceholderPattern = "fun\s+UserMessageExpiredImagePlaceholder\b"
+    $userMessagePreviewClosePattern = "fun\s+UserMessagePreviewCloseIcon\b"
+    $chatImagePreviewCachePattern = "CHAT_IMAGE_PREVIEW_CACHE_MAX_KB\s*=\s*12\s*\*\s*1024"
+    $chatRemotePreviewLimitPattern = "CHAT_REMOTE_PREVIEW_MAX_BYTES\s*=\s*2\s*\*\s*1024\s*\*\s*1024"
+    $chatImageDecodePattern = "fun\s+Context\.decodeChatImagePreview\b"
+    Require-Match $failures $userMessageImageUi $userMessageImageStripPattern `
+        "User message image strip rendering must stay in UserMessageImageUi.kt instead of bloating ChatScreen."
+    Require-Match $failures $userMessageImageUi $userMessageExpiredPlaceholderPattern `
+        "Expired image placeholder UI must stay with user message image UI."
+    Require-Match $failures $userMessageImageUi $userMessagePreviewClosePattern `
+        "Image preview close icon must stay with user message image UI."
+    Require-Match $failures $chatImagePreview $chatImagePreviewCachePattern `
+        "Chat image preview cache limit must stay isolated and capped at 12MiB."
+    Require-Match $failures $chatImagePreview $chatRemotePreviewLimitPattern `
+        "Remote chat image preview reads must stay isolated and capped at 2MiB."
+    Require-Match $failures $chatImagePreview $chatImageDecodePattern `
+        "Chat image preview decoding must stay in ChatImagePreview.kt."
+    $chatScreenImageImplementationPattern = "private\s+fun\s+UserMessageImageStrip|private\s+fun\s+UserMessageImageThumb|private\s+fun\s+UserMessageImagePreviewDialog|fun\s+Context\.decodeChatImagePreview|chatImagePreviewCache\s*=|CHAT_IMAGE_PREVIEW_CACHE_MAX_KB|CHAT_REMOTE_PREVIEW_MAX_BYTES"
+    Require-NoMatch $failures $chatScreen $chatScreenImageImplementationPattern `
+        "ChatScreen must not re-embed user image rendering or image preview cache/decode code; keep it isolated."
+    $fusionVerifySuccessPattern = "override\s+fun\s+onVerifySuccess(?s:.*?)SessionApi\.loginWithFusionVerifyToken"
+    $fusionHalfwayUnexpectedPattern = "override\s+fun\s+onHalfWayVerifySuccess(?s:.*?)auth\.fusion_halfway_unexpected(?s:.*?)verifyResult\?\.verifyResult"
+    Require-Match $failures $fusionClient $fusionVerifySuccessPattern `
         "Fusion one-click login must exchange the final onVerifySuccess token through the backend login endpoint."
-    Require-Match $failures $fusionClient 'override\s+fun\s+onHalfWayVerifySuccess[\s\S]*?auth\.fusion_halfway_unexpected[\s\S]*?verifyResult\?\.verifyResult' `
+    Require-Match $failures $fusionClient $fusionHalfwayUnexpectedPattern `
         "Unexpected half-way callbacks must only be logged and continued, not treated as the primary login path."
+    $fusionHalfwayBlockPattern = "override\s+fun\s+onHalfWayVerifySuccess(?s:.*?)override\s+fun\s+onVerifyFailed"
     $halfwayMatch = [regex]::Match(
         $fusionClient,
-        'override\s+fun\s+onHalfWayVerifySuccess[\s\S]*?override\s+fun\s+onVerifyFailed',
+        $fusionHalfwayBlockPattern,
         [System.Text.RegularExpressions.RegexOptions]::Singleline
     )
+    $fusionHalfwayForbiddenPattern = "SessionApi\.|/api/auth/fusion/login|/api/auth/fusion/verify|VerifyWithFusionAuthToken"
     if (!$halfwayMatch.Success) {
         Add-Failure $failures "Unable to locate onHalfWayVerifySuccess block for parity validation."
-    } elseif ($halfwayMatch.Value -match 'SessionApi\.|/api/auth/fusion/login|/api/auth/fusion/verify|VerifyWithFusionAuthToken') {
+    } elseif ($halfwayMatch.Value -match $fusionHalfwayForbiddenPattern) {
         Add-Failure $failures "onHalfWayVerifySuccess must not call backend login/verify or consume the token."
     }
-    Require-Match $failures $fusionClient 'model\.setProtocolChecked\s*\(\s*false\s*\)' `
+    $fusionProtocolCheckedPattern = "model\.setProtocolChecked\s*\(\s*false\s*\)"
+    $fusionHiddenSwitchPattern = "\.hiddenSwtichLogin\s*\(\s*true\s*\)"
+    $fusionProtocolActionPattern = "\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)(?s:.*?)\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)"
+    $fusionVpnBlockPattern = "hasVpnTransport\s*->\s*`"vpn_active`""
+    $fusionProxyBlockPattern = "hasProxyConfigured\s*->\s*`"proxy_active`""
+    $fusionLinkProxyPattern = "getLinkProperties\s*\(\s*it\s*\)\?\.httpProxy"
+    $fusionLegacyProxyPattern = "android\.net\.Proxy\.getHost\s*\(\s*context\s*\)"
+    $fusionAnyCellularPattern = "hasAnyCellularInternetTransport"
+
+    Require-Match $failures $fusionClient $fusionProtocolCheckedPattern `
         "Aliyun SDK protocol checkbox must remain visible and unchecked by default."
-    Require-Match $failures $fusionClient '\.hiddenSwtichLogin\s*\(\s*true\s*\)' `
+    Require-Match $failures $fusionClient $fusionHiddenSwitchPattern `
         "Aliyun SDK built-in switch/more-login entry must stay hidden so SMS fallback remains in the app page."
-    Require-Match $failures $fusionClient '\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)[\s\S]*?\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)' `
+    Require-Match $failures $fusionClient $fusionProtocolActionPattern `
         "Custom Aliyun protocolAction must also set packageName to the app applicationId."
-    Require-Match $failures $fusionClient 'hasVpnTransport\s*->\s*"vpn_active"' `
+    Require-Match $failures $fusionClient $fusionVpnBlockPattern `
         "Fusion one-click login must block VPN/proxy before starting the Aliyun SDK."
-    Require-Match $failures $fusionClient 'hasProxyConfigured\s*->\s*"proxy_active"' `
+    Require-Match $failures $fusionClient $fusionProxyBlockPattern `
         "Fusion one-click login must block configured system proxies before starting the Aliyun SDK."
-    Require-Match $failures $fusionClient 'getLinkProperties\s*\(\s*it\s*\)\?\.httpProxy' `
+    Require-Match $failures $fusionClient $fusionLinkProxyPattern `
         "Fusion one-click login must detect Android per-network proxy settings, not only Java proxy properties."
-    Require-Match $failures $fusionClient 'android\.net\.Proxy\.getHost\s*\(\s*context\s*\)' `
+    Require-Match $failures $fusionClient $fusionLegacyProxyPattern `
         "Fusion one-click login must retain a legacy Android proxy fallback for ROMs that expose proxy settings outside LinkProperties."
-    Require-Match $failures $fusionClient 'hasAnyCellularInternetTransport' `
+    Require-Match $failures $fusionClient $fusionAnyCellularPattern `
         "Fusion one-click login must inspect all networks so 4G+WiFi mixed environments are not treated as WiFi-only."
-    Require-Match $failures $fusionClient 'fun\s+precheckOneLoginEnvironment\s*\(\s*context:\s*Context\s*\):\s*String\?' `
+    $fusionPrecheckPattern = "fun\s+precheckOneLoginEnvironment\s*\(\s*context:\s*Context\s*\):\s*String\?"
+    $loginPrecheckBeforePermissionPattern = "precheckOneLoginEnvironment\s*\(\s*context\s*\)(?s:.*?)ContextCompat\.checkSelfPermission"
+    $fusionBlockNoCellularPattern = "blockReason\(\):\s*String\?\s*=(?s:.*?)!hasAnyCellularInternetTransport\s*->\s*`"no_cellular_data`""
+    $fusionWarnMixedNetworkPattern = "fun\s+warningReason\(\):\s*String\?\s*=(?s:.*?)!hasCellularTransport\s*&&\s*hasAnyCellularInternetTransport\s*->\s*`"wifi_with_cellular_available`""
+    $fusionDebugRawErrorPattern = "if\s*\(\s*BuildConfig\.DEBUG\s*\)\s*\{(?s:.*?)getErrorMsg\(\)(?s:.*?)getInnerMsg\(\)(?s:.*?)\}"
+    $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
+    $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
+    $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"
+
+    Require-Match $failures $fusionClient $fusionPrecheckPattern `
         "Fusion one-click login must expose a pre-permission environment check for obvious SMS fallback cases."
-    Require-Match $failures $loginScreen 'precheckOneLoginEnvironment\s*\(\s*context\s*\)[\s\S]*?ContextCompat\.checkSelfPermission' `
+    Require-Match $failures $loginScreen $loginPrecheckBeforePermissionPattern `
         "LoginScreen must check one-click environment before requesting READ_PHONE_STATE, so WiFi/VPN users go straight to SMS fallback."
-    Require-Match $failures $fusionClient 'blockReason\(\):\s*String\?\s*=[\s\S]*?!hasAnyCellularInternetTransport\s*->\s*"no_cellular_data"' `
+    Require-Match $failures $fusionClient $fusionBlockNoCellularPattern `
         "Fusion one-click login must fall back to SMS when no usable cellular data path is available."
-    Require-Match $failures $fusionClient 'fun\s+warningReason\(\):\s*String\?\s*=[\s\S]*?!hasCellularTransport\s*&&\s*hasAnyCellularInternetTransport\s*->\s*"wifi_with_cellular_available"' `
+    Require-Match $failures $fusionClient $fusionWarnMixedNetworkPattern `
         "Fusion one-click login should warn, not hard-block, 4G+WiFi mixed environments."
-    Require-Match $failures $fusionClient 'if\s*\(\s*BuildConfig\.DEBUG\s*\)\s*\{[\s\S]*?getErrorMsg\(\)[\s\S]*?getInnerMsg\(\)[\s\S]*?\}' `
+    Require-Match $failures $fusionClient $fusionDebugRawErrorPattern `
         "Fusion release logcat must not print raw Aliyun SDK errorMsg/innerMsg; keep them debug-only."
 
-    Require-Match $failures $chatScreen 'BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible' `
+    Require-Match $failures $chatScreen $chatDebugPreviewPattern `
         "Debug-only preview panel must stay behind BuildConfig.DEBUG."
-    Require-Match $failures $chatScreen 'Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}' `
+    Require-Match $failures $chatScreen $chatDebugPreviewClickPattern `
         "Debug-only preview entry point must remain an explicit click hook."
-    Require-NoMatch $failures $chatScreen 'FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep' `
+    Require-NoMatch $failures $chatScreen $localFakeStreamPattern `
         "ChatScreen must not restore local fake streaming/fake assistant copy; remote failure should use snapshot recovery or retry state."
 }
 
