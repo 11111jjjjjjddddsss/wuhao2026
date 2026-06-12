@@ -5,6 +5,8 @@
 
 ## 2026-06-12
 
+- 总负责人视角继续收紧生产 readiness：`scripts/check-ecs-readiness.ps1` 现在把 `sms=ok` 也列为 healthz 必需标记，并会读取 ECS 环境文件的脱敏状态后硬拦 `AUTH_ALLOW_LEGACY_TOKEN=true` 和 `ALLOW_DEV_ORDER_ENDPOINTS=true`。也就是说公开生产检查不只看服务活着，还会挡住旧 bearer token 兼容、裸旧身份绕回和开发期订单直改入口误开，继续服务“全应用一个账号ID、正式登录必须手机号账号 session”的上线口径。
+
 - 继续趁当前“还没有正式用户”的窗口收紧账号资产迁移：旧本机 ID 到 `acct_...` 的 `user_id_migrations` 映射改为不可改写，若同一个旧 ID 已经绑定到另一个账号，本次登录不再重映射、不再合并资产，避免账号之间互相吞会员、礼品卡、订单或记忆。会员权益合并同时补了 Plus 价值补偿：当 Pro 覆盖 Plus，或目标 Plus 被来源 Pro 覆盖时，剩余 Plus 当天次数和未来天数价值会转入 `upgrade_credits`，不让用户买过的 Plus 价值因为登录迁移被静默吃掉；新增单测锁住映射不可改写和补偿计算。
 
 - 主界面继续按“别把 `ChatScreen.kt` 堆成屎山、但也不乱拆滚动主链”的口径做低风险拆分：聊天区用户图片 strip / 过期占位 / 预览关闭按钮移到 `UserMessageImageUi.kt`，图片预览下采样和 12MB LRU 缓存移到 `ChatImagePreview.kt`，`ChatScreen.kt` 只保留消息接线和状态。清数据 / 删除历史时又补了前台照片选择、外部相机回调的清除 epoch 守卫：如果用户清空期间异步导入才回来，会删除刚导入的私有图片并丢弃回调，不再把旧图片塞回 clean-state。Android parity 脚本同步拦截这些 UI / 解码代码回流到 `ChatScreen.kt`，并已兼容 Windows `powershell.exe` 和当前 shell。

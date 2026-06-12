@@ -148,6 +148,7 @@ for expected in \
   '"dypns":"ok"' \
   '"dypns_fusion":"ok"' \
   '"dypns_sms":"ok"' \
+  '"sms":"ok"' \
   '"dev_order_endpoints":false' \
   '"redis":"ok"' \
   '"upload_storage":"oss"'; do
@@ -190,11 +191,29 @@ check_env() {
   fi
 }
 
+env_value() {
+  key="$1"
+  if [ ! -f "$env_file" ]; then
+    return 1
+  fi
+  line=$(grep -E "^[[:space:]]*(export[[:space:]]+)?${key}=" "$env_file" | tail -n 1 || true)
+  if [ -z "$line" ]; then
+    return 1
+  fi
+  printf '%s' "$line" | sed -E "s/^[[:space:]]*(export[[:space:]]+)?${key}=//" | sed -E "s/^['\"]|['\"]$//g"
+}
+
+is_truthy() {
+  value=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | xargs)
+  [ "$value" = "1" ] || [ "$value" = "true" ] || [ "$value" = "yes" ] || [ "$value" = "on" ]
+}
+
 for key in \
-  APP_ENV AUTH_STRICT APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
+  APP_ENV AUTH_STRICT AUTH_ALLOW_LEGACY_TOKEN APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
   LOG_FILE_PATH ACCESS_LOG_SLOW_MS \
   IP2REGION_V4_XDB_PATH IP2REGION_V6_XDB_PATH IP2REGION_XDB_PATH \
   LISTEN_ADDR LISTEN_HOST PORT \
+  ALLOW_DEV_ORDER_ENDPOINTS \
   UPLOAD_STORAGE_BACKEND OSS_BUCKET OSS_ENDPOINT OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET \
   DASHSCOPE_API_KEY DASHSCOPE_API_KEY_1 DASHSCOPE_API_KEY_2 DASHSCOPE_API_KEY_3 DASHSCOPE_API_KEYS DASHSCOPE_KEY_COOLDOWN_SECONDS \
   DASHSCOPE_KEY_SELECTION_MODE DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS \
@@ -204,6 +223,18 @@ for key in \
   SUPPORT_ADMIN_SECRET DAILY_AGRI_JOB_SECRET; do
   check_env "$key"
 done
+
+auth_allow_legacy_token=$(env_value AUTH_ALLOW_LEGACY_TOKEN || true)
+if is_truthy "$auth_allow_legacy_token"; then
+  echo 'AUTH_ALLOW_LEGACY_TOKEN must not be enabled in production readiness' >&2
+  exit 15
+fi
+
+allow_dev_order_endpoints=$(env_value ALLOW_DEV_ORDER_ENDPOINTS || true)
+if is_truthy "$allow_dev_order_endpoints"; then
+  echo 'ALLOW_DEV_ORDER_ENDPOINTS must not be enabled in production readiness' >&2
+  exit 16
+fi
 
 echo
 echo '== ip2region data =='
