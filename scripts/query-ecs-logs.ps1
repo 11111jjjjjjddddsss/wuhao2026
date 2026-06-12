@@ -49,7 +49,8 @@ function Invoke-JsonCommand {
             -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
+            -replace '(?i)((?:MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEYS?|DASHSCOPE_API_KEY_[0-9]|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content|MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEY|DASHSCOPE_API_KEYS|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)"\s*:\s*")[^"]+', '${1}REDACTED'
         $safeCommand = if ($CommandArgs.Length -ge 3) {
             "$($CommandArgs[0]) $($CommandArgs[1]) $($CommandArgs[2])"
         } else {
@@ -109,7 +110,13 @@ redact() {
     -e 's/(AccessKey(Id|Secret)?[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(SecurityToken[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(Signature(Nonce)?[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
+    -e 's#((MYSQL_URL|MYSQL_DSN)[=:][[:space:]]*)[^, "&]+#\1REDACTED#Ig' \
+    -e 's/(REDIS_PASSWORD[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
+    -e 's/(DYPNS_ACCESS_KEY_(ID|SECRET)[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
+    -e 's/(ALIYUN_DYPNS_ACCESS_KEY_(ID|SECRET)[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
+    -e 's/(SMS_ACCESS_KEY_(ID|SECRET)[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(DASHSCOPE_API_KEY(_[0-9])?[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
+    -e 's/(DASHSCOPE_API_KEYS[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(OSS_ACCESS_KEY_(ID|SECRET)[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(APP_SECRET[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(SUPPORT_ADMIN_SECRET[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \

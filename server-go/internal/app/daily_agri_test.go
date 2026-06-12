@@ -242,42 +242,39 @@ func TestDailyAgriPublicCardIncludesSourceNameOnly(t *testing.T) {
 				Title:   "水稻移栽天气提示",
 				Summary: "南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。",
 				URL:     "https://m.natesc.org.cn/news/source-2.html",
+				Source:  "https://spam.example.com/promo",
 			},
 			{
 				Title:   "苹果产区降雨关注",
 				Summary: "西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。",
-				URL:     "https://www.farmer.com.cn/news/source-3.html",
-				Source:  "https://spam.example.com/promo",
+				Source:  "农业网 https://spam.example.com/promo",
 			},
 			{
 				Title:   "春播种子质量抽检",
 				Summary: "多地开展春播种子质量抽检，保障玉米大豆等作物备耕用种安全。",
-				Source:  "农业网 https://spam.example.com/promo",
+				Source:  "中国种业网",
 			},
 		},
 	}
 
 	public := dailyAgriPublicCardFromStored(card)
-	if len(public.Items) != 4 {
+	if len(public.Items) != 3 {
 		t.Fatalf("item count mismatch: %#v", public.Items)
 	}
 	if public.Items[0].Source != "农业农村部" {
 		t.Fatalf("expected explicit source, got %#v", public.Items[0])
 	}
 	if public.Items[1].Source != "natesc.org.cn" {
-		t.Fatalf("expected source host fallback without URL, got %#v", public.Items[1])
+		t.Fatalf("expected URL-like model source to fall back to stored URL host, got %#v", public.Items[1])
 	}
-	if public.Items[2].Source != "farmer.com.cn" {
-		t.Fatalf("expected URL-like model source to fall back to stored URL host, got %#v", public.Items[2])
-	}
-	if public.Items[3].Source != "农业网" {
-		t.Fatalf("expected URL-like segment to be stripped from source, got %#v", public.Items[3])
+	if public.Items[2].Source != "农业网" {
+		t.Fatalf("expected URL-like segment to be stripped from source, got %#v", public.Items[2])
 	}
 	body, err := json.Marshal(public)
 	if err != nil {
 		t.Fatalf("marshal public card: %v", err)
 	}
-	for _, forbidden := range []string{"url", "link_url", "source_index", "published_date", "moa.gov.cn", "natesc.org.cn/news"} {
+	for _, forbidden := range []string{"url", "link_url", "source_index", "published_date", "moa.gov.cn", "natesc.org.cn/news", "中国种业网"} {
 		if strings.Contains(string(body), forbidden) {
 			t.Fatalf("public daily agri JSON leaked %q: %s", forbidden, string(body))
 		}
@@ -452,7 +449,15 @@ func TestIsUsableDailyAgriContentJSONRequiresFullCard(t *testing.T) {
 
 	fourItems := `{"items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"},{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。"},{"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。"},{"title":"春播种子质量抽检","summary":"多地开展春播种子质量抽检，保障玉米大豆等作物备耕用种安全。"}]}`
 	if !isUsableDailyAgriContentJSON(sql.NullString{String: fourItems, Valid: true}) {
-		t.Fatalf("expected card with extra displayable items to be usable")
+		t.Fatalf("expected old card with extra displayable items to remain recoverable")
+	}
+	var stored DailyAgriCard
+	if err := json.Unmarshal([]byte(fourItems), &stored); err != nil {
+		t.Fatalf("unmarshal four-item card: %v", err)
+	}
+	public := dailyAgriPublicCardFromStored(stored)
+	if len(public.Items) != 3 {
+		t.Fatalf("public daily agri card must expose exactly 3 items, got %d", len(public.Items))
 	}
 }
 

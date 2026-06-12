@@ -26,7 +26,7 @@
 当前已落地的后台页面 / API：
 
 - 总览：`GET /admin-api/v1/overview`，展示健康状态、今日问诊、App 错误、未回复反馈和今日农情状态。
-- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、登录前认证失败、闪退补报、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、最近 30 天问诊地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness`、`capabilities`、`model_usage_policy`、`user_regions`、`auth_logs` 和 `app_update_logs`。其中 `model_usage_policy` 会列出当前后端真实模型调用口径：主聊天 `qwen3.5-plus + search_strategy=turbo`、记忆文档摘要 `qwen-plus + OpenAI兼容非流式 + enable_thinking=false`、今日农情 `qwen3.5-plus + OpenAI兼容非流式 + search_strategy=turbo + forced_search=true + enable_thinking=false`。当前不保留轻量摘要候选、今日农情其它接口候选或环境变量模型切换入口；面板会提示 `qwen-turbo` 是模型名而不是搜索策略，且不在当前生产链路中，`search_strategy=turbo` 才是联网搜索策略。`launch_readiness` 里的“模型问诊”不再只看 healthz；只有最近 24 小时同时有真实文字问诊和图片问诊记录才标 ready，只有文字问诊或没有真实问诊记录时会保持 attention，避免把“模型 Key 健康”误读成“真机主聊天 / 图片问诊已完整验收”。`user_regions` 会按账号最近一次已识别地区拆出“注册用户地区”和“当前会员地区”两块，让非运维也能大概看出用户主要来自哪里；这不是精确注册地，也不是 100% 覆盖，只是基于账号最近地区做运营近似盘子。`auth_logs` 聚合最近 24 小时 `auth.*`、`auth.app_crash` 和 `app.crash`，用于快速看一键登录、短信登录和登录页闪退，并额外拆出 `env_blocked`、`env_warnings`、`login_network_failures`，对应无网络 / 无 SIM / SIM 未就绪 / VPN 或系统代理 / 没有可用移动数据、4G+WiFi 或混合网络但已放行一键登录尝试、App 请求生产登录接口网络失败；`app_update_logs` 聚合最近 24 小时 `app_update.*`，用于快速看检查失败、下载失败、安装页失败和安装未知应用权限确认。登录排障按钮支持一键打开全部 `auth.*` 日志，也会按精确事件名拆开取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验；检查更新排障按钮支持一键打开全部 `app_update.*` 日志，也会按精确事件名拆开检查开始、有新版本、手动无更新、检查失败、需要安装权限、下载开始、下载失败、安装页失败和已拉起安装页，避免一个笼统按钮漏掉真实失败阶段。前端已收成“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、模型调用口径、上线前真机回归清单、正式上架检查、快捷入口、关键队列、登录排障、检查更新排障和明细表，让非运维也能先看出当前哪里正常、哪里需要处理、哪里挡住正式上架。真机回归清单会把一键登录 / 短信登录、主聊天文字问诊、图片问诊 / 弱网发送、礼品卡兑换、今日农情、检查更新和帮助反馈串成可点击入口，用现有监控数据提示“待真机 / 有登录 / 有记录 / 有兑换 / 有检查 / 看日志 / 先生成卡”；其中登录和检查更新的日志入口会直接带 `event_prefix=auth.` 或 `event_prefix=app_update.`，但不替代真实 Android 回归；验证码登录只要生产 HTTPS 后端可达，WiFi 或代理环境也应可用。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上架检查会把支付、备案、AccessKey 轮换、SLS 外部通知 / 仪表盘和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成；SLS 当前已有 5 条 AlertHub 最小告警，但后台本身不是完整告警中心。
+- 监控面板：`GET /admin-api/v1/monitoring`，聚合服务健康、今日 / 24h / 7d 使用情况、App 自动日志错误、登录前认证失败、闪退补报、待回复反馈、反馈 open / replied / closed 队列、今日农情、礼品卡兑换异常、后台操作失败、最近 30 天问诊地区分布和 App 错误 Top；响应额外返回 `action_items`、`launch_readiness`、`capabilities`、`model_usage_policy`、`user_regions`、`auth_logs` 和 `app_update_logs`。其中 `model_usage_policy` 会列出当前后端真实模型调用口径：主聊天 `qwen3.5-plus + search_strategy=turbo`、记忆文档摘要 `qwen-plus + OpenAI兼容非流式 + enable_thinking=false`、今日农情 `qwen3.5-plus + OpenAI兼容非流式 + search_strategy=turbo + forced_search=true + enable_thinking=false`。当前不保留轻量摘要候选、今日农情其它接口候选或环境变量模型切换入口；面板会提示 `qwen-turbo` 是模型名而不是搜索策略，且不在当前生产链路中，`search_strategy=turbo` 才是联网搜索策略。`launch_readiness` 里的“模型问诊”不再只看 healthz；只有最近 24 小时同时有真实文字问诊和图片问诊记录才标 ready，只有文字问诊或没有真实问诊记录时会保持 attention，避免把“模型 Key 健康”误读成“真机主聊天 / 图片问诊已完整验收”。`user_regions` 会按账号最近一次已识别地区拆出“注册用户地区”和“当前会员地区”两块，让非运维也能大概看出用户主要来自哪里；这不是精确注册地，也不是 100% 覆盖，只是基于账号最近地区做运营近似盘子。`auth_logs` 聚合最近 24 小时 `auth.*`、`auth.app_crash` 和 `app.crash`，用于快速看一键登录、短信登录和登录页闪退，并额外拆出 `env_blocked`、`env_warnings`、`login_network_failures`，对应无网络 / 无 SIM / SIM 未就绪 / VPN 或系统代理 / 没有可用移动数据、4G+WiFi 或混合网络但已放行一键登录尝试、App 请求生产登录接口网络失败；`app_update_logs` 聚合最近 24 小时 `app_update.*`，用于快速看检查失败、下载失败、安装页失败和安装未知应用权限确认。登录排障按钮支持一键打开全部 `auth.*` 日志，也会按精确事件名拆开取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验；检查更新排障按钮支持一键打开全部 `app_update.*` 日志，也会按精确事件名拆开检查开始、有新版本、手动无更新、检查失败、需要安装权限、下载开始、下载失败、安装页失败和已拉起安装页，避免一个笼统按钮漏掉真实失败阶段。前端已收成“当前结论 / 就绪-需处理-阻塞 / 登录与账号ID / 礼品卡与权益 / 客服反馈 / App质量”决策卡、模型调用口径、上线前真机回归清单、正式上架检查、快捷入口、关键队列、登录排障、检查更新排障和明细表，让非运维也能先看出当前哪里正常、哪里需要处理、哪里挡住正式上架。真机回归清单会把一键登录 / 短信登录、主聊天文字问诊、图片问诊 / 弱网发送、礼品卡兑换、今日农情、检查更新和帮助反馈串成可点击入口，用现有监控数据提示“待真机 / 有登录 / 有记录 / 有兑换 / 有检查 / 看日志 / 先生成卡”；其中登录和检查更新的日志入口会直接带 `event_prefix=auth.` 或 `event_prefix=app_update.`，但不替代真实 Android 回归；验证码登录只要生产 HTTPS 后端可达，WiFi 或代理环境也应可用。监控窗口里的 `active_sessions` 表示当前有效 App session 总量，`recent_auth_sessions` 表示该窗口内新创建 / 登录 session；礼品卡队列同时看批次数、总卡数、可用卡、已兑换和 24h 失败尝试，生产库没有可兑换卡时会直接提示先生成礼品卡。上架检查会把支付、备案、AccessKey 轮换、第一封 SLS 告警邮件送达确认和真机登录回归等未闭环事项标成“需处理 / 阻塞”，不伪装成已完成；SLS 当前已有 5 条 AlertHub 最小告警，但后台本身不是完整告警中心。
 - 检查更新验收口径：`app_update_logs` 和物料齐全只代表“可测 / 有阶段信号”，不能替代旧包真机覆盖安装；`launch_readiness` 的“安装包更新”在版本号、HTTPS APK、SHA-256 和文件大小都齐时仍保持 `attention`，完成旧包“检查更新 -> 下载 -> 校验 -> 系统安装页 -> 覆盖安装成功”前不要当成正式验收。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；页面展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；`owner`、`support`、`finance_ops` 可查看和复制加密保存的完整手机号，用于回访，其他只读巡检角色只看脱敏号。
 - 会员额度：除用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录外，现已补 `GET /admin-api/v1/entitlements/summary` 全局盘子，页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额和有升级补偿人数，不再只有“按账号ID查单人权益”。
@@ -61,7 +61,7 @@
 - 继续用 runbook、内部接口和只读脚本规划兜底。
 - 继续按功能巡检，把当前真相和后续必补项写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 
-该阶段已经结束：ECS / RDS / Redis / OSS / DNS、内部接口和第一版网页后台代码已经落地。P1 后台生产入口也已部署到 `admin.nongjiqiancha.cn`，并完成管理员 bootstrap、清理 bootstrap 环境变量、HTTPS、首页、登录和总览 API 验收；SLS 已有 5 条 AlertHub 最小告警，`scripts/check-sls-alert-readiness.ps1` 可只读巡检规则是否启用、是否绑定行动策略和仪表盘，后续重点是补 SLS 外部通知 / 仪表盘、数据库只读脚本和更细的运营动作。
+该阶段已经结束：ECS / RDS / Redis / OSS / DNS、内部接口和第一版网页后台代码已经落地。P1 后台生产入口也已部署到 `admin.nongjiqiancha.cn`，并完成管理员 bootstrap、清理 bootstrap 环境变量、HTTPS、首页、登录和总览 API 验收；SLS 已有 5 条 AlertHub 最小告警，`scripts/check-sls-alert-readiness.ps1` 可只读巡检规则是否启用、是否绑定行动策略和仪表盘，后续重点是补第一封告警邮件送达确认、数据库只读脚本和更细的运营动作。
 
 ## P1：服务器落地后的最小网站后台
 
@@ -103,14 +103,14 @@
 
 | 模块 | 当前能否直接接 | 当前真源 | 第一版要补 |
 |---|---|---|---|
-| 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计、`auth_logs`、`app_update_logs`、SLS 5 条 AlertHub 最小告警、SLS 告警只读巡检脚本 | SLS 外部通知 / 仪表盘、Nginx access 聚合、登录精准漏斗 |
+| 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计、`auth_logs`、`app_update_logs`、SLS 5 条 AlertHub 最小告警、SLS 告警只读巡检脚本 | 第一封告警邮件送达确认、Nginx access 聚合、登录精准漏斗 |
 | 帮助与反馈 | 已接入首版 | `support_messages`、`support_conversations`、`/internal/support/*`、`/admin-api/v1/support/*` | 正式坐席分配、标签、站外通知、客服绩效、保存 / 删除规则 |
 | 注销申请 | 已接入申请队列 | `account_deletion_requests`、`/api/account/deletion-requests`、`/admin-api/v1/account-deletion-requests*` | 物理删除 / 匿名化规则、法定留存、处理责任和批量清理脚本 |
 | App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs`、监控页登录排障卡、检查更新排障卡 | 更细的版本 / 设备 / 地区聚合和告警 |
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
 | 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |
-| 今日农情 | 已接入状态查看和补跑 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards`、`/admin-api/v1/today-agri/generate`、`nongji-daily-agri-failed` AlertHub 告警 | 停用 API、外部通知和发布记录 |
+| 今日农情 | 已接入状态查看和补跑 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards`、`/admin-api/v1/today-agri/generate`、`nongji-daily-agri-failed` AlertHub 告警 | 停用 API、首封告警邮件送达确认和发布记录 |
 | 检查更新 | 已接入发布 / 停更配置和排障日志 | `app_release_configs`、`/api/app/update`、`/admin-api/v1/app-update/android`、`app_update.*` 自动日志 | 发布历史、APK 上传、回滚记录和更细二次确认 |
 | 订单 / 订购 | 已接只读核查，不能当正式支付功能 | 当前 `orders` 仅开发期记录，`/admin-api/v1/orders` 只读查询 | 正式订单、支付回调、退款、对账和幂等表 |
 | 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | 批量发放、发放对象管理、更细风控；完整卡码批量导出暂不开放 |
@@ -134,7 +134,7 @@
 - 用户详情：按手机号 / user_id 查询会员、额度、扣次流水、反馈、订单、后续礼品卡和最近 App 自动日志；授权角色可查看完整手机号并复制，方便回访。
 - 用户来源与地区：展示注册 / 最近活跃的 masked IP、后端推断地区、用户自选地区、地区可信度、App 版本和设备型号；不展示完整 IP，手机号展示受后台角色权限控制。
 - 用户真实反馈 / 产品洞察：首版已从帮助与反馈、App 自动日志、问诊归档计数和礼品卡兑换尝试中做脱敏聚合，展示趋势、固定分类和 Top 事件；下一步再补高频 bug、登录 / 上传 / 历史恢复卡点、用户不满意或反复追问的问诊场景、常见作物 / 病虫害、模型答偏线索和可改 UI / 提示词 / 后端规则的证据。页面不得直接把手机号、token、密钥、图片原图、图片 URL、反馈正文或完整聊天原文铺到后台。
-- App 自动日志：按时间、等级、事件名、用户、App 版本、系统版本、设备型号筛选，先接 `GET /internal/app/logs`、SLS 最小日志集和 5 条 AlertHub 最小告警，后续再补 SLS 外部通知 / 仪表盘。
+- App 自动日志：按时间、等级、事件名、用户、App 版本、系统版本、设备型号筛选，先接 `GET /internal/app/logs`、SLS 最小日志集和 5 条 AlertHub 最小告警，后续再补更细趋势和告警邮件送达确认。
 - 检查更新：当前版本、APK 链接、SHA-256、文件大小、是否启用、停更入口。
 - 今日农情：当天状态、失败原因、内部来源追溯、手动补跑、停用当天卡片。
 - 审计日志：先接 `GET /internal/admin/audit-logs` 查看内部操作记录，后续接后台账号和角色权限。
@@ -174,7 +174,7 @@
 - 高风险操作必须写审计：补权益、发礼品卡、作废礼品卡、停更新、手动补跑今日农情、导出 / 删除用户数据、修改后台权限。
 - 审计记录不能只存在浏览器本地；必须落服务端数据库或日志系统。
 - 后台账号、密钥和数据库密码不能写进仓库。
-- 后台上线后继续接 SLS / 等价日志闭环，至少能查登录失败、权限拒绝、关键操作、接口 5xx 和数据库错误；当前 Go 请求日志和 Nginx error 已接 SLS，并已有 5 条 AlertHub 最小告警，仍需补外部通知和仪表盘。
+- 后台上线后继续接 SLS / 等价日志闭环，至少能查登录失败、权限拒绝、关键操作、接口 5xx 和数据库错误；当前 Go 请求日志和 Nginx error 已接 SLS，并已有 5 条 AlertHub 最小告警，仍需确认首封邮件送达并补更细趋势。
 
 参考：
 

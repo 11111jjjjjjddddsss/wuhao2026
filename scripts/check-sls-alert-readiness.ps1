@@ -8,11 +8,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $expectedAlerts = @(
-    @{ Name = "nongji-server-5xx"; Logstore = "server-go"; Severity = 8 },
-    @{ Name = "nongji-server-slow"; Logstore = "server-go"; Severity = 6 },
-    @{ Name = "nongji-nginx-upstream"; Logstore = "nginx-error"; Severity = 8 },
-    @{ Name = "nongji-daily-agri-failed"; Logstore = "server-go"; Severity = 8 },
-    @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8 }
+    @{ Name = "nongji-server-5xx"; Logstore = "server-go"; Severity = 8; Query = "http_request_error | select count(1) as cnt" },
+    @{ Name = "nongji-server-slow"; Logstore = "server-go"; Severity = 6; Query = "http_request_slow | select count(1) as cnt" },
+    @{ Name = "nongji-nginx-upstream"; Logstore = "nginx-error"; Severity = 8; Query = "upstream | select count(1) as cnt" },
+    @{ Name = "nongji-daily-agri-failed"; Logstore = "server-go"; Severity = 8; Query = "generate today agri card failed | select count(1) as cnt" },
+    @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8; Query = "missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR fusion_auth_not_configured OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured | select count(1) as cnt" }
 )
 
 function Invoke-JsonCommand {
@@ -158,6 +158,9 @@ foreach ($expected in $expectedAlerts) {
     } else {
         if ([string]$query.store -ne [string]$expected.Logstore) {
             $errors.Add("unexpected_logstore:${name}:$($query.store)")
+        }
+        if ([string]$query.query -ne [string]$expected.Query) {
+            $warnings.Add("unexpected_query:${name}")
         }
     }
     if ($null -eq $severity -or $severity -ne [int]$expected.Severity) {

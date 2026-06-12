@@ -185,6 +185,25 @@ try:
         first = output.strip().splitlines()[0] if output.strip() else "0"
         return first.split("\t")[-1].strip()
 
+    def query_rows(sql):
+        output = subprocess.check_output(
+            [
+                "mysql",
+                f"--defaults-extra-file={defaults.name}",
+                "--batch",
+                "--raw",
+                "--skip-column-names",
+                "-e",
+                sql,
+            ],
+            text=True,
+        )
+        rows = []
+        for line in output.strip().splitlines():
+            if line.strip():
+                rows.append(line.split("\t"))
+        return rows
+
     now_ms = "CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS UNSIGNED)"
     day_ms = 24 * 60 * 60 * 1000
 
@@ -254,6 +273,39 @@ try:
     print("== backend data counts ==")
     for label, sql in count_queries:
         print(f"{label}={query_scalar(sql)}")
+
+    print()
+    print("== client app warn/error top events 24h ==")
+    top_log_rows = query_rows(f"""
+        SELECT
+            event,
+            level,
+            COALESCE(NULLIF(build_type, ''), 'unknown') AS build_type,
+            COALESCE(CAST(app_version_code AS CHAR), 'unknown') AS app_version_code,
+            COUNT(*) AS event_count,
+            MAX(created_at) AS latest_created_at
+        FROM client_app_logs
+        WHERE created_at >= {now_ms} - {day_ms}
+          AND level IN ('warn', 'error')
+        GROUP BY event, level, build_type, app_version_code
+        ORDER BY event_count DESC, latest_created_at DESC
+        LIMIT 12
+    """)
+    if not top_log_rows:
+        print("none")
+    for row in top_log_rows:
+        event, level, build_type, app_version_code, event_count, latest_created_at = (row + [""] * 6)[:6]
+        print(
+            "event={event} level={level} build_type={build_type} "
+            "app_version_code={app_version_code} count={event_count} latest_created_at={latest_created_at}".format(
+                event=event,
+                level=level,
+                build_type=build_type,
+                app_version_code=app_version_code,
+                event_count=event_count,
+                latest_created_at=latest_created_at,
+            )
+        )
 
     print()
     print("== acct ownership checks ==")

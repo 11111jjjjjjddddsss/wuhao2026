@@ -52,7 +52,8 @@ function Invoke-JsonCommand {
             -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
+            -replace '(?i)((?:MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEYS?|DASHSCOPE_API_KEY_[0-9]|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content|MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEY|DASHSCOPE_API_KEYS|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)"\s*:\s*")[^"]+', '${1}REDACTED'
         $safeCommand = if ($CommandArgs.Length -ge 3) {
             "$($CommandArgs[0]) $($CommandArgs[1]) $($CommandArgs[2])"
         } else {
@@ -81,7 +82,13 @@ function Write-RedactedJson {
         -replace '(?i)(AccessKey(Id|Secret)?[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(SecurityToken[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(Signature(Nonce)?[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)((?:MYSQL_URL|MYSQL_DSN)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)(REDIS_PASSWORD[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)(DYPNS_ACCESS_KEY_(?:ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)(ALIYUN_DYPNS_ACCESS_KEY_(?:ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)(SMS_ACCESS_KEY_(?:ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(DASHSCOPE_API_KEY(_[0-9])?[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)(DASHSCOPE_API_KEYS[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(OSS_ACCESS_KEY_(ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(APP_SECRET[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(SUPPORT_ADMIN_SECRET[=:][\s]*)[^, "&]+', '${1}REDACTED' `

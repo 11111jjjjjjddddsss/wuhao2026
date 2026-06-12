@@ -353,13 +353,16 @@ type dailyAgriPublicCardItem struct {
 }
 
 func dailyAgriPublicCardFromStored(card DailyAgriCard) dailyAgriPublicCard {
-	items := make([]dailyAgriPublicCardItem, 0, len(card.Items))
+	items := make([]dailyAgriPublicCardItem, 0, minInt(len(card.Items), dailyAgriTargetItemCount))
 	for _, item := range card.Items {
 		items = append(items, dailyAgriPublicCardItem{
 			Title:   strings.TrimSpace(item.Title),
 			Summary: strings.TrimSpace(item.Summary),
 			Source:  dailyAgriPublicSourceName(item),
 		})
+		if len(items) == dailyAgriTargetItemCount {
+			break
+		}
 	}
 	return dailyAgriPublicCard{
 		DateCN:      card.DateCN,

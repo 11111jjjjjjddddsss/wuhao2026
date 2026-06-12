@@ -8,6 +8,8 @@ param(
     [string]$DomainName = "nongjiqiancha.cn",
     [string]$SlsProjectName = "nongjiqiancha-prod-1159547719787456",
     [switch]$SkipAuthUsage,
+    [switch]$RequireSlsExternalNotification,
+    [switch]$RequireSlsDashboard,
     [switch]$Strict
 )
 
@@ -24,6 +26,22 @@ function Add-WarningItem {
 function Add-ErrorItem {
     param([string]$Message)
     $errors.Add($Message) | Out-Null
+}
+
+function Redact-SensitiveText {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) {
+        return $Text
+    }
+    return $Text `
+        -replace '(?i)(AccessKeyId=)[^&\s]+', '${1}REDACTED' `
+        -replace '(?i)(AccessKeySecret=)[^&\s]+', '${1}REDACTED' `
+        -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
+        -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
+        -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
+        -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
+        -replace '(?i)((?:MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEYS?|DASHSCOPE_API_KEY_[0-9]|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content|MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEY|DASHSCOPE_API_KEYS|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)"\s*:\s*")[^"]+', '${1}REDACTED'
 }
 
 function Invoke-JsonCommand {
@@ -62,14 +80,7 @@ function Invoke-JsonCommand {
         Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
     }
     if ($exitCode -ne 0) {
-        $safeOutput = (($stdout | Out-String) + "`n" + $stderr) `
-            -replace '(?i)(AccessKeyId=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(AccessKeySecret=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
+        $safeOutput = Redact-SensitiveText ((($stdout | Out-String) + "`n" + $stderr))
         $safeCommand = if ($CommandArgs.Length -ge 3) {
             "$($CommandArgs[0]) $($CommandArgs[1]) $($CommandArgs[2])"
         } else {
@@ -465,15 +476,15 @@ try {
 }
 
 $expectedMetricRules = @(
-    [pscustomobject]@{ RuleId = "nq-ecs-cpu-high"; Namespace = "acs_ecs_dashboard"; MetricName = "CPUUtilization" },
-    [pscustomobject]@{ RuleId = "nq-ecs-memory-high"; Namespace = "acs_ecs_dashboard"; MetricName = "memory_usedutilization" },
-    [pscustomobject]@{ RuleId = "nq-rds-cpu-high"; Namespace = "acs_rds_dashboard"; MetricName = "CpuUsage" },
-    [pscustomobject]@{ RuleId = "nq-rds-memory-high"; Namespace = "acs_rds_dashboard"; MetricName = "MemoryUsage" },
-    [pscustomobject]@{ RuleId = "nq-rds-disk-high"; Namespace = "acs_rds_dashboard"; MetricName = "DiskUsage" },
-    [pscustomobject]@{ RuleId = "nq-rds-connection-high"; Namespace = "acs_rds_dashboard"; MetricName = "ConnectionUsage" },
-    [pscustomobject]@{ RuleId = "nq-redis-cpu-high"; Namespace = "acs_kvstore"; MetricName = "StandardCpuUsage" },
-    [pscustomobject]@{ RuleId = "nq-redis-memory-high"; Namespace = "acs_kvstore"; MetricName = "StandardMemoryUsage" },
-    [pscustomobject]@{ RuleId = "nq-redis-connection-high"; Namespace = "acs_kvstore"; MetricName = "StandardConnectionUsage" }
+    [pscustomobject]@{ RuleId = "nq-ecs-cpu-high"; Namespace = "acs_ecs_dashboard"; MetricName = "CPUUtilization"; ResourceInstanceId = $EcsInstanceId; WarnThreshold = "70"; CriticalThreshold = "85"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-ecs-memory-high"; Namespace = "acs_ecs_dashboard"; MetricName = "memory_usedutilization"; ResourceInstanceId = $EcsInstanceId; WarnThreshold = "70"; CriticalThreshold = "85"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-rds-cpu-high"; Namespace = "acs_rds_dashboard"; MetricName = "CpuUsage"; ResourceInstanceId = $RdsInstanceId; WarnThreshold = "70"; CriticalThreshold = "85"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-rds-memory-high"; Namespace = "acs_rds_dashboard"; MetricName = "MemoryUsage"; ResourceInstanceId = $RdsInstanceId; WarnThreshold = "70"; CriticalThreshold = "85"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-rds-disk-high"; Namespace = "acs_rds_dashboard"; MetricName = "DiskUsage"; ResourceInstanceId = $RdsInstanceId; WarnThreshold = "70"; CriticalThreshold = "85"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-rds-connection-high"; Namespace = "acs_rds_dashboard"; MetricName = "ConnectionUsage"; ResourceInstanceId = $RdsInstanceId; WarnThreshold = "60"; CriticalThreshold = "80"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-redis-cpu-high"; Namespace = "acs_kvstore"; MetricName = "StandardCpuUsage"; ResourceInstanceId = $RedisInstanceId; WarnThreshold = "70"; CriticalThreshold = "85"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-redis-memory-high"; Namespace = "acs_kvstore"; MetricName = "StandardMemoryUsage"; ResourceInstanceId = $RedisInstanceId; WarnThreshold = "70"; CriticalThreshold = "85"; Times = 3; Period = 300 },
+    [pscustomobject]@{ RuleId = "nq-redis-connection-high"; Namespace = "acs_kvstore"; MetricName = "StandardConnectionUsage"; ResourceInstanceId = $RedisInstanceId; WarnThreshold = "60"; CriticalThreshold = "80"; Times = 3; Period = 300 }
 )
 $metricRuleList = $null
 try {
@@ -482,6 +493,20 @@ try {
     Write-Host "metric_rule_list_check_failed=$($_.Exception.Message)"
     Add-WarningItem "cloudmonitor_metric_rule_list_check_failed"
 }
+function Get-MetricRuleResourceIds {
+    param([object]$Rule)
+    $raw = [string]$Rule.Resources
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return @()
+    }
+    try {
+        $resources = $raw | ConvertFrom-Json
+        return @($resources) | ForEach-Object { [string]$_.instanceId } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+    } catch {
+        return @()
+    }
+}
+
 foreach ($rule in $expectedMetricRules) {
     try {
         $foundRule = @($metricRuleList.Alarms.Alarm) | Where-Object { $_.RuleId -eq $rule.RuleId } | Select-Object -First 1
@@ -489,9 +514,23 @@ foreach ($rule in $expectedMetricRules) {
             Add-WarningItem "cloudmonitor_metric_rule_missing:$($rule.RuleId)"
             continue
         }
-        Write-Host "rule=$($foundRule.RuleId) namespace=$($foundRule.Namespace) metric=$($foundRule.MetricName) alert_state=$($foundRule.AlertState) enabled=$($foundRule.EnableState) contacts=$($foundRule.ContactGroups)"
+        $resourceIds = @(Get-MetricRuleResourceIds -Rule $foundRule)
+        $resourceText = if ($resourceIds.Count -gt 0) { $resourceIds -join "," } else { "none" }
+        Write-Host "rule=$($foundRule.RuleId) namespace=$($foundRule.Namespace) metric=$($foundRule.MetricName) resource=$resourceText warn=$($foundRule.Escalations.Warn.Threshold)/$($foundRule.Escalations.Warn.Times) critical=$($foundRule.Escalations.Critical.Threshold)/$($foundRule.Escalations.Critical.Times) period=$($foundRule.Period) alert_state=$($foundRule.AlertState) enabled=$($foundRule.EnableState) contacts=$($foundRule.ContactGroups)"
         if ($foundRule.Namespace -ne $rule.Namespace -or $foundRule.MetricName -ne $rule.MetricName) {
             Add-WarningItem "cloudmonitor_metric_rule_unexpected_target:$($rule.RuleId)"
+        }
+        if ($resourceIds -notcontains [string]$rule.ResourceInstanceId) {
+            Add-WarningItem "cloudmonitor_metric_rule_resource_mismatch:$($rule.RuleId)"
+        }
+        if ([string]$foundRule.Escalations.Warn.Threshold -ne [string]$rule.WarnThreshold -or [int]$foundRule.Escalations.Warn.Times -ne [int]$rule.Times) {
+            Add-WarningItem "cloudmonitor_metric_rule_warn_threshold_mismatch:$($rule.RuleId)"
+        }
+        if ([string]$foundRule.Escalations.Critical.Threshold -ne [string]$rule.CriticalThreshold -or [int]$foundRule.Escalations.Critical.Times -ne [int]$rule.Times) {
+            Add-WarningItem "cloudmonitor_metric_rule_critical_threshold_mismatch:$($rule.RuleId)"
+        }
+        if ([int]$foundRule.Period -ne [int]$rule.Period) {
+            Add-WarningItem "cloudmonitor_metric_rule_period_mismatch:$($rule.RuleId)"
         }
         if (-not [bool]$foundRule.EnableState) {
             Add-WarningItem "cloudmonitor_metric_rule_not_enabled:$($rule.RuleId)"
@@ -509,11 +548,31 @@ Write-Host
 Write-Host "== SLS alert readiness =="
 $slsScript = Join-Path $PSScriptRoot "check-sls-alert-readiness.ps1"
 if (Test-Path -LiteralPath $slsScript) {
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $slsScript -RegionId $RegionId -ProjectName $SlsProjectName
+    $slsArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $slsScript,
+        "-RegionId",
+        $RegionId,
+        "-ProjectName",
+        $SlsProjectName
+    )
+    $defaultSlsAttentionGate = -not $RequireSlsExternalNotification -and -not $RequireSlsDashboard -and -not $Strict
+    if ($RequireSlsExternalNotification -or $Strict -or $defaultSlsAttentionGate) {
+        $slsArgs += "-RequireExternalNotification"
+    }
+    if ($RequireSlsDashboard -or $Strict -or $defaultSlsAttentionGate) {
+        $slsArgs += "-RequireDashboard"
+    }
+    & powershell.exe @slsArgs
     if ($LASTEXITCODE -ne 0) {
-        Add-ErrorItem "sls_alert_readiness_failed"
-    } else {
-        Add-WarningItem "sls_alert_external_notification_or_dashboard_may_need_attention"
+        if ($RequireSlsExternalNotification -or $RequireSlsDashboard -or $Strict) {
+            Add-ErrorItem "sls_alert_readiness_failed"
+        } else {
+            Add-WarningItem "sls_alert_external_notification_or_dashboard_may_need_attention"
+        }
     }
 } else {
     Add-WarningItem "sls_alert_readiness_script_missing"

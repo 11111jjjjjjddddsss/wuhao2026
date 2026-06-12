@@ -44,13 +44,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-backe
 - 支持 `mysql://...` 和 Go `user:pass@tcp(...)/db` 两种 DSN 形态
 - 使用临时 `--defaults-extra-file` 调用 mysql client，避免把数据库密码放进命令行参数或输出
 - 只输出表计数、活跃 session / 活跃会员 / App 24h 错误计数、今日农情状态计数和 `acct_...` 归属异常计数
+- 额外输出最近 24 小时 App warn / error Top 事件，只展示 `event / level / build_type / app_version_code / count / latest_created_at`，不输出日志 attrs、message、IP、手机号、URL、正文或 token
 - 不查询手机号明文、聊天正文、反馈正文、图片 URL、礼品卡完整码、token 或模型 Key
 - 只要会员、订单、礼品卡、聊天、反馈、日志、注销等需要账号归属的表出现非 `acct_...`，脚本失败
 
 ## 2026-06-12 线上只读结果
 
 - `app_accounts=0 / auth_sessions=0 / user_entitlement=0 / orders=0 / gift_cards=0 / session_ab=0 / session_round_archive=0`
-- `client_app_logs=74`，其中 24h error 24、auth warn/error 32，属于当前登录联调和排障日志，不是用户资产
+- `client_app_logs=74`，其中 24h error 11、auth warn/error 19，属于当前登录联调和排障日志，不是用户资产
+- 24h App warn / error Top 事件为：`auth.fusion_env_blocked=6`、`auth.app_crash=5`、`auth.sms_send_failed=4`、`auth.sms_login_failed=2`、`auth.fusion_timeout=1`、`auth.fusion_verify_interrupt=1`
 - `daily_agri_cards=5`，ready 4、failed 1
 - `admin_users=1 / admin_sessions_active=1 / admin_audit_logs=404`
 - 所有账号归属检查均为 0：会员、额度、订单、聊天、帮助反馈、App 日志、礼品卡兑换、注销申请等没有非 `acct_...` 资产归属

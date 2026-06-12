@@ -28,7 +28,7 @@
 - 响应头会回写 `X-Request-Id`；App 自动日志、Nginx 和 Go journal 后续可用该 ID 串联排障
 - 健康检查 `/healthz` 和 `/uploads/` 静态图片成功请求默认降噪；但 4xx / 5xx 或慢请求仍会记录
 - 慢请求阈值由 `ACCESS_LOG_SLOW_MS` 控制，默认 `3000` 毫秒；`0` 表示关闭慢请求标记。`/api/chat/stream` 是正常 SSE 长连接，2026-06-12 起正常 200 长流会记录为 `http_sse_stream` 普通信息日志，不再进入 `http_request_slow`，避免真实聊天一多污染慢请求告警；5xx 仍按 `http_request_error` 记录
-- 2026-06-10 已创建 5 条最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 非 SSE 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / DYPNS 配置错误。当前只进入 SLS AlertHub，不绑定短信、电话、机器人、邮件或自定义 action policy；通知送达和仪表盘仍未闭环。ECS / RDS / Redis 资源水位已另走云监控邮件告警，见 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)
+- 2026-06-10 已创建 5 条最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 非 SSE 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / 认证关键配置错误。2026-06-12 已把模型 / 认证配置告警查询从宽泛 `dypns` 收窄到明确的配置错误关键词，避免普通 DYPNS 日志误触发；同日已绑定邮件行动策略 `nongji-prod-email` 和仪表盘 `nongji-prod-ops`。当前 SLS 应用告警先走邮件，不启用短信、电话或机器人，避免费用和噪音；ECS / RDS / Redis 资源水位另走云监控邮件告警，见 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)
 
 ## SLS 告警规则
 
@@ -50,13 +50,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-a
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1 -DryRun
 ```
 
-只读巡检当前告警闭环，不修改云上配置：
+只读巡检当前告警闭环，不修改云上配置；脚本会校验规则是否启用、Logstore、严重级别、是否进入 AlertHub，以及查询语句是否和仓库期望一致：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1
 ```
 
-若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；当前生产会因为尚未绑定 action policy / dashboard 返回失败：
+若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；当前生产应通过，若失败说明 action policy / dashboard 绑定被删、改名或告警规则漂移：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard
@@ -70,7 +70,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-a
 | `nongji-server-slow` | `server-go` | `http_request_slow \| select count(1) as cnt` | `cnt >= 5` | 60 分钟 |
 | `nongji-nginx-upstream` | `nginx-error` | `upstream \| select count(1) as cnt` | `cnt > 0` | 30 分钟 |
 | `nongji-daily-agri-failed` | `server-go` | `generate today agri card failed \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
-| `nongji-model-auth-config` | `server-go` | `missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR dypns \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
+| `nongji-model-auth-config` | `server-go` | `missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR fusion_auth_not_configured OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
 
 验证云上规则：
 
@@ -82,9 +82,9 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 边界：
 
 - 这些规则是“最小生产兜底”，不是完整告警中心
-- 当前只投递到 AlertHub，后台不会自动弹窗，用户也不会收到系统通知
-- 2026-06-12 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，但 `actionPolicyId=空`、未关联 dashboard；这不是脚本失败，而是外部通知和仪表盘尚未闭环
-- 后续仍需配置 SLS action policy / 联系人 / 通知渠道、仪表盘、DYPNS 认证用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
+- 当前会进入 AlertHub，并通过行动策略 `nongji-prod-email` 走邮件通知；后台页面不会自动弹窗，App 用户也不会收到系统通知
+- 2026-06-12 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，且 `actionPolicyId` 和 dashboard 均已绑定；`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard` 返回 `status=ready`
+- 后续仍需在真实或测试告警触发时确认第一封邮件可达，并继续补 DYPNS 认证用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 
 ## 当前查询入口

@@ -10,7 +10,7 @@
 
 ## 2026-06-12 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警和 ECS 系统盘自动快照。剩余更该补的是 SLS 应用日志 action policy / 仪表盘和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。剩余更该补的是独立公网黑盒 healthz 监控、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
 - ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.8 GiB，系统盘 79 GiB 已用约 9.9 GiB（14%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
@@ -20,20 +20,22 @@
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 0、占用 0 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。该组用于资源不足提前邮件提醒，不走短信 / 电话
-- SLS：5 条最小 AlertHub 告警均存在并启用，但应用日志外部通知 action policy 和 dashboard 绑定仍为 `0/5`，属于上线前 attention
+- SLS：5 条最小 AlertHub 告警均存在并启用，告警查询已按脚本期望校验；应用日志邮件行动策略和 dashboard 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard` 返回 `status=ready`
 - DYPNS 一键登录 / 短信认证：最近 7 天统计均为 `no_data`，说明当前还没有真实认证消耗
 
-本次新增统一只读资源巡检脚本，输出会脱敏，不打印密钥：
+统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
 ```
 
-当前脚本汇总状态为 `attention`，原因是：
+当前脚本汇总状态为 `ready`。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。
 
-- `sls_alert_external_notification_or_dashboard_may_need_attention`
+如果把 SLS 外部通知和仪表盘作为上线硬门槛，可用严格模式；当前生产应通过，若失败说明告警、行动策略或仪表盘配置漂移：
 
-这不是“资源不够用”，而是应用日志通知和仪表盘还没完全闭环。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘仍应优先补。
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1 -Strict
+```
 
 ## 资源水位邮件告警
 
@@ -51,7 +53,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 | `nq-redis-memory-high` | Redis | `StandardMemoryUsage` | 70% | 85% | Redis 内存高水位 |
 | `nq-redis-connection-high` | Redis | `StandardConnectionUsage` | 60% | 80% | Redis 连接数高水位 |
 
-这些规则只覆盖资源水位，不等于应用日志告警已经全闭环。Go 5xx、慢请求、今日农情失败等应用事件当前仍在 SLS AlertHub，SLS action policy / dashboard 还待补。
+这些规则只覆盖资源水位。Go 5xx、慢请求、今日农情失败等应用事件走 SLS AlertHub + `nongji-prod-email` 邮件行动策略 + `nongji-prod-ops` 最小仪表盘，两套告警各管一块。
 
 ## 2026-06-06 巡检结论
 
@@ -146,11 +148,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 - 聊天内容、会员资产、归档、额度和订单主真相仍在 MySQL，图片二进制已进 OSS，不会把 RDS 存储快速打爆
 - Redis 当前只做短期认证 / 限流 / App 日志等轻量用途，256 MiB 仍非常宽裕
 - ECS 当前 CPU / 内存 / 磁盘余量都很大，首版单实例足够早期联调和小流量内测
-- 真正风险在通知送达、仪表盘、日志检索、自动恢复和真机回归，而不是规格马上不够
+- 真正风险在第一封告警邮件送达确认、日志趋势细化、自动恢复、黑盒探测和真机回归，而不是规格马上不够
 
 ## 后续动作
 
-- 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；ECS 系统盘已开启普通低频自动快照；继续补 SLS 应用日志外部通知 / 仪表盘，以及 API healthz / Go 服务 inactive 这类应用可用性告警
+- 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；ECS 系统盘已开启普通低频自动快照；SLS 应用日志已绑定邮件行动策略和最小仪表盘；继续补 API healthz / Go 服务 inactive 这类应用可用性告警
+- 当前还没有独立公网黑盒 healthz 可用性监控；`check-ecs-readiness.ps1` 能人工 / CI 巡检，后续仍应补自动化探测和通知
 - 登录链路监控至少覆盖 DYPNS 一键登录次数 / 成功率 / 失败率 / 账单、短信认证次数 / 账单、后端 `/api/auth/fusion/*` 和 `/api/auth/sms/*` 入口错误率
 - 若继续使用单 ECS 双端口发布，部署 / 回滚前必须清理旧 `nongji-drain-stop-*` transient systemd 任务，避免多个排空任务叠加
 - 管理后台上线后，容量快照、到期时间、5xx 和 App 自动日志应做成只读运维面板

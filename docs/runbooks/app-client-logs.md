@@ -14,7 +14,7 @@
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
 - 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。两个查询入口都支持按精确 `event`、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号和等级过滤，精确事件名优先于前缀筛选
-- SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 5 条 AlertHub 最小告警；后续仍要补外部通知、仪表盘和更细的版本 / 设备 / 地区聚合趋势
+- SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 5 条 AlertHub 最小告警；5 条应用告警已绑定邮件行动策略和最小仪表盘；后续仍要补更细的版本 / 设备 / 地区聚合趋势
 
 ## 当前自动上报事件
 
@@ -110,7 +110,7 @@ Android 只上报结构化错误信息：
 第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示认证失败、一键登录环境预检、短信失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.fusion_env_blocked` 表示 App 前置判断无网络、无 SIM、SIM 未就绪、VPN / 系统代理或没有可用移动数据，一键登录不应继续硬拉 SDK；`auth.fusion_env_warning` 表示 4G+WiFi 或当前活动网络非蜂窝但移动数据可用，App 会放行一键登录尝试；`auth.login_network_failed` 表示登录请求本身网络失败；`auth.fusion_token_refresh_failed` 表示 SDK 场景内刷新融合认证 token 超时或不可用；`auth.fusion_empty_verify_token` 表示 100001 最终 `onVerifySuccess` 回来但 token 为空，App 会立即回落验证码登录，不再等 30 秒超时。后台“登录排障”卡会把这些事件纳入 `auth.*` 整组筛选，待处理事项也会提示先查 SIM / 默认数据卡 / 移动数据 / VPN / 系统代理 / 生产 API 可达性，避免把手机环境问题、代理问题、SDK 授权页问题和服务端 token 校验问题混成一个“登录失败”；验证码登录只要生产 HTTPS 后端可达，在 WiFi 或代理环境下也应可用。后台排障按钮既支持用 `event_prefix=auth.` 查看全部登录相关日志，也会按真实上报事件拆开：取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时、授权页未完成、短信发送和短信登录校验。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；排障按钮支持 `event_prefix=app_update.` 查看全部检查更新日志，也支持按具体阶段精确过滤。App 日志页还可按 `platform`、`build_type`、`app_version_code`、`app_version_name`、`os_version`、`device_model` 过滤，方便上线前真机回归时区分测试包 / 正式包、具体版本、系统版本或机型问题。下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
 - SDK 协议页承接页会额外上报 `auth.fusion_protocol_url_unavailable`、`auth.fusion_protocol_navigation_blocked`、`auth.fusion_protocol_load_failed`，只带 URL 是否缺失 / 非法、导航 scheme、主 frame 标记和 WebView 错误码，不上传完整协议 URL。
 - 更细的版本 / 设备 / 地区聚合趋势
-- SLS 外部通知、趋势图和复制单条事件用于排障
+- SLS 趋势图、第一封告警邮件送达确认和复制单条事件用于排障
 
 不要把这套自动日志当客服对话；用户需要补充说明仍走“帮助与反馈”。
 
