@@ -63,6 +63,7 @@ $idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdMa
 $sessionApiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
 $appUpdateInstallerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/AppUpdateInstaller.kt"
 $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
+$fusionProtocolActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionAuthProtocolActivity.kt"
 $mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MainActivity.kt"
 $privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentGate.kt"
 $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendWorker.kt"
@@ -76,7 +77,7 @@ $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Cha
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $fusionClientFile, $fusionProtocolActivityFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -92,6 +93,7 @@ if ($failures.Count -eq 0) {
     $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
     $appUpdateInstaller = Get-Content -LiteralPath $appUpdateInstallerFile -Raw
     $fusionClient = Get-Content -LiteralPath $fusionClientFile -Raw
+    $fusionProtocolActivity = Get-Content -LiteralPath $fusionProtocolActivityFile -Raw
     $mainActivity = Get-Content -LiteralPath $mainActivityFile -Raw
     $privacyConsent = Get-Content -LiteralPath $privacyConsentFile -Raw
     $pendingWorker = Get-Content -LiteralPath $pendingWorkerFile -Raw
@@ -247,6 +249,22 @@ if ($failures.Count -eq 0) {
         "First-launch privacy gate must provide an explicit agree-and-continue action."
     Require-Match $failures $privacyConsent $privacyConsentDeclineActionPattern `
         "First-launch privacy gate must provide an explicit decline/exit action."
+    Require-Match $failures $loginScreen 'size\s*\(\s*48\.dp\s*\)(?s:.*?)clickable\s*\(\s*role\s*=\s*Role\.Checkbox' `
+        "Login agreement checkbox touch target must remain at least 48dp."
+    Require-Match $failures $privacyConsent 'size\s*\(\s*48\.dp\s*\)(?s:.*?)clickable\s*\(\s*role\s*=\s*Role\.Checkbox' `
+        "First-launch privacy checkbox touch target must remain at least 48dp."
+    Require-NoMatch $failures $chatScreen 'if\s*\(\s*ClientRegionProvider\.hasLocationPermission\s*\(\s*context\s*\)\s*\)(?s:.*?)\}\s*else\s+if\s*\(\s*!ClientRegionProvider\.wasLocationPermissionPrompted\s*\(\s*context\s*\)\s*\)' `
+        "Chat screen must not prompt for location permission immediately on entry; request it in-context when sending."
+    Require-Match $failures $chatScreen 'suspend\s+fun\s+refreshClientRegionForSend\s*\(\s*\)(?s:.*?)locationPermissionLauncher\.launch' `
+        "Chat send path must be the place that first requests optional location permission."
+    Require-Match $failures $fusionProtocolActivity 'allowedProtocolHosts\s*=\s*setOf\s*\(\s*"nongjiqiancha\.cn"\s*,\s*"www\.nongjiqiancha\.cn"\s*\)' `
+        "Fusion auth protocol WebView must be limited to the official HTTPS domains."
+    Require-Match $failures $fusionProtocolActivity 'uri\.scheme\.equals\s*\(\s*"https"(?s:.*?)host\s+in\s+allowedProtocolHosts' `
+        "Fusion auth protocol WebView must reject non-HTTPS or non-official protocol URLs."
+    Require-NoMatch $failures $fusionProtocolActivity 'uri\.scheme\.equals\s*\(\s*"http"' `
+        "Fusion auth protocol WebView must not allow plain HTTP protocol URLs."
+    Require-Match $failures $fusionProtocolActivity 'addProtocolFallback(?s:.*?)resolveFallbackProtocolText' `
+        "Fusion auth protocol page must show an in-app fallback if the official web page cannot load."
     $privacyConsentSharedTextPattern = "HamburgerServiceAgreementContent(?s:.*?)HamburgerPrivacyPolicyContent"
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsCard\b"
@@ -308,8 +326,8 @@ if ($failures.Count -eq 0) {
     $fusionProtocolCheckedPattern = "model\.setProtocolChecked\s*\(\s*false\s*\)"
     $fusionHiddenSwitchPattern = "\.hiddenSwtichLogin\s*\(\s*true\s*\)"
     $fusionProtocolActionPattern = "\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)(?s:.*?)\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)"
-    $fusionVpnBlockPattern = "hasVpnTransport\s*->\s*`"vpn_active`""
-    $fusionProxyBlockPattern = "hasProxyConfigured\s*->\s*`"proxy_active`""
+    $fusionVpnWarningPattern = "fun\s+warningReason\(\):\s*String\?\s*=(?s:.*?)hasVpnTransport\s*->\s*`"vpn_active`""
+    $fusionProxyWarningPattern = "fun\s+warningReason\(\):\s*String\?\s*=(?s:.*?)hasProxyConfigured\s*->\s*`"proxy_active`""
     $fusionLinkProxyPattern = "getLinkProperties\s*\(\s*it\s*\)\?\.httpProxy"
     $fusionLegacyProxyPattern = "android\.net\.Proxy\.getHost\s*\(\s*context\s*\)"
     $fusionAnyCellularPattern = "hasAnyCellularInternetTransport"
@@ -320,10 +338,12 @@ if ($failures.Count -eq 0) {
         "Aliyun SDK built-in switch/more-login entry must stay hidden so SMS fallback remains in the app page."
     Require-Match $failures $fusionClient $fusionProtocolActionPattern `
         "Custom Aliyun protocolAction must also set packageName to the app applicationId."
-    Require-Match $failures $fusionClient $fusionVpnBlockPattern `
-        "Fusion one-click login must block VPN/proxy before starting the Aliyun SDK."
-    Require-Match $failures $fusionClient $fusionProxyBlockPattern `
-        "Fusion one-click login must block configured system proxies before starting the Aliyun SDK."
+    Require-NoMatch $failures $fusionClient 'hasVpnTransport\s*->\s*"vpn_active"(?s:.*?)!hasAnyCellularInternetTransport\s*->\s*"no_cellular_data"' `
+        "Fusion one-click login must not hard-block VPN/proxy before checking usable cellular data."
+    Require-Match $failures $fusionClient $fusionVpnWarningPattern `
+        "Fusion one-click login must record VPN as a warning when cellular data is still available."
+    Require-Match $failures $fusionClient $fusionProxyWarningPattern `
+        "Fusion one-click login must record configured proxies as a warning when cellular data is still available."
     Require-Match $failures $fusionClient $fusionLinkProxyPattern `
         "Fusion one-click login must detect Android per-network proxy settings, not only Java proxy properties."
     Require-Match $failures $fusionClient $fusionLegacyProxyPattern `
@@ -342,11 +362,13 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $fusionClient $fusionPrecheckPattern `
         "Fusion one-click login must expose a pre-permission environment check for obvious SMS fallback cases."
     Require-Match $failures $loginScreen $loginPrecheckBeforePermissionPattern `
-        "LoginScreen must check one-click environment before requesting READ_PHONE_STATE, so WiFi/VPN users go straight to SMS fallback."
+        "LoginScreen must check one-click environment before requesting READ_PHONE_STATE, so obvious no-SIM/no-cellular users go straight to SMS fallback."
     Require-Match $failures $fusionClient $fusionBlockNoCellularPattern `
         "Fusion one-click login must fall back to SMS when no usable cellular data path is available."
     Require-Match $failures $fusionClient $fusionWarnMixedNetworkPattern `
         "Fusion one-click login should warn, not hard-block, 4G+WiFi mixed environments."
+    Require-Match $failures $sessionApi 'fusionTokenRefreshClient\.newCall\s*\(\s*request\s*\)\.enqueue' `
+        "Initial fusion token requests must use the short-timeout auth client so login does not hang on weak networks."
     Require-Match $failures $fusionClient $fusionDebugRawErrorPattern `
         "Fusion release logcat must not print raw Aliyun SDK errorMsg/innerMsg; keep them debug-only."
 

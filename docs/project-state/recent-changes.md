@@ -3,6 +3,14 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-13
+
+- 继续按普通用户体验和 Android 官方权限 / 可访问性口径小步收口：登录页和首次隐私同意门禁的协议勾选框视觉不变，但点击目标扩大到 48dp，降低用户点不中导致“一键登录 / 验证码登录老提示未同意”的概率；聊天页不再一进主界面就弹定位权限，未授权时改为用户首次发送问诊时按需请求一次，首轮仍可用缓存地区或后端 IP 粗定位兜底，不阻塞提问。阿里云融合认证协议承接页只允许加载农技千查官方 HTTPS 域名，禁止明文 HTTP 和外域跳转，网页缺失或加载失败时显示 App 内置协议要点兜底，并会同时根据协议 URL / title 判断展示用户协议或隐私政策要点。用户点一键登录时，fusion token 首次请求改用 6 秒短超时；VPN / 系统代理在仍检测到可用移动数据时从硬拦改成 warning 后继续尝试一键登录，失败再回验证码登录，纯 WiFi / 无可用移动数据仍直接验证码兜底。发版脚本补齐后台 `/admin-api/` upstream 端口校验，避免后台还指旧 slot 却被 401 健康检查误判成功。`check-android-build-parity.ps1` 已补 Android 侧回归护栏；主聊天滚动主链、登录 token 主链、会员 / 礼品卡、用户记忆和今日农情模型语义未改。
+
+- 继续补后台读路径性能护栏：新增 `035_admin_order_gift_indexes.sql`，给订单按账号ID / 时间查询和礼品卡兑换失败原因聚合补索引，降低后续真实用户、订单和礼品卡日志增长后后台订单页 / 监控面板扫表的风险；该迁移只优化后台查询，不改变订单、会员、礼品卡兑换、升级补偿或账号ID归属规则。
+
+- 本轮后端已重新部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换、API 与后台 `/admin-api/` upstream 端口校验均通过；当前 active upstream 为 `3001`，后台 upstream 同为 `3001`，HTTPS healthz 200，未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后资源巡检严格模式和后端数据边界巡检继续通过，当前没有正式用户、没有会员 / 订单 / 礼品卡资产，所有需要账号归属的表非 `acct_...` 计数仍为 0。
+
 ## 2026-06-12
 
 - 继续按上线前“别假成功、别坑用户资产和安装包”的口径收口：发布脚本和回滚脚本现在都会把 API Nginx 上游与后台 `/admin-api/` 上游一起切到目标 slot，并在切换后验证生产 health 标记和后台未登录鉴权 401；回滚若发现后台上游没跟随会自动恢复 Nginx 配置并失败退出。发版 / 回滚 health 断言同步加入 `sms=ok`，避免短信配置坏了还被判定成功。`check-sls-alert-readiness.ps1` 新增 `-FailOnWarning`，`check-resource-capacity.ps1 -Strict` 会把 SLS 查询语句、严重级别或 runbook 注解漂移也作为失败，减少监控假绿。Android 检查更新客户端收紧为只有更高 `versionCode`、HTTPS APK、合法 SHA-256 和正数文件大小都齐全才展示 / 下载更新，下载器二次 fail closed，parity 脚本同步拦截回退。后端 App 日志 / 审计脱敏补 `apiKey / accessKeyId / accessKeySecret / modelKey` 等驼峰别名，后台用户详情改成精确 `user_id` 查询，并新增 `034_admin_performance_indexes.sql` 给后台账号、会员、当日额度、扣次、加油包和升级补偿统计补索引；主聊天、登录、会员 / 礼品卡、用户记忆和今日农情业务语义未改。本轮后端已部署到 ECS，active upstream 为 `3000`，后台 upstream 同为 `3000`，readiness 显示 HTTPS healthz 200、未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。

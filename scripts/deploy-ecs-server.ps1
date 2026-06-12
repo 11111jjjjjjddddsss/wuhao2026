@@ -386,6 +386,17 @@ if [ "`$new_port" != "`$inactive_port" ]; then
   echo "nginx upstream switch verification failed: expected `$inactive_port got `${new_port:-unknown}" >&2
   exit 30
 fi
+if [ -f "`$admin_nginx_site" ]; then
+  admin_port=`$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "`$admin_nginx_site" 2>/dev/null | head -1 | sed -E 's/.*:([0-9]+);/\1/' || true)
+  if [ -z "`$admin_port" ] || [ "`$admin_port" != "`$inactive_port" ]; then
+    cp -a "`$nginx_backup" "`$nginx_site"
+    if [ -n "`$admin_nginx_backup" ]; then
+      cp -a "`$admin_nginx_backup" "`$admin_nginx_site"
+    fi
+    echo "admin upstream switch verification failed: expected `$inactive_port got `${admin_port:-unknown}" >&2
+    exit 30
+  fi
+fi
 if ! nginx -t; then
   cp -a "`$nginx_backup" "`$nginx_site"
   if [ -n "`$admin_nginx_backup" ]; then

@@ -749,14 +749,14 @@ object FusionOneLoginClient {
                     TelephonyManager.SIM_STATE_CARD_IO_ERROR,
                     TelephonyManager.SIM_STATE_CARD_RESTRICTED
                 ) -> "sim_not_ready"
-                hasVpnTransport -> "vpn_active"
-                hasProxyConfigured -> "proxy_active"
                 !hasAnyCellularInternetTransport -> "no_cellular_data"
                 else -> null
             }
 
         fun warningReason(): String? =
             when {
+                hasVpnTransport -> "vpn_active"
+                hasProxyConfigured -> "proxy_active"
                 !hasCellularTransport && hasAnyCellularInternetTransport -> "wifi_with_cellular_available"
                 hasWifiTransport -> "wifi_and_cellular"
                 else -> null

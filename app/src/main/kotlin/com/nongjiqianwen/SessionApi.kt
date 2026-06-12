@@ -242,7 +242,7 @@ object SessionApi {
             .url("$base/api/auth/fusion/token")
             .post(ByteArray(0).toRequestBody(null))
             .build()
-        client.newCall(request).enqueue(object : Callback {
+        fusionTokenRefreshClient.newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
                 reportAuthClientLog(
                     level = "warn",

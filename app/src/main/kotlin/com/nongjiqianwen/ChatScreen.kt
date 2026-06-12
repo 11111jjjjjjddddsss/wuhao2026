@@ -2297,14 +2297,6 @@ fun ChatScreen() {
         if (!hasRemoteHistorySource) return@LaunchedEffect
         if (ClientRegionProvider.hasLocationPermission(context)) {
             latestClientRegion = ClientRegionProvider.refreshRegion(context)
-        } else if (!ClientRegionProvider.wasLocationPermissionPrompted(context)) {
-            ClientRegionProvider.markLocationPermissionPrompted(context)
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
         }
     }
     val density = LocalDensity.current
@@ -5046,6 +5038,18 @@ fun ChatScreen() {
 
     suspend fun refreshClientRegionForSend(): ClientRegionContext? {
         if (!hasRemoteHistorySource) return null
+        if (!ClientRegionProvider.hasLocationPermission(context)) {
+            if (!ClientRegionProvider.wasLocationPermissionPrompted(context)) {
+                ClientRegionProvider.markLocationPermissionPrompted(context)
+                locationPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
+            return currentClientRegionForSend()
+        }
         val refreshed = ClientRegionProvider.refreshRegion(context)
         if (refreshed != null) {
             latestClientRegion = refreshed

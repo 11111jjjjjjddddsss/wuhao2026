@@ -527,30 +527,36 @@ private fun LoginAgreementCheckbox(
 ) {
     val borderColor = if (checked) Color(0xFF111111) else Color(0xFF747682)
     Box(
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterEnd,
         modifier = modifier
-            .size(23.dp)
-            .clip(RoundedCornerShape(4.dp))
-            .border(BorderStroke(1.6.dp, borderColor), RoundedCornerShape(4.dp))
+            .size(48.dp)
             .clickable(role = Role.Checkbox) { onCheckedChange(!checked) }
     ) {
-        if (checked) {
-            Canvas(modifier = Modifier.size(14.dp)) {
-                val strokeWidth = 2.4.dp.toPx()
-                drawLine(
-                    color = Color(0xFF111111),
-                    start = Offset(size.width * 0.16f, size.height * 0.52f),
-                    end = Offset(size.width * 0.40f, size.height * 0.76f),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = Color(0xFF111111),
-                    start = Offset(size.width * 0.40f, size.height * 0.76f),
-                    end = Offset(size.width * 0.86f, size.height * 0.24f),
-                    strokeWidth = strokeWidth,
-                    cap = StrokeCap.Round
-                )
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(23.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .border(BorderStroke(1.6.dp, borderColor), RoundedCornerShape(4.dp))
+        ) {
+            if (checked) {
+                Canvas(modifier = Modifier.size(14.dp)) {
+                    val strokeWidth = 2.4.dp.toPx()
+                    drawLine(
+                        color = Color(0xFF111111),
+                        start = Offset(size.width * 0.16f, size.height * 0.52f),
+                        end = Offset(size.width * 0.40f, size.height * 0.76f),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFF111111),
+                        start = Offset(size.width * 0.40f, size.height * 0.76f),
+                        end = Offset(size.width * 0.86f, size.height * 0.24f),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                }
             }
         }
     }

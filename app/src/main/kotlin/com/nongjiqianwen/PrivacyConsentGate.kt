@@ -230,20 +230,20 @@ private fun LoginAgreementCheckbox(
 ) {
     val borderColor = if (checked) Color(0xFF111111) else Color(0xFF747682)
     Box(
-        contentAlignment = Alignment.Center,
+        contentAlignment = Alignment.CenterEnd,
         modifier = modifier
-            .size(23.dp)
+            .size(48.dp)
             .clickable(role = Role.Checkbox) { onCheckedChange(!checked) }
             .background(Color.Transparent, RoundedCornerShape(4.dp))
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .size(23.dp)
                 .background(if (checked) Color(0xFF111111) else Color.Transparent, RoundedCornerShape(4.dp))
         )
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .size(23.dp)
                 .padding(1.dp)
                 .background(Color.Transparent, RoundedCornerShape(4.dp))
         )
@@ -254,7 +254,7 @@ private fun LoginAgreementCheckbox(
                 color = Color.Transparent,
                 shape = RoundedCornerShape(4.dp),
                 border = BorderStroke(1.6.dp, borderColor),
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.size(23.dp)
             ) {}
         }
     }
