@@ -62,12 +62,15 @@ $dataExtractionRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/data_extrac
 $idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdManager.kt"
 $sessionApiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
 $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
+$mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MainActivity.kt"
+$privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentGate.kt"
+$pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendWorker.kt"
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -82,6 +85,9 @@ if ($failures.Count -eq 0) {
     $idManager = Get-Content -LiteralPath $idManagerFile -Raw
     $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
     $fusionClient = Get-Content -LiteralPath $fusionClientFile -Raw
+    $mainActivity = Get-Content -LiteralPath $mainActivityFile -Raw
+    $privacyConsent = Get-Content -LiteralPath $privacyConsentFile -Raw
+    $pendingWorker = Get-Content -LiteralPath $pendingWorkerFile -Raw
     $loginScreen = Get-Content -LiteralPath $loginScreenFile -Raw
     $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
 
@@ -198,6 +204,24 @@ if ($failures.Count -eq 0) {
         "SMS login must require exactly 6 verification-code digits before calling the backend."
     Require-NoMatch $failures $loginScreen 'code\.length\s*<\s*4' `
         "SMS login must not accept 4/5 digit codes and send avoidable failed backend requests."
+    Require-Match $failures $loginScreen 'if\s*\(\s*!agreed\s*\)[\s\S]*?请先同意服务协议和隐私政策' `
+        "Login actions must remain gated by the service agreement/privacy checkbox."
+    Require-Match $failures $mainActivity 'PrivacyConsentStore\.isAccepted\s*\(\s*this\s*\)' `
+        "MainActivity must check first-launch privacy consent before entering login/chat."
+    Require-Match $failures $mainActivity 'initializePostPrivacyConsentRuntime\s*\(\s*\)[\s\S]*?IdManager\.init\s*\(\s*this\s*\)[\s\S]*?AppCrashReporter\.flushPendingReport' `
+        "IdManager init and crash-log flushing must stay behind accepted privacy consent."
+    Require-Match $failures $mainActivity 'if\s*\(\s*privacyAccepted\s*\)[\s\S]*?LoginGate' `
+        "MainActivity must render LoginGate only after privacy consent has been accepted."
+    Require-Match $failures $privacyConsent 'object\s+PrivacyConsentStore[\s\S]*?CURRENT_VERSION\s*=\s*1[\s\S]*?fun\s+isAccepted' `
+        "PrivacyConsentStore must keep a versioned local consent flag."
+    Require-Match $failures $privacyConsent '同意并继续' `
+        "First-launch privacy gate must provide an explicit agree-and-continue action."
+    Require-Match $failures $privacyConsent '不同意，退出' `
+        "First-launch privacy gate must provide an explicit decline/exit action."
+    Require-Match $failures $privacyConsent 'HamburgerServiceAgreementContent[\s\S]*?HamburgerPrivacyPolicyContent' `
+        "First-launch privacy gate must let users read the same service agreement and privacy policy content as settings/login."
+    Require-Match $failures $pendingWorker '!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)[\s\S]*?Result\.retry\(\)[\s\S]*?IdManager\.init' `
+        "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
     Require-Match $failures $fusionClient 'override\s+fun\s+onVerifySuccess[\s\S]*?SessionApi\.loginWithFusionVerifyToken' `
         "Fusion one-click login must exchange the final onVerifySuccess token through the backend login endpoint."
     Require-Match $failures $fusionClient 'override\s+fun\s+onHalfWayVerifySuccess[\s\S]*?auth\.fusion_halfway_unexpected[\s\S]*?verifyResult\?\.verifyResult' `

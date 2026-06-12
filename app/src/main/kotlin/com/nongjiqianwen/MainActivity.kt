@@ -12,6 +12,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.ComposeFoundationFlags
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 
 object LaunchUiGate {
@@ -23,6 +25,8 @@ object LaunchUiGate {
 }
 
 class MainActivity : ComponentActivity() {
+    private var postPrivacyRuntimeInitialized = false
+
     @OptIn(ExperimentalFoundationApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         AppCrashReporter.install(applicationContext)
@@ -50,16 +54,41 @@ class MainActivity : ComponentActivity() {
         }
         ComposeFoundationFlags.isNewContextMenuEnabled = false
         ComposeFoundationFlags.isSmartSelectionEnabled = false
-        IdManager.init(this)
-        AppCrashReporter.flushPendingReport(applicationContext)
+        val privacyAcceptedOnCreate = PrivacyConsentStore.isAccepted(this)
+        if (privacyAcceptedOnCreate) {
+            initializePostPrivacyConsentRuntime()
+        }
         setContent {
+            var privacyAccepted by androidx.compose.runtime.remember {
+                androidx.compose.runtime.mutableStateOf(privacyAcceptedOnCreate)
+            }
             MaterialTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    LoginGate {
-                        ChatScreen()
+                    if (privacyAccepted) {
+                        LoginGate {
+                            ChatScreen()
+                        }
+                    } else {
+                        PrivacyConsentGate(
+                            onAccepted = {
+                                PrivacyConsentStore.accept(this@MainActivity)
+                                initializePostPrivacyConsentRuntime()
+                                privacyAccepted = true
+                            },
+                            onDeclined = {
+                                finish()
+                            }
+                        )
                     }
                 }
             }
         }
+    }
+
+    private fun initializePostPrivacyConsentRuntime() {
+        if (postPrivacyRuntimeInitialized) return
+        postPrivacyRuntimeInitialized = true
+        IdManager.init(this)
+        AppCrashReporter.flushPendingReport(applicationContext)
     }
 }

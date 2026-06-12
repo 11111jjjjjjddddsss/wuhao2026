@@ -16,6 +16,9 @@ class PendingChatSendWorker(
 ) : CoroutineWorker(appContext, workerParams) {
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
+        if (!PrivacyConsentStore.isAccepted(applicationContext)) {
+            return@withContext Result.retry()
+        }
         IdManager.init(applicationContext)
         val chatScopeId = inputData.getString(PendingChatSendWorkScheduler.KEY_CHAT_SCOPE_ID).orEmpty()
         val userMessageId = inputData.getString(PendingChatSendWorkScheduler.KEY_USER_MESSAGE_ID).orEmpty()
