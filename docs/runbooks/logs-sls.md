@@ -27,8 +27,8 @@
 - Go 后端已补统一请求级结构化日志：每个非降噪业务请求都会写 `request_id / method / path / status / duration_ms / response_bytes / masked_ip / auth_mode / user_id(如有) / user_agent(如有)`，不记录 query string、请求 body、Authorization、手机号、图片 URL 或模型 Key
 - 响应头会回写 `X-Request-Id`；App 自动日志、Nginx 和 Go journal 后续可用该 ID 串联排障
 - 健康检查 `/healthz` 和 `/uploads/` 静态图片成功请求默认降噪；但 4xx / 5xx 或慢请求仍会记录
-- 慢请求阈值由 `ACCESS_LOG_SLOW_MS` 控制，默认 `3000` 毫秒；`0` 表示关闭慢请求标记
-- 2026-06-10 已创建 5 条最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / DYPNS 配置错误。当前只进入 SLS AlertHub，不绑定短信、电话、机器人、邮件或自定义 action policy；通知送达、仪表盘和资源水位告警仍未闭环
+- 慢请求阈值由 `ACCESS_LOG_SLOW_MS` 控制，默认 `3000` 毫秒；`0` 表示关闭慢请求标记。`/api/chat/stream` 是正常 SSE 长连接，2026-06-12 起正常 200 长流会记录为 `http_sse_stream` 普通信息日志，不再进入 `http_request_slow`，避免真实聊天一多污染慢请求告警；5xx 仍按 `http_request_error` 记录
+- 2026-06-10 已创建 5 条最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 非 SSE 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / DYPNS 配置错误。当前只进入 SLS AlertHub，不绑定短信、电话、机器人、邮件或自定义 action policy；通知送达和仪表盘仍未闭环。ECS / RDS / Redis 资源水位已另走云监控邮件告警，见 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)
 
 ## SLS 告警规则
 
@@ -84,7 +84,7 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 - 这些规则是“最小生产兜底”，不是完整告警中心
 - 当前只投递到 AlertHub，后台不会自动弹窗，用户也不会收到系统通知
 - 2026-06-12 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，但 `actionPolicyId=空`、未关联 dashboard；这不是脚本失败，而是外部通知和仪表盘尚未闭环
-- 后续仍需配置 action policy / 联系人 / 通知渠道、仪表盘、ECS / RDS / Redis / OSS 资源水位、DYPNS 认证用量和模型成本告警
+- 后续仍需配置 SLS action policy / 联系人 / 通知渠道、仪表盘、DYPNS 认证用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 
 ## 当前查询入口
@@ -140,7 +140,8 @@ systemctl status nginx --no-pager
 
 - `server bootstrap failed`：启动阶段失败，多数是数据库连接、迁移、assets / migrations 路径或环境变量问题
 - `http_request`：普通业务请求日志
-- `http_request_slow`：超过 `ACCESS_LOG_SLOW_MS` 的慢请求，优先看 `path / duration_ms / request_id`
+- `http_request_slow`：超过 `ACCESS_LOG_SLOW_MS` 的非 SSE 慢请求，优先看 `path / duration_ms / request_id`
+- `http_sse_stream`：正常完成但超过慢阈值的 `/api/chat/stream` 长连接，用于观察聊天流耗时，不进入慢请求告警
 - `http_request_error`：Go handler 返回 5xx，优先看 `path / status / request_id`，再查同一 request id 附近的业务错误日志
 - `MODEL_BACKEND_NOT_CONFIGURED` / `missing_key`：通常表示 DashScope 模型 Key 缺失、槽位为空或服务未读取到配置
 - `unauthorized`：`AUTH_STRICT=true` 下缺少有效 bearer token

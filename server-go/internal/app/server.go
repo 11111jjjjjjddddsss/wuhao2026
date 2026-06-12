@@ -254,15 +254,17 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/uploads/", s.handleUploadsStatic)
 }
 
-func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	redisStatus := redisHealthStatus(r.Context(), s.redisClient)
+	smsStatus := ternary(s.sms.HasConfigured() && redisStatus == "ok", "ok", "missing_config")
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"ok":                  true,
 		"bailian":             ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
 		"dypns":               ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		"dypns_fusion":        ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
-		"dypns_sms":           ternary(s.sms.HasConfigured() && s.redisClient != nil, "ok", "missing_config"),
-		"sms":                 ternary(s.sms.HasConfigured() && s.redisClient != nil, "ok", "missing_config"),
-		"redis":               ternary(s.redisClient != nil, "ok", "missing_config"),
+		"dypns_sms":           smsStatus,
+		"sms":                 smsStatus,
+		"redis":               redisStatus,
 		"upload_storage":      uploadStoreHealthStatus(s.uploadStore),
 		"auth_strict":         IsAuthStrict(),
 		"dev_order_endpoints": devOrderEndpointsEnabled(),

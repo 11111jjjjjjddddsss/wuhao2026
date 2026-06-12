@@ -14,6 +14,7 @@
 - [rollback.md](D:/wuhao/docs/runbooks/rollback.md)：回滚入口
 - [logs-sls.md](D:/wuhao/docs/runbooks/logs-sls.md)：日志排查入口
 - [db-readonly.md](D:/wuhao/docs/runbooks/db-readonly.md)：数据库只读排查入口
+- [backend-data-boundaries.md](D:/wuhao/docs/runbooks/backend-data-boundaries.md)：后端数据真源、账号资产归属和 `acct_...` 巡检入口
 - [oss.md](D:/wuhao/docs/runbooks/oss.md)：OSS 图片存储资源包、Bucket 配置和生命周期入口
 - [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)：后端模型 Key 池和多账号限流排查入口
 - [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)：ECS / RDS / Redis / OSS 容量、到期和升级提醒入口

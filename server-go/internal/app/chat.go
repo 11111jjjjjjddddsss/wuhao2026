@@ -349,7 +349,16 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	defer cancelUpstream()
 	upstream, err := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages)
 	if err != nil {
-		s.respondUpstreamOpenError(w, err)
+		s.respondUpstreamOpenError(
+			w,
+			err,
+			"request_id", RequestIDFromContext(r.Context()),
+			"userId", auth.UserID,
+			"clientMsgId", clientMsgID,
+			"tier", tier,
+			"prompt_chars", promptChars,
+			"current_image_count", len(images),
+		)
 		return
 	}
 	defer upstream.Body.Close()
@@ -668,23 +677,29 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 	return nil, lastErr
 }
 
-func (s *Server) respondUpstreamOpenError(w http.ResponseWriter, err error) {
+func (s *Server) respondUpstreamOpenError(w http.ResponseWriter, err error, attrs ...any) {
 	openErr, ok := err.(*upstreamStreamOpenError)
 	if !ok {
-		s.logger.Error("upstream request failed", "error", err)
+		logAttrs := append([]any{}, attrs...)
+		logAttrs = append(logAttrs, "error", err)
+		s.logger.Error("upstream request failed", logAttrs...)
 		s.writeError(w, http.StatusBadGateway, "upstream request failed")
 		return
 	}
 
 	switch openErr.Kind {
 	case "http":
-		s.logger.Error("upstream non-200 after retry", "status", openErr.StatusCode)
+		logAttrs := append([]any{}, attrs...)
+		logAttrs = append(logAttrs, "status", openErr.StatusCode)
+		s.logger.Error("upstream non-200 after retry", logAttrs...)
 		s.writeError(w, http.StatusBadGateway, "upstream_error")
 	case "protocol":
-		s.logger.Error("upstream is not SSE after retry", "contentType", openErr.ContentType)
+		logAttrs := append([]any{}, attrs...)
+		logAttrs = append(logAttrs, "contentType", openErr.ContentType)
+		s.logger.Error("upstream is not SSE after retry", logAttrs...)
 		s.writeError(w, http.StatusBadGateway, "upstream_error")
 	default:
-		s.logger.Error("upstream request failed after retry")
+		s.logger.Error("upstream request failed after retry", attrs...)
 		s.writeError(w, http.StatusBadGateway, "upstream_error")
 	}
 }

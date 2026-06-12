@@ -265,8 +265,8 @@ $alerts = @(
     },
     @{
         Name = "nongji-server-slow";
-        DisplayName = "Nongji Go slow requests";
-        Description = "server-go Logstore detected at least 5 slow requests in 5 minutes.";
+        DisplayName = "Nongji Go non-SSE slow requests";
+        Description = "server-go Logstore detected at least 5 non-SSE slow requests in 5 minutes. Normal /api/chat/stream long connections are logged as http_sse_stream instead.";
         Logstore = "server-go";
         Query = "http_request_slow | select count(1) as cnt";
         Severity = 6;

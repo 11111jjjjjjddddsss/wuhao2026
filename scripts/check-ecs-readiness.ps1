@@ -103,7 +103,10 @@ done
 
 echo
 echo '== nginx =='
-nginx -t 2>&1 || true
+if ! nginx -t 2>&1; then
+  echo 'nginx configuration test failed' >&2
+  exit 17
+fi
 active_port=$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "$nginx_site" 2>/dev/null | head -1 | sed -E 's/.*:([0-9]+);/\1/' || true)
 if [ -z "$active_port" ]; then
   active_port=unknown

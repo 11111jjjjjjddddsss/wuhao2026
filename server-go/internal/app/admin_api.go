@@ -3018,13 +3018,14 @@ func adminDayStartMs(loc *time.Location, now time.Time) int64 {
 }
 
 func (s *Server) adminHealthStatus() AdminHealthStatus {
+	redisStatus := redisHealthStatus(context.Background(), s.redisClient)
 	return AdminHealthStatus{
 		API:               "ok",
 		Bailian:           ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
 		Dypns:             ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		DypnsFusion:       ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
-		DypnsSMS:          ternary(s.sms.HasConfigured() && s.redisClient != nil, "ok", "missing_config"),
-		Redis:             ternary(s.redisClient != nil, "ok", "missing_config"),
+		DypnsSMS:          ternary(s.sms.HasConfigured() && redisStatus == "ok", "ok", "missing_config"),
+		Redis:             redisStatus,
 		UploadStorage:     uploadStoreHealthStatus(s.uploadStore),
 		AuthStrict:        IsAuthStrict(),
 		DevOrderEndpoints: devOrderEndpointsEnabled(),

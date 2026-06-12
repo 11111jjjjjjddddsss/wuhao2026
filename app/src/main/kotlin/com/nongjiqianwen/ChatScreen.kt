@@ -6154,7 +6154,13 @@ fun ChatScreen() {
                     msg.content
                 }
             val copySourceContent =
-                if (msg.role == ChatRole.ASSISTANT) assistantDisplayContent else msg.content
+                when {
+                    msg.role != ChatRole.ASSISTANT -> msg.content
+                    isActiveStreamingAssistant &&
+                        isStreaming &&
+                        !isPendingStreamingFinalizeAssistant -> ""
+                    else -> assistantDisplayContent
+                }
             val fullCopyText = remember(msg.role, copySourceContent) {
                 buildRenderedMessageCopyText(msg.role, copySourceContent)
             }

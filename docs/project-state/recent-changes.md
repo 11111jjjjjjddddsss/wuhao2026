@@ -5,6 +5,12 @@
 
 ## 2026-06-12
 
+- 继续收口日志、资源告警和主界面性能：阿里云云监控已创建邮件联系人组 `NongjiQianchaOps`，并配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接；`scripts/check-resource-capacity.ps1` 已能复查联系人组和这些规则，当前剩余 attention 收敛为 ECS 系统盘未启用自动快照、SLS 应用日志 action policy / dashboard 未绑定。Go 后端 `/healthz` 和后台健康状态现在会对 Redis 做运行期短超时 ping，不再只看启动时 client 是否初始化；正常 200 的 `/api/chat/stream` 长连接会记为 `http_sse_stream`，不再污染 `http_request_slow` 慢请求告警；模型开流失败日志补 `request_id / userId / clientMsgId / tier / prompt_chars / current_image_count`，不记录正文或图片 URL；该后端改动已部署到 ECS，当前 Nginx active upstream 为 `3001`，`check-ecs-readiness.ps1` 显示 HTTPS healthz 200 且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。Android 流式渲染期间不再每个增量提前构建“复制全文”，等流式结束 / settled 后再生成复制文本，减少长回复吐字时的 CPU 负担。
+
+- 按“后端数据和运行设计别留坑”的上线前口径补了两条只读巡检：新增 `scripts/check-resource-capacity.ps1`，一次性查 ECS / 安全组 / 系统盘 / RDS / Redis / OSS / DNS / 域名 / HTTPS 证书 / SLS 告警 / DYPNS 认证用量，输出脱敏状态；新增 `scripts/check-backend-data-boundaries.ps1`，通过 Cloud Assistant 在 ECS 内只查 MySQL 表计数和 `acct_...` 归属异常，不读取手机号明文、聊天正文、反馈正文、图片 URL、礼品卡完整码、token 或模型 Key。线上巡检结果显示 ECS / RDS / Redis / OSS 容量宽裕，OSS Bucket `nongjiqiancha-prod` 已开启默认服务端 AES256 加密；线上库当前没有正式用户、没有会员 / 订单 / 礼品卡资产，所有需要账号归属的表非 `acct_...` 计数均为 0。文档同步新增 [backend-data-boundaries.md](D:/wuhao/docs/runbooks/backend-data-boundaries.md)，并更新资源容量、数据库只读、OSS、当前状态和风险文档；ECS / RDS 是包年包月，删除保护接口不适用，Redis 释放保护已开启，剩余 attention 是 ECS 自动快照、SLS 应用日志外部通知 / 仪表盘和帮助反馈图片实际仍按 `/uploads/` 3 天过期。
+
+- 继续按上线前“不被假绿坑到”的口径收紧服务器 readiness：`scripts/check-ecs-readiness.ps1` 里远端 `nginx -t` 不再 `|| true` 吞掉失败，Nginx 配置检测失败会直接退出并让本机检查失败。生产就绪检查现在同时挡 active slot 不活、后台 upstream 漂移、HTTPS healthz / 关键 health 标记异常、旧 token 兼容误开、开发订单入口误开和 Nginx 配置错误，避免反代层坏了还被报告成可上线。
+
 - 总负责人视角继续收紧生产 readiness：`scripts/check-ecs-readiness.ps1` 现在把 `sms=ok` 也列为 healthz 必需标记，并会读取 ECS 环境文件的脱敏状态后硬拦 `AUTH_ALLOW_LEGACY_TOKEN=true` 和 `ALLOW_DEV_ORDER_ENDPOINTS=true`。也就是说公开生产检查不只看服务活着，还会挡住旧 bearer token 兼容、裸旧身份绕回和开发期订单直改入口误开，继续服务“全应用一个账号ID、正式登录必须手机号账号 session”的上线口径。
 
 - 继续趁当前“还没有正式用户”的窗口收紧账号资产迁移：旧本机 ID 到 `acct_...` 的 `user_id_migrations` 映射改为不可改写，若同一个旧 ID 已经绑定到另一个账号，本次登录不再重映射、不再合并资产，避免账号之间互相吞会员、礼品卡、订单或记忆。会员权益合并同时补了 Plus 价值补偿：当 Pro 覆盖 Plus，或目标 Plus 被来源 Pro 覆盖时，剩余 Plus 当天次数和未来天数价值会转入 `upgrade_credits`，不让用户买过的 Plus 价值因为登录迁移被静默吃掉；新增单测锁住映射不可改写和补偿计算。

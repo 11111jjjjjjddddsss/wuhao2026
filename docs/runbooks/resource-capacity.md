@@ -1,12 +1,58 @@
 # 云资源容量与续费巡检
 
-最后更新：2026-06-06
+最后更新：2026-06-12
 
 ## 目的
 
 记录农技千查当前已购买云资源是否够用、怎么用 CLI 复查、以及什么时候必须提前提醒升级或续费。以后只要发现资源接近阈值，Codex 应主动提示用户，不等用户先发现卡顿、502 或欠费风险。
 
 本 runbook 只记录规格、用量、阈值和巡检入口；不记录 AccessKey、数据库密码、模型 Key、Redis 密码、服务器环境变量内容或公安备案数据码。
+
+## 2026-06-12 巡检结论
+
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组和 9 条资源水位告警。剩余更该补的是 ECS 自动快照、SLS 应用日志 action policy / 仪表盘和帮助反馈图片生命周期取舍。
+
+- ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.8 GiB，系统盘 79 GiB 已用约 9.9 GiB（14%），近 7 天未见 OOM
+- 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
+- ECS 系统盘：80 GiB ESSD Entry，未启用自动快照策略；这是当前资源巡检 warning，不是容量告警。ECS 是包年包月 `PrePaid`，删除保护接口不适用，不能把 `deletion_protection=false` 当成未买保护
+- RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 2.98 GiB（约 5.96%）；近 30 分钟 QPS/TPS 峰值约 9.25、IOPS 约 5.4、内存 / CPU 指标约 11.6%、连接 0；备份保留 7 天，日志备份已启用
+- Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.08 MiB / 256 MiB（约 1.99%），CPU 峰值约 0.16%，连接使用约 0.05%；释放保护已开启
+- OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 0、占用 0 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
+- DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
+- 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。该组用于资源不足提前邮件提醒，不走短信 / 电话
+- SLS：5 条最小 AlertHub 告警均存在并启用，但应用日志外部通知 action policy 和 dashboard 绑定仍为 `0/5`，属于上线前 attention
+- DYPNS 一键登录 / 短信认证：最近 7 天统计均为 `no_data`，说明当前还没有真实认证消耗
+
+本次新增统一只读资源巡检脚本，输出会脱敏，不打印密钥：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
+```
+
+当前脚本汇总状态为 `attention`，原因是：
+
+- `ecs_disk_no_automatic_snapshot_policy`
+- `sls_alert_external_notification_or_dashboard_may_need_attention`
+
+这些不是“资源不够用”，而是运维保护还没完全补齐。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。是否开启 ECS 自动快照要结合成本、恢复流程和实际运维习惯单独拍板；SLS 应用日志 action policy / 仪表盘仍应优先补。
+
+## 资源水位邮件告警
+
+2026-06-12 已在阿里云云监控创建联系人组 `NongjiQianchaOps`，挂联系人 `NongjiOwner`，邮件通道已激活。当前只走邮件提醒，不走短信 / 电话，避免通知费用和噪音。
+
+| 规则 ID | 资源 | 指标 | Warn | Critical | 说明 |
+| --- | --- | --- | --- | --- | --- |
+| `nq-ecs-cpu-high` | ECS | `CPUUtilization` | 70% 连续 3 个 5 分钟周期 | 85% 连续 3 个 5 分钟周期 | 服务器 CPU 高水位 |
+| `nq-ecs-memory-high` | ECS | `memory_usedutilization` | 70% | 85% | 服务器内存高水位 |
+| `nq-rds-cpu-high` | RDS | `CpuUsage` | 70% | 85% | 数据库 CPU 高水位 |
+| `nq-rds-memory-high` | RDS | `MemoryUsage` | 70% | 85% | 数据库内存高水位 |
+| `nq-rds-disk-high` | RDS | `DiskUsage` | 70% | 85% | 数据库磁盘高水位 |
+| `nq-rds-connection-high` | RDS | `ConnectionUsage` | 60% | 80% | 数据库连接数高水位 |
+| `nq-redis-cpu-high` | Redis | `StandardCpuUsage` | 70% | 85% | Redis CPU 高水位 |
+| `nq-redis-memory-high` | Redis | `StandardMemoryUsage` | 70% | 85% | Redis 内存高水位 |
+| `nq-redis-connection-high` | Redis | `StandardConnectionUsage` | 60% | 80% | Redis 连接数高水位 |
+
+这些规则只覆盖资源水位，不等于应用日志告警已经全闭环。Go 5xx、慢请求、今日农情失败等应用事件当前仍在 SLS AlertHub，SLS action policy / dashboard 还待补。
 
 ## 2026-06-06 巡检结论
 
@@ -26,6 +72,12 @@ ECS 就绪检查：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1
+```
+
+资源容量、到期、OSS、证书、云监控资源水位、SLS 和认证用量统一巡检：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
 ```
 
 ECS 规格：
@@ -99,7 +151,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 
 ## 后续动作
 
-- SLS 已有最小 AlertHub 告警，继续补外部通知 / 仪表盘；下一步至少覆盖 API healthz、Go 服务 inactive、RDS / Redis / ECS 高水位
+- 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；继续补 ECS 自动快照、SLS 应用日志外部通知 / 仪表盘，以及 API healthz / Go 服务 inactive 这类应用可用性告警
 - 登录链路监控至少覆盖 DYPNS 一键登录次数 / 成功率 / 失败率 / 账单、短信认证次数 / 账单、后端 `/api/auth/fusion/*` 和 `/api/auth/sms/*` 入口错误率
 - 若继续使用单 ECS 双端口发布，部署 / 回滚前必须清理旧 `nongji-drain-stop-*` transient systemd 任务，避免多个排空任务叠加
 - 管理后台上线后，容量快照、到期时间、5xx 和 App 自动日志应做成只读运维面板

@@ -59,6 +59,8 @@ func (s *Server) withAccessLog(next http.Handler) http.Handler {
 		switch {
 		case status >= http.StatusInternalServerError:
 			logger.Error("http_request_error", attrs...)
+		case isSlowStreamingAccessLog(r.URL.Path, duration):
+			logger.Info("http_sse_stream", attrs...)
 		case isSlowAccessLog(duration):
 			logger.Warn("http_request_slow", attrs...)
 		default:
@@ -149,6 +151,10 @@ func isSlowAccessLog(duration time.Duration) bool {
 		return false
 	}
 	return duration >= time.Duration(thresholdMs)*time.Millisecond
+}
+
+func isSlowStreamingAccessLog(path string, duration time.Duration) bool {
+	return path == "/api/chat/stream" && isSlowAccessLog(duration)
 }
 
 type accessLogResponseWriter struct {

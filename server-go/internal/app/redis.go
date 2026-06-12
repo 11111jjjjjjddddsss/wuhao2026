@@ -67,6 +67,21 @@ func newOptionalRedisClient(ctx context.Context, logger *slog.Logger) (*redis.Cl
 	return client, nil
 }
 
+func redisHealthStatus(ctx context.Context, client *redis.Client) string {
+	if client == nil {
+		return "missing_config"
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	pingCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_HEALTH_TIMEOUT_SECONDS", defaultRedisPingTimeout))
+	defer cancel()
+	if err := client.Ping(pingCtx).Err(); err != nil {
+		return "error"
+	}
+	return "ok"
+}
+
 func resolveRedisConfigFromEnv() (redisConfig, bool, error) {
 	rawURL := strings.TrimSpace(os.Getenv("REDIS_URL"))
 	if rawURL != "" {
