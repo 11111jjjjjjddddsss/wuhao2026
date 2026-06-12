@@ -104,6 +104,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -208,7 +209,6 @@ import java.io.InputStream
 import java.net.URL
 import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.random.Random
 import kotlin.math.roundToInt
 import java.util.UUID
 import kotlin.math.abs
@@ -316,9 +316,9 @@ private fun buildChatTimelineItems(
 }
 
 private fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
-    val cardItems = items.orEmpty()
+    val cardItems = items.orEmpty().take(3)
     return title == "今日农情" &&
-        cardItems.size >= 3 &&
+        cardItems.size == 3 &&
         cardItems.all { item ->
             !item.title.isNullOrBlank() &&
                 !item.summary.isNullOrBlank()
@@ -422,15 +422,11 @@ private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
 internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 2
-private const val STREAM_DELAY_MULTIPLIER = 1.18
 internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
 internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
 internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
-private const val LOCAL_STREAM_FIRST_TOKEN_MIN_MS = 520L
-private const val LOCAL_STREAM_FIRST_TOKEN_MAX_MS = 860L
-private const val LOCAL_STREAM_MIN_BALL_MS = 2200L
 private const val REMOTE_STREAM_MIN_BALL_MS = 500L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
@@ -457,6 +453,7 @@ private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
 private const val REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS = 240
 private const val REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS = 2500L
+private const val STREAMING_FINALIZE_BOUNDS_TIMEOUT_MS = 1500L
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
 private val MESSAGE_ACTION_MENU_ESTIMATED_HEIGHT = 44.dp
@@ -612,136 +609,6 @@ private fun Char.isStrongPausePunctuation(): Boolean {
 
 private fun Char.isWeakPausePunctuation(): Boolean {
     return this == '，' || this == '；' || this == '：' || this == ',' || this == ';' || this == ':'
-}
-
-private fun Char.isStructuralMarkdownChar(): Boolean {
-    return this == '#' || this == '-' || this == '*' || this == '`' || this == '>'
-}
-
-private fun takeMarkdownPrefixToken(buffer: String): String? {
-    if (buffer.isEmpty()) return null
-    return when {
-        buffer.startsWith("> ") -> "> "
-        buffer.startsWith("- ") -> "- "
-        buffer.startsWith("* ") -> "* "
-        buffer.first() == '#' -> {
-            var end = 1
-            while (end < buffer.length && end < 6 && buffer[end] == '#') end++
-            while (end < buffer.length && buffer[end].isWhitespace()) end++
-            buffer.substring(0, end)
-        }
-        buffer.first().isDigit() -> {
-            var end = 1
-            while (end < buffer.length && end < 4 && buffer[end].isDigit()) end++
-            if (end < buffer.length && buffer[end] == '.') {
-                end++
-                while (end < buffer.length && buffer[end].isWhitespace()) end++
-                buffer.substring(0, end)
-            } else {
-                null
-            }
-        }
-        else -> null
-    }
-}
-
-private fun takeTypewriterToken(buffer: String): String {
-    if (buffer.isEmpty()) return ""
-    val first = buffer.first()
-    val markdownPrefix = takeMarkdownPrefixToken(buffer)
-    if (markdownPrefix != null) {
-        return markdownPrefix
-    }
-    if (first == '\n') {
-        return first.toString()
-    }
-    if (first.isWhitespace()) {
-        var end = 1
-        while (end < buffer.length && end < 3 && buffer[end].isWhitespace() && buffer[end] != '\n') end++
-        return buffer.substring(0, end)
-    }
-    if (first.isStructuralMarkdownChar()) {
-        return first.toString()
-    }
-    if (first.isCjkUnifiedIdeograph()) {
-        return buffer.substring(0, 1)
-    }
-    if (first.isDigit()) {
-        var end = 1
-        while (end < buffer.length && end < 4 && buffer[end].isDigit()) end++
-        if (end < buffer.length && buffer[end] == '.') end++
-        return buffer.substring(0, end)
-    }
-    var end = 1
-    while (end < buffer.length && end < 8) {
-        val ch = buffer[end]
-        if (ch.isWhitespace() || ch.isCjkUnifiedIdeograph() || ch.isStructuralMarkdownChar() || ch.isWeakPausePunctuation() || ch.isStrongPausePunctuation()) {
-            break
-        }
-        end++
-    }
-    return buffer.substring(0, end)
-}
-
-private data class LocalStreamFeedStep(
-    val text: String,
-    val delayMs: Long
-)
-
-private fun scaleStreamingDelay(delayMs: Long): Long {
-    return (delayMs * STREAM_DELAY_MULTIPLIER).roundToInt().toLong().coerceAtLeast(STREAM_TYPEWRITER_IDLE_POLL_MS)
-}
-
-private fun nextLocalStreamFeedStep(remaining: String): LocalStreamFeedStep {
-    if (remaining.isEmpty()) return LocalStreamFeedStep("", 0L)
-    val first = remaining.first()
-    val markdownPrefix = takeMarkdownPrefixToken(remaining)
-    val takeCount = when {
-        markdownPrefix != null -> markdownPrefix.length
-        first == '\n' -> 1
-        first.isStructuralMarkdownChar() -> 1
-        first.isCjkUnifiedIdeograph() -> Random.nextInt(1, 3)
-        first.isWhitespace() -> remaining.takeWhile { it.isWhitespace() && it != '\n' }.length.coerceIn(1, 2)
-        else -> Random.nextInt(4, 8)
-    }.coerceAtMost(remaining.length)
-    val text = remaining.substring(0, takeCount)
-    val tail = text.last()
-    val delayMs = when {
-        tail == '\n' -> Random.nextLong(110, 180)
-        tail.isStrongPausePunctuation() -> Random.nextLong(72, 118)
-        tail.isWeakPausePunctuation() -> Random.nextLong(34, 58)
-        markdownPrefix != null || text.any { it.isStructuralMarkdownChar() } -> Random.nextLong(36, 60)
-        else -> Random.nextLong(18, 30)
-    }
-    return LocalStreamFeedStep(text = text, delayMs = scaleStreamingDelay(delayMs))
-}
-
-private fun nextLocalStreamFeedBatch(remaining: String): LocalStreamFeedStep {
-    if (remaining.isEmpty()) return LocalStreamFeedStep("", 0L)
-    if (remaining.length <= 24) return nextLocalStreamFeedStep(remaining)
-    val text = StringBuilder()
-    var totalDelayMs = 0L
-    var cursor = remaining
-    var stepCount = 0
-
-    while (cursor.isNotEmpty() && stepCount < 4) {
-        val step = nextLocalStreamFeedStep(cursor)
-        if (step.text.isEmpty()) break
-        text.append(step.text)
-        cursor = cursor.drop(step.text.length)
-        totalDelayMs += step.delayMs
-        stepCount++
-        val tail = step.text.lastOrNull()
-        val hitBoundary = tail == '\n' || tail?.isStrongPausePunctuation() == true
-        if (hitBoundary || totalDelayMs >= 72L) {
-            break
-        }
-    }
-
-    return LocalStreamFeedStep(
-        text = text.toString(),
-        delayMs = scaleStreamingDelay(totalDelayMs.coerceAtLeast(42L))
-    )
 }
 
 private fun hasStructuralMarkdownPrefix(text: String): Boolean {
@@ -1161,7 +1028,6 @@ private fun buildMarkdownAnnotatedStringInternal(
         }
     }
 }
-
 private fun buildPlainLinkedAnnotatedString(text: String): AnnotatedString {
     return buildAnnotatedString {
         var index = 0
@@ -1189,7 +1055,6 @@ private fun buildPlainLinkedAnnotatedString(text: String): AnnotatedString {
         }
     }
 }
-
 private fun buildMarkdownAnnotatedString(text: String): AnnotatedString {
     return buildMarkdownAnnotatedStringInternal(text = text)
 }
@@ -1563,6 +1428,72 @@ private fun retainLocalRecoverySnapshotForRemoteFallback(
     )
 }
 
+private fun recoverStreamingDraftAsInterruptedSnapshot(
+    localSnapshot: LocalChatWindowSnapshot,
+    draft: LocalStreamingDraft?
+): LocalChatWindowSnapshot {
+    val sanitizedSnapshot = sanitizeLocalChatWindowSnapshot(localSnapshot)
+    val safeDraft = draft ?: return sanitizedSnapshot
+    val sourceUserMessageId = safeDraft.anchoredUserMessageId
+        ?.takeIf { it.isNotBlank() }
+        ?: return sanitizedSnapshot
+    if (
+        sanitizedSnapshot.messages.none { message ->
+            message.id == sourceUserMessageId && message.role == ChatRole.USER
+        }
+    ) {
+        return sanitizedSnapshot
+    }
+    val partialContent = normalizeAssistantText(safeDraft.content + safeDraft.revealBuffer)
+    if (partialContent.isBlank()) return sanitizedSnapshot
+    val assistantMessageId = safeDraft.messageId
+        .takeIf { it.isNotBlank() }
+        ?: assistantMessageIdForSourceUser(sourceUserMessageId)
+    val recoveredMessages = ArrayList<ChatMessage>(sanitizedSnapshot.messages.size + 1)
+    var inserted = false
+    sanitizedSnapshot.messages.forEach { message ->
+        if (message.id == assistantMessageId) {
+            if (!inserted) {
+                recoveredMessages.add(
+                    ChatMessage(
+                        id = assistantMessageId,
+                        role = ChatRole.ASSISTANT,
+                        content = partialContent
+                    )
+                )
+                inserted = true
+            }
+            return@forEach
+        }
+        recoveredMessages.add(message)
+        if (
+            !inserted &&
+            message.id == sourceUserMessageId &&
+            message.role == ChatRole.USER
+        ) {
+            recoveredMessages.add(
+                ChatMessage(
+                    id = assistantMessageId,
+                    role = ChatRole.ASSISTANT,
+                    content = partialContent
+                )
+            )
+            inserted = true
+        }
+    }
+    if (!inserted) return sanitizedSnapshot
+    val recoveredFailedAssistantStates = sanitizedSnapshot.failedAssistantMessageStates.toMutableMap()
+    recoveredFailedAssistantStates[assistantMessageId] = FailedAssistantMessageState(
+        sourceUserMessageId = sourceUserMessageId
+    )
+    return sanitizeLocalChatWindowSnapshot(
+        sanitizedSnapshot.copy(
+            messages = recoveredMessages,
+            failedAssistantMessageStates = recoveredFailedAssistantStates
+        )
+    )
+}
+
 private fun shouldApplyHydratedSnapshot(
     currentMessages: List<ChatMessage>,
     currentFailedUserMessageStates: Map<String, String>,
@@ -1783,9 +1714,10 @@ private fun Context.loadLocalStreamingDraftSync(chatScopeId: String): LocalStrea
     }
 }
 
-private fun Context.hasLocalStreamingDraft(chatScopeId: String): Boolean {
-    return loadLocalStreamingDraftSync(chatScopeId) != null
-}
+private suspend fun Context.loadLocalStreamingDraft(chatScopeId: String): LocalStreamingDraft? =
+    withContext(Dispatchers.IO) {
+        loadLocalStreamingDraftSync(chatScopeId)
+    }
 
 private suspend fun Context.saveLocalStreamingDraftIfEpoch(
     chatScopeId: String,
@@ -2052,22 +1984,6 @@ internal fun Context.decodeChatImagePreview(
     }.getOrNull()
 }
 
-private fun recoverStreamingDraftAsCompletedSnapshot(
-    localSnapshot: LocalChatWindowSnapshot,
-    draft: LocalStreamingDraft?
-) : LocalChatWindowSnapshot {
-    if (draft == null) return sanitizeLocalChatWindowSnapshot(localSnapshot)
-    return sanitizeLocalChatWindowSnapshot(
-        localSnapshot.copy(
-            messages = appendCompletedAssistantMessage(
-                source = localSnapshot.messages,
-                messageId = draft.messageId,
-                content = FAKE_STREAM_TEXT
-            )
-        )
-    )
-}
-
 private fun assistantMessageIdForSourceUser(sourceUserMessageId: String): String =
     "assistant_$sourceUserMessageId"
 
@@ -2127,6 +2043,27 @@ private fun trailingRecoverableUserMessageId(
                 !it.isLocalImageUploadPendingUserMessage()
         }
         ?.id
+
+private fun trailingRecoverableSourceUserMessageId(
+    source: List<ChatMessage>,
+    ignoredUserMessageIds: Set<String> = emptySet(),
+    failedAssistantMessageStates: Map<String, FailedAssistantMessageState> = emptyMap()
+): String? {
+    trailingRecoverableUserMessageId(
+        source = source,
+        ignoredUserMessageIds = ignoredUserMessageIds
+    )?.let { return it }
+    val lastMessage = source.lastOrNull() ?: return null
+    val failedAssistantState = failedAssistantMessageStates[lastMessage.id] ?: return null
+    val sourceUserMessageId = failedAssistantState.sourceUserMessageId
+    if (sourceUserMessageId.isBlank() || sourceUserMessageId in ignoredUserMessageIds) return null
+    val hasSourceUser = source.any { message ->
+        message.id == sourceUserMessageId &&
+            message.role == ChatRole.USER &&
+            !message.isLocalImageUploadPendingUserMessage()
+    }
+    return sourceUserMessageId.takeIf { hasSourceUser }
+}
 
 private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = withContext(Dispatchers.Default) {
     messages
@@ -2371,32 +2308,21 @@ fun ChatScreen() {
     }
     val view = LocalView.current
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
-    val initialStreamingDraft = remember(chatScopeId, hasRemoteHistorySource) {
-        if (hasRemoteHistorySource) {
-            null
-        } else {
-            context.loadLocalStreamingDraftSync(chatScopeId)
-        }
-    }
-    val initialLocalSnapshot = remember(chatScopeId, initialStreamingDraft, hasRemoteHistorySource) {
+    val initialLocalSnapshot = remember(chatScopeId, hasRemoteHistorySource) {
         if (hasRemoteHistorySource) {
             LocalChatWindowSnapshot()
         } else {
-            recoverStreamingDraftAsCompletedSnapshot(
-                localSnapshot = context.loadLocalChatWindowSync(chatScopeId),
-                draft = initialStreamingDraft
-            )
+            context.loadLocalChatWindowSync(chatScopeId)
         }
     }
     val initialLocalMessages = remember(initialLocalSnapshot) { initialLocalSnapshot.messages }
     val initialComposerDraftText = remember(chatScopeId) {
         context.loadLocalComposerDraftSync(chatScopeId)
     }
-    val uiRuntimeResetKey = remember(chatScopeId, initialLocalSnapshot, initialStreamingDraft, hasRemoteHistorySource) {
+    val uiRuntimeResetKey = remember(chatScopeId, initialLocalSnapshot, hasRemoteHistorySource) {
         buildString {
             append(chatScopeId)
             append("|local=").append(initialLocalSnapshot.hashCode())
-            append("|draft=").append(initialStreamingDraft?.hashCode() ?: 0)
             append("|backend=").append(if (hasRemoteHistorySource) 1 else 0)
         }
     }
@@ -2417,9 +2343,10 @@ fun ChatScreen() {
     var startupRecoverableUserMessageId by remember(uiRuntimeResetKey) {
         mutableStateOf(
             if (hasRemoteHistorySource) {
-                trailingRecoverableUserMessageId(
+                trailingRecoverableSourceUserMessageId(
                     source = initialLocalMessages,
-                    ignoredUserMessageIds = initialLocalSnapshot.failedUserMessageStates.keys
+                    ignoredUserMessageIds = initialLocalSnapshot.failedUserMessageStates.keys,
+                    failedAssistantMessageStates = initialLocalSnapshot.failedAssistantMessageStates
                 )
             } else {
                 null
@@ -2438,7 +2365,6 @@ fun ChatScreen() {
                     append(", localMessages=").append(initialLocalSnapshot.messages.size)
                     append(", localFailedUsers=").append(initialLocalSnapshot.failedUserMessageStates.size)
                     append(", localFailedAssistants=").append(initialLocalSnapshot.failedAssistantMessageStates.size)
-                    append(", localDraft=").append(initialStreamingDraft != null)
                     append(", hasRemoteSource=").append(hasRemoteHistorySource)
                 }
             )
@@ -2476,7 +2402,6 @@ fun ChatScreen() {
             )
         }
     }
-    var fakeStreamJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     val density = LocalDensity.current
     val startupBottomBarHeightEstimatePx = with(density) { STARTUP_BOTTOM_BAR_HEIGHT_ESTIMATE.roundToPx() }
     val startupInputChromeRowHeightEstimatePx = with(density) { STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE.roundToPx() }
@@ -2563,13 +2488,16 @@ fun ChatScreen() {
     var pendingStreamingFinalizeShouldRestoreBottomAnchor by remember(uiRuntimeResetKey) {
         mutableStateOf(false)
     }
+    var pendingStreamingFinalizeStartedAtMs by remember(uiRuntimeResetKey) {
+        mutableLongStateOf(0L)
+    }
     var anchoredUserMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var initialWorklinePhase by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(
             restoredInitialWorklinePhase(
                 hasMessages = initialLocalMessages.isNotEmpty(),
-                hasStreamingDraft = initialStreamingDraft != null,
+                hasStreamingDraft = false,
                 initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
             )
         )
@@ -3717,8 +3645,6 @@ fun ChatScreen() {
 
     LaunchedEffect(uiRuntimeResetKey) {
         mainHandler.removeCallbacksAndMessages(null)
-        fakeStreamJob?.cancel()
-        fakeStreamJob = null
         streamRevealJob?.cancel()
         streamRevealJob = null
         remoteRecoveryJob?.cancel()
@@ -3738,7 +3664,7 @@ fun ChatScreen() {
         anchoredUserMessageId = null
         initialWorklinePhase = restoredInitialWorklinePhase(
             hasMessages = initialLocalMessages.isNotEmpty(),
-            hasStreamingDraft = initialStreamingDraft != null,
+            hasStreamingDraft = false,
             initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
         )
         inputLimitHintVisible = false
@@ -3773,7 +3699,6 @@ fun ChatScreen() {
     DisposableEffect(uiRuntimeResetKey) {
         onDispose {
             mainHandler.removeCallbacksAndMessages(null)
-            fakeStreamJob?.cancel()
             streamRevealJob?.cancel()
             remoteRecoveryJob?.cancel()
             SessionApi.resetUiRuntimeForCleanState()
@@ -4179,8 +4104,6 @@ fun ChatScreen() {
         }
         if (interruptActiveStream) {
             SessionApi.cancelCurrentStream()
-            fakeStreamJob?.cancel()
-            fakeStreamJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             if (isStreaming) {
@@ -4391,8 +4314,6 @@ fun ChatScreen() {
             remoteRecoveryJob = null
             remoteRecoverySourceUserMessageId = null
             SessionApi.cancelCurrentStream()
-            fakeStreamJob?.cancel()
-            fakeStreamJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             isStreaming = false
@@ -4466,7 +4387,7 @@ fun ChatScreen() {
     }
 
     LaunchedEffect(uiRuntimeResetKey) {
-        if (initialLocalMessages.isEmpty() && initialStreamingDraft == null) {
+        if (initialLocalMessages.isEmpty()) {
             synchronized(inlineMarkdownCache) {
                 inlineMarkdownCache.clear()
             }
@@ -4484,8 +4405,15 @@ fun ChatScreen() {
             val localSnapshotForMergeDeferred = async {
                 context.loadLocalChatWindow(chatScopeId)
             }
+            val localStreamingDraftForMergeDeferred = async {
+                context.loadLocalStreamingDraft(chatScopeId)
+            }
             val snapshot = awaitRemoteSnapshot()
-            val localSnapshotForMerge = localSnapshotForMergeDeferred.await()
+            val localStreamingDraftForMerge = localStreamingDraftForMergeDeferred.await()
+            val localSnapshotForMerge = recoverStreamingDraftAsInterruptedSnapshot(
+                localSnapshot = localSnapshotForMergeDeferred.await(),
+                draft = localStreamingDraftForMerge
+            )
             if (hydrateClearEpoch != chatHistoryClearEpoch) {
                 historyHydrationComplete = true
                 return@LaunchedEffect
@@ -4506,9 +4434,10 @@ fun ChatScreen() {
                     shouldKeepPendingUserMessage = shouldKeepPendingUserMessage
                 )
             }
-            startupRecoverableUserMessageId = trailingRecoverableUserMessageId(
+            startupRecoverableUserMessageId = trailingRecoverableSourceUserMessageId(
                 source = hydratedSnapshot.messages,
-                ignoredUserMessageIds = hydratedSnapshot.failedUserMessageStates.keys
+                ignoredUserMessageIds = hydratedSnapshot.failedUserMessageStates.keys,
+                failedAssistantMessageStates = hydratedSnapshot.failedAssistantMessageStates
             )
             val prewarmMessages = if (snapshot == null) hydratedSnapshot.messages else remoteMessages
             if (prewarmMessages.isNotEmpty()) {
@@ -4568,18 +4497,10 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(uiRuntimeResetKey, initialStreamingDraft) {
-        if (initialStreamingDraft == null) return@LaunchedEffect
-        if (!context.hasLocalStreamingDraft(chatScopeId)) return@LaunchedEffect
-        val persistClearEpoch = chatHistoryClearEpoch
-        context.saveLocalChatWindowIfEpoch(
-            chatScopeId = chatScopeId,
-            snapshot = initialLocalSnapshot,
-            expectedEpoch = persistClearEpoch,
-            epochRef = chatHistoryClearEpochRef
-        )
-        if (persistClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
-        context.clearLocalStreamingDraft(chatScopeId)
+    LaunchedEffect(uiRuntimeResetKey) {
+        if (!hasRemoteHistorySource) {
+            context.clearLocalStreamingDraft(chatScopeId)
+        }
     }
 
     LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete, startupRecoverableUserMessageId) {
@@ -4609,10 +4530,18 @@ fun ChatScreen() {
         }
         if (!hasSettledAssistantMessageForUser(sourceUserMessageId)) {
             if (recoveryClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
+            val assistantMessageId = assistantMessageIdForSourceUser(sourceUserMessageId)
+            val existingPartialContent = messages
+                .firstOrNull { message ->
+                    message.id == assistantMessageId &&
+                        message.role == ChatRole.ASSISTANT
+                }
+                ?.content
+                .orEmpty()
             finalizeInterruptedAssistant(
                 sourceUserMessageId = sourceUserMessageId,
-                assistantMessageId = assistantMessageIdForSourceUser(sourceUserMessageId),
-                finalContent = "",
+                assistantMessageId = assistantMessageId,
+                finalContent = existingPartialContent,
                 reason = "network",
                 showHint = false
             )
@@ -4933,6 +4862,7 @@ fun ChatScreen() {
     fun clearPendingStreamingFinalize() {
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
+        pendingStreamingFinalizeStartedAtMs = 0L
     }
 
     fun beginPendingStreamingFinalize(
@@ -4946,6 +4876,7 @@ fun ChatScreen() {
         messageSelectionBoundsById.remove(anchorMessageId)
         pendingStreamingFinalizeMessageId = anchorMessageId
         pendingStreamingFinalizeShouldRestoreBottomAnchor = shouldRestoreBottomAnchor
+        pendingStreamingFinalizeStartedAtMs = SystemClock.uptimeMillis()
     }
     var restoreBottomAnchorIfNeededAfterStreamingStop: (Boolean) -> Unit = {}
 
@@ -4964,7 +4895,6 @@ fun ChatScreen() {
         streamingFreshEnd = -1
         lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
-        fakeStreamJob = null
         streamRevealJob = null
         resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
         restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor)
@@ -5010,7 +4940,6 @@ fun ChatScreen() {
                 streamingMessageContent = finalContent
             }
             val finalId = streamingMessageId
-            fakeStreamJob = null
             streamingRevealBuffer = ""
             if (finalContent.isNotBlank()) {
                 if (shouldRestoreBottomAnchor) {
@@ -5053,86 +4982,6 @@ fun ChatScreen() {
         }
     }
 
-    fun launchLocalFakeStream(
-        skipChars: Int = 0,
-        applyInitialDelay: Boolean
-    ) {
-        val fullText = FAKE_STREAM_TEXT
-        val safeSkipChars = skipChars.coerceIn(0, fullText.length)
-        fakeStreamJob?.cancel()
-        fakeStreamJob = snackbarScope.launch {
-            if (applyInitialDelay) {
-                val ballStartTime = SystemClock.uptimeMillis()
-                val initialDelayMs = Random.nextLong(LOCAL_STREAM_FIRST_TOKEN_MIN_MS, LOCAL_STREAM_FIRST_TOKEN_MAX_MS)
-                val minBallMs = LOCAL_STREAM_MIN_BALL_MS
-                val elapsed = SystemClock.uptimeMillis() - ballStartTime
-                val firstTokenWait = maxOf(initialDelayMs, minBallMs - elapsed)
-                if (firstTokenWait > 0) {
-                    delay(firstTokenWait)
-                }
-            }
-
-            var remaining = fullText.drop(safeSkipChars)
-            if (remaining.isEmpty()) {
-                while (isActive && streamingRevealBuffer.isNotEmpty()) {
-                    delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
-                }
-                if (isActive && isStreaming) {
-                    finishStreaming()
-                }
-                return@launch
-            }
-
-            while (isActive && remaining.isNotEmpty()) {
-                val step = nextLocalStreamFeedBatch(remaining)
-                appendAssistantChunk(step.text)
-                remaining = remaining.drop(step.text.length)
-                if (step.delayMs > 0) {
-                    delay(step.delayMs)
-                }
-            }
-            while (isActive && streamingRevealBuffer.isNotEmpty()) {
-                delay(STREAM_TYPEWRITER_IDLE_POLL_MS)
-            }
-            if (isActive) finishStreaming()
-        }
-    }
-
-    fun recoverStreamingAfterLifecycleLoss() {
-        val recoveryClearEpoch = chatHistoryClearEpoch
-        mainHandler.post {
-            if (recoveryClearEpoch != chatHistoryClearEpoch) return@post
-            if (!isStreaming) return@post
-            if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@post
-            if (hasRemoteHistorySource) return@post
-            if (!BuildConfig.DEBUG) return@post
-            resumeScrollRuntimeForStreamingRecovery(scrollRuntime)
-            if (streamRevealJob?.isActive == true) {
-                streamRevealJob?.cancel()
-                streamRevealJob = null
-            }
-            flushStreamingRevealBuffer(
-                currentMessageId = streamingMessageId,
-                currentContent = streamingMessageContent,
-                currentRevealBuffer = streamingRevealBuffer,
-                anchoredUserMessageId = anchoredUserMessageId,
-                assistantIdProvider = ::assistantMessageIdForSourceUser,
-                fallbackIdProvider = { "assistant_${UUID.randomUUID()}" }
-            )?.let { flushed ->
-                streamingMessageId = flushed.messageId
-                streamingMessageContent = flushed.content
-                streamingRevealBuffer = ""
-            }
-            if (fakeStreamJob?.isActive == true) return@post
-            val consumedChars = (streamingMessageContent.length + streamingRevealBuffer.length)
-                .coerceAtMost(FAKE_STREAM_TEXT.length)
-            launchLocalFakeStream(
-                skipChars = consumedChars,
-                applyInitialDelay = false
-            )
-        }
-    }
-
     fun handleAssistantInterrupted(sourceUserMessageId: String, reason: String) {
         val interruptedClearEpoch = chatHistoryClearEpoch
         mainHandler.post {
@@ -5146,8 +4995,6 @@ fun ChatScreen() {
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
             clearPendingStreamingFinalize()
-            fakeStreamJob?.cancel()
-            fakeStreamJob = null
             streamRevealJob?.cancel()
             streamRevealJob = null
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
@@ -5478,7 +5325,6 @@ fun ChatScreen() {
             runtime = scrollRuntime,
             preserveUserBrowsing = shouldPreserveUserBrowsingForStreamingStart()
         )
-        fakeStreamJob?.cancel()
         streamRevealJob?.cancel()
         streamRevealJob = null
         sendStartAnchorActive = !shouldSuppressAutomaticBottomAnchor()
@@ -5764,7 +5610,8 @@ fun ChatScreen() {
         isStreaming,
         messages.size,
         startupBottomReserveReady,
-        streamingBackgrounded
+        streamingBackgrounded,
+        pendingStreamingFinalizeStartedAtMs
     ) {
         val pendingMessageId = pendingStreamingFinalizeMessageId
         if (pendingMessageId.isNullOrBlank()) return@LaunchedEffect
@@ -5781,16 +5628,29 @@ fun ChatScreen() {
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             return@LaunchedEffect
         }
-        if (!startupBottomReserveReady) return@LaunchedEffect
-        snapshotFlow {
-            messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
-                bounds.bottom > bounds.top && bounds.bottom > 0f
+        val elapsedMs = (SystemClock.uptimeMillis() - pendingStreamingFinalizeStartedAtMs)
+            .coerceAtLeast(0L)
+        val remainingBoundsWaitMs = (STREAMING_FINALIZE_BOUNDS_TIMEOUT_MS - elapsedMs)
+            .coerceAtLeast(0L)
+        val receivedFreshBounds = if (startupBottomReserveReady && remainingBoundsWaitMs > 0L) {
+            withTimeoutOrNull(remainingBoundsWaitMs) {
+                snapshotFlow {
+                    messageContentBoundsById[pendingMessageId]?.takeIf { bounds ->
+                        bounds.bottom > bounds.top && bounds.bottom > 0f
+                    }
+                }
+                    .filterNotNull()
+                    .first()
+            } != null
+        } else {
+            if (remainingBoundsWaitMs > 0L) {
+                delay(remainingBoundsWaitMs)
             }
+            false
         }
-            .filterNotNull()
-            .first()
         if (pendingStreamingFinalizeMessageId == pendingMessageId && isStreaming) {
             if (
+                receivedFreshBounds &&
                 scrollMode != ScrollMode.UserBrowsing &&
                 !scrollRuntime.userInteracting.value &&
                 !chatListUserDragging
@@ -5800,55 +5660,6 @@ fun ChatScreen() {
             finalizeStreamingStop(
                 shouldRestoreBottomAnchor = false
             )
-        }
-    }
-
-    fun completeStreamingImmediatelyFromBackground() {
-        val finalizeStreamingFromBackground: () -> Unit = finalizeStreamingFromBackground@{
-            if (!isStreaming) return@finalizeStreamingFromBackground
-            if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return@finalizeStreamingFromBackground
-            val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
-            val finalId = streamingMessageId
-                ?: anchoredUserMessageId?.let(::assistantMessageIdForSourceUser)
-                ?: "assistant_${UUID.randomUUID()}"
-            val finalContent = normalizeAssistantText(FAKE_STREAM_TEXT)
-            fakeStreamJob?.cancel()
-            fakeStreamJob = null
-            streamRevealJob?.cancel()
-            streamRevealJob = null
-            streamingMessageId = finalId
-            streamingMessageContent = finalContent
-            streamingRevealBuffer = ""
-            if (finalContent.isNotBlank()) {
-                applyCompletedAssistantMessageInPlace(
-                    target = messages,
-                    messageId = finalId,
-                    content = finalContent
-                )
-                beginPendingStreamingFinalize(
-                    anchorMessageId = finalId,
-                    shouldRestoreBottomAnchor = shouldRestoreBottomAnchor
-                )
-                persistTick++
-                context.saveLocalChatWindowSync(
-                    chatScopeId = chatScopeId,
-                    snapshot = persistableLocalChatWindowSnapshot()
-                )
-                context.clearLocalStreamingDraftSync(chatScopeId)
-            } else {
-                removeMessageById(finalId)
-                context.saveLocalChatWindowSync(
-                    chatScopeId = chatScopeId,
-                    snapshot = persistableLocalChatWindowSnapshot()
-                )
-                context.clearLocalStreamingDraftSync(chatScopeId)
-                finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
-            }
-        }
-        if (Looper.myLooper() == Looper.getMainLooper()) {
-            finalizeStreamingFromBackground()
-        } else {
-            mainHandler.post { finalizeStreamingFromBackground() }
         }
     }
 
@@ -9018,8 +8829,8 @@ private fun TodayAgriNewsCard(
     maxCardWidth: Dp = 560.dp,
     modifier: Modifier = Modifier
 ) {
-    val items = card.items.orEmpty()
-    if (items.isEmpty()) return
+    val items = card.items.orEmpty().take(3)
+    if (items.size != 3) return
     val dateText = todayAgriDateText(card.dateCn)
     Box(
         modifier = modifier
@@ -9545,30 +9356,3 @@ private fun MessageStatusFooter(
         }
     }
 }
-
-private val FAKE_STREAM_TEXT = """
-初步判断：你描述的叶片失绿、午后萎蔫和局部长势不齐，更像环境波动叠加管理节奏不稳导致的综合性问题，暂时还不能直接归因为单一病虫害。先按下面的问诊路径补齐信息，目标是先把风险控制住，再在两到三天内把结论做实。
-
-## 一、补充信息
-1. 作物与阶段：品种、定植时间、当前处于营养生长期还是开花坐果期，不同阶段对温湿和供水波动的耐受差异很大。
-2. 异常起点：最早出现在新叶、老叶、叶缘、叶脉还是茎基部，起点位置通常比最后表现更有诊断价值。
-3. 变化速度：是一天内突然加重，还是三到五天缓慢扩展，速度会直接影响排查优先级。
-4. 空间分布：零散点状、行间成片，还是整棚同步，分布特征能帮助区分环境扰动和持续性问题。
-5. 近期操作：近七天是否有浇水节奏变化、通风调整、连续阴雨后暴晒，或者整枝打杈等管理动作。
-
-## 二、可能原因 Top3
-1. 根际短时失衡：水分和通气在短周期内反复波动，白天蒸腾上来后叶片容易发软，傍晚缓解，边缘轻失绿。
-2. 小气候叠加：同棚不同位置温差、湿差、风口位置差异明显，症状会随时段和天气轻重变化。
-3. 管理节奏错位：作物实际需求已变化，但灌水、遮阴、通风、追肥节奏没有同步调整，导致部分植株先出现应激反应。
-
-## 三、观察与复查
-当天先做可回退动作：浇水、通风、遮阴都采用小幅、连续、可追踪的调整，不要一次性大改。设置三到五个固定观测点，覆盖轻、中、重三类植株，同一时间拍近景和中景，记录叶色、挺度、边缘卷曲程度和新叶状态。
-
-次日复查重点只看四件事：症状边界是否继续外扩，异常株与正常株差距是否拉大，新叶是否持续变差，午后与傍晚差异是否缩小。如果范围趋稳、恢复加快、差距收敛，可以继续稳态观察；如果扩展加快、萎蔫提前、差异放大，就说明要升级排查。
-
-## 四、风险提示
-不要急着凭一张图或者一次观察下结论。农业现场最常见的误判，是把环境应激、根系问题、营养失衡和轻度病虫信号混成一个原因处理，结果越调越乱。现阶段先保证操作可回退、记录可对比、判断有依据，比仓促给药或者大改管理更重要。
-
-## 五、执行建议
-今天先把管理稳定下来，完成定点记录；明天同一时段回看关键指标，再决定是否需要升级处理。这样做不是拖，而是建立一套可落地、可复核、可回退的移动端问诊闭环，后面即使接入 SAE 和真实模型流式输出，这套消息插入、流式追加、结束收敛的 UI 逻辑也可以直接沿用，只需要把假流式文本源替换成后端流数据。
-""".trimIndent()

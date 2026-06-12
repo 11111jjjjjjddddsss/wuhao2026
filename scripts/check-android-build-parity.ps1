@@ -57,6 +57,8 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $buildFile = Join-Path $RepoRoot "app/build.gradle.kts"
 $manifestFile = Join-Path $RepoRoot "app/src/main/AndroidManifest.xml"
 $networkSecurityFile = Join-Path $RepoRoot "app/src/main/res/xml/network_security_config.xml"
+$backupRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/backup_rules.xml"
+$dataExtractionRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/data_extraction_rules.xml"
 $idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdManager.kt"
 $sessionApiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
 $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
@@ -65,7 +67,7 @@ $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Cha
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -75,6 +77,8 @@ if ($failures.Count -eq 0) {
     $build = Get-Content -LiteralPath $buildFile -Raw
     $manifest = Get-Content -LiteralPath $manifestFile -Raw
     $networkSecurity = Get-Content -LiteralPath $networkSecurityFile -Raw
+    $backupRules = Get-Content -LiteralPath $backupRulesFile -Raw
+    $dataExtractionRules = Get-Content -LiteralPath $dataExtractionRulesFile -Raw
     $idManager = Get-Content -LiteralPath $idManagerFile -Raw
     $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
     $fusionClient = Get-Content -LiteralPath $fusionClientFile -Raw
@@ -104,6 +108,12 @@ if ($failures.Count -eq 0) {
 
     Require-Match $failures $manifest 'android:networkSecurityConfig="@xml/network_security_config"' `
         "Main manifest must keep the app-level networkSecurityConfig."
+    Require-Match $failures $manifest 'android:allowBackup="false"' `
+        "Main manifest must keep allowBackup=false so old local UI state is not restored after clear-data/reinstall."
+    Require-Match $failures $manifest 'android:dataExtractionRules="@xml/data_extraction_rules"' `
+        "Main manifest must keep explicit dataExtractionRules."
+    Require-Match $failures $manifest 'android:fullBackupContent="@xml/backup_rules"' `
+        "Main manifest must keep explicit fullBackupContent rules."
     Require-Match $failures $manifest 'android\.permission\.READ_PHONE_STATE' `
         "Manifest must declare READ_PHONE_STATE for one-click login environment checks."
     Require-Match $failures $manifest 'android\.permission\.ACCESS_NETWORK_STATE' `
@@ -133,6 +143,18 @@ if ($failures.Count -eq 0) {
     }
     if (Test-Path -LiteralPath $debugNetworkSecurityFile) {
         Add-Failure $failures "Debug network security config must not diverge from release: $debugNetworkSecurityFile"
+    }
+    foreach ($backupDomain in @("root", "file", "database", "sharedpref", "external", "device_root", "device_file", "device_database", "device_sharedpref")) {
+        Require-Match $failures $backupRules ('<exclude\s+domain="' + [regex]::Escape($backupDomain) + '"\s+path="\."\s*/>') `
+            "backup_rules.xml must exclude $backupDomain from Android backup."
+    }
+    foreach ($sectionName in @("cloud-backup", "device-transfer")) {
+        Require-Match $failures $dataExtractionRules ('<' + $sectionName + '>') `
+            "data_extraction_rules.xml must keep <$sectionName> rules."
+        foreach ($backupDomain in @("root", "file", "database", "sharedpref", "external", "device_root", "device_file", "device_database", "device_sharedpref")) {
+            Require-Match $failures $dataExtractionRules ('<exclude\s+domain="' + [regex]::Escape($backupDomain) + '"\s+path="\."\s*/>') `
+                "data_extraction_rules.xml must exclude $backupDomain from Android $sectionName."
+        }
     }
 
     $mergedManifestPaths = @(
@@ -217,6 +239,8 @@ if ($failures.Count -eq 0) {
         "Debug-only preview panel must stay behind BuildConfig.DEBUG."
     Require-Match $failures $chatScreen 'Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}' `
         "Debug-only preview entry point must remain an explicit click hook."
+    Require-NoMatch $failures $chatScreen 'FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep' `
+        "ChatScreen must not restore local fake streaming/fake assistant copy; remote failure should use snapshot recovery or retry state."
 }
 
 if ($failures.Count -gt 0) {

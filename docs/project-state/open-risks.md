@@ -13,9 +13,9 @@
 ## R2 项目记忆已有程序化检查，但覆盖仍偏粗
 
 - 状态：未关闭
-- 说明：仓库里已有 `scripts/check_project_memory.py`，CI 也会在关键真相文件变更时检查是否同步更新了项目记忆文件；但当前检查粒度仍是“至少改了一份 memory 文件”，还不会判断 `current-status / open-risks / pending-decisions / recent-changes` 之间是否互相一致
-- 风险：即使 CI 通过，记忆文件之间仍可能出现轻微漂移或局部过期，影响新窗口对“当前真相 / 已关闭风险 / 仍待决策”的判断
-- 后续动作：后面视情况继续把校验收紧到“按变更类型要求更新特定文件或特定章节”，减少文档之间互相打架
+- 说明：仓库里已有 `scripts/check_project_memory.py`，CI 也会在关键真相文件变更时检查是否同步更新了项目记忆文件；2026-06-12 已从“至少改一份 memory 文件”收紧为按变更类型要求特定文件：关键代码 / runbook / 运维脚本变更默认要更新 `recent-changes.md`，当前真相类变更要更新 `current-status.md`，登录 / 部署 / 监控 / 支付 / 礼品卡 / 今日农情等风险敏感区域还要更新 `open-risks.md`，项目记忆校验策略本身变化还要同步 `pending-decisions.md`
+- 风险：当前仍是文件级校验，不会判断具体章节内容是否写对，也不能自动识别所有业务语义；即使 CI 通过，记忆文件之间仍可能出现轻微漂移或局部过期，影响新窗口对“当前真相 / 已关闭风险 / 仍待决策”的判断
+- 后续动作：观察误报率和维护成本；如果仍出现文档互相打架，再把校验继续细化到“特定章节 / 特定关键词 / active slot 口径”等更强一致性检查
 
 ## R3 GitHub 协作层尚未结构化
 
@@ -30,7 +30,7 @@
 - 说明：当前聊天消息运行时已按用户拍板从反向列表切回单一正向 `LazyColumn` 主人：`ChatRecyclerViewHost.kt` 不再使用 `reverseLayout` / `items.asReversed()`，`messages` 仍按 oldest -> newest 直接显示，最新消息在 `lastIndex`。mixed active-zone / overlay、小分割 list itemization、streaming `scrollBy` / `dispatchRawDelta` 高度补偿都不在主链运行
 - 已验证：2026-04-28 用户真机反馈当前滚动链“确实很稳”。核心链路包括：`SideEffect` 同帧底部锚定压 streaming 下一行冒头闪；用户滑回正向列表物理底部后快速恢复 AutoFollow；96dp 工作线以下空白按当前贴底链露出；上滑 / 下滑整体不再抢手
 - 剩余风险：仍需在更长回复、不同输入法 / 设备、含免责声明答案、冷启动首次点输入框等边角场景继续观察；如果再次出现冒头闪、尾部收口微动或手动回底不跟随，下一刀优先检查当前正向列表底部锚点、reveal 提交节奏、工作线 bounds、contentPadding 与 item padding 的几何关系，不恢复 overlay、小分割或 raw delta
-- 风险补充：pending finalize 仍不主动 bottom align，主要依赖两阶段 fresh bounds、unified soft-wrap renderer 和 streaming 免责声明几何占位。若含免责声明答案收口仍微跳，优先在同一消息主人内复核高度来源，不恢复完整 `scrollToBottom(false)` 精修
+- 风险补充：pending finalize 仍不主动 bottom align，主要依赖两阶段 fresh bounds、unified soft-wrap renderer 和 streaming 免责声明几何占位；极端切后台 / 布局回调丢失 / bottom reserve 迟迟不 ready 时有约 1500ms 绝对超时兜底，避免一直停在生成态，超时路径不会强制底部锚点。若含免责声明答案收口仍微跳，优先在同一消息主人内复核高度来源，不恢复完整 `scrollToBottom(false)` 精修
 - 风险补充：composer 当前已完成 P0 拆链、取消发送旧高度锁、统一收键盘路径为 `clearFocus(force = true)`，并删除死链 overlay prewarm snapshot 协程。若真机仍有输入框残影或冷启动首点迟钝，下一步才评估是否需要 `WindowInsetsAnimationCompat`；不要把 IME padding 挪到根容器去抬升消息列表，也不要动滚动主链
 - 风险补充：极端恢复链已做低风险兜底：断网连续发送同文复用已有失败用户消息；远端 streaming 重启恢复失败会补 assistant 重试入口；切后台会清消息 / 输入选择菜单；`SessionApi` 保留 active SSE call 引用直到读循环退出，方便 reset / cancel。剩余观察点是：弱网下 OkHttp `readTimeout(60s)` 仍可能让小球等待较久；额度用完前端锁当前是本地会话级，App 被系统杀掉后仍以第一次后端 quota 返回为准；图片入口首版已接入相机 / 照片、后台下采样预览、压缩上传和 URL 恢复显示，相机 FileProvider URI 已补读写 flags、ClipData 和显式包授权，但仍需继续真机验证第三方相机 / 相册 URI、弱网多图上传失败、后端图片生命周期和 OSS 权限
 - 后续动作：把当前正向列表滚动链作为稳定基线保留；短期只做边角验证和低风险清理，不再主动重构滚动主链
@@ -106,8 +106,8 @@
 ## R13 今日农情生成质量和失败告警仍需上线观察
 
 - 状态：未关闭
-- 说明：今日农情首版已接入独立后端链路和 Android UI-only 卡片；它不影响聊天主链、不扣用户问诊次数、不进入用户记忆文档或归档。当前生成固定 `qwen3.5-plus + OpenAI compatible chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`，不保留其它模型候选或环境变量切换入口。生成前会把过去 7 天已 ready 的今日农情喂给模型要求去重；提示词版本 `2026-06-12-v63` 已按“不能坑用户、不要过度压模型、普通群众能看懂、通用化表达但守住边界”收口。当前唯一硬数量要求是 3 条，发布、Android 展示和后台预览都要求 3 条标题 / 摘要完整 item，少于 3 条视为不完整；种植侧、养殖水产不要、旧闻 / 广告软文 / 假新闻 / 重复事件 / 标题党等质量方向主要靠提示词、探针、后台运营复核与日志观察控制。服务端当前只保留 JSON 结构、3 条标题 / 摘要非空 item 和私网 / 本机 URL 安全兜底，不按可信域名、主题词、发布日期、历史链接、重复标题、养殖词或广告词做发布阻断。生成最多 2 次，第二次只在首轮解析失败后换检索提示补救，仍走 `turbo`，不切 `agent`；兼容 Chat 链路通常没有结构化搜索来源列表，来源名主要来自模型 JSON 的 `source_name`，来源 URL 只作为内部追溯和后台排查，不下发给 Android 用户卡片。ECS systemd timer 和后台补跑都已落地。
-- 风险：如果 `turbo` 返回的材料质量差、主题偏养殖水产、广告软文多或信息过期，模型仍可能产出不理想；后端当前不靠内容拦截解决这些问题，只有模型输出无法解析成 JSON 或少于 3 条标题 / 摘要可展示 item 时才不发布，前端静默不展示。`qwen3.5-plus` v63 链路仍需持续用生产探针确认 `ok_count`、`model_search_count`、`model_reasoning_tokens`、标题长度、来源名、过期材料、综合指数 / 综合行情凑数和养殖水产 / 广告软文是否被提示词压住；兼容 Chat 链路的 `source_count=0` 不等同于没联网。2026-06-12 v63 最新生产探针 `runs=2` 为 `ok_count=2/2`，每轮 3 条完整 item，无 reasoning tokens，但摘要长度样本约 67-98 字，厚度仍有波动；本轮短暂尝试 v64 / v65 加强摘要厚度，线上探针反而更薄，已回退 v63。暂未见养殖水产主体或代码块，但样本量还小，仍需继续观察。联网搜索会增加输入 token，并且搜索策略本身也有调用费用，所以仍要坚持“云端每天定时一次 + 后台补跑兜底”，不能改成用户打开 App 时临时生成。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；`nongji-daily-agri-failed` AlertHub 告警已落地，但外部通知、自动重试策略和运营抽查节奏还需要继续收口。
+- 说明：今日农情首版已接入独立后端链路和 Android UI-only 卡片；它不影响聊天主链、不扣用户问诊次数、不进入用户记忆文档或归档。当前生成固定 `qwen3.5-plus + OpenAI compatible chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`，不保留其它模型候选或环境变量切换入口。生成前会把过去 7 天已 ready 的今日农情喂给模型要求去重；提示词版本 `2026-06-12-v67` 已按“不能坑用户、不要过度压模型、普通群众能看懂、通用化表达但守住边界”收口，并参考官方农业资讯栏目把生产动态、农事指导、病虫测报、苗情墒情、专项监测、农业气象、灾害预警、春播夏管秋收进度、技术方案和单品 / 产区价格等作为选题方向和检索路标。当前唯一硬数量要求是 3 条，发布、Android 展示和后台预览都要求 3 条标题 / 摘要完整 item，少于 3 条视为不完整；种植侧、养殖水产不要、旧闻 / 广告软文 / 假新闻 / 重复事件 / 标题党等质量方向主要靠提示词、探针、后台运营复核与日志观察控制。服务端当前只保留 JSON 结构、3 条标题 / 摘要非空 item 和私网 / 本机 URL 安全兜底，不按可信域名、主题词、发布日期、历史链接、重复标题、养殖词或广告词做发布阻断。生成最多 2 次，第二次只在首轮解析失败后换检索提示补救，仍走 `turbo`，不切 `agent`；兼容 Chat 链路通常没有结构化搜索来源列表，来源名主要来自模型 JSON 的 `source_name`，来源 URL 只作为内部追溯和后台排查，不下发给 Android 用户卡片。ECS systemd timer 和后台补跑都已落地。
+- 风险：如果 `turbo` 返回的材料质量差、主题偏养殖水产、广告软文多或信息过期，模型仍可能产出不理想；后端当前不靠内容拦截解决这些问题，只有模型输出无法解析成 JSON 或少于 3 条标题 / 摘要可展示 item 时才不发布，前端静默不展示。`qwen3.5-plus` v67 链路仍需持续用生产探针确认 `ok_count`、`model_search_count`、`model_reasoning_tokens`、标题长度、来源名、过期材料、综合指数 / 综合行情凑数和养殖水产 / 广告软文是否被提示词压住；兼容 Chat 链路的 `source_count=0` 不等同于没联网。2026-06-12 v67 生产探针 `runs=2` 为 `ok_count=2/2`，每轮 3 条完整 item，`prompt_version=2026-06-12-v67`，未返回 reasoning tokens，来源样本为农业农村部、山东农机化网、中国农资流通网等；摘要长度样本约 76-92 字，仍有低于 90-130 字目标的薄摘要，后续继续靠探针和后台复核小步校准，不恢复后端字数硬过滤。暂未见养殖水产主体或代码块，但样本量还小，仍需继续观察。联网搜索会增加输入 token，并且搜索策略本身也有调用费用，所以仍要坚持“云端每天定时一次 + 后台补跑兜底”，不能改成用户打开 App 时临时生成。当前仅有 `scope=CN` 全国卡片，尚未做地区 / 作物个性化；`nongji-daily-agri-failed` AlertHub 告警已落地，但外部通知、自动重试策略和运营抽查节奏还需要继续收口。
 - 补充：买服务器前今日农情巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。当前没有发现用户打开 App 临时生成、写用户记忆文档、写归档、扣次或伪装成 `ChatMessage` 的旧链路；残余风险主要是质量运营，比如同一事件换标题、养殖水产漏入、广告软文和假新闻需要靠提示词、探针、后台人工抽查与后续告警约束。当前检索阶段已改为全网宽搜、不限定固定网站，发布阶段也不再用可信域名 / 近 7 天链接 / 主题词 / 内容词表做内容拦截；如果模型没有输出可解析 JSON 或少于 3 条标题 / 摘要完整内容，用户侧会静默不展示，需要通过后台补跑或内部探针排查。
 - 补充：2026-06-09 已补今日农情坏缓存兜底：用户侧只展示 JSON 合法且结构完整的 ready 卡片，坏 `content_json` 不再把 `/api/today-agri-card` 打成 500；后台今日农情列表会把坏 `content_json / sources_json` 标成行内错误；补跑遇到 ready 但正文不可用的卡片时允许重新生成覆盖。该护栏只解决坏数据可恢复和后台可见性，不代表内容质量、自动告警或个性化已经闭环
 - 后续动作：持续观察 SLS 日志关键词 `daily agri generation started` / `daily agri model response received` / `daily agri model output not displayable` / `daily agri card generated` / `generate today agri card failed`，并抽查 `daily_agri_cards` 当天 `status/content_json/error/model/search_strategy/prompt_version`。若连续失败，优先评估调整主提示词、增加探针观察、后台人工复核 / 补跑、自动重试和外部通知；不要回到可信域名白名单、固定站点限制、旧 `prompt_intervene` 路线、后端内容过滤或用户打开 App 临时多次调模型

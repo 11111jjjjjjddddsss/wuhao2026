@@ -75,6 +75,8 @@
 - App 不崩溃
 - 已生成内容不丢
 - 如果流已中断，应显示失败 / 可重试，不应无限小球
+- 如果 App 被系统杀掉后重开，已落盘的真实 streaming draft 可显示成“回复未完成 · 点击重试”，但不得变成本地假回答或完成态
+- 如果后端已经完成但 fresh bounds 或 bottom reserve 一直没有回调，短时间内也应退出生成态，不应一直挂小球
 - 回到页面后键盘状态不应把消息工作线顶乱
 - 若切后台前有消息复制菜单或输入框选择菜单，回来后不应继续悬挂旧菜单
 
@@ -99,6 +101,8 @@
 - 不崩溃
 - 已生成文字完整保留，不丢字、不截断、不只剩半段排版
 - 如果流已中断，应显示失败 / 可重试，不应无限小球
+- 如果只能恢复半截真实回复，应保留半截内容并提供重试，不应清成空白，也不应把它当完整回答
+- 如果完成态 fresh bounds 或 bottom reserve 因锁屏 / 解锁时机丢失，短时间内也应从生成态收口；超时收口不应把列表强行拉跳
 - 消息区、输入框、键盘状态恢复合理
 
 ## 3. 滚动链 / 生成链
@@ -122,6 +126,9 @@
 - 回复结束后不大跳
 - 工作线以下 96dp 空白露出
 - 免责声明出现时不把尾部突然顶高
+- 不应出现本地固定示例假回答；远端失败只能进入远端恢复或“回复未完成 · 点击重试”
+- 真实 streaming draft 恢复后仍应走远端 snapshot 恢复；若远端最终有完整归档，应替换半截失败气泡
+- 极端生命周期下不应无限停留在生成态；fresh bounds / bottom reserve 超时兜底后仍应保持用户当前浏览位置，不强行抢到底部
 
 ## 4. 输入框 / IME
 
@@ -190,8 +197,9 @@
 - 当前无手机号 / 稳定账号登录时，应视为 clean-state
 - 不应从本地恢复旧聊天、旧输入框高度、旧滚动位置
 - 如果未来绑定手机号，后端按账号返回最近 30 轮属于业务恢复，不是 UI 回退
-- 注意区分“清除数据”和“清除缓存”：清除缓存只应影响 `cacheDir` 里的相机临时图、更新 APK 临时文件等，不应清掉 `SharedPreferences` 里的 `user_id / chat_ui_cache / pending_chat_sends`，也不应删除 `files/composer_images` 稳定上传副本
+- 注意区分“清除数据”和“清除缓存”：清除缓存只应影响 `cacheDir` 里的相机临时图、更新 APK 临时文件等，不应清掉 `SharedPreferences` 里的 `user_id / chat_ui_cache / pending_chat_sends`，也不应删除 `files/composer_images` 稳定上传副本；清除 App 数据才应进入 clean-state 或重新登录流程
 - Android 已移除固定 `SESSION_API_TOKEN` 登录绕过；清数据后若看到旧后端历史，优先按真实账号 session、远端 snapshot 或本地 hydrate 链排查，并同时看 debug 日志 `ChatStartup`
+- Android manifest 必须保持 `allowBackup=false`，`backup_rules.xml` / `data_extraction_rules.xml` 必须继续排除 prefs、files、databases、external 和 device-protected 数据，避免系统云备份 / 设备迁移把旧 UI 缓存带回
 
 ### 6.2 重装覆盖安装
 

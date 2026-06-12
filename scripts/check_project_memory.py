@@ -29,11 +29,80 @@ WATCHED_EXACT = {
     "server-go/AGENTS.md",
 }
 
+WATCHED_SCRIPT_EXACT = {
+    "scripts/check_project_memory.py",
+    "scripts/check-android-build-parity.ps1",
+    "scripts/check-ecs-readiness.ps1",
+    "scripts/deploy-ecs-server.ps1",
+    "scripts/rollback-ecs-server.ps1",
+    "scripts/deploy-ecs-admin.ps1",
+    "scripts/deploy-ecs-site.ps1",
+    "scripts/check-sls-alert-readiness.ps1",
+    "scripts/setup-sls-alerts.ps1",
+    "scripts/query-ecs-logs.ps1",
+    "scripts/check-auth-usage.ps1",
+    "scripts/check-resource-capacity.ps1",
+    "scripts/upload-android-release.ps1",
+}
+
 IGNORED_PREFIXES = (
     "docs/project-state/",
     ".github/",
-    "scripts/",
     ".git",
+)
+
+CURRENT_STATUS_PREFIXES = (
+    "app/src/main/kotlin/com/nongjiqianwen/",
+    "server-go/",
+    "docs/adr/",
+    "docs/runbooks/",
+)
+
+CURRENT_STATUS_SCRIPT_EXACT = {
+    "scripts/check-android-build-parity.ps1",
+    "scripts/check-ecs-readiness.ps1",
+    "scripts/deploy-ecs-server.ps1",
+    "scripts/rollback-ecs-server.ps1",
+    "scripts/deploy-ecs-admin.ps1",
+    "scripts/deploy-ecs-site.ps1",
+    "scripts/check-sls-alert-readiness.ps1",
+    "scripts/setup-sls-alerts.ps1",
+    "scripts/query-ecs-logs.ps1",
+    "scripts/check-auth-usage.ps1",
+    "scripts/check-resource-capacity.ps1",
+    "scripts/upload-android-release.ps1",
+}
+
+RISK_SENSITIVE_KEYWORDS = (
+    "admin",
+    "app-update",
+    "app_update",
+    "auth",
+    "capacity",
+    "daily-agri",
+    "daily_agri",
+    "deploy",
+    "ecs",
+    "fusion",
+    "gift",
+    "health",
+    "login",
+    "logs",
+    "member",
+    "monitor",
+    "order",
+    "payment",
+    "quota",
+    "readiness",
+    "redis",
+    "rollback",
+    "security",
+    "sls",
+    "sms",
+    "support",
+    "today-agri",
+    "today_agri",
+    "upload",
 )
 
 
@@ -101,9 +170,58 @@ def is_ignored(path: str) -> bool:
 
 
 def is_watched(path: str) -> bool:
-    if path in WATCHED_EXACT:
+    if path in WATCHED_EXACT or path in WATCHED_SCRIPT_EXACT:
         return True
     return any(path.startswith(prefix) for prefix in WATCHED_PREFIXES)
+
+
+def requires_current_status(path: str) -> bool:
+    if path in CURRENT_STATUS_SCRIPT_EXACT:
+        return True
+    return any(path.startswith(prefix) for prefix in CURRENT_STATUS_PREFIXES)
+
+
+def is_risk_sensitive(path: str) -> bool:
+    lowered = path.lower()
+    return any(keyword in lowered for keyword in RISK_SENSITIVE_KEYWORDS)
+
+
+def required_memory_updates(watched_changes: list[str]) -> dict[str, list[str]]:
+    required: dict[str, list[str]] = {}
+
+    def require(path: str, reason: str) -> None:
+        required.setdefault(path, [])
+        if reason not in required[path]:
+            required[path].append(reason)
+
+    if watched_changes:
+        require(
+            "docs/project-state/recent-changes.md",
+            "关键代码、runbook 或运维脚本变更需要写入近期变更，方便后续窗口追溯",
+        )
+
+    for changed in watched_changes:
+        if requires_current_status(changed):
+            require(
+                "docs/project-state/current-status.md",
+                f"{changed} 可能改变当前系统真相，需要同步 current-status",
+            )
+        if is_risk_sensitive(changed):
+            require(
+                "docs/project-state/open-risks.md",
+                f"{changed} 属于登录、运维、监控、支付或其它风险敏感区域，需要同步 open-risks",
+            )
+        if changed == "scripts/check_project_memory.py":
+            require(
+                "docs/project-state/pending-decisions.md",
+                "项目记忆校验策略变化需要同步待决策事项",
+            )
+            require(
+                "docs/project-state/open-risks.md",
+                "项目记忆校验策略变化需要同步已知文档漂移风险",
+            )
+
+    return required
 
 
 def main() -> int:
@@ -133,11 +251,30 @@ def main() -> int:
         print("[project-memory] No key truth files changed. Memory update not required.")
         return 0
 
-    if touched_memory:
+    required_memory = required_memory_updates(watched_changes)
+    missing_required = sorted(path for path in required_memory if path not in touched_memory)
+
+    if touched_memory and not missing_required:
         print("[project-memory] Memory files updated:")
         for path in touched_memory:
             print(f"  - {path}")
         return 0
+
+    if missing_required:
+        print("[project-memory] Key project files changed but required project memory files were not updated.", file=sys.stderr)
+        print("[project-memory] Changed truth files:", file=sys.stderr)
+        for path in watched_changes:
+            print(f"  - {path}", file=sys.stderr)
+        print("[project-memory] Required memory updates:", file=sys.stderr)
+        for path in missing_required:
+            print(f"  - {path}", file=sys.stderr)
+            for reason in required_memory[path]:
+                print(f"    reason: {reason}", file=sys.stderr)
+        if touched_memory:
+            print("[project-memory] Already updated memory files:", file=sys.stderr)
+            for path in touched_memory:
+                print(f"  - {path}", file=sys.stderr)
+        return 1
 
     print("[project-memory] Key project files changed but project memory was not updated.", file=sys.stderr)
     print("[project-memory] Changed truth files:", file=sys.stderr)

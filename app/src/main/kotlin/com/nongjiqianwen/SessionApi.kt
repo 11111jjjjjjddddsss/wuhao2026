@@ -192,9 +192,9 @@ object SessionApi {
 
     private fun TodayAgriCard?.isValidTodayAgriCard(): Boolean {
         val candidate = this ?: return false
-        val items = candidate.items.orEmpty()
+        val items = candidate.items.orEmpty().take(3)
         return candidate.title == "今日农情" &&
-            items.size >= 3 &&
+            items.size == 3 &&
             items.all { item ->
                 !item.title.isNullOrBlank() &&
                     !item.summary.isNullOrBlank()
