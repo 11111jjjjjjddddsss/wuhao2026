@@ -1,6 +1,11 @@
 package app
 
-import "testing"
+import (
+	"testing"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
 
 func TestResolveRedisConfigFromEnvMissing(t *testing.T) {
 	t.Setenv("REDIS_URL", "")
@@ -54,5 +59,37 @@ func TestRateLimitHashDoesNotExposeInput(t *testing.T) {
 	}
 	if got != rateLimitHash("13800138000", "secret") {
 		t.Fatalf("rateLimitHash should be stable")
+	}
+}
+
+func TestRedisRateLimiterFailsClosedByDefault(t *testing.T) {
+	client := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  10 * time.Millisecond,
+		ReadTimeout:  10 * time.Millisecond,
+		WriteTimeout: 10 * time.Millisecond,
+	})
+	defer client.Close()
+
+	limiter := newRedisRateLimiter(client, rateLimitConfig{Window: time.Second, MaxHits: 1}, redisRateLimitPrefix, time.Second, 1)
+	allowed, _ := limiter.Consume("test", time.Now())
+	if allowed {
+		t.Fatalf("security-sensitive redis limiter should fail closed on redis error")
+	}
+}
+
+func TestRedisRateLimiterFailOpenAllowsOnRedisError(t *testing.T) {
+	client := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  10 * time.Millisecond,
+		ReadTimeout:  10 * time.Millisecond,
+		WriteTimeout: 10 * time.Millisecond,
+	})
+	defer client.Close()
+
+	limiter := newRedisRateLimiterFailOpen(client, rateLimitConfig{Window: time.Second, MaxHits: 1}, redisRateLimitPrefix, time.Second, 1)
+	allowed, retryAfter := limiter.Consume("test", time.Now())
+	if !allowed || retryAfter != 0 {
+		t.Fatalf("non-critical redis limiter should fail open on redis error: allowed=%v retryAfter=%d", allowed, retryAfter)
 	}
 }

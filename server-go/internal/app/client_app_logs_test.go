@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func TestNormalizeClientAppLogPayloadAcceptsMinimalSafePayload(t *testing.T) {
@@ -141,6 +143,28 @@ func TestClientAppLogRateLimiterUsesEnv(t *testing.T) {
 	}
 	if limiter.window != 30*time.Second || limiter.maxHits != 2 || limiter.pruneInterval != 45*time.Second {
 		t.Fatalf("client app log limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
+	}
+}
+
+func TestClientAppLogRedisRateLimiterFailsOpen(t *testing.T) {
+	client := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  10 * time.Millisecond,
+		ReadTimeout:  10 * time.Millisecond,
+		WriteTimeout: 10 * time.Millisecond,
+	})
+	defer client.Close()
+
+	limiter, ok := newClientAppLogRateLimiter(client).(*redisRateLimiter)
+	if !ok {
+		t.Fatalf("newClientAppLogRateLimiter returned %T, want *redisRateLimiter", newClientAppLogRateLimiter(client))
+	}
+	if !limiter.failOpenOnError {
+		t.Fatalf("client app log redis limiter should fail open on redis errors")
+	}
+	allowed, retryAfter := limiter.Consume("client-app-log-test", time.Now())
+	if !allowed || retryAfter != 0 {
+		t.Fatalf("client app log redis limiter should allow on redis error: allowed=%v retryAfter=%d", allowed, retryAfter)
 	}
 }
 

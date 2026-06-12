@@ -1,6 +1,6 @@
 # Chat UI 回归与接手 Runbook
 
-最后更新：2026-06-12
+最后更新：2026-06-13
 
 ## 目的
 
@@ -27,6 +27,7 @@
 - 用户进入 `UserBrowsing` 后让权；用户手动回到正向列表物理底部（`canScrollForward == false`、手指抬起、滚动停止）后先锚底再恢复 `AutoFollow`
 - composer 是页面底部兄弟层，自己吃 `imePadding()`；列表不吃 IME 动画帧，不允许键盘抬升消息工作线
 - active / settled 渲染共用 unified soft-wrap renderer；不再用小分割 item、物理行预切、fresh suffix 灰色高亮动画
+- 流式运行态里的正文 / reveal buffer / message id / isStreaming 是运行时状态，不进入 Activity saved-state；切后台 / 重建恢复依赖已有流式草稿、远端快照和 pending 恢复链，避免大字符串进 saved-state 或出现“状态保存了但内容丢了”的半恢复状态
 - 标准 Markdown 表格降级成普通项目行文本；emoji 偶发输出时按普通文本渲染
 
 ## 禁止回归的旧链

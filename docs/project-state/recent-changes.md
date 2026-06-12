@@ -5,11 +5,15 @@
 
 ## 2026-06-13
 
+- 按用户“查清现在到底有哪些限制，别做着做着坑正常用户”的要求，新增 [docs/runbooks/app-traffic-limits.md](D:/wuhao/docs/runbooks/app-traffic-limits.md)，把 Android、Go、Redis、Nginx、会员次数、上传大小、短信 / 一键登录限流、App 日志、帮助反馈、礼品卡、MySQL 连接池、SSE 时长和外部云资源容量边界统一列清。线上 Cloud Assistant 复查后，已把 Nginx 主聊天流从旧的 `6r/m`、burst 3、单 IP 2 连接调宽为 `60r/m`、burst 80，并移除聊天 `limit_conn`；普通 API 仍为 `60r/m` burst 80，上传仍为 `20r/m` burst 8。Go 后端没有全局 App 用户数 / DAU / 主聊天总并发硬卡，主聊天也不设置 `max_tokens`。当前口径是保留短信、上传、礼品卡等必要防刷限制；若真机测试出现 429，先确认来源，不新增全局主聊天并发硬闸、不改模型参数。
+
+- 主界面性能按“少动主链、清掉明显浪费”的口径小步优化：Android 流式运行态不再把大段 `streamingMessageContent / streamingRevealBuffer` 放入 Activity saved-state，`isStreaming / streamingMessageId` 也同步改为运行时态，避免系统重建后出现“状态还在但内容为空”的错乱，恢复继续依赖已有流式草稿、远端快照和 pending 恢复链；流式吐字内部从反复 `drop()` 临时字符串改为索引推进，减少长回复时的临时分配和 GC 压力。聊天区远端图片缩略图新增 10 分钟失败短缓存，OSS 过期 / 失效图片滚回可见区时直接显示过期占位，不再反复发起 5 秒网络读取。后端 App 自动日志 Redis 限流改为异常时 fail open，避免日志系统影响主体验；短信、登录、礼品卡、上传和内部 secret 等安全 / 成本敏感入口仍 fail closed。
+
 - 继续按普通用户体验和 Android 官方权限 / 可访问性口径小步收口：登录页和首次隐私同意门禁的协议勾选框视觉不变，但点击目标扩大到 48dp，降低用户点不中导致“一键登录 / 验证码登录老提示未同意”的概率；聊天页不再一进主界面就弹定位权限，未授权时改为用户首次发送问诊时按需请求一次，首轮仍可用缓存地区或后端 IP 粗定位兜底，不阻塞提问。阿里云融合认证协议承接页只允许加载农技千查官方 HTTPS 域名，禁止明文 HTTP 和外域跳转，网页缺失或加载失败时显示 App 内置协议要点兜底，并会同时根据协议 URL / title 判断展示用户协议或隐私政策要点。用户点一键登录时，fusion token 首次请求改用 6 秒短超时；VPN / 系统代理在仍检测到可用移动数据时从硬拦改成 warning 后继续尝试一键登录，失败再回验证码登录，纯 WiFi / 无可用移动数据仍直接验证码兜底。发版脚本补齐后台 `/admin-api/` upstream 端口校验，避免后台还指旧 slot 却被 401 健康检查误判成功。`check-android-build-parity.ps1` 已补 Android 侧回归护栏；主聊天滚动主链、登录 token 主链、会员 / 礼品卡、用户记忆和今日农情模型语义未改。
 
 - 继续补后台读路径性能护栏：新增 `035_admin_order_gift_indexes.sql`，给订单按账号ID / 时间查询和礼品卡兑换失败原因聚合补索引，降低后续真实用户、订单和礼品卡日志增长后后台订单页 / 监控面板扫表的风险；该迁移只优化后台查询，不改变订单、会员、礼品卡兑换、升级补偿或账号ID归属规则。
 
-- 本轮后端已重新部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换、API 与后台 `/admin-api/` upstream 端口校验均通过；当前 active upstream 为 `3001`，后台 upstream 同为 `3001`，HTTPS healthz 200，未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后资源巡检严格模式和后端数据边界巡检继续通过，当前没有正式用户、没有会员 / 订单 / 礼品卡资产，所有需要账号归属的表非 `acct_...` 计数仍为 0。
+- 本轮后端已重新部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换、API 与后台 `/admin-api/` upstream 端口校验均通过；当前 active upstream 为 `3000`，后台 upstream 同为 `3000`，HTTPS healthz 200，未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后资源巡检严格模式和后端数据边界巡检继续通过，当前没有正式用户、没有会员 / 订单 / 礼品卡资产，所有需要账号归属的表非 `acct_...` 计数仍为 0。
 
 ## 2026-06-12
 

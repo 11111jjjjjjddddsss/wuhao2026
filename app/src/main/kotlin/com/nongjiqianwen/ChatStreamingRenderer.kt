@@ -32,7 +32,6 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -76,10 +75,10 @@ internal data class ChatStreamingRuntimeState(
 
 @Composable
 internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreamingRuntimeState {
-    val isStreaming = rememberSaveable(chatScopeId) { mutableStateOf(false) }
-    val streamingMessageId = rememberSaveable(chatScopeId) { mutableStateOf<String?>(null) }
-    val streamingMessageContent = rememberSaveable(chatScopeId) { mutableStateOf("") }
-    val streamingRevealBuffer = rememberSaveable(chatScopeId) { mutableStateOf("") }
+    val isStreaming = remember(chatScopeId) { mutableStateOf(false) }
+    val streamingMessageId = remember(chatScopeId) { mutableStateOf<String?>(null) }
+    val streamingMessageContent = remember(chatScopeId) { mutableStateOf("") }
+    val streamingRevealBuffer = remember(chatScopeId) { mutableStateOf("") }
     val streamRevealJob = remember(chatScopeId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val streamingFreshStart = remember(chatScopeId) { mutableIntStateOf(-1) }
     val streamingFreshEnd = remember(chatScopeId) { mutableIntStateOf(-1) }
@@ -290,6 +289,7 @@ private fun normalizeRendererMarkdownTables(content: String): String {
 
 internal data class StreamingTypewriterStep(
     val text: String,
+    val consumedChars: Int,
     val delayMs: Long
 )
 
@@ -586,19 +586,27 @@ private fun Char.isRendererWeakPausePunctuation(): Boolean = this in setOf('，'
 
 private fun Char.isRendererStructuralMarkdownChar(): Boolean = this == '#' || this == '-' || this == '*' || this == '>' || this == '`'
 
-private fun takeRendererMarkdownPrefixToken(buffer: String): String? {
-    if (buffer.isEmpty()) return null
+private fun takeRendererMarkdownPrefixToken(buffer: String, startIndex: Int = 0): String? {
+    if (startIndex !in 0 until buffer.length) return null
     return when {
-        buffer.startsWith("```") -> "```"
-        buffer.startsWith("## ") -> "## "
-        buffer.startsWith("# ") -> "# "
-        buffer.startsWith("- ") -> "- "
-        buffer.startsWith("* ") -> "* "
-        buffer.startsWith("> ") -> "> "
+        buffer.startsWith("```", startIndex = startIndex) -> "```"
+        buffer.startsWith("## ", startIndex = startIndex) -> "## "
+        buffer.startsWith("# ", startIndex = startIndex) -> "# "
+        buffer.startsWith("- ", startIndex = startIndex) -> "- "
+        buffer.startsWith("* ", startIndex = startIndex) -> "* "
+        buffer.startsWith("> ", startIndex = startIndex) -> "> "
         else -> {
-            val digits = buffer.takeWhile { it.isDigit() }
-            if (digits.isNotEmpty() && buffer.drop(digits.length).startsWith(". ")) {
-                "$digits. "
+            var cursor = startIndex
+            while (cursor < buffer.length && buffer[cursor].isDigit()) {
+                cursor++
+            }
+            if (
+                cursor > startIndex &&
+                cursor + 1 < buffer.length &&
+                buffer[cursor] == '.' &&
+                buffer[cursor + 1] == ' '
+            ) {
+                buffer.substring(startIndex, cursor + 2)
             } else {
                 null
             }
@@ -606,24 +614,33 @@ private fun takeRendererMarkdownPrefixToken(buffer: String): String? {
     }
 }
 
-private fun takeRendererTypewriterToken(buffer: String): String {
-    if (buffer.isEmpty()) return ""
-    val first = buffer.first()
-    val markdownPrefix = takeRendererMarkdownPrefixToken(buffer)
+private fun takeRendererTypewriterToken(buffer: String, startIndex: Int = 0): String {
+    if (startIndex !in 0 until buffer.length) return ""
+    val first = buffer[startIndex]
+    val markdownPrefix = takeRendererMarkdownPrefixToken(buffer, startIndex)
     if (markdownPrefix != null) return markdownPrefix
     if (first == '\n') return "\n"
     if (first.isRendererStructuralMarkdownChar()) {
-        return buffer.takeWhile { it.isRendererStructuralMarkdownChar() }.ifEmpty { first.toString() }
+        var cursor = startIndex
+        while (cursor < buffer.length && buffer[cursor].isRendererStructuralMarkdownChar()) {
+            cursor++
+        }
+        return if (cursor > startIndex) buffer.substring(startIndex, cursor) else first.toString()
     }
     if (first.isRendererCjkUnifiedIdeograph()) {
         return first.toString()
     }
     if (first.isWhitespace()) {
-        return buffer.takeWhile { it.isWhitespace() && it != '\n' }.ifEmpty { first.toString() }
+        var cursor = startIndex
+        while (cursor < buffer.length && buffer[cursor].isWhitespace() && buffer[cursor] != '\n') {
+            cursor++
+        }
+        return if (cursor > startIndex) buffer.substring(startIndex, cursor) else first.toString()
     }
 
     val token = StringBuilder()
-    for (ch in buffer) {
+    for (index in startIndex until buffer.length) {
+        val ch = buffer[index]
         if (token.isEmpty()) {
             token.append(ch)
             if (ch.isRendererWeakPausePunctuation() || ch.isRendererStrongPausePunctuation()) {
@@ -649,19 +666,33 @@ private fun scaleRendererStreamingDelay(delayMs: Long): Long {
     return max(6L, delayMs)
 }
 
-private fun hasRendererStructuralMarkdownPrefix(text: String): Boolean {
-    val trimmed = text.trimStart()
-    return trimmed.startsWith("#") ||
-        trimmed.startsWith("- ") ||
-        trimmed.startsWith("* ") ||
-        trimmed.startsWith("> ") ||
-        rendererNumberedRegex.matches(trimmed)
+private fun hasRendererStructuralMarkdownPrefix(text: String, startIndex: Int = 0): Boolean {
+    var cursor = startIndex.coerceIn(0, text.length)
+    while (cursor < text.length && text[cursor].isWhitespace()) {
+        cursor++
+    }
+    return cursor < text.length && (
+        text[cursor] == '#' ||
+            text.startsWith("- ", startIndex = cursor) ||
+            text.startsWith("* ", startIndex = cursor) ||
+            text.startsWith("> ", startIndex = cursor) ||
+            run {
+                var digitCursor = cursor
+                while (digitCursor < text.length && text[digitCursor].isDigit()) {
+                    digitCursor++
+                }
+                digitCursor > cursor &&
+                    digitCursor + 1 < text.length &&
+                    text[digitCursor] == '.' &&
+                    text[digitCursor + 1] == ' '
+            }
+        )
 }
 
-private fun resolveRendererTypewriterDelay(token: String, remainingBuffer: String): Long {
+private fun resolveRendererTypewriterDelay(token: String, nextHasStructuralMarkdownPrefix: Boolean): Long {
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
     val baseDelay = when {
-        lastChar == '\n' -> if (hasRendererStructuralMarkdownPrefix(remainingBuffer)) 64L else 48L
+        lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 64L else 48L
         lastChar.isRendererStrongPausePunctuation() -> 28L
         lastChar.isRendererWeakPausePunctuation() -> 16L
         token.length >= 7 -> 8L
@@ -673,15 +704,20 @@ private fun resolveRendererTypewriterDelay(token: String, remainingBuffer: Strin
     return scaleRendererStreamingDelay(baseDelay)
 }
 
-private fun nextStreamingTypewriterStep(buffer: String): StreamingTypewriterStep {
-    if (buffer.isEmpty()) {
-        return StreamingTypewriterStep("", STREAM_TYPEWRITER_IDLE_POLL_MS)
+private fun nextStreamingTypewriterStep(buffer: String, startIndex: Int = 0): StreamingTypewriterStep {
+    if (startIndex !in 0 until buffer.length) {
+        return StreamingTypewriterStep("", 0, STREAM_TYPEWRITER_IDLE_POLL_MS)
     }
-    val text = takeRendererTypewriterToken(buffer)
-    val remaining = buffer.drop(text.length)
+    val text = takeRendererTypewriterToken(buffer, startIndex)
+    val nextIndex = startIndex + text.length
     return StreamingTypewriterStep(
         text = text,
-        delayMs = resolveRendererTypewriterDelay(text, remaining)
+        consumedChars = text.length,
+        delayMs = resolveRendererTypewriterDelay(
+            token = text,
+            nextHasStructuralMarkdownPrefix = text.lastOrNull() == '\n' &&
+                hasRendererStructuralMarkdownPrefix(buffer, nextIndex)
+        )
     )
 }
 
@@ -738,14 +774,14 @@ private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
     if (buffer.isEmpty()) return StreamingRevealBatch("", STREAM_TYPEWRITER_IDLE_POLL_MS)
     val text = StringBuilder()
     var consumedDelay = 0L
-    var remaining = buffer
+    var cursor = 0
     var tokenCount = 0
 
-    while (remaining.isNotEmpty() && tokenCount < STREAM_REVEAL_MAX_TOKENS_PER_BATCH) {
-        val step = nextStreamingTypewriterStep(remaining)
-        if (step.text.isEmpty()) break
+    while (cursor < buffer.length && tokenCount < STREAM_REVEAL_MAX_TOKENS_PER_BATCH) {
+        val step = nextStreamingTypewriterStep(buffer, cursor)
+        if (step.text.isEmpty() || step.consumedChars <= 0) break
         text.append(step.text)
-        remaining = remaining.drop(step.text.length)
+        cursor += step.consumedChars
         consumedDelay += step.delayMs
         tokenCount++
         val tail = step.text.lastOrNull()

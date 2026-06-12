@@ -152,13 +152,22 @@ func parseRedisDB(raw string) (int, error) {
 }
 
 type redisRateLimiter struct {
-	client  *redis.Client
-	prefix  string
-	window  time.Duration
-	maxHits int
+	client          *redis.Client
+	prefix          string
+	window          time.Duration
+	maxHits         int
+	failOpenOnError bool
 }
 
 func newRedisRateLimiter(client *redis.Client, config rateLimitConfig, prefix string, fallbackWindow time.Duration, fallbackMaxHits int) *redisRateLimiter {
+	return newRedisRateLimiterWithFailureMode(client, config, prefix, fallbackWindow, fallbackMaxHits, false)
+}
+
+func newRedisRateLimiterFailOpen(client *redis.Client, config rateLimitConfig, prefix string, fallbackWindow time.Duration, fallbackMaxHits int) *redisRateLimiter {
+	return newRedisRateLimiterWithFailureMode(client, config, prefix, fallbackWindow, fallbackMaxHits, true)
+}
+
+func newRedisRateLimiterWithFailureMode(client *redis.Client, config rateLimitConfig, prefix string, fallbackWindow time.Duration, fallbackMaxHits int, failOpenOnError bool) *redisRateLimiter {
 	if client == nil {
 		return nil
 	}
@@ -168,10 +177,11 @@ func newRedisRateLimiter(client *redis.Client, config rateLimitConfig, prefix st
 		prefix = redisRateLimitPrefix
 	}
 	return &redisRateLimiter{
-		client:  client,
-		prefix:  prefix,
-		window:  config.Window,
-		maxHits: config.MaxHits,
+		client:          client,
+		prefix:          prefix,
+		window:          config.Window,
+		maxHits:         config.MaxHits,
+		failOpenOnError: failOpenOnError,
 	}
 }
 
@@ -185,15 +195,15 @@ func (l *redisRateLimiter) Consume(key string, now time.Time) (bool, int) {
 	redisKey := l.prefix + strings.TrimSpace(key)
 	result, err := l.client.Eval(ctx, redisRateLimitScript, []string{redisKey}, int64(l.window/time.Millisecond)).Result()
 	if err != nil {
-		return false, maxInt(1, int(l.window.Seconds()))
+		return l.onRedisRateLimitFailure()
 	}
 	values, ok := result.([]any)
 	if !ok || len(values) != 2 {
-		return false, maxInt(1, int(l.window.Seconds()))
+		return l.onRedisRateLimitFailure()
 	}
 	count, ok := values[0].(int64)
 	if !ok {
-		return false, maxInt(1, int(l.window.Seconds()))
+		return l.onRedisRateLimitFailure()
 	}
 	ttlMs, _ := values[1].(int64)
 	if count > int64(l.maxHits) {
@@ -203,6 +213,13 @@ func (l *redisRateLimiter) Consume(key string, now time.Time) (bool, int) {
 		return false, maxInt(1, int((time.Duration(ttlMs)*time.Millisecond)/time.Second)+1)
 	}
 	return true, 0
+}
+
+func (l *redisRateLimiter) onRedisRateLimitFailure() (bool, int) {
+	if l != nil && l.failOpenOnError {
+		return true, 0
+	}
+	return false, maxInt(1, int(l.window.Seconds()))
 }
 
 func rateLimitHash(value string, secret string) string {

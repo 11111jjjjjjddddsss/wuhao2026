@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.os.SystemClock
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -12,6 +13,8 @@ import java.net.URL
 
 private const val CHAT_IMAGE_PREVIEW_CACHE_MAX_KB = 12 * 1024
 private const val CHAT_REMOTE_PREVIEW_MAX_BYTES = 2 * 1024 * 1024
+private const val CHAT_REMOTE_PREVIEW_FAILURE_CACHE_MAX_ENTRIES = 256
+private const val CHAT_REMOTE_PREVIEW_FAILURE_TTL_MS = 10 * 60 * 1000L
 
 private val chatImagePreviewCache = object : LruCache<String, ImageBitmap>(CHAT_IMAGE_PREVIEW_CACHE_MAX_KB) {
     override fun sizeOf(key: String, value: ImageBitmap): Int {
@@ -19,6 +22,7 @@ private val chatImagePreviewCache = object : LruCache<String, ImageBitmap>(CHAT_
     }
 }
 private val chatImagePreviewCacheLock = Any()
+private val chatRemotePreviewFailureCache = object : LruCache<String, Long>(CHAT_REMOTE_PREVIEW_FAILURE_CACHE_MAX_ENTRIES) {}
 
 private fun cachedChatImagePreview(source: String): ImageBitmap? =
     synchronized(chatImagePreviewCacheLock) {
@@ -28,8 +32,26 @@ private fun cachedChatImagePreview(source: String): ImageBitmap? =
 private fun cacheChatImagePreview(source: String, bitmap: ImageBitmap): ImageBitmap =
     synchronized(chatImagePreviewCacheLock) {
         chatImagePreviewCache.put(source, bitmap)
+        chatRemotePreviewFailureCache.remove(source)
         bitmap
     }
+
+private fun isRemotePreviewTemporarilyUnavailable(source: String, nowMs: Long = SystemClock.elapsedRealtime()): Boolean =
+    synchronized(chatImagePreviewCacheLock) {
+        val expiresAt = chatRemotePreviewFailureCache.get(source) ?: return@synchronized false
+        if (expiresAt > nowMs) {
+            true
+        } else {
+            chatRemotePreviewFailureCache.remove(source)
+            false
+        }
+    }
+
+private fun markRemotePreviewTemporarilyUnavailable(source: String, nowMs: Long = SystemClock.elapsedRealtime()) {
+    synchronized(chatImagePreviewCacheLock) {
+        chatRemotePreviewFailureCache.put(source, nowMs + CHAT_REMOTE_PREVIEW_FAILURE_TTL_MS)
+    }
+}
 
 internal fun InputStream.readPreviewBytes(maxBytes: Int): ByteArray? {
     val buffer = ByteArray(8 * 1024)
@@ -62,8 +84,12 @@ internal fun Context.decodeChatImagePreview(
     targetSize: Int = 512
 ): ImageBitmap? {
     cachedChatImagePreview(source)?.let { return it }
-    return runCatching {
-        val bytes = if (source.isRemoteImageSource()) {
+    val isRemote = source.isRemoteImageSource()
+    if (isRemote && isRemotePreviewTemporarilyUnavailable(source)) {
+        return null
+    }
+    val decoded = runCatching {
+        val bytes = if (isRemote) {
             val connection = URL(source).openConnection().apply {
                 connectTimeout = 5000
                 readTimeout = 5000
@@ -84,4 +110,8 @@ internal fun Context.decodeChatImagePreview(
             ?.asImageBitmap()
             ?.let { cacheChatImagePreview(source, it) }
     }.getOrNull()
+    if (isRemote && decoded == null) {
+        markRemotePreviewTemporarilyUnavailable(source)
+    }
+    return decoded
 }

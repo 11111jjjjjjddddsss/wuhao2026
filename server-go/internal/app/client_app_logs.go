@@ -252,7 +252,7 @@ func newClientAppLogRateLimiter(redisClient *redis.Client) rateLimiter {
 		PruneInterval: envDurationWithDefault("CLIENT_APP_LOG_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultClientAppLogRateLimitPruneInterval),
 	}
 	if redisClient != nil {
-		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultClientAppLogRateLimitWindow, defaultClientAppLogRateLimitMaxHits)
+		return newRedisRateLimiterFailOpen(redisClient, config, redisRateLimitPrefix, defaultClientAppLogRateLimitWindow, defaultClientAppLogRateLimitMaxHits)
 	}
 	return newChatRateLimiterWithConfig(config)
 }

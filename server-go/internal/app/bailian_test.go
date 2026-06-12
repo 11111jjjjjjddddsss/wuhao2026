@@ -56,6 +56,9 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature mismatch: %#v", captured["temperature"])
 	}
+	if _, ok := captured["max_tokens"]; ok {
+		t.Fatalf("main chat should not hard-cap model output tokens: %#v", captured["max_tokens"])
+	}
 	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
 	}
@@ -556,22 +559,19 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 		t.Fatalf("qwen3.5-plus compatible turbo path should not pass unsupported intention_options: %#v", searchOptions)
 	}
 	userContent := capturedMessages[1].(map[string]any)["content"].(string)
-	if !strings.Contains(userContent, "质量优先级：近 7 天真实公开材料 > 种植侧相关 > 对生产、农资、农时或流通有直接意义 > 内容尽量不重复 > 手机卡片好读") ||
+	if !strings.Contains(userContent, "面向普通大众用户") ||
 		!strings.Contains(userContent, "必须输出 3 条") ||
 		!strings.Contains(userContent, "这是今日农情唯一硬数量要求") ||
 		!strings.Contains(userContent, "items 必须正好 3 个对象") ||
-		!strings.Contains(userContent, "最大限度全网宽搜") ||
-		!strings.Contains(userContent, "大类边界要清楚，小类不要抠太细") ||
-		!strings.Contains(userContent, "调研、会议、活动、平台上线和成果展示类材料") ||
-		!strings.Contains(userContent, "标题不要用“调研推动”“场景上新”“即将投用”“成果展示”这类过程词当主体") ||
-		!strings.Contains(userContent, "摘要必须像一条可读新闻短讯") ||
-		!strings.Contains(userContent, "一般不要明显低于 90 个中文字符") ||
-		!strings.Contains(userContent, "每条摘要尽量包含具体对象和两三个事实要素") ||
-		!strings.Contains(userContent, "每条摘要是否接近正常新闻短讯体量、是否有具体事实和直接影响、是否过薄") ||
-		!strings.Contains(userContent, "不要为了凑字堆套话") ||
-		!strings.Contains(userContent, "拿不准时按网页发布者、站点名或机构名写") ||
-		!strings.Contains(userContent, "若当天某类材料明显更真实、更新、更有直接影响，可以出现两条") ||
-		!strings.Contains(userContent, "是否有养殖水产、养殖类价格、广告软文、传言、旧闻或编造数字") {
+		!strings.Contains(userContent, "优先近 7 天公开来源") ||
+		!strings.Contains(userContent, "只取种植侧") ||
+		!strings.Contains(userContent, "养殖、水产、畜牧") ||
+		!strings.Contains(userContent, "标题短而具体") ||
+		!strings.Contains(userContent, "摘要目标 90-130 个中文字符左右") ||
+		!strings.Contains(userContent, "一般别低于 80 个中文字符") ||
+		!strings.Contains(userContent, "写 2-3 句正常新闻短讯") ||
+		!strings.Contains(userContent, "source_name 写机构、媒体或站点短名") ||
+		!strings.Contains(userContent, "是否避开养殖水产、广告软文、传言、旧闻和编造数字") {
 		t.Fatalf("daily agri prompt should carry freshness/diversity guidance without prompt_intervene: %q", userContent)
 	}
 }
