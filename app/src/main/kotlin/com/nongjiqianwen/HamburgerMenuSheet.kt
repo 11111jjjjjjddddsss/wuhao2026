@@ -844,6 +844,7 @@ private fun HamburgerMembershipCenterPage(
 
 private fun appUpdateDownloadFailureText(reason: AppUpdateInstaller.DownloadFailureReason?): String =
     when (reason) {
+        AppUpdateInstaller.DownloadFailureReason.MissingReleaseMetadata -> "更新包信息不完整，请稍后再试"
         AppUpdateInstaller.DownloadFailureReason.Sha256Mismatch,
         AppUpdateInstaller.DownloadFailureReason.PackageInfoMissing,
         AppUpdateInstaller.DownloadFailureReason.PackageNameMismatch,

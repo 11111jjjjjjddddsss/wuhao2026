@@ -16,6 +16,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.TimeUnit
@@ -30,6 +31,7 @@ object SessionApi {
     private const val SNAPSHOT_NETWORK_RETRY_MAX = 2
     private const val STREAM_NETWORK_RETRY_MAX = 0
     private const val CLIENT_LOG_THROTTLE_MS = 60_000L
+    private const val APP_UPDATE_MAX_APK_DOWNLOAD_BYTES = 200L * 1024L * 1024L
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
@@ -170,7 +172,17 @@ object SessionApi {
         @SerializedName("file_size_bytes") val fileSizeBytes: Long? = null
     ) {
         val usableUpdate: Boolean
-            get() = hasUpdate == true && !apkUrl.isNullOrBlank() && apkUrl.trim().startsWith("https://")
+            get() {
+                val latestCode = latestVersionCode ?: return false
+                val url = apkUrl?.trim().orEmpty()
+                val sizeBytes = fileSizeBytes ?: return false
+                return hasUpdate == true &&
+                    latestCode > BuildConfig.VERSION_CODE &&
+                    url.startsWith("https://") &&
+                    normalizeAppUpdateSha256(apkSha256) != null &&
+                    sizeBytes > 0L &&
+                    sizeBytes <= APP_UPDATE_MAX_APK_DOWNLOAD_BYTES
+            }
     }
 
     data class GiftCardRedeemResult(
@@ -207,6 +219,18 @@ object SessionApi {
     }
 
     fun hasBackendConfigured(): Boolean = baseUrl().isNotEmpty()
+
+    private fun normalizeAppUpdateSha256(raw: String?): String? {
+        val value = raw
+            ?.trim()
+            ?.replace(":", "")
+            ?.lowercase(Locale.US)
+            .orEmpty()
+        if (value.length != 64) return null
+        return value.takeIf { hex ->
+            hex.all { ch -> ch in '0'..'9' || ch in 'a'..'f' }
+        }
+    }
 
     fun requestFusionAuthToken(onResult: (FusionAuthTokenSnapshot?, String?) -> Unit) {
         val base = baseUrl()

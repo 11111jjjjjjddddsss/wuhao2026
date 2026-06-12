@@ -29,6 +29,7 @@ object AppUpdateInstaller {
 
     enum class DownloadFailureReason {
         InvalidUrl,
+        MissingReleaseMetadata,
         CacheDirUnavailable,
         Network,
         HttpStatus,
@@ -91,6 +92,9 @@ object AppUpdateInstaller {
             if (!apkUrl.startsWith("https://")) {
                 return@withContext DownloadResult(reason = DownloadFailureReason.InvalidUrl)
             }
+            if (!update.usableUpdate) {
+                return@withContext DownloadResult(reason = DownloadFailureReason.MissingReleaseMetadata)
+            }
             val outputDir = File(context.cacheDir, "app_updates")
             if (!outputDir.exists() && !outputDir.mkdirs()) {
                 return@withContext DownloadResult(reason = DownloadFailureReason.CacheDirUnavailable)
@@ -100,7 +104,8 @@ object AppUpdateInstaller {
                     file.delete()
                 }
             }
-            val versionCode = update.latestVersionCode ?: 0
+            val versionCode = update.latestVersionCode
+                ?: return@withContext DownloadResult(reason = DownloadFailureReason.MissingReleaseMetadata)
             val outputFile = File(outputDir, "nongjiqiancha-$versionCode.apk")
             val tempFile = File(outputDir, "${outputFile.name}.tmp")
             try {
@@ -117,19 +122,20 @@ object AppUpdateInstaller {
                     }
                     val body = response.body
                         ?: return@withContext DownloadResult(reason = DownloadFailureReason.MissingBody)
-                    val expectedSizeBytes = update.fileSizeBytes ?: 0L
+                    val expectedSizeBytes = update.fileSizeBytes
+                        ?: return@withContext DownloadResult(reason = DownloadFailureReason.MissingReleaseMetadata)
+                    if (expectedSizeBytes <= 0L) {
+                        return@withContext DownloadResult(reason = DownloadFailureReason.MissingReleaseMetadata)
+                    }
                     if (expectedSizeBytes > DEFAULT_MAX_APK_DOWNLOAD_BYTES) {
                         return@withContext DownloadResult(reason = DownloadFailureReason.ExpectedSizeTooLarge)
                     }
-                    val maxDownloadBytes = expectedSizeBytes
-                        .takeIf { it > 0L }
-                        ?.coerceAtMost(DEFAULT_MAX_APK_DOWNLOAD_BYTES)
-                        ?: DEFAULT_MAX_APK_DOWNLOAD_BYTES
+                    val maxDownloadBytes = expectedSizeBytes.coerceAtMost(DEFAULT_MAX_APK_DOWNLOAD_BYTES)
                     val contentLength = body.contentLength()
                     if (contentLength > maxDownloadBytes) {
                         return@withContext DownloadResult(reason = DownloadFailureReason.ContentTooLarge)
                     }
-                    if (expectedSizeBytes > 0L && contentLength > 0L && contentLength != expectedSizeBytes) {
+                    if (contentLength > 0L && contentLength != expectedSizeBytes) {
                         return@withContext DownloadResult(reason = DownloadFailureReason.ContentLengthMismatch)
                     }
                     tempFile.outputStream().use { output ->
@@ -191,13 +197,18 @@ object AppUpdateInstaller {
         apkFile: File,
         update: SessionApi.AppUpdateInfo
     ): DownloadFailureReason? {
-        val expectedSizeBytes = update.fileSizeBytes ?: 0L
-        if (expectedSizeBytes > 0L && apkFile.length() != expectedSizeBytes) {
+        val expectedSizeBytes = update.fileSizeBytes
+            ?: return DownloadFailureReason.MissingReleaseMetadata
+        if (expectedSizeBytes <= 0L) {
+            return DownloadFailureReason.MissingReleaseMetadata
+        }
+        if (apkFile.length() != expectedSizeBytes) {
             return DownloadFailureReason.DownloadedSizeMismatch
         }
 
         val expectedSha256 = normalizeSha256(update.apkSha256)
-        if (expectedSha256 != null && sha256Hex(apkFile) != expectedSha256) {
+            ?: return DownloadFailureReason.MissingReleaseMetadata
+        if (sha256Hex(apkFile) != expectedSha256) {
             return DownloadFailureReason.Sha256Mismatch
         }
 
@@ -214,7 +225,11 @@ object AppUpdateInstaller {
             packageInfo.versionCode.toLong()
         }
         val expectedVersionCode = update.latestVersionCode?.toLong()
-        if (expectedVersionCode != null && expectedVersionCode > 0L && apkVersionCode != expectedVersionCode) {
+            ?: return DownloadFailureReason.MissingReleaseMetadata
+        if (expectedVersionCode <= BuildConfig.VERSION_CODE.toLong()) {
+            return DownloadFailureReason.VersionCodeNotNewer
+        }
+        if (apkVersionCode != expectedVersionCode) {
             return DownloadFailureReason.VersionCodeMismatch
         }
         if (apkVersionCode <= BuildConfig.VERSION_CODE) {

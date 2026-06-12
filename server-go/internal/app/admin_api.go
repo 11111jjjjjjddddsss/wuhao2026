@@ -1045,6 +1045,7 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 
 type AdminUserQuery struct {
 	Query              string `json:"query,omitempty"`
+	ExactUserID        string `json:"-"`
 	DayCN              string `json:"day_cn"`
 	Limit              int    `json:"limit"`
 	NowMs              int64  `json:"now_ms,omitempty"`
@@ -2444,10 +2445,14 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	   (SELECT COUNT(*) FROM support_messages sm WHERE sm.user_id = a.user_id) AS support_message_count,
 	   (SELECT sm.sender_type FROM support_messages sm WHERE sm.user_id = a.user_id AND sm.sender_type <> 'system' ORDER BY sm.id DESC LIMIT 1) AS latest_support_sender
 	 FROM app_accounts a
-	 LEFT JOIN user_entitlement e ON e.user_id = a.user_id
+	LEFT JOIN user_entitlement e ON e.user_id = a.user_id
 	 LEFT JOIN session_ab sa ON sa.user_id = a.user_id`
 	args := []any{nowMs, sinceMs}
 	where := []string{}
+	if strings.TrimSpace(filter.ExactUserID) != "" {
+		where = append(where, "a.user_id = ?")
+		args = append(args, strings.TrimSpace(filter.ExactUserID))
+	}
 	if strings.TrimSpace(filter.Query) != "" {
 		like := "%" + strings.TrimSpace(filter.Query) + "%"
 		where = append(where, "(a.user_id LIKE ? OR a.phone_mask LIKE ?")
@@ -2483,7 +2488,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 }
 
 func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool) (AdminUserDetail, error) {
-	users, err := s.ListAdminUsers(ctx, AdminUserQuery{Query: userID, DayCN: dayCN, Limit: 1, NowMs: nowMs, SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli(), IncludePhoneNumber: includePhoneNumber})
+	users, err := s.ListAdminUsers(ctx, AdminUserQuery{ExactUserID: userID, DayCN: dayCN, Limit: 1, NowMs: nowMs, SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli(), IncludePhoneNumber: includePhoneNumber})
 	if err != nil {
 		return AdminUserDetail{}, err
 	}

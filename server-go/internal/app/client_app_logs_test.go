@@ -51,16 +51,20 @@ func TestNormalizeClientAppLogPayloadDropsSensitiveAttrs(t *testing.T) {
 		Event:   "chat.stream_interrupted",
 		Message: "safe",
 		Attrs: map[string]any{
-			"reason":        "network",
-			"detail":        "https://api.example.com/uploads/a.jpg",
-			"note":          "13800138000",
-			"fallback":      "token=secret",
-			"body_length":   12,
-			"token":         "secret-token",
-			"access_key":    "ak-value",
-			"phone_number":  "13800138000",
-			"image_urls":    "https://example.com/uploads/a.jpg",
-			"response_body": "用户填写内容",
+			"reason":          "network",
+			"detail":          "https://api.example.com/uploads/a.jpg",
+			"note":            "13800138000",
+			"fallback":        "token=secret",
+			"body_length":     12,
+			"token":           "secret-token",
+			"access_key":      "ak-value",
+			"apiKey":          "api-key-value",
+			"accessKeyId":     "access-key-id-value",
+			"accessKeySecret": "access-key-secret-value",
+			"modelKey":        "model-key-value",
+			"phone_number":    "13800138000",
+			"image_urls":      "https://example.com/uploads/a.jpg",
+			"response_body":   "用户填写内容",
 		},
 	}, 123)
 	if validationError != "" {
@@ -75,7 +79,7 @@ func TestNormalizeClientAppLogPayloadDropsSensitiveAttrs(t *testing.T) {
 			t.Fatalf("attrs = %q, want safe %q", attrs, allowed)
 		}
 	}
-	for _, forbidden := range []string{"token", "ak-value", "13800138000", "image_urls", "用户填写内容", "detail", "fallback"} {
+	for _, forbidden := range []string{"token", "ak-value", "api-key-value", "access-key-id-value", "access-key-secret-value", "model-key-value", "13800138000", "image_urls", "用户填写内容", "detail", "fallback"} {
 		if strings.Contains(attrs, forbidden) {
 			t.Fatalf("attrs leaked %q: %s", forbidden, attrs)
 		}

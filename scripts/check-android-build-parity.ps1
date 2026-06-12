@@ -61,6 +61,7 @@ $backupRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/backup_rules.xml"
 $dataExtractionRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/data_extraction_rules.xml"
 $idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdManager.kt"
 $sessionApiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
+$appUpdateInstallerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/AppUpdateInstaller.kt"
 $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
 $mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MainActivity.kt"
 $privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentGate.kt"
@@ -75,7 +76,7 @@ $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Cha
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $fusionClientFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -89,6 +90,7 @@ if ($failures.Count -eq 0) {
     $dataExtractionRules = Get-Content -LiteralPath $dataExtractionRulesFile -Raw
     $idManager = Get-Content -LiteralPath $idManagerFile -Raw
     $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
+    $appUpdateInstaller = Get-Content -LiteralPath $appUpdateInstallerFile -Raw
     $fusionClient = Get-Content -LiteralPath $fusionClientFile -Raw
     $mainActivity = Get-Content -LiteralPath $mainActivityFile -Raw
     $privacyConsent = Get-Content -LiteralPath $privacyConsentFile -Raw
@@ -210,6 +212,16 @@ if ($failures.Count -eq 0) {
         "Android SMS login success should be logged for login handoff diagnostics."
     Require-Match $failures $sessionApi 'auth\.fusion_login_success' `
         "Android fusion login success should be logged for login handoff diagnostics."
+    Require-Match $failures $sessionApi 'latestCode\s*>\s*BuildConfig\.VERSION_CODE(?s:.*?)normalizeAppUpdateSha256\s*\(\s*apkSha256\s*\)\s*!=\s*null(?s:.*?)sizeBytes\s*>\s*0L(?s:.*?)sizeBytes\s*<=\s*APP_UPDATE_MAX_APK_DOWNLOAD_BYTES' `
+        "Android app update availability must require a newer version, SHA-256 and a positive bounded file size."
+    Require-Match $failures $appUpdateInstaller 'DownloadFailureReason\.MissingReleaseMetadata' `
+        "Android app update downloader must fail closed when release metadata is incomplete."
+    Require-NoMatch $failures $appUpdateInstaller 'update\.fileSizeBytes\s*\?:\s*0L' `
+        "Android app update downloader must not fall back to unknown APK size."
+    Require-NoMatch $failures $appUpdateInstaller 'expectedSha256\s*!=\s*null\s*&&' `
+        "Android app update downloader must not skip SHA-256 verification when SHA metadata is missing or invalid."
+    Require-NoMatch $failures $appUpdateInstaller 'expectedVersionCode\s*!=\s*null\s*&&' `
+        "Android app update downloader must not skip versionCode verification when version metadata is missing."
     Require-Match $failures $loginScreen 'code\.length\s*!=\s*6' `
         "SMS login must require exactly 6 verification-code digits before calling the backend."
     Require-NoMatch $failures $loginScreen 'code\.length\s*<\s*4' `

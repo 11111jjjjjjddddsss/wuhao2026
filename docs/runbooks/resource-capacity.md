@@ -31,7 +31,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 
 当前脚本汇总状态为 `ready`。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。
 
-如果把 SLS 外部通知和仪表盘作为上线硬门槛，可用严格模式；当前生产应通过，若失败说明告警、行动策略或仪表盘配置漂移：
+如果把 SLS 外部通知、仪表盘、查询语句和严重级别漂移都作为上线硬门槛，可用严格模式；当前生产应通过，若失败说明告警、行动策略、仪表盘或规则配置发生漂移：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1 -Strict

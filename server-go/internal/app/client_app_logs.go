@@ -432,11 +432,15 @@ func normalizeClientLogAttrs(raw map[string]any) (any, string) {
 
 func isSensitiveClientLogAttrKey(key string) bool {
 	normalized := strings.ToLower(strings.TrimSpace(key))
+	compact := strings.NewReplacer("_", "", "-", "", ".", "", ":", "", " ", "").Replace(normalized)
 	switch normalized {
 	case "token", "key", "url", "uri", "body", "message", "content":
 		return true
 	}
-	if strings.Contains(normalized, "phone") ||
+	if strings.Contains(compact, "apikey") ||
+		strings.Contains(compact, "accesskey") ||
+		strings.Contains(compact, "modelkey") ||
+		strings.Contains(normalized, "phone") ||
 		strings.Contains(normalized, "token") ||
 		strings.Contains(normalized, "password") ||
 		strings.Contains(normalized, "secret") ||

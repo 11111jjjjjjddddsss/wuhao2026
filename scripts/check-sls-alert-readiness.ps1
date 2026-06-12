@@ -2,7 +2,8 @@ param(
     [string]$RegionId = "cn-beijing",
     [string]$ProjectName = "nongjiqiancha-prod-1159547719787456",
     [switch]$RequireExternalNotification,
-    [switch]$RequireDashboard
+    [switch]$RequireDashboard,
+    [switch]$FailOnWarning
 )
 
 $ErrorActionPreference = "Stop"
@@ -218,6 +219,9 @@ if ($errors.Count -gt 0) {
 
 if ($warnings.Count -gt 0) {
     Write-Host "status=attention"
+    if ($FailOnWarning) {
+        exit 2
+    }
     exit 0
 }
 

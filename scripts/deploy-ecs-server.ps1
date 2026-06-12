@@ -234,6 +234,7 @@ require_production_health() {
   grep -q '"dypns":"ok"' "`$body" || { echo 'health dypns is not ok' >&2; return 1; }
   grep -q '"dypns_fusion":"ok"' "`$body" || { echo 'health dypns_fusion is not ok' >&2; return 1; }
   grep -q '"dypns_sms":"ok"' "`$body" || { echo 'health dypns_sms is not ok' >&2; return 1; }
+  grep -q '"sms":"ok"' "`$body" || { echo 'health sms is not ok' >&2; return 1; }
   grep -q '"redis":"ok"' "`$body" || { echo 'health redis is not ok' >&2; return 1; }
   grep -q '"upload_storage":"oss"' "`$body" || { echo 'health upload_storage is not oss' >&2; return 1; }
   grep -q '"dev_order_endpoints":false' "`$body" || { echo 'health dev_order_endpoints is not false' >&2; return 1; }
@@ -424,6 +425,16 @@ fi
 if ! require_production_health "`$health_body"; then
   restore_nginx_after_switch
   exit 21
+fi
+
+admin_body='/tmp/nongji-admin-auth-me.json'
+admin_status=`$(curl -sS --resolve admin.nongjiqiancha.cn:443:127.0.0.1 -o "`$admin_body" -w '%{http_code}' https://admin.nongjiqiancha.cn/admin-api/v1/auth/me || true)
+echo "admin_auth_me_status=`$admin_status"
+cat "`$admin_body" || true
+echo
+if [ "`$admin_status" != "401" ]; then
+  restore_nginx_after_switch
+  exit 22
 fi
 
 echo drain-old-slot

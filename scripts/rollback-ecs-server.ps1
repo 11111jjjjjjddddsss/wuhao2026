@@ -129,6 +129,7 @@ fi
 install_dir='/opt/nongjiqiancha/server'
 env_file='/etc/nongjiqiancha/server.env'
 nginx_site='/etc/nginx/sites-available/nongjiqiancha-api'
+admin_nginx_site='/etc/nginx/sites-available/nongjiqiancha-admin'
 legacy_service='nongji-server.service'
 drain_seconds=1800
 backup="`$install_dir/$BackupName"
@@ -154,6 +155,7 @@ require_production_health() {
   grep -q '"dypns":"ok"' "`$body" || { echo 'health dypns is not ok' >&2; return 1; }
   grep -q '"dypns_fusion":"ok"' "`$body" || { echo 'health dypns_fusion is not ok' >&2; return 1; }
   grep -q '"dypns_sms":"ok"' "`$body" || { echo 'health dypns_sms is not ok' >&2; return 1; }
+  grep -q '"sms":"ok"' "`$body" || { echo 'health sms is not ok' >&2; return 1; }
   grep -q '"redis":"ok"' "`$body" || { echo 'health redis is not ok' >&2; return 1; }
   grep -q '"upload_storage":"oss"' "`$body" || { echo 'health upload_storage is not oss' >&2; return 1; }
   grep -q '"dev_order_endpoints":false' "`$body" || { echo 'health dev_order_endpoints is not false' >&2; return 1; }
@@ -244,20 +246,45 @@ require_production_health "`$upstream_body"
 
 nginx_backup="`$nginx_site.rollback-bak-`$(date +%Y%m%d%H%M%S)"
 cp -a "`$nginx_site" "`$nginx_backup"
+admin_nginx_backup=''
+if [ -f "`$admin_nginx_site" ]; then
+  admin_nginx_backup="`$admin_nginx_site.rollback-bak-`$(date +%Y%m%d%H%M%S)"
+  cp -a "`$admin_nginx_site" "`$admin_nginx_backup"
+fi
 before_count=`$(grep -Ec "^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:`$active_port[[:space:]]*;" "`$nginx_site" || true)
 if [ "`$before_count" -lt 1 ]; then
   echo "nginx upstream port `$active_port was not found in non-comment proxy_pass lines" >&2
   exit 30
 fi
 sed -i -E "s#(^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:)(3000|3001)([[:space:]]*;)#\1`$inactive_port\3#g" "`$nginx_site"
+if [ -f "`$admin_nginx_site" ]; then
+  sed -i -E "s#(^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:)(3000|3001)([[:space:]]*;)#\1`$inactive_port\3#g" "`$admin_nginx_site"
+fi
 new_port=`$(read_active_port)
 if [ "`$new_port" != "`$inactive_port" ]; then
   cp -a "`$nginx_backup" "`$nginx_site"
+  if [ -n "`$admin_nginx_backup" ]; then
+    cp -a "`$admin_nginx_backup" "`$admin_nginx_site"
+  fi
   echo "nginx upstream switch verification failed: expected `$inactive_port got `${new_port:-unknown}" >&2
   exit 30
 fi
+if [ -f "`$admin_nginx_site" ]; then
+  admin_port=`$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "`$admin_nginx_site" 2>/dev/null | head -1 | sed -E 's/.*:([0-9]+);/\1/' || true)
+  if [ -z "`$admin_port" ] || [ "`$admin_port" != "`$inactive_port" ]; then
+    cp -a "`$nginx_backup" "`$nginx_site"
+    if [ -n "`$admin_nginx_backup" ]; then
+      cp -a "`$admin_nginx_backup" "`$admin_nginx_site"
+    fi
+    echo "admin upstream switch verification failed: expected `$inactive_port got `${admin_port:-unknown}" >&2
+    exit 30
+  fi
+fi
 if ! nginx -t; then
   cp -a "`$nginx_backup" "`$nginx_site"
+  if [ -n "`$admin_nginx_backup" ]; then
+    cp -a "`$admin_nginx_backup" "`$admin_nginx_site"
+  fi
   nginx -t || true
   exit 30
 fi
@@ -266,6 +293,9 @@ systemctl reload nginx
 restore_nginx_after_switch() {
   if [ -f "`$nginx_backup" ]; then
     cp -a "`$nginx_backup" "`$nginx_site"
+    if [ -n "`$admin_nginx_backup" ]; then
+      cp -a "`$admin_nginx_backup" "`$admin_nginx_site"
+    fi
     nginx -t && systemctl reload nginx || true
   fi
   systemctl stop "`$inactive_service" 2>/dev/null || true
@@ -282,6 +312,15 @@ fi
 if ! require_production_health "`$health_body"; then
   restore_nginx_after_switch
   exit 31
+fi
+admin_body='/tmp/nongji-rollback-admin-auth-me.json'
+admin_status=`$(curl -sS --resolve admin.nongjiqiancha.cn:443:127.0.0.1 -o "`$admin_body" -w '%{http_code}' https://admin.nongjiqiancha.cn/admin-api/v1/auth/me || true)
+echo "admin_auth_me_status=`$admin_status"
+cat "`$admin_body" || true
+echo
+if [ "`$admin_status" != "401" ]; then
+  restore_nginx_after_switch
+  exit 32
 fi
 systemctl enable "`$inactive_service" >/dev/null
 systemctl disable "`$active_service" >/dev/null 2>&1 || true

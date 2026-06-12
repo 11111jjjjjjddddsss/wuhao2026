@@ -56,7 +56,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-a
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1
 ```
 
-若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；当前生产应通过，若失败说明 action policy / dashboard 绑定被删、改名或告警规则漂移：
+若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；若还要把查询语句、严重级别、runbook 注解等 warning 当成失败，可再加 `-FailOnWarning`。`check-resource-capacity.ps1 -Strict` 会自动带上这个参数，避免 SLS 规则漂移时总巡检假绿：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard
