@@ -39,6 +39,9 @@ object SessionApi {
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
+    private val streamClient = client.newBuilder()
+        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .build()
     private val fusionTokenRefreshClient = client.newBuilder()
         .connectTimeout(3, TimeUnit.SECONDS)
         .readTimeout(5, TimeUnit.SECONDS)
@@ -205,8 +208,7 @@ object SessionApi {
     private fun TodayAgriCard?.isValidTodayAgriCard(): Boolean {
         val candidate = this ?: return false
         val items = candidate.items.orEmpty().take(3)
-        return candidate.title == "今日农情" &&
-            items.size == 3 &&
+        return items.size == 3 &&
             items.all { item ->
                 !item.title.isNullOrBlank() &&
                     !item.summary.isNullOrBlank()
@@ -1841,7 +1843,7 @@ object SessionApi {
             ensureAuthToken { token ->
                 if (isRuntimeStale()) return@ensureAuthToken
                 val request = buildRequest(token)
-                val call = client.newCall(request)
+                val call = streamClient.newCall(request)
                 currentStreamCall.set(call)
                 call.enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
@@ -2022,7 +2024,7 @@ object SessionApi {
 
         fun runRequest(hasRetriedAuth: Boolean, networkRetry: Int): StreamCompletionResult {
             val request = buildRequest(authTokenSync())
-            val call = client.newCall(request)
+            val call = streamClient.newCall(request)
             return try {
                 if (!shouldContinue()) {
                     call.cancel()

@@ -30,8 +30,7 @@ import androidx.compose.ui.unit.sp
 
 fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
     val cardItems = items.orEmpty().take(3)
-    return title == "今日农情" &&
-        cardItems.size == 3 &&
+    return cardItems.size == 3 &&
         cardItems.all { item ->
             !item.title.isNullOrBlank() &&
                 !item.summary.isNullOrBlank()

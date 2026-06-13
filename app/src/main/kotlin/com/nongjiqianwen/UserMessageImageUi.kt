@@ -50,6 +50,14 @@ import kotlinx.coroutines.withContext
 
 private const val USER_MESSAGE_IMAGE_MAX_COUNT = 4
 
+private data class UserMessageImageSource(
+    val local: String?,
+    val remote: String?
+) {
+    val previewFallback: String?
+        get() = remote ?: local
+}
+
 @Composable
 internal fun UserMessageImageStrip(
     imageUris: List<String>,
@@ -61,19 +69,31 @@ internal fun UserMessageImageStrip(
         val remoteSources = imageUrls.filter { it.isNotBlank() }
         val maxSourceCount = maxOf(localSources.size, remoteSources.size)
         (0 until maxSourceCount)
-            .mapNotNull { index -> localSources.getOrNull(index) ?: remoteSources.getOrNull(index) }
-            .distinct()
+            .mapNotNull { index ->
+                val local = localSources.getOrNull(index)
+                val remote = remoteSources.getOrNull(index)
+                if (local == null && remote == null) {
+                    null
+                } else {
+                    UserMessageImageSource(local = local, remote = remote)
+                }
+            }
+            .distinctBy { it.local ?: it.remote }
             .take(USER_MESSAGE_IMAGE_MAX_COUNT)
     }
     if (imageSources.isEmpty()) return
     var previewIndex by remember {
         mutableStateOf<Int?>(null)
     }
-    val unavailableSources = remember { mutableStateMapOf<String, Boolean>() }
+    val displaySources = remember { mutableStateMapOf<Int, String>() }
+    val unavailableIndexes = remember { mutableStateMapOf<Int, Boolean>() }
     LaunchedEffect(imageSources) {
-        unavailableSources.keys
-            .filterNot { it in imageSources }
-            .forEach { unavailableSources.remove(it) }
+        displaySources.keys
+            .filter { it !in imageSources.indices }
+            .forEach { displaySources.remove(it) }
+        unavailableIndexes.keys
+            .filter { it !in imageSources.indices }
+            .forEach { unavailableIndexes.remove(it) }
     }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -91,11 +111,16 @@ internal fun UserMessageImageStrip(
                         val sourceIndex = rowIndex * 2 + columnIndex
                         UserMessageImageThumb(
                             source = source,
-                            onUnavailableChanged = { unavailable ->
-                                if (unavailable) {
-                                    unavailableSources[source] = true
+                            onDisplaySourceChanged = { displayedSource, unavailable ->
+                                if (displayedSource.isNullOrBlank()) {
+                                    displaySources.remove(sourceIndex)
                                 } else {
-                                    unavailableSources.remove(source)
+                                    displaySources[sourceIndex] = displayedSource
+                                }
+                                if (unavailable) {
+                                    unavailableIndexes[sourceIndex] = true
+                                } else {
+                                    unavailableIndexes.remove(sourceIndex)
                                 }
                             },
                             onPreviewImage = { previewIndex = sourceIndex }
@@ -106,15 +131,12 @@ internal fun UserMessageImageStrip(
         }
     }
     previewIndex?.let { index ->
-        val unavailableIndexes = imageSources
-            .mapIndexedNotNull { sourceIndex, source ->
-                sourceIndex.takeIf { unavailableSources[source] == true }
-            }
-            .toSet()
         UserMessageImagePreviewDialog(
-            sources = imageSources,
+            sources = imageSources.mapIndexed { sourceIndex, source ->
+                displaySources[sourceIndex] ?: source.previewFallback.orEmpty()
+            },
             initialPage = index,
-            unavailableIndexes = unavailableIndexes,
+            unavailableIndexes = unavailableIndexes.keys.toSet(),
             onDismiss = { previewIndex = null }
         )
     }
@@ -122,8 +144,8 @@ internal fun UserMessageImageStrip(
 
 @Composable
 private fun UserMessageImageThumb(
-    source: String,
-    onUnavailableChanged: (Boolean) -> Unit,
+    source: UserMessageImageSource,
+    onDisplaySourceChanged: (String?, Boolean) -> Unit,
     onPreviewImage: () -> Unit
 ) {
     val context = LocalContext.current
@@ -133,13 +155,21 @@ private fun UserMessageImageThumb(
     var loadUnavailable by remember(source) { mutableStateOf(false) }
     LaunchedEffect(source) {
         loadUnavailable = false
-        onUnavailableChanged(false)
+        onDisplaySourceChanged(source.previewFallback, false)
+        val localSource = source.local
+        val remoteSource = source.remote
         val decoded = withContext(Dispatchers.IO) {
-            context.decodeChatImagePreview(source)
+            val localDecoded = localSource?.let { context.decodeChatImagePreview(it) }
+            if (localDecoded != null) {
+                localSource to localDecoded
+            } else {
+                val remoteDecoded = remoteSource?.let { context.decodeChatImagePreview(it) }
+                remoteSource to remoteDecoded
+            }
         }
-        bitmap = decoded
-        loadUnavailable = decoded == null && source.isRemoteImageSource()
-        onUnavailableChanged(loadUnavailable)
+        bitmap = decoded.second
+        loadUnavailable = decoded.second == null && !remoteSource.isNullOrBlank()
+        onDisplaySourceChanged(decoded.first ?: source.previewFallback, loadUnavailable)
     }
     Box(
         modifier = Modifier

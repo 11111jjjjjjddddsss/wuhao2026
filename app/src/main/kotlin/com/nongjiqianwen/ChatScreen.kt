@@ -5058,6 +5058,8 @@ fun ChatScreen() {
                 if (existingUserMessageId == null) {
                     input.value = TextFieldValue("")
                     context.clearLocalComposerDraftSync(chatScopeId)
+                    selectedComposerImages.clear()
+                    attachmentMenuVisible = false
                     clearInputSelectionToolbar()
                 }
                 upsertUserMessage(
@@ -6023,7 +6025,10 @@ fun ChatScreen() {
                 if (imageSnapshot.isEmpty()) {
                     markUserMessageSendFailed(trimmedText)
                 } else {
-                    showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
+                    markUserMessageSendFailed(
+                        text = trimmedText,
+                        imageUris = imageSnapshot.map { it.uri }
+                    )
                 }
                 return
             }
