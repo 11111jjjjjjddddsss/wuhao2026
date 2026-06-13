@@ -91,6 +91,10 @@ object AppCrashReporter {
                 attrs = attrs
             )
         }
+        prefs.edit()
+            .remove(KEY_PENDING)
+            .remove(KEY_PENDING_ATTEMPTS)
+            .apply()
     }
 
     private fun persistCrash(context: Context, thread: Thread, throwable: Throwable) {

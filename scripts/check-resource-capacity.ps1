@@ -566,7 +566,7 @@ if (Test-Path -LiteralPath $slsScript) {
     if ($RequireSlsDashboard -or $Strict -or $defaultSlsAttentionGate) {
         $slsArgs += "-RequireDashboard"
     }
-    if ($Strict) {
+    if ($Strict -or $defaultSlsAttentionGate) {
         $slsArgs += "-FailOnWarning"
     }
     & powershell.exe @slsArgs

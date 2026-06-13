@@ -972,7 +972,7 @@ async function healthPage(): Promise<string> {
         `)
         .join("")}
     </div>
-    <div style="margin-top:12px">${planningNotice("SLS 告警已接入", "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已进 AlertHub，并已绑定邮件行动策略和最小仪表盘；资源水位另走云监控邮件，剩余重点是首封 SLS 告警邮件送达确认和更细趋势。")}</div>
+    <div style="margin-top:12px">${planningNotice("SLS / 云监控巡检", "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘，资源水位另走云监控邮件；本页不实时读取阿里云告警规则，剩余重点是首封 SLS 告警邮件送达确认和更细趋势。")}</div>
   `;
 }
 
@@ -1396,7 +1396,6 @@ async function disableAppUpdate(button: HTMLElement): Promise<void> {
   const apkSHA256 = button.dataset.apkSha256 || "";
   const releaseNotes = button.dataset.releaseNotes || "";
   const fileSizeBytes = Number(button.dataset.fileSizeBytes || "0");
-  const forceUpdate = button.dataset.forceUpdate === "true";
   if (!window.confirm("确认停掉当前更新？停更后，用户点“检查更新”将不会再拿到这个新包。")) {
     return;
   }
@@ -1410,7 +1409,7 @@ async function disableAppUpdate(button: HTMLElement): Promise<void> {
         apk_url: apkURL,
         apk_sha256: apkSHA256,
         release_notes: releaseNotes,
-        force_update: forceUpdate,
+        force_update: false,
         file_size_bytes: fileSizeBytes,
       },
     });
@@ -2515,6 +2514,7 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
       <dt>APK URL</dt><dd>${escapeHTML(config.apk_url || "未配置")}</dd>
       <dt>SHA-256</dt><dd>${escapeHTML(config.apk_sha256 || "未配置")}</dd>
       <dt>文件大小</dt><dd>${formatBytes(config.file_size_bytes)}</dd>
+      <dt>强制更新</dt><dd>${config.force_update ? statusPill("强更配置生效", "bad") : statusPill("普通更新", "ok")}</dd>
       <dt>配置合法</dt><dd>${config.config_valid ? statusPill("合法", "ok") : statusPill("异常", "warn")}</dd>
       <dt>正式下载物料</dt><dd>${config.download_artifacts_complete ? statusPill("已齐", "ok") : statusPill("未齐", "warn")}</dd>
       <dt>APK URL 状态</dt><dd>${config.has_apk_url ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
@@ -2568,7 +2568,6 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
           data-apk-sha256="${escapeAttr(config.apk_sha256 || "")}"
           data-release-notes="${escapeAttr(config.release_notes || "")}"
           data-file-size-bytes="${escapeAttr(String(config.file_size_bytes || 0))}"
-          data-force-update="${config.force_update ? "true" : "false"}"
         >立即停更</button>
       </div>
     </form>
@@ -2614,6 +2613,7 @@ function appUpdateEventsTable(rows: AdminAppUpdateEvent[]): string {
 function appUpdateActionLabel(action: string): string {
   switch (action) {
     case "force_publish":
+      return "强更发布（历史）";
     case "publish":
       return "发布";
     case "disable":

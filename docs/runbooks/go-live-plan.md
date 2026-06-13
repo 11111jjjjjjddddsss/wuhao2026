@@ -1,6 +1,6 @@
 # 下一阶段上线推进计划
 
-最后更新：2026-06-07
+最后更新：2026-06-13
 
 ## 目的
 
@@ -68,6 +68,26 @@
 - 确认 `APP_ANDROID_*` 检查更新环境变量指向正确 APK、版本号、文件大小、SHA-256 和更新说明。
 - 做一次完整真机回归：清数据、登录、文字问诊、图片问诊、历史恢复、删除历史对话、帮助与反馈、检查更新、会员中心、礼品卡页、协议页、今日农情。
 - 网站公安联网备案号已于 2026-06-10 下发，官网 footer 使用真实编号 `京公网安备11010602202723号`、警徽图标和查询链接。App 备案通过并开通后，再按实际要求补 App 对应公安备案信息。
+
+## 上线门禁脚本
+
+上线前综合巡检入口为 [scripts/check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1)。
+
+默认运行：
+
+```powershell
+.\scripts\check-launch-readiness.ps1
+```
+
+默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、后端账号资产归属巡检；如果当前 PowerShell 没有临时设置 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。
+
+发版前完整慢检：
+
+```powershell
+.\scripts\check-launch-readiness.ps1 -IncludeBuilds
+```
+
+`-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建，再重新跑 parity。这个脚本不替代真机回归、App 备案 / App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
 
 ## P4：提交应用商店
 

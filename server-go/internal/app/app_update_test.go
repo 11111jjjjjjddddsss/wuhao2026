@@ -16,6 +16,7 @@ func TestBuildAndroidUpdateInfoNoConfig(t *testing.T) {
 }
 
 func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
+	t.Setenv("APP_UPDATE_ALLOW_FORCE_UPDATE", "true")
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
 		Enabled:           true,
 		LatestVersionCode: 4,
@@ -37,6 +38,24 @@ func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
 	}
 	if info.APKChecksumSHA256 == "" {
 		t.Fatalf("expected apk checksum")
+	}
+}
+
+func TestBuildAndroidUpdateInfoDoesNotForceUpdateByDefault(t *testing.T) {
+	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		ForceUpdate:       true,
+		FileSizeBytes:     12_345,
+	})
+	if !info.HasUpdate {
+		t.Fatalf("expected update, got %#v", info)
+	}
+	if info.ForceUpdate {
+		t.Fatalf("force update must stay disabled unless APP_UPDATE_ALLOW_FORCE_UPDATE is explicitly enabled")
 	}
 }
 

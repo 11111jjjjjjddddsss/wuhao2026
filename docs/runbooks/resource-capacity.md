@@ -23,7 +23,7 @@
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
 - DYPNS 一键登录 / 短信认证：最近 7 天统计均为 `no_data`，说明当前还没有真实认证消耗
 
-统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿：
+统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1

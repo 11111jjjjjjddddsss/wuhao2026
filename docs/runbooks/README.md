@@ -19,6 +19,7 @@
 - [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)：后端模型 Key 池和多账号限流排查入口
 - [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)：ECS / RDS / Redis / OSS 容量、到期和升级提醒入口
 - [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md)：ECS / 官网免费优先安全加固、防火墙取舍和巡检入口
+- [check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1)：上线前总门禁脚本，串联项目记忆、后台 surface、Android parity、公网黑盒、ECS readiness、SLS、资源容量和账号资产归属巡检
 - [ip-region.md](D:/wuhao/docs/runbooks/ip-region.md)：免费离线 IP 粗定位、ECS xdb 文件和地点注入入口
 - [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情每日卡片生成与排查入口
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈站内消息和后台回复入口

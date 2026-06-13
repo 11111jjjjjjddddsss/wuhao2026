@@ -77,7 +77,8 @@ Codex 默认按下面流程处理：
 - `APP_ANDROID_APK_URL`：APK 下载地址，必须是公网 `https://` URL；非 https 会被后端视为无可用更新
 - `APP_ANDROID_APK_SHA256`：必填；APK 文件的 SHA-256，用于客户端下载后校验文件是否被传错、截断或替换。缺失或格式不合法时，后端不会对外返回可用更新
 - `APP_ANDROID_RELEASE_NOTES`：更新说明，直接展示在更新卡片里；普通发版默认留空，由后端 / App 统一展示“修复已知问题，优化使用体验。”
-- `APP_ANDROID_FORCE_UPDATE`：兼容保留字段，普通发版默认不使用；只有用户明确要求强制更新时才评估启用
+- `APP_ANDROID_FORCE_UPDATE`：兼容保留字段，普通发版默认不使用；当前后端默认会压成 false，只有未来显式配置 `APP_UPDATE_ALLOW_FORCE_UPDATE=true` 并完成产品 / 合规确认后才允许强制更新
+- `APP_UPDATE_ALLOW_FORCE_UPDATE`：强制更新总开关，默认不设置；当前普通发版和后台发布页都不应启用
 - `APP_ANDROID_FILE_SIZE_BYTES`：必填，APK 字节大小，用于更新卡片展示和下载后校验；缺失或小于等于 0 时，后端不会对外返回可用更新
 - `APP_ANDROID_UPDATE_ENABLED`：可选，兼容环境变量开关；未配置时若版本号和 APK URL 都存在，默认视为启用，但仍必须同时具备 SHA-256 和文件大小才会下发
 

@@ -1,12 +1,12 @@
 # 待决策事项
 
-最后更新：2026-06-12
+最后更新：2026-06-13
 
 ## D1 运维入口优先固化到什么形式
 
 - 当前选项：仓库脚本、阿里云 CLI / OpenAPI、统一管理后台、纯 runbook
-- 现状：主规则已明确“脚本 / CLI / OpenAPI 优先”；`docs/runbooks/operations-blueprint.md` 已补整体 App / 后端 / 管理后台的 Codex 协助运维总蓝图。ECS、RDS、Redis、OSS、DNS、部署 / 回滚脚本、SLS 最小日志集和第一版网页后台代码已经落地；后台形态已定为 Vite `admin` 静态前端 + `server-go` `/admin-api/v1/*` 管理 API，首版已有后台账号 / session / CSRF / 角色校验 / 审计
-- 待定原因：仍需结合真实发版、回滚、查日志、查库、客服回复、礼品卡和会员运营频率，决定哪些能力继续做网页后台，哪些沉淀成脚本 / CLI 封装；SLS 已有最小 AlertHub 告警、邮件行动策略和最小仪表盘；数据库只读脚本仍待补齐
+- 现状：主规则已明确“脚本 / CLI / OpenAPI 优先”；`docs/runbooks/operations-blueprint.md` 已补整体 App / 后端 / 管理后台的 Codex 协助运维总蓝图。ECS、RDS、Redis、OSS、DNS、部署 / 回滚脚本、SLS 最小日志集、资源容量巡检、后端数据边界只读巡检和第一版网页后台代码已经落地；后台形态已定为 Vite `admin` 静态前端 + `server-go` `/admin-api/v1/*` 管理 API，首版已有后台账号 / session / CSRF / 角色校验 / 审计。2026-06-13 已新增 `scripts/check-launch-readiness.ps1` 作为上线前总门禁，把现有脚本串成一个入口，避免单点巡检漏跑
+- 待定原因：仍需结合真实发版、回滚、查日志、查库、客服回复、礼品卡和会员运营频率，决定哪些能力继续做网页后台，哪些沉淀成脚本 / CLI 封装；SLS 已有最小 AlertHub 告警、邮件行动策略和最小仪表盘，但首封告警邮件真实送达、公网黑盒自动定时通知、登录后后台 smoke、完整 APK 上传 / 回滚入口仍需继续闭环
 
 ## D2 是否引入 GitHub 协作模板层
 

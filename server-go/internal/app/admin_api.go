@@ -1048,6 +1048,11 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		s.writeError(w, http.StatusBadRequest, "invalid_apk_sha256")
 		return
 	}
+	if cfg.ForceUpdate && !isAndroidForceUpdateAllowed() {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "force_update_disabled")
+		s.writeError(w, http.StatusBadRequest, "force_update_disabled")
+		return
+	}
 	if cfg.APKURL != "" && !isHTTPSURL(cfg.APKURL) {
 		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "invalid_apk_url")
 		s.writeError(w, http.StatusBadRequest, "invalid_apk_url")
@@ -1242,7 +1247,7 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 
 func buildAdminMonitoringNotes() []AdminStatusNote {
 	return []AdminStatusNote{
-		{Title: "不是完整告警中心", Body: "本页先展示业务表、App 自动日志、审计和健康检查聚合；SLS 已有 5 条 AlertHub 最小告警并已绑定邮件行动策略和最小仪表盘，资源水位另走云监控邮件；剩余重点是首封 SLS 告警邮件送达确认、更细趋势和完整 Nginx access 聚合。", Level: "info"},
+		{Title: "不是完整告警中心", Body: "本页先展示业务表、App 自动日志、审计和健康检查聚合；SLS 邮件行动策略、最小仪表盘和云监控邮件以最近严格巡检脚本和仓库记录为准，本页不实时读取阿里云告警规则；剩余重点是首封 SLS 告警邮件送达确认、更细趋势和完整 Nginx access 聚合。", Level: "info"},
 		{Title: "发版后先看这些", Body: "发版或切 slot 后，优先看服务异常、App 报错、后台失败、未回复反馈和今日农情状态。", Level: "info"},
 		{Title: "用户隐私", Body: "监控面板不展示聊天全文、图片 URL、手机号全文、token、模型 Key 或 AccessKey。", Level: "info"},
 	}
@@ -2237,7 +2242,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "日志告警",
 		Status: slsStatus,
-		Body:   "Go / Nginx 日志和 App 自动日志已接入；5 条 SLS AlertHub 最小告警已绑定邮件行动策略和最小仪表盘，资源水位另走云监控邮件；剩余重点是确认首封告警邮件真实送达。",
+		Body:   "Go / Nginx 日志和 App 自动日志已接入；SLS 邮件行动策略、最小仪表盘和资源水位云监控邮件以最近严格巡检脚本为准，本页不实时读取云上规则；剩余重点是确认首封告警邮件真实送达。",
 		Route:  "app-logs",
 		Owner:  "运维",
 	})
@@ -2296,9 +2301,9 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；完整卡码仅财务角色可见。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},
-		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
+		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
-		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已接 AlertHub，并已绑定邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
+		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
 }

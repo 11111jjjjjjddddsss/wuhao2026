@@ -5,6 +5,10 @@
 
 ## 2026-06-13
 
+- 换上线前巡检角度继续补“假绿 / 误迁移 / 误强更”护栏：新增 [check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1) 作为总门禁，串联项目记忆、后台 surface、Android debug/release parity、ECS readiness、公网黑盒、SLS 严格巡检、资源容量严格巡检和后端账号资产边界；默认只要存在 attention 就返回非 0，只有显式 `-AllowAttentionExitZero` 才用于报告模式。旧本机 ID 迁移进一步收紧：生产默认不再接受裸 UUID 合并资产，只接受同一请求里旧 bearer token 能证明的旧 ID；`AUTH_ALLOW_UNPROVEN_LEGACY_UUID=true` 只留极短迁移 / 本地兼容，readiness 会硬拦。Android 崩溃补报成功后会清本地 pending，避免 `auth.app_crash` / `app.crash` 反复重复上报。检查更新强更兼容字段默认不生效，后台也拒绝保存强更，除非未来显式设置 `APP_UPDATE_ALLOW_FORCE_UPDATE=true`。资源容量脚本默认会把 SLS 告警漂移 warning 透传成 attention，不再吞成 ready；后台监控文案同步说明 SLS / 云监控状态来自最近严格脚本和仓库记录，不伪装成实时读取阿里云规则。
+
+- 本轮后端和后台已重新部署到生产：`scripts/deploy-ecs-server.ps1` 远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 active upstream 为 `3001`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录后台鉴权 401。部署后 `check-launch-readiness.ps1 -AllowAttentionExitZero` 串联 9 项巡检，项目记忆、后台 surface、Android parity、ECS readiness、公网黑盒、SLS 严格巡检、资源容量严格巡检和后端数据边界均 ready；只有登录后后台 smoke 因当前 PowerShell 没有后台账号明文密码按安全规则标为 attention。生产库仍是 `app_accounts=0 / auth_sessions=0 / 会员订单礼品卡资产=0`，所有账号资产归属异常为 0；Android 端改动已本地双包构建验证，但用户手机仍需重新安装新包后生效。
+
 - 接支付宝 / 微信支付前先按官方文档校准支付 runbook：微信侧明确需要移动应用 AppID、商户号 `mchid`、商户 API 证书 / 序列号、APIv3 密钥、微信支付公钥或平台证书，APIv3 请求、应答、回调和 App 调起都要签名 / 验签，回调需解密后处理；支付宝侧明确服务端调用 `alipay.trade.app.pay` 生成 `orderStr`，Android 只调 SDK，同步返回只作刷新信号，真实发权益以后端验签后的异步通知或查单为准。申请材料同步固化到 [payments.md](D:/wuhao/docs/runbooks/payments.md)：主体、包名、正式签名、公网 HTTPS 域名、备案、商品描述、回调地址和密钥放置边界都已列清；当前仍不接真实渠道、不生成假支付、不把客户端“支付成功”当权益真相。
 
 - Android debug-only 预览面板补齐近期上线前 UI 状态：汉堡菜单预览新增账号注销确认、普通检查更新下载中 / 安装未知应用权限提示、今日农情长摘要样本、今日农情历史页和同步失败态；今日农情预览样本更新为 3 条种植侧资讯，摘要接近正式展示长度，不包含养殖 / 水产 / 禽蛋肉奶价格类内容。检查更新默认口径同步改为普通更新：后台发布页不再露出强制更新勾选，更新说明可留空，后端和 App 统一展示“修复已知问题，优化使用体验。”；底层兼容字段不作为默认发版操作使用。

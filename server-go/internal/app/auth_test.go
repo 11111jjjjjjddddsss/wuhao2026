@@ -118,11 +118,20 @@ func TestRequireAuthRejectsNonAccountSessionWhenStrict(t *testing.T) {
 	}
 }
 
-func TestAcceptedLegacyUserIDAllowsLocalUUIDBridge(t *testing.T) {
+func TestAcceptedLegacyUserIDRejectsUnprovenLocalUUIDBridgeByDefault(t *testing.T) {
+	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
+	legacyID := "123e4567-e89b-12d3-a456-426614174000"
+	if got := acceptedLegacyUserIDFromLoginRequest(req, legacyID); got != "" {
+		t.Fatalf("unproven legacy UUID should be rejected by default, got %q", got)
+	}
+}
+
+func TestAcceptedLegacyUserIDAllowsUnprovenLocalUUIDBridgeWhenExplicitlyEnabled(t *testing.T) {
+	t.Setenv("AUTH_ALLOW_UNPROVEN_LEGACY_UUID", "true")
 	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)
 	legacyID := "123e4567-e89b-12d3-a456-426614174000"
 	if got := acceptedLegacyUserIDFromLoginRequest(req, legacyID); got != legacyID {
-		t.Fatalf("legacy UUID should be accepted as local migration bridge, got %q", got)
+		t.Fatalf("legacy UUID should be accepted only with explicit migration bridge env, got %q", got)
 	}
 }
 
@@ -136,6 +145,7 @@ func TestAcceptedLegacyUserIDRejectsAccountID(t *testing.T) {
 func TestAcceptedLegacyUserIDAllowsSignedLegacyToken(t *testing.T) {
 	secret := "test-secret"
 	legacyID := "legacy-short-id"
+	t.Setenv("AUTH_STRICT", "true")
 	t.Setenv("APP_SECRET", secret)
 
 	req := httptest.NewRequest("POST", "/api/auth/sms/login", nil)

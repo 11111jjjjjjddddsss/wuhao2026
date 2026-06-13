@@ -591,21 +591,37 @@ func acceptedLegacyUserIDFromLoginRequest(r *http.Request, requestedLegacyUserID
 	if legacyUserID == "" || strings.HasPrefix(legacyUserID, "acct_") {
 		return ""
 	}
-	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
-	if secret != "" {
-		authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
-			provenUserID, _, ok := verifyBearerToken(token, secret)
-			if ok && normalizeUserID(provenUserID) == legacyUserID {
-				return legacyUserID
-			}
-		}
+	if legacyUserIDProvenByAuthHeader(r, legacyUserID) {
+		return legacyUserID
 	}
-	if isLocalLegacyUserID(legacyUserID) {
+	if isUnprovenLegacyUUIDBridgeAllowed() && isLocalLegacyUserID(legacyUserID) {
 		return legacyUserID
 	}
 	return ""
+}
+
+func legacyUserIDProvenByAuthHeader(r *http.Request, legacyUserID string) bool {
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	if secret == "" {
+		return false
+	}
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if !strings.HasPrefix(authHeader, "Bearer ") {
+		return false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
+	var provenUserID string
+	var ok bool
+	if strings.HasPrefix(token, "v2.") {
+		provenUserID, _, ok = verifyV2Token(token, secret)
+	} else {
+		provenUserID, ok = verifyLegacyToken(token, secret)
+	}
+	return ok && normalizeUserID(provenUserID) == legacyUserID
+}
+
+func isUnprovenLegacyUUIDBridgeAllowed() bool {
+	return parseBoolEnv(os.Getenv("AUTH_ALLOW_UNPROVEN_LEGACY_UUID"))
 }
 
 func isLocalLegacyUserID(value string) bool {

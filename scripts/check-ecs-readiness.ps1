@@ -212,7 +212,7 @@ is_truthy() {
 }
 
 for key in \
-  APP_ENV AUTH_STRICT AUTH_ALLOW_LEGACY_TOKEN APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
+  APP_ENV AUTH_STRICT AUTH_ALLOW_LEGACY_TOKEN AUTH_ALLOW_UNPROVEN_LEGACY_UUID APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
   LOG_FILE_PATH ACCESS_LOG_SLOW_MS \
   IP2REGION_V4_XDB_PATH IP2REGION_V6_XDB_PATH IP2REGION_XDB_PATH \
   LISTEN_ADDR LISTEN_HOST PORT \
@@ -231,6 +231,12 @@ done
 auth_allow_legacy_token=$(env_value AUTH_ALLOW_LEGACY_TOKEN || true)
 if is_truthy "$auth_allow_legacy_token"; then
   echo 'AUTH_ALLOW_LEGACY_TOKEN must not be enabled in production readiness' >&2
+  exit 15
+fi
+
+auth_allow_unproven_legacy_uuid=$(env_value AUTH_ALLOW_UNPROVEN_LEGACY_UUID || true)
+if is_truthy "$auth_allow_unproven_legacy_uuid"; then
+  echo 'AUTH_ALLOW_UNPROVEN_LEGACY_UUID must not be enabled in production readiness' >&2
   exit 15
 fi
 

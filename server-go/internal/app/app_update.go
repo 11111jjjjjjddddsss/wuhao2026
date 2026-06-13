@@ -112,7 +112,7 @@ func readAndroidUpdateConfig(getenv func(string) string) androidUpdateConfig {
 		APKURL:            apkURL,
 		APKChecksumSHA256: normalizeSHA256Hex(getenv("APP_ANDROID_APK_SHA256")),
 		ReleaseNotes:      strings.TrimSpace(getenv("APP_ANDROID_RELEASE_NOTES")),
-		ForceUpdate:       parseBoolEnv(getenv("APP_ANDROID_FORCE_UPDATE")),
+		ForceUpdate:       parseBoolEnv(getenv("APP_ANDROID_FORCE_UPDATE")) && isAndroidForceUpdateAllowed(),
 		FileSizeBytes:     parsePositiveInt64(getenv("APP_ANDROID_FILE_SIZE_BYTES")),
 	}
 }
@@ -146,7 +146,7 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 		LatestVersionCode:  latestVersionCode,
 		LatestVersionName:  latestVersionName,
 		HasUpdate:          hasUpdate,
-		ForceUpdate:        hasUpdate && cfg.ForceUpdate,
+		ForceUpdate:        hasUpdate && cfg.ForceUpdate && isAndroidForceUpdateAllowed(),
 		APKURL:             apkURL,
 		APKChecksumSHA256:  apkChecksumSHA256,
 		ReleaseNotes:       releaseNotes,
@@ -258,8 +258,15 @@ func (s *Store) ReadAndroidUpdateConfigRecord(ctx context.Context) (androidUpdat
 	record.Config.APKURL = strings.TrimSpace(record.Config.APKURL)
 	record.Config.APKChecksumSHA256 = normalizeSHA256Hex(record.Config.APKChecksumSHA256)
 	record.Config.ReleaseNotes = strings.TrimSpace(record.Config.ReleaseNotes)
+	if !isAndroidForceUpdateAllowed() {
+		record.Config.ForceUpdate = false
+	}
 	record.Source = "database"
 	return record, nil
+}
+
+func isAndroidForceUpdateAllowed() bool {
+	return parseBoolEnv(os.Getenv("APP_UPDATE_ALLOW_FORCE_UPDATE"))
 }
 
 func (s *Store) UpsertAndroidUpdateConfigRecord(ctx context.Context, cfg androidUpdateConfig, actor string, nowMs int64) error {

@@ -7,7 +7,7 @@
 - 后端已新增手机号账号骨架：`app_accounts`、`auth_sessions`、`user_id_migrations`。生产业务唯一长期身份是账号 ID `acct_...`；底层表和接口字段仍可能叫 `user_id`，但语义应按“账号ID”理解。手机号是登录凭证和回访线索，不作为业务主键；账号表保存 `phone_hash`、`phone_mask` 和用 `APP_SECRET` 派生密钥加密的 `phone_ciphertext`。
 - Android 已新增登录门和验证码登录页；登录成功后保存后端签发的长期 v2 bearer token
 - 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会调用该接口、清本地 auth token 并回到登录门；完整设备管理 / 远程吊销后续再迭代
-- 登录成功后，Android 会随一键登录和短信登录 payload 提交旧本机 `legacy_user_id` 作为迁移桥；后端只接受本机 UUID 形态 legacy ID 或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为 legacy bridge，避免账号之间互相合并。旧 bearer token 证明只用于登录迁移桥，不代表生产业务接口可以开启旧 token 鉴权；公开生产仍保持 `AUTH_STRICT=true` 且不设置 `AUTH_ALLOW_LEGACY_TOKEN`。迁移目标统一是手机号账号 `acct_...`，迁移覆盖记忆文档、聊天归档、会员 / 额度 / 加油包 / 订单、帮助反馈、App 日志、礼品卡、兑换尝试和注销申请；服务端会记录脱敏迁移审计日志，只写 legacy ID hash、迁移来源类型和目标账号ID，不打印手机号、验证码或原始旧 ID
+- 登录成功后，Android 会随一键登录和短信登录 payload 提交旧本机 `legacy_user_id` 作为迁移线索；生产后端默认只有请求同时携带可证明同一旧 ID 的旧 bearer token 时才接受迁移，不再凭裸本机 UUID 直接合并资产。`acct_...` 永远不能作为 legacy bridge，避免账号之间互相合并。旧 bearer token 证明只用于登录迁移桥，不代表生产业务接口可以开启旧 token 鉴权；公开生产仍保持 `AUTH_STRICT=true` 且不设置 `AUTH_ALLOW_LEGACY_TOKEN`。迁移目标统一是手机号账号 `acct_...`，迁移覆盖记忆文档、聊天归档、会员 / 额度 / 加油包 / 订单、帮助反馈、App 日志、礼品卡、兑换尝试和注销申请；服务端会记录脱敏迁移审计日志，只写 legacy ID hash、迁移来源类型和目标账号ID，不打印手机号、验证码或原始旧 ID。若极特殊迁移窗口确需接受未证明 UUID，必须显式设置 `AUTH_ALLOW_UNPROVEN_LEGACY_UUID=true`，且生产 readiness 会把它视为失败配置。
 - 阿里云融合认证 Android 方案已通过 CLI 创建，DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS `/etc/nongjiqiancha/server.env`
 - Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按阿里云融合认证 100001 一键登录流程拉取服务端 fusion token、初始化 SDK、拉起授权页，Android 不在 `onHalfWayVerifySuccess` 中调用后端校验，也不消费中途 token；最终只在 `onVerifySuccess` 收到 token 后提交给 `/api/auth/fusion/login`，由后端调用一次 `VerifyWithFusionAuthToken` 换手机号并签账号 token，不再用静态 token 或测试 ID 绕过登录。仓库当前使用的是融合认证 `AlicomFusionBusiness` / `fusionauth-1.2.15-online-release.aar` 链路，不是普通 `PhoneNumberAuthHelper` 三 AAR 直连链路；当前 AAR 内部已包含普通网关认证、日志类、native so 和授权页 Activity，并且 debug / release merged manifest 已合入 `FusionNumberAuthActivity`、`FusionSmsActivity`、`AlicomFusionUpSmsActivity`、`FusionGraphAuthActivity`、`LoginAuthActivity` 和 `PrivacyDialogActivity`。后续会诊时不要把普通一键登录文档里的“三个 AAR”直接当成当前仓库缺包结论；只有真机 logcat 出现 `NoClassDefFoundError` / `ClassNotFoundException` 指向 SDK logger / main / gatewayauth 类时，才重新下载完整融合认证 SDK 包核对。
 - Android 授权页已接 `AlicomFusionAuthUICallBack` 自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框可见且默认未勾选；用户点其他手机号登录、SDK 失败、取消或超时都会回到 App 自己的验证码登录页。2026-06-09 已按阿里云 Android 文档补融合认证协议页承接：Manifest 新增 `FusionAuthProtocolActivity`，`intent-filter` action 为包名专属 `com.nongjiqiancha.FUSION_AUTH_PROTOCOL`，`FusionOneLoginClient` 初始化后和授权页 UI model 均显式设置同一 `protocolAction`，并在 UI model builder 上同步 `setPackageName(BuildConfig.APPLICATION_ID)`，避免自定义协议 action 找不到当前 App Activity。2026-06-13 起协议页只承接 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 官方 HTTPS 页面，WebView 关闭 JS、file/content 访问，禁止明文 HTTP 和外域跳转；网页缺失或主页面加载失败时显示 App 内置协议要点兜底，避免点击服务协议 / 隐私政策时空白退出。协议 URL 缺失 / 非法、非法跳转和主页面加载失败会通过 `auth.fusion_protocol_url_unavailable`、`auth.fusion_protocol_navigation_blocked`、`auth.fusion_protocol_load_failed` 上报安全摘要，只带 reason / scheme / WebView 错误码，不上传完整 URL。
@@ -34,6 +34,7 @@
 - `APP_SECRET`：手机号 hash 和 v2 token 签名必须依赖它
 - `AUTH_STRICT=true`：生产必须开启，关闭裸 `X-User-Id` 兜底；默认也会拒绝无 `session_id` 的旧 bearer token，只接受可查库吊销的 v2 session token
 - `AUTH_ALLOW_LEGACY_TOKEN=true`：只允许迁移期 / 本地兼容使用；生产公开入口不要开启，否则旧 bearer token 无法被 `POST /api/auth/logout` 吊销
+- `AUTH_ALLOW_UNPROVEN_LEGACY_UUID=true`：只允许极短迁移窗口 / 本地兼容使用；生产公开入口不要开启，否则只凭一个旧本机 UUID 就可能触发资产合并
 - `AUTH_SESSION_DAYS`：登录保持天数，默认 3650；当前按“长期保持登录、省认证次数”口径处理，主动退出设备已通过 `POST /api/auth/logout` 吊销当前 session，完整设备管理 / 远程吊销后续再迭代
 - `DYPNS_ACCESS_KEY_ID` / `DYPNS_ACCESS_KEY_SECRET`：阿里云融合认证 / 短信 API 凭证，也兼容 `ALIBABA_CLOUD_ACCESS_KEY_ID` / `ALIBABA_CLOUD_ACCESS_KEY_SECRET`
 - `DYPNS_REGION_ID`：默认 `cn-hangzhou`
@@ -113,13 +114,14 @@ CI 会自动执行同一脚本；本地既可以用当前 PowerShell，也可以
 - 后台监控面板已新增“登录排障”聚合：最近 24 小时认证失败、一键登录失败、短信失败、登录前日志、`auth.fusion_env_blocked / auth.fusion_env_warning` 环境预检、`auth.login_network_failed` 登录请求网络失败、`auth.app_crash / app.crash` 闪退补报和 Top 事件会直接展示，并提供按钮跳转 App 日志筛选；一键登录按钮按取 fusion token、SDK 初始化、授权页拉起、SDK token auth、最终取号、服务端换号、超时和授权页未完成拆开，短信也拆成发送失败和登录校验失败；登录前日志统一 `user_id=preauth`
 - 旧账号如果还没有 `phone_ciphertext`，无法从 hash / mask 反推完整手机号，必须等用户下一次一键登录或短信登录后自动补齐
 - 账号 ID `acct_...` 是会员、每日额度、加油包、礼品卡、订单、帮助反馈、App 日志、A 层滑窗、记忆文档和聊天归档的统一归属 ID。旧本机 UUID 只用于登录时一次性迁移桥，不作为生产长期身份继续扩展。
-- 当前为了承接内测期旧本机数据，服务端仍接受“形态正确的本机 UUID”作为迁移桥；这不是长期公开生产方案。正式放量后应设迁移窗口、迁移审计复查，或逐步关闭未证明 UUID 迁移，只保留服务端签过的迁移 token / 已证明旧身份 / 人工后台合并，防止旧 UUID 泄漏后被错误合并资产
+- 旧本机 ID 迁移默认要求旧 bearer token 证明同一旧身份，不再凭“形态正确的本机 UUID”直接合并资产。只有极短迁移窗口或本地兼容场景显式设置 `AUTH_ALLOW_UNPROVEN_LEGACY_UUID=true` 才会接受未证明 UUID，且生产 readiness 会失败，不能作为公开生产常态。
 - 不把阿里云 AccessKey、短信模板变量、APP_SECRET 写进仓库
 - Android 只在用户同意协议并点击本机号码一键登录后请求 `/api/auth/fusion/token`，把 `auth_token + scheme_code` 交给官方 SDK；失败 / 取消时回落验证码登录，不走假登录或测试 ID 绕过
 - `/api/auth/fusion/token`、`/api/auth/fusion/verify` 和 `/api/auth/fusion/login` 都已有 Redis / 单进程短期限流；当前 Android 主链只调用 token + login，verify 接口仅保留历史兼容，避免 SDK 接入后被脚本反复刷 token 或伪造 token 消耗阿里云认证配额
 - 阿里云 DYPNS 统计 / 账单必须和后端日志一起看：云侧是真实消耗，后端日志是真实业务入口；如果云侧调用量明显高于后端入口次数，优先排查密钥泄露、脚本刷接口、SDK 重试或授权页 / 最终校验链路异常
 - `/api/auth/sms/send` 同时有手机号 + IP 和 IP 总量两层限流，避免同一出口轮换手机号消耗短信
 - 生产公开入口保持 `AUTH_STRICT=true` 且不设置 `AUTH_ALLOW_LEGACY_TOKEN`，让退出设备 / session 吊销真正生效
+- 生产公开入口保持不设置 `AUTH_ALLOW_UNPROVEN_LEGACY_UUID`；旧本机 ID 迁移默认要求旧 token 证明，避免手机号账号把不属于自己的会员、礼品卡、反馈或聊天资产合并走
 - 登录迁移当前覆盖 A 层滑窗、记忆文档、聊天归档、额度 / 会员 / 加油包 / 订单、帮助与反馈、App 日志、礼品卡兑换和兑换尝试等长期业务数据；`chat_stream_inflight` 是临时租约，登录迁移时直接丢弃旧本机租约，不迁到手机号账号
 - 多 ECS / 多实例前，认证限流必须保持 Redis 可用；验证码短期状态、失败计数和后台任务 claim 可再按需补 Redis，但不要把聊天正文或长期用户资产放入 Redis
 
