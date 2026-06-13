@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -40,6 +41,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -80,6 +84,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -102,6 +107,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -219,6 +226,7 @@ internal fun HamburgerMenuSheet(
     onPlaceholderClick: (String) -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -232,6 +240,7 @@ internal fun HamburgerMenuSheet(
     var updateChecking by remember(userId) { mutableStateOf(false) }
     var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var updateDownloading by remember(userId) { mutableStateOf(false) }
+    var pendingInstallPermissionUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -305,15 +314,17 @@ internal fun HamburgerMenuSheet(
         val appContext = context.applicationContext
         if (!AppUpdateInstaller.canRequestInstallPackages(appContext)) {
             val opened = AppUpdateInstaller.openInstallPermissionSettings(appContext)
+            pendingInstallPermissionUpdate = update.takeIf { opened }
             SessionApi.reportClientLog(
                 level = "warn",
                 event = "app_update.install_permission_required",
                 message = "App update install permission required",
                 attrs = appUpdateLogAttrs(update, true) + mapOf("settings_opened" to opened)
             )
-            showNotice(if (opened) "允许安装未知应用后，返回本页再点立即更新" else "请先允许安装未知应用")
+            showNotice(if (opened) "允许安装未知应用后，返回本页继续更新" else "请先允许安装未知应用")
             return
         }
+        pendingInstallPermissionUpdate = null
         updateDownloading = true
         showNotice("正在下载更新...")
         scope.launch {
@@ -359,6 +370,22 @@ internal fun HamburgerMenuSheet(
                     attrs = appUpdateLogAttrs(update, true)
                 )
             }
+        }
+    }
+    DisposableEffect(lifecycleOwner, visible, pendingInstallPermissionUpdate, updateDownloading) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+            val pendingUpdate = pendingInstallPermissionUpdate ?: return@LifecycleEventObserver
+            if (!visible || updateDownloading) return@LifecycleEventObserver
+            if (AppUpdateInstaller.canRequestInstallPackages(context.applicationContext)) {
+                pendingInstallPermissionUpdate = null
+                showNotice("已允许安装，继续下载更新...")
+                startAppUpdate(pendingUpdate)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
     fun handleBackClick() {
@@ -866,6 +893,58 @@ private fun appUpdateDownloadFailureText(reason: AppUpdateInstaller.DownloadFail
         else -> "更新下载失败，请稍后重试"
     }
 
+private data class HamburgerLegalSection(
+    val title: String,
+    val body: String
+)
+
+@Composable
+private fun HamburgerLegalTextPage(
+    title: String,
+    meta: String? = null,
+    intro: String? = null,
+    sections: List<HamburgerLegalSection>,
+    modifier: Modifier = Modifier
+) {
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
+        item(key = "title") {
+            HamburgerLegalPageTitle(title)
+        }
+        meta?.let { text ->
+            item(key = "meta") {
+                Text(
+                    text = text,
+                    color = Color(0xFF5F646D),
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp
+                )
+            }
+        }
+        intro?.let { text ->
+            item(key = "intro") {
+                Text(
+                    text = text,
+                    color = Color(0xFF30343A),
+                    fontSize = 14.5.sp,
+                    lineHeight = 23.sp
+                )
+            }
+        }
+        itemsIndexed(
+            items = sections,
+            key = { index, section -> "section-$index-${section.title}" }
+        ) { _, section ->
+            HamburgerAgreementSection(
+                title = section.title,
+                body = section.body
+            )
+        }
+    }
+}
+
 @Composable
 private fun HamburgerMembershipCenterContent(
     userId: String,
@@ -1141,7 +1220,6 @@ private fun HamburgerServiceAgreementPage() {
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
             .statusBarsPadding()
             .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
             .padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 34.dp)
     )
 }
@@ -1150,58 +1228,56 @@ private fun HamburgerServiceAgreementPage() {
 internal fun HamburgerServiceAgreementContent(
     modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(18.dp)
-    ) {
-        HamburgerLegalPageTitle("用户协议")
-        Text(
-            text = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
-            color = Color(0xFF5F646D),
-            fontSize = 14.sp,
-            lineHeight = 22.sp
-        )
-        HamburgerAgreementSection(
-            title = "一、服务性质",
-            body = "农技千查面向农业种植、作物管理、病虫害线索排查、农资信息理解和田间管理复盘等场景，提供基于文字、图片和图文混合输入的农业技术参考服务。AI 回复、今日农情和客服回复均不构成官方认定、检测报告、行政结论、专家签字意见、收益承诺或唯一处理方案。"
-        )
-        HamburgerAgreementSection(
-            title = "二、我们提供的功能",
-            body = "本服务包括农业问答、图片辅助分析、历史恢复、会员额度、加油包规则展示、礼品卡入口、帮助与反馈、今日农情和检查更新等功能。具体可用范围、次数、价格、权益、适用条件和展示内容，以 App 页面、服务端记录和当时生效规则为准。未开放或仅作规则展示的功能，不产生实际收费、兑换或权益变更。"
-        )
-        HamburgerAgreementSection(
-            title = "三、您提交的内容与图片",
-            body = "您提交的文字、图片、反馈和补充材料仍归您或原权利人所有。为提供问答、图片分析、历史展示、失败重试、客服处理和安全保障，我们会在必要范围内处理相关内容。请确保您有权提交这些内容，并尽量只上传与农业问题相关的材料；不要上传身份证件、银行卡、人脸隐私、他人隐私、商业秘密、违法侵权或与服务无关的内容。"
-        )
-        HamburgerAgreementSection(
-            title = "四、AI 建议的使用边界",
-            body = "AI 可能不准确、不完整、过时或无法覆盖现场条件。涉及农药、肥料、种子、调节剂、检疫、补贴、备案、登记、审定、质量争议、赔付或重大生产决策时，请以产品标签、官方平台、当地农业农村部门、检测机构、农技人员或其他有资质主体意见为准。请不要把 AI 回复伪装成官方证明、检测报告、行政结论、司法证据、农资真伪背书或专家签字意见。"
-        )
-        HamburgerAgreementSection(
-            title = "五、会员、支付、加油包和礼品卡",
-            body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、后端记录、实际支付或兑换结果及法律规定为准。本版本不提供真实支付或自动续费；礼品卡仅支持官方卡码兑换，兑换成功以后端返回和权益记录为准。服务范围变化时，以届时明确展示的价格、商品或服务内容、支付方式、退款规则、权益生效方式和必要资质信息为准。"
-        )
-        HamburgerAgreementSection(
-            title = "六、农资信息和交易边界",
-            body = "本服务可能展示农资相关标签解读、登记信息查询路径、使用注意事项、价格或市场信息整理等内容。相关信息仅供参考，不构成购买建议、效果保证或质量背书。本版本不提供农资商品交易；App 内关于肥料、农药、种子等农资的信息整理不等同于商品销售、质量承诺或售后承诺。"
-        )
-        HamburgerAgreementSection(
-            title = "七、帮助与反馈、检查更新",
-            body = "“帮助与反馈”用于产品问题、账号权益、异常订单、资料核对和服务沟通，客服回复会在站内展示；它不是紧急农情、灾害处置、即时人工诊断或赔付承诺通道。检查更新由您主动点击后连接服务器，下载 APK 并调起系统安装确认；App 不做静默安装。"
-        )
-        HamburgerAgreementSection(
-            title = "八、禁止行为",
-            body = "请不要上传违法、侵权、虚假、有害、无关、侵犯隐私或商业秘密的内容；不要冒充官方、专家、平台人员或他人，不传播虚假农情，不诱导错误用药用肥或违规经营；不要攻击接口、爬虫抓取、刷量、绕过额度、逆向工程、批量撞库礼品卡、转售账号权益或恶意消耗服务资源。"
-        )
-        HamburgerAgreementSection(
-            title = "九、隐私、知识产权与未成年人",
-            body = "我们会按照隐私政策处理您的个人信息。App 的程序、界面、文案、标识和服务逻辑归我们或相关权利人所有；您提交的内容仍归您或原权利人所有。未成年人应在监护人指导下使用，不应进行与其民事行为能力不符的付费、交易或生产决策；未满十四周岁的儿童提交个人信息应取得监护人同意。"
-        )
-        HamburgerAgreementSection(
-            title = "十、责任说明、协议更新与联系我们",
-            body = "我们不保证 AI 建议一定正确，也不承诺一定增产、治好病虫害或避免损失。因未核验现场、提供信息不实、违反标签或法规、擅自扩大用药用肥、第三方服务异常或不可抗力造成的损失，由相应责任方依法承担。我们可能根据产品、法律法规或运营需要更新本协议，重要变化会以 App 内页面、弹窗或其他合理方式提示。您不同意的，可以停止使用相关服务；如有问题可通过邮箱 465989879@qq.com 联系我们。"
+    val sections = remember {
+        listOf(
+            HamburgerLegalSection(
+                title = "一、服务性质",
+                body = "农技千查面向农业种植、作物管理、病虫害线索排查、农资信息理解和田间管理复盘等场景，提供基于文字、图片和图文混合输入的农业技术参考服务。AI 回复、今日农情和客服回复均不构成官方认定、检测报告、行政结论、专家签字意见、收益承诺或唯一处理方案。"
+            ),
+            HamburgerLegalSection(
+                title = "二、我们提供的功能",
+                body = "本服务包括农业问答、图片辅助分析、历史恢复、会员额度、加油包规则展示、礼品卡入口、帮助与反馈、今日农情和检查更新等功能。具体可用范围、次数、价格、权益、适用条件和展示内容，以 App 页面、服务端记录和当时生效规则为准。未开放或仅作规则展示的功能，不产生实际收费、兑换或权益变更。"
+            ),
+            HamburgerLegalSection(
+                title = "三、您提交的内容与图片",
+                body = "您提交的文字、图片、反馈和补充材料仍归您或原权利人所有。为提供问答、图片分析、历史展示、失败重试、客服处理和安全保障，我们会在必要范围内处理相关内容。请确保您有权提交这些内容，并尽量只上传与农业问题相关的材料；不要上传身份证件、银行卡、人脸隐私、他人隐私、商业秘密、违法侵权或与服务无关的内容。"
+            ),
+            HamburgerLegalSection(
+                title = "四、AI 建议的使用边界",
+                body = "AI 可能不准确、不完整、过时或无法覆盖现场条件。涉及农药、肥料、种子、调节剂、检疫、补贴、备案、登记、审定、质量争议、赔付或重大生产决策时，请以产品标签、官方平台、当地农业农村部门、检测机构、农技人员或其他有资质主体意见为准。请不要把 AI 回复伪装成官方证明、检测报告、行政结论、司法证据、农资真伪背书或专家签字意见。"
+            ),
+            HamburgerLegalSection(
+                title = "五、会员、支付、加油包和礼品卡",
+                body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、后端记录、实际支付或兑换结果及法律规定为准。本版本不提供真实支付或自动续费；礼品卡仅支持官方卡码兑换，兑换成功以后端返回和权益记录为准。服务范围变化时，以届时明确展示的价格、商品或服务内容、支付方式、退款规则、权益生效方式和必要资质信息为准。"
+            ),
+            HamburgerLegalSection(
+                title = "六、农资信息和交易边界",
+                body = "本服务可能展示农资相关标签解读、登记信息查询路径、使用注意事项、价格或市场信息整理等内容。相关信息仅供参考，不构成购买建议、效果保证或质量背书。本版本不提供农资商品交易；App 内关于肥料、农药、种子等农资的信息整理不等同于商品销售、质量承诺或售后承诺。"
+            ),
+            HamburgerLegalSection(
+                title = "七、帮助与反馈、检查更新",
+                body = "“帮助与反馈”用于产品问题、账号权益、异常订单、资料核对和服务沟通，客服回复会在站内展示；它不是紧急农情、灾害处置、即时人工诊断或赔付承诺通道。检查更新由您主动点击后连接服务器，下载 APK 并调起系统安装确认；App 不做静默安装。"
+            ),
+            HamburgerLegalSection(
+                title = "八、禁止行为",
+                body = "请不要上传违法、侵权、虚假、有害、无关、侵犯隐私或商业秘密的内容；不要冒充官方、专家、平台人员或他人，不传播虚假农情，不诱导错误用药用肥或违规经营；不要攻击接口、爬虫抓取、刷量、绕过额度、逆向工程、批量撞库礼品卡、转售账号权益或恶意消耗服务资源。"
+            ),
+            HamburgerLegalSection(
+                title = "九、隐私、知识产权与未成年人",
+                body = "我们会按照隐私政策处理您的个人信息。App 的程序、界面、文案、标识和服务逻辑归我们或相关权利人所有；您提交的内容仍归您或原权利人所有。未成年人应在监护人指导下使用，不应进行与其民事行为能力不符的付费、交易或生产决策；未满十四周岁的儿童提交个人信息应取得监护人同意。"
+            ),
+            HamburgerLegalSection(
+                title = "十、责任说明、协议更新与联系我们",
+                body = "我们不保证 AI 建议一定正确，也不承诺一定增产、治好病虫害或避免损失。因未核验现场、提供信息不实、违反标签或法规、擅自扩大用药用肥、第三方服务异常或不可抗力造成的损失，由相应责任方依法承担。我们可能根据产品、法律法规或运营需要更新本协议，重要变化会以 App 内页面、弹窗或其他合理方式提示。您不同意的，可以停止使用相关服务；如有问题可通过邮箱 465989879@qq.com 联系我们。"
+            )
         )
     }
+    HamburgerLegalTextPage(
+        title = "用户协议",
+        meta = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
+        sections = sections,
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -2740,7 +2816,7 @@ private fun HamburgerSupportFeedbackContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val actionCircleSize = if (screenWidth < 360.dp) 34.dp else 36.dp
     val addIconSize = if (screenWidth < 360.dp) 24.dp else 26.dp
@@ -2751,7 +2827,11 @@ private fun HamburgerSupportFeedbackContent(
 
     LaunchedEffect(messages.size, loading, loadFailed) {
         delay(80)
-        scrollState.animateScrollTo(scrollState.maxValue)
+        val targetIndex = when {
+            !loading && !loadFailed && messages.isNotEmpty() -> messages.lastIndex
+            else -> 0
+        }
+        listState.animateScrollToItem(targetIndex)
     }
 
     Column(modifier = modifier) {
@@ -2788,46 +2868,61 @@ private fun HamburgerSupportFeedbackContent(
                 .weight(1f)
                 .padding(top = 16.dp)
         ) {
-            Column(
+            LazyColumn(
+                state = listState,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(scrollState)
-                    .padding(horizontal = 12.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 when {
                     loading -> {
-                        HamburgerSupportStatusText(text = "正在同步消息...")
+                        item(key = "loading") {
+                            HamburgerSupportStatusText(text = "正在同步消息...")
+                        }
                     }
                     loadFailed -> {
-                        HamburgerSupportStatusText(text = "消息同步失败")
-                        Surface(
-                            color = Color.White,
-                            shape = RoundedCornerShape(999.dp),
-                            border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = onRetry
-                                )
-                        ) {
-                            Text(
-                                text = "重试",
-                                color = Color(0xFF111111),
-                                fontSize = 14.sp,
-                                lineHeight = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
-                            )
+                        item(key = "failed") {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                HamburgerSupportStatusText(text = "消息同步失败")
+                                Surface(
+                                    color = Color.White,
+                                    shape = RoundedCornerShape(999.dp),
+                                    border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+                                    modifier = Modifier.clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = onRetry
+                                    )
+                                ) {
+                                    Text(
+                                        text = "重试",
+                                        color = Color(0xFF111111),
+                                        fontSize = 14.sp,
+                                        lineHeight = 18.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                     messages.isEmpty() -> {
-                        HamburgerSupportEmptyState()
+                        item(key = "empty") {
+                            HamburgerSupportEmptyState()
+                        }
                     }
                     else -> {
-                        messages.forEach { message ->
+                        itemsIndexed(
+                            items = messages,
+                            key = { index, message ->
+                                message.id?.let { "message-$it" }
+                                    ?: "local-$index-${message.createdAt}-${message.senderType}"
+                            }
+                        ) { _, message ->
                             HamburgerSupportMessageBubble(message = message)
                         }
                     }

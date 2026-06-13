@@ -1838,12 +1838,7 @@ private fun Context.hasActiveNetworkConnection(): Boolean {
     val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
     val network = connectivityManager.activeNetwork ?: return false
     val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
-    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-        (
-            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
-            )
+    return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }
 
 internal fun Context.readImageBytes(uri: Uri): ByteArray? {
@@ -4907,7 +4902,9 @@ fun ChatScreen() {
             }
             val finalId = streamingMessageId
             streamingRevealBuffer = ""
+            var shouldCompleteSourceUserMessage = false
             if (finalContent.isNotBlank()) {
+                shouldCompleteSourceUserMessage = true
                 if (shouldRestoreBottomAnchor) {
                     requestProgrammaticForwardListBottomAnchor()
                 }
@@ -4938,11 +4935,21 @@ fun ChatScreen() {
                     prewarmAssistantMarkdown(prewarmMessages)
                 }
             } else {
-                finalId?.let(::removeMessageById)
+                val sourceUserMessageId = completedSourceUserMessageId
+                if (!sourceUserMessageId.isNullOrBlank() && !finalId.isNullOrBlank()) {
+                    finalizeInterruptedAssistant(
+                        sourceUserMessageId = sourceUserMessageId,
+                        assistantMessageId = finalId,
+                        finalContent = "",
+                        reason = "empty"
+                    )
+                } else {
+                    finalId?.let(::removeMessageById)
+                    persistTick++
+                }
                 finalizeStreamingStop(shouldRestoreBottomAnchor = shouldRestoreBottomAnchor)
-                persistTick++
             }
-            completedSourceUserMessageId?.let { userMessageId ->
+            completedSourceUserMessageId?.takeIf { shouldCompleteSourceUserMessage }?.let { userMessageId ->
                 PendingChatSendWorkScheduler.complete(context, chatScopeId, userMessageId)
             }
         }

@@ -212,9 +212,13 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         text = "农技千查",
                         color = Color(0xFF111111),
                         fontSize = 40.sp,
+                        lineHeight = 46.sp,
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
-                        letterSpacing = 0.sp
+                        letterSpacing = 0.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
                     Spacer(Modifier.width(50.dp))
                 }
