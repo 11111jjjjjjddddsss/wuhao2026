@@ -62,23 +62,19 @@ class MainActivity : ComponentActivity() {
             var privacyAccepted by androidx.compose.runtime.remember {
                 androidx.compose.runtime.mutableStateOf(privacyAcceptedOnCreate)
             }
+            val acceptPrivacyIfNeeded = {
+                if (!privacyAccepted) {
+                    PrivacyConsentStore.accept(this@MainActivity)
+                    privacyAccepted = true
+                }
+                initializePostPrivacyConsentRuntime()
+            }
             MaterialTheme {
                 Surface(color = MaterialTheme.colorScheme.background) {
-                    if (privacyAccepted) {
-                        LoginGate {
-                            ChatScreen()
-                        }
-                    } else {
-                        PrivacyConsentGate(
-                            onAccepted = {
-                                PrivacyConsentStore.accept(this@MainActivity)
-                                initializePostPrivacyConsentRuntime()
-                                privacyAccepted = true
-                            },
-                            onDeclined = {
-                                finish()
-                            }
-                        )
+                    LoginGate(
+                        onPrivacyAccepted = acceptPrivacyIfNeeded
+                    ) {
+                        ChatScreen()
                     }
                 }
             }

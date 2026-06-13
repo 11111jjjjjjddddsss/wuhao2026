@@ -58,6 +58,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
@@ -7349,6 +7350,14 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
+                title = "登录与协议",
+                items = listOf(
+                    UiCopyPreviewItem("首次登录页", "无独立同意页，登录页对号承接隐私同意", UiCopyPreviewKind.LoginInitial),
+                    UiCopyPreviewItem("未勾选拦截", "不请求后端、不拉 SDK、不申请电话权限", UiCopyPreviewKind.LoginAgreementBlocked),
+                    UiCopyPreviewItem("验证码兜底", "一键失败 / 纯 WiFi / 取消后回自家验证码页", UiCopyPreviewKind.LoginSmsFallback)
+                )
+            ),
+            UiCopyPreviewGroup(
                 title = "清数据回归",
                 items = listOf(
                     UiCopyPreviewItem("清数据首次启动", "空本地状态下的欢迎态和输入框", UiCopyPreviewKind.CleanStateFirstLaunch),
@@ -7427,7 +7436,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "普通更新弹窗，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
-                    UiCopyPreviewItem("更新权限提示", "安装未知应用授权提示浮层", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
+                    UiCopyPreviewItem("更新权限提示", "授权后返回 App 自动继续", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("服务协议目录", "用户协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
                     UiCopyPreviewItem("用户协议", "本地内置用户协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
@@ -7677,6 +7686,9 @@ private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
 private enum class UiCopyPreviewKind {
     AppTitle,
     Welcome,
+    LoginInitial,
+    LoginAgreementBlocked,
+    LoginSmsFallback,
     CleanStateFirstLaunch,
     CleanStateFirstSend,
     CleanStateChecklist,
@@ -7907,6 +7919,27 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         )
                     }
                 }
+                UiCopyPreviewKind.LoginInitial -> {
+                    UiCopyPreviewLoginPage(
+                        agreed = false,
+                        smsMode = false,
+                        message = "首次打开直接是登录页；勾选后才记录隐私同意。"
+                    )
+                }
+                UiCopyPreviewKind.LoginAgreementBlocked -> {
+                    UiCopyPreviewLoginPage(
+                        agreed = false,
+                        smsMode = false,
+                        message = "请先同意服务协议和隐私政策"
+                    )
+                }
+                UiCopyPreviewKind.LoginSmsFallback -> {
+                    UiCopyPreviewLoginPage(
+                        agreed = true,
+                        smsMode = true,
+                        message = "一键登录未完成，请使用验证码登录"
+                    )
+                }
                 UiCopyPreviewKind.CleanStateFirstLaunch -> {
                     UiCopyPreviewCleanStateFirstLaunch()
                 }
@@ -8133,7 +8166,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     HamburgerAppUpdateDialogPreview(downloading = true)
                 }
                 UiCopyPreviewKind.AppUpdateInstallPermissionHint -> {
-                    UiCopyPreviewHint("允许安装未知应用后，返回本页再点立即更新")
+                    UiCopyPreviewHint("允许安装未知应用后，返回 App 会自动继续下载 / 安装本次更新")
                 }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
@@ -8294,6 +8327,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     listOf(
                         "右上角 X 关闭",
                         "一级标题可展开 / 收起",
+                        "登录与协议包含首次登录、未勾选拦截和验证码兜底",
                         "检查更新按普通更新展示，含下载中和权限提示",
                         "今日农情含主卡、长摘要、历史页和失败态",
                         "查看 / 预览中 / 样式预览"
@@ -8315,6 +8349,210 @@ private fun UiCopyPreviewNarrowFrame(
     ) {
         Box(modifier = Modifier.width(width)) {
             content()
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewLoginPage(
+    agreed: Boolean,
+    smsMode: Boolean,
+    message: String?
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = APP_TITLE_TEXT,
+                color = Color(0xFF111111),
+                fontSize = 30.sp,
+                lineHeight = 34.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                letterSpacing = 0.sp
+            )
+            UiCopyPreviewLoginButton(
+                text = "本机号码一键登录",
+                primary = true
+            )
+            UiCopyPreviewLoginButton(
+                text = if (smsMode) "收起验证码登录" else "验证码登录",
+                primary = false
+            )
+            if (smsMode) {
+                UiCopyPreviewLoginField("手机号")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    UiCopyPreviewLoginField(
+                        text = "验证码",
+                        modifier = Modifier.weight(1f)
+                    )
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(0.8.dp, Color(0xFFD3D7DE)),
+                        modifier = Modifier.widthIn(min = 72.dp)
+                    ) {
+                        Text(
+                            text = "发送",
+                            color = Color(0xFF111111),
+                            fontSize = 14.sp,
+                            textAlign = TextAlign.Center,
+                            letterSpacing = 0.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp)
+                        )
+                    }
+                }
+                UiCopyPreviewLoginButton(
+                    text = "登录",
+                    primary = true
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                UiCopyPreviewAgreementCheckbox(checked = agreed)
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    text = "我已阅读并同意《服务协议》《隐私政策》",
+                    color = Color(0xFF575D66),
+                    fontSize = 11.sp,
+                    lineHeight = 16.sp,
+                    letterSpacing = 0.sp,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            message?.let {
+                val positive = it.contains("勾选后")
+                Text(
+                    text = it,
+                    color = if (positive) Color(0xFF4F6A3A) else Color(0xFF8A5A00),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    textAlign = TextAlign.Center,
+                    letterSpacing = 0.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(
+                            if (positive) Color(0xFFF2F8EA) else Color(0xFFFFF4D8),
+                            RoundedCornerShape(10.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 9.dp)
+                )
+            }
+            UiCopyPreviewPlainText(
+                listOf(
+                    "同意前不初始化身份、不补报崩溃日志。",
+                    "同意前不请求后端、不拉一键登录 SDK、不申请电话状态权限。",
+                    "阿里云运营商授权页仍需要用户单独勾选。"
+                )
+            )
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewLoginButton(
+    text: String,
+    primary: Boolean
+) {
+    Surface(
+        color = if (primary) Color(0xFF111111) else Color.White,
+        shape = RoundedCornerShape(12.dp),
+        border = if (primary) null else BorderStroke(0.8.dp, Color(0xFFD3D7DE)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                color = if (primary) Color.White else Color(0xFF111111),
+                fontSize = if (primary) 16.sp else 15.sp,
+                fontWeight = if (primary) FontWeight.SemiBold else FontWeight.Normal,
+                textAlign = TextAlign.Center,
+                letterSpacing = 0.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewLoginField(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFD3D7DE)),
+        modifier = modifier
+            .fillMaxWidth()
+            .height(48.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.CenterStart,
+            modifier = Modifier.padding(horizontal = 14.dp)
+        ) {
+            Text(
+                text = text,
+                color = Color(0xFF8D929B),
+                fontSize = 14.sp,
+                letterSpacing = 0.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewAgreementCheckbox(checked: Boolean) {
+    val borderColor = if (checked) Color(0xFF111111) else Color(0xFF747682)
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier.size(48.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(23.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .border(BorderStroke(1.6.dp, borderColor), RoundedCornerShape(4.dp))
+        ) {
+            if (checked) {
+                Canvas(modifier = Modifier.size(14.dp)) {
+                    val strokeWidth = 2.4.dp.toPx()
+                    drawLine(
+                        color = Color(0xFF111111),
+                        start = Offset(size.width * 0.16f, size.height * 0.52f),
+                        end = Offset(size.width * 0.40f, size.height * 0.76f),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                    drawLine(
+                        color = Color(0xFF111111),
+                        start = Offset(size.width * 0.40f, size.height * 0.76f),
+                        end = Offset(size.width * 0.86f, size.height * 0.24f),
+                        strokeWidth = strokeWidth,
+                        cap = StrokeCap.Round
+                    )
+                }
+            }
         }
     }
 }

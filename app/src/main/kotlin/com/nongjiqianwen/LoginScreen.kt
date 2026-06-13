@@ -77,7 +77,10 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.delay
 
 @Composable
-fun LoginGate(content: @Composable () -> Unit) {
+fun LoginGate(
+    onPrivacyAccepted: () -> Unit,
+    content: @Composable () -> Unit
+) {
     var loggedIn by remember { mutableStateOf(IdManager.isLoggedIn()) }
     DisposableEffect(Unit) {
         val removeListener = SessionApi.addAuthInvalidListener {
@@ -85,15 +88,25 @@ fun LoginGate(content: @Composable () -> Unit) {
         }
         onDispose { removeListener() }
     }
+    fun handlePrivacyAccepted() {
+        onPrivacyAccepted()
+        loggedIn = IdManager.isLoggedIn()
+    }
     if (loggedIn) {
         content()
     } else {
-        LoginScreen(onLoginSuccess = { loggedIn = true })
+        LoginScreen(
+            onPrivacyAccepted = ::handlePrivacyAccepted,
+            onLoginSuccess = { loggedIn = true }
+        )
     }
 }
 
 @Composable
-private fun LoginScreen(onLoginSuccess: () -> Unit) {
+private fun LoginScreen(
+    onPrivacyAccepted: () -> Unit,
+    onLoginSuccess: () -> Unit
+) {
     LaunchedEffect(Unit) {
         LaunchUiGate.chatReady = true
     }
@@ -113,6 +126,21 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
         onDispose {
             FusionOneLoginClient.cancelActiveScene("login_screen_dispose")
         }
+    }
+
+    fun acceptAgreementIfNeeded() {
+        if (!PrivacyConsentStore.isAccepted(context)) {
+            onPrivacyAccepted()
+        }
+    }
+
+    fun requireAgreement(): Boolean {
+        if (!agreed) {
+            message = "请先同意服务协议和隐私政策"
+            return false
+        }
+        acceptAgreementIfNeeded()
+        return true
     }
 
     fun startFusionOneLogin(activity: Activity) {
@@ -227,8 +255,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                 if (fusionOneLoginEnabled) {
                     Button(
                         onClick = {
-                            if (!agreed) {
-                                message = "请先同意服务协议和隐私政策"
+                            if (!requireAgreement()) {
                                 return@Button
                             }
                             FusionOneLoginClient.precheckOneLoginEnvironment(context)?.let { fallbackMessage ->
@@ -337,8 +364,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                         )
                         OutlinedButton(
                             onClick = {
-                                if (!agreed) {
-                                    message = "请先同意服务协议和隐私政策"
+                                if (!requireAgreement()) {
                                     return@OutlinedButton
                                 }
                                 if (!isValidMainlandPhone(phone)) {
@@ -376,8 +402,7 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     Spacer(Modifier.height(14.dp))
                     Button(
                         onClick = {
-                            if (!agreed) {
-                                message = "请先同意服务协议和隐私政策"
+                            if (!requireAgreement()) {
                                 return@Button
                             }
                             if (!isValidMainlandPhone(phone) || code.length != 6) {
@@ -420,7 +445,13 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
                     ) {
                         LoginAgreementCheckbox(
                             checked = agreed,
-                            onCheckedChange = { agreed = it },
+                            onCheckedChange = {
+                                agreed = it
+                                if (it) {
+                                    message = null
+                                    acceptAgreementIfNeeded()
+                                }
+                            },
                         )
                         Spacer(Modifier.size(7.dp))
                         ClickableText(

@@ -65,7 +65,7 @@ $appUpdateInstallerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqia
 $fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
 $fusionProtocolActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionAuthProtocolActivity.kt"
 $mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MainActivity.kt"
-$privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentGate.kt"
+$privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentStore.kt"
 $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendWorker.kt"
 $todayAgriCardUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/TodayAgriCardUi.kt"
 $userMessageImageUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/UserMessageImageUi.kt"
@@ -229,29 +229,36 @@ if ($failures.Count -eq 0) {
         "SMS login must not accept 4/5 digit codes and send avoidable failed backend requests."
     $loginAgreementGatePattern = "if\s*\(\s*!agreed\s*\)(?s:.*?)message\s*="
     $mainActivityPrivacyCheckPattern = "PrivacyConsentStore\.isAccepted\s*\(\s*this\s*\)"
+    $mainActivityExistingConsentInitPattern = "if\s*\(\s*privacyAcceptedOnCreate\s*\)\s*\{(?s:.*?)initializePostPrivacyConsentRuntime\s*\(\s*\)"
+    $mainActivityAcceptCallbackPattern = "val\s+acceptPrivacyIfNeeded\s*=\s*\{(?s:.*?)PrivacyConsentStore\.accept\s*\(\s*this@MainActivity\s*\)(?s:.*?)initializePostPrivacyConsentRuntime\s*\(\s*\)"
     $mainActivityPostConsentInitPattern = "initializePostPrivacyConsentRuntime\s*\(\s*\)(?s:.*?)IdManager\.init\s*\(\s*this\s*\)(?s:.*?)AppCrashReporter\.flushPendingReport"
-    $mainActivityLoginAfterPrivacyPattern = "if\s*\(\s*privacyAccepted\s*\)(?s:.*?)LoginGate"
+    $mainActivityLoginConsentCallbackPattern = "LoginGate\s*\(\s*onPrivacyAccepted\s*=\s*acceptPrivacyIfNeeded"
     $privacyConsentVersionedStorePattern = "object\s+PrivacyConsentStore(?s:.*?)CURRENT_VERSION\s*=\s*1(?s:.*?)fun\s+isAccepted"
-    $privacyConsentAcceptActionPattern = "onAccepted\s*\(\s*\)"
-    $privacyConsentDeclineActionPattern = "onClick\s*=\s*onDeclined"
+    $loginAgreementPersistPattern = "fun\s+acceptAgreementIfNeeded\s*\(\s*\)(?s:.*?)PrivacyConsentStore\.isAccepted\s*\(\s*context\s*\)(?s:.*?)onPrivacyAccepted\s*\(\s*\)"
+    $loginAgreementRequirePattern = "fun\s+requireAgreement\s*\(\s*\)(?s:.*?)if\s*\(\s*!agreed\s*\)(?s:.*?)acceptAgreementIfNeeded\s*\(\s*\)"
+    $loginSharedTextPattern = "HamburgerServiceAgreementContent(?s:.*?)HamburgerPrivacyPolicyContent"
     Require-Match $failures $loginScreen $loginAgreementGatePattern `
         "Login actions must remain gated by the service agreement/privacy checkbox."
     Require-Match $failures $mainActivity $mainActivityPrivacyCheckPattern `
-        "MainActivity must check first-launch privacy consent before entering login/chat."
+        "MainActivity must read first-launch privacy consent before initializing runtime."
+    Require-Match $failures $mainActivity $mainActivityExistingConsentInitPattern `
+        "Existing accepted privacy consent must initialize runtime before logged-in chat can load."
+    Require-Match $failures $mainActivity $mainActivityAcceptCallbackPattern `
+        "New privacy consent must be recorded before IdManager init and crash-log flushing."
     Require-Match $failures $mainActivity $mainActivityPostConsentInitPattern `
         "IdManager init and crash-log flushing must stay behind accepted privacy consent."
-    Require-Match $failures $mainActivity $mainActivityLoginAfterPrivacyPattern `
-        "MainActivity must render LoginGate only after privacy consent has been accepted."
+    Require-Match $failures $mainActivity $mainActivityLoginConsentCallbackPattern `
+        "LoginGate must receive the consent callback instead of rendering a separate first-launch consent page."
+    Require-NoMatch $failures $mainActivity 'PrivacyConsentGate' `
+        "MainActivity must not show a separate first-launch privacy page; consent is handled in LoginScreen."
     Require-Match $failures $privacyConsent $privacyConsentVersionedStorePattern `
         "PrivacyConsentStore must keep a versioned local consent flag."
-    Require-Match $failures $privacyConsent $privacyConsentAcceptActionPattern `
-        "First-launch privacy gate must provide an explicit agree-and-continue action."
-    Require-Match $failures $privacyConsent $privacyConsentDeclineActionPattern `
-        "First-launch privacy gate must provide an explicit decline/exit action."
+    Require-Match $failures $loginScreen $loginAgreementPersistPattern `
+        "LoginScreen must persist first privacy consent through the same agreement checkbox."
+    Require-Match $failures $loginScreen $loginAgreementRequirePattern `
+        "Login actions must initialize post-consent runtime only after the agreement checkbox is checked."
     Require-Match $failures $loginScreen 'size\s*\(\s*48\.dp\s*\)(?s:.*?)clickable\s*\(\s*role\s*=\s*Role\.Checkbox' `
         "Login agreement checkbox touch target must remain at least 48dp."
-    Require-Match $failures $privacyConsent 'size\s*\(\s*48\.dp\s*\)(?s:.*?)clickable\s*\(\s*role\s*=\s*Role\.Checkbox' `
-        "First-launch privacy checkbox touch target must remain at least 48dp."
     Require-NoMatch $failures $chatScreen 'if\s*\(\s*ClientRegionProvider\.hasLocationPermission\s*\(\s*context\s*\)\s*\)(?s:.*?)\}\s*else\s+if\s*\(\s*!ClientRegionProvider\.wasLocationPermissionPrompted\s*\(\s*context\s*\)\s*\)' `
         "Chat screen must not prompt for location permission immediately on entry; request it in-context when sending."
     Require-Match $failures $chatScreen 'suspend\s+fun\s+refreshClientRegionForSend\s*\(\s*\)(?s:.*?)locationPermissionLauncher\.launch' `
@@ -264,14 +271,13 @@ if ($failures.Count -eq 0) {
         "Fusion auth protocol WebView must not allow plain HTTP protocol URLs."
     Require-Match $failures $fusionProtocolActivity 'addProtocolFallback(?s:.*?)resolveFallbackProtocolText' `
         "Fusion auth protocol page must show an in-app fallback if the official web page cannot load."
-    $privacyConsentSharedTextPattern = "HamburgerServiceAgreementContent(?s:.*?)HamburgerPrivacyPolicyContent"
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsCard\b"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
     $chatScreenTodayAgriImplementationPattern = "private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard"
 
-    Require-Match $failures $privacyConsent $privacyConsentSharedTextPattern `
-        "First-launch privacy gate must let users read the same service agreement and privacy policy content as settings/login."
+    Require-Match $failures $loginScreen $loginSharedTextPattern `
+        "Login agreement links must let users read the same service agreement and privacy policy content as settings."
     Require-Match $failures $pendingWorker $pendingWorkerPrivacyGatePattern `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
     Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
