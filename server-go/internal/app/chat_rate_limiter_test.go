@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func TestChatRateLimiterRejectsAfterConfiguredHits(t *testing.T) {
@@ -106,6 +108,28 @@ func TestNewChatRateLimiterFallsBackToProcessLimiter(t *testing.T) {
 	}
 	if limiter.window != defaultChatRateLimitWindow || limiter.maxHits != defaultChatRateLimitMaxHits {
 		t.Fatalf("fallback limiter config mismatch: window=%s max=%d", limiter.window, limiter.maxHits)
+	}
+}
+
+func TestNewChatRateLimiterRedisFailureDoesNotBlockChat(t *testing.T) {
+	client := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  10 * time.Millisecond,
+		ReadTimeout:  10 * time.Millisecond,
+		WriteTimeout: 10 * time.Millisecond,
+	})
+	defer client.Close()
+
+	limiter, ok := newChatRateLimiter(client).(*redisRateLimiter)
+	if !ok {
+		t.Fatalf("newChatRateLimiter(redis) returned %T, want *redisRateLimiter", newChatRateLimiter(client))
+	}
+	if !limiter.failOpenOnError {
+		t.Fatalf("chat redis limiter should fail open so Redis blips do not block normal chat")
+	}
+	allowed, retryAfter := limiter.Consume("chat-test", time.Now())
+	if !allowed || retryAfter != 0 {
+		t.Fatalf("chat redis limiter should allow on redis error: allowed=%v retryAfter=%d", allowed, retryAfter)
 	}
 }
 

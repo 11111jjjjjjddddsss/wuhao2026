@@ -129,7 +129,7 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-cards" `
 
 探针用于验证当前固定 `qwen3.5-plus + compatible chat/completions + turbo` 的 JSON 执行力、来源名、解析通过率、usage 和新闻质量。探针不会写入 `daily_agri_cards`，也不会改变用户当天看到的卡片。该入口同样必须带 `DAILY_AGRI_JOB_SECRET`，`runs` 默认 1，最多 5。
 
-2026-06-13 生产环境 `qwen3.5-plus + turbo + v74` 探针 `runs=2` 得到 `ok_count=2/2`，每次均为 3 条完整 item，`prompt_version=2026-06-13-v74`，未返回 `reasoning_tokens`；摘要长度样本约 79-94 字，样本未见代码块、外链下发或养殖水产主体。v74 是当前“短提示词、三条硬要求、不过度压模型、不恢复后端内容过滤”的收尾版本；个别摘要略低于 80 字先按质量残余观察，不为此恢复后端字数过滤、模型输出截断或继续追加细碎硬规则。2026-06-12 v70 生产探针曾得到 `ok_count=3/3`，每轮 3 条完整 item，未返回 reasoning tokens，摘要长度约 89-115 字；更早 v67 / v52-v55 的探针记录只作历史排障参考。兼容 Chat 链路返回的结构化 `sources[]` 可能为空，质量判断仍要看 `source_name`、正文事实和后台抽查。
+2026-06-13 生产环境 `qwen3.5-plus + turbo + v74` 继续跑探针，本轮累计 `runs=5` 得到 `ok_count=5/5`，每次均为 3 条完整 item，`prompt_version=2026-06-13-v74`，未返回 `reasoning_tokens`；摘要长度样本约 75-87 字，样本未见代码块、外链下发或养殖水产主体。v74 是当前“短提示词、三条硬要求、不过度压模型、不恢复后端内容过滤”的收尾版本；摘要仍略短但不是一句薄通知，先按质量残余观察，不为此恢复后端字数过滤、模型输出截断或继续追加细碎硬规则。2026-06-12 v70 生产探针曾得到 `ok_count=3/3`，每轮 3 条完整 item，未返回 reasoning tokens，摘要长度约 89-115 字；更早 v67 / v52-v55 的探针记录只作历史排障参考。兼容 Chat 链路返回的结构化 `sources[]` 可能为空，质量判断仍要看 `source_name`、正文事实和后台抽查。
 
 ```powershell
 curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/probe?runs=3" `

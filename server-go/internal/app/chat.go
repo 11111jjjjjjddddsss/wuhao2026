@@ -51,7 +51,7 @@ func (e *upstreamStreamOpenError) Error() string {
 func newChatRateLimiter(redisClient *redis.Client) rateLimiter {
 	config := resolveChatRateLimitConfig()
 	if redisClient != nil {
-		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultChatRateLimitWindow, defaultChatRateLimitMaxHits)
+		return newRedisRateLimiterFailOpen(redisClient, config, redisRateLimitPrefix, defaultChatRateLimitWindow, defaultChatRateLimitMaxHits)
 	}
 	return newChatRateLimiterWithConfig(config)
 }

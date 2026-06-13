@@ -442,7 +442,7 @@ func newSupportMessageRateLimiter(redisClient *redis.Client) rateLimiter {
 		PruneInterval: envDurationWithDefault("SUPPORT_MESSAGE_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultSupportMessageRateLimitPruneInterval),
 	}
 	if redisClient != nil {
-		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultSupportMessageRateLimitWindow, defaultSupportMessageRateLimitMaxHits)
+		return newRedisRateLimiterFailOpen(redisClient, config, redisRateLimitPrefix, defaultSupportMessageRateLimitWindow, defaultSupportMessageRateLimitMaxHits)
 	}
 	return newChatRateLimiterWithConfig(config)
 }

@@ -486,6 +486,7 @@ object FusionOneLoginClient {
                         stage = "verify_interrupt",
                         error = event
                     )
+                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                 }
             })
         }.isSuccess

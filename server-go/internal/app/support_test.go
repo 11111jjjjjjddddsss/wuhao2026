@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 func TestNormalizeSupportMessagePayloadAllowsTextImageAndImageOnly(t *testing.T) {
@@ -178,6 +180,28 @@ func TestSupportMessageRateLimitKeyHashesSensitiveInputs(t *testing.T) {
 	}
 	if !strings.HasPrefix(key, "support_message:") {
 		t.Fatalf("supportMessageRateLimitKey prefix mismatch: %q", key)
+	}
+}
+
+func TestSupportMessageRedisRateLimiterFailsOpen(t *testing.T) {
+	client := redis.NewClient(&redis.Options{
+		Addr:         "127.0.0.1:1",
+		DialTimeout:  10 * time.Millisecond,
+		ReadTimeout:  10 * time.Millisecond,
+		WriteTimeout: 10 * time.Millisecond,
+	})
+	defer client.Close()
+
+	limiter, ok := newSupportMessageRateLimiter(client).(*redisRateLimiter)
+	if !ok {
+		t.Fatalf("newSupportMessageRateLimiter(redis) returned %T, want *redisRateLimiter", newSupportMessageRateLimiter(client))
+	}
+	if !limiter.failOpenOnError {
+		t.Fatalf("support message redis limiter should fail open so users can still contact support")
+	}
+	allowed, retryAfter := limiter.Consume("support-test", time.Now())
+	if !allowed || retryAfter != 0 {
+		t.Fatalf("support message redis limiter should allow on redis error: allowed=%v retryAfter=%d", allowed, retryAfter)
 	}
 }
 
