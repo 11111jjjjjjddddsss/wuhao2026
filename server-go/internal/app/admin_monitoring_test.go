@@ -166,6 +166,66 @@ func TestAdminMonitoringAuthEnvironmentCopyMatchesEventSemantics(t *testing.T) {
 	assertContainsAll(t, warning.Body, "4G+WiFi", "VPN", "系统代理", "已放行")
 }
 
+func TestAdminAuthFunnelStageMappingCoversKnownLoginEvents(t *testing.T) {
+	tests := map[string]string{
+		"auth.fusion_start_requested":            "environment",
+		"auth.fusion_env_blocked":                "environment",
+		"auth.fusion_env_warning":                "environment",
+		"auth.fusion_permission_request":         "permission",
+		"auth.fusion_permission_ready":           "permission",
+		"auth.fusion_permission_denied":          "permission",
+		"auth.fusion_token_failed":               "token",
+		"auth.fusion_sdk_init_failed":            "sdk",
+		"auth.fusion_scene_start_failed":         "auth_page",
+		"auth.fusion_protocol_load_failed":       "auth_page",
+		"auth.fusion_sdk_token_auth_failed":      "carrier_verify",
+		"auth.fusion_verify_failed":              "carrier_verify",
+		"auth.fusion_get_phone_for_verification": "carrier_verify",
+		"auth.fusion_login_failed":               "server_login",
+		"auth.fusion_login_success":              "server_login",
+		"auth.login_network_failed":              "server_login",
+		"auth.sms_send_failed":                   "sms",
+		"auth.sms_login_failed":                  "sms",
+		"auth.sms_login_success":                 "sms",
+		"auth.app_crash":                         "crash",
+		"app.crash":                              "crash",
+		"app_update.check_failed":                "",
+		"auth.future_event_kept_in_top_events":   "",
+	}
+	for event, want := range tests {
+		if got := adminAuthFunnelStageKeyForEvent(event); got != want {
+			t.Fatalf("stage for %s = %q, want %q", event, got, want)
+		}
+	}
+}
+
+func TestAdminAuthFunnelSuccessEventsStayExplicit(t *testing.T) {
+	successEvents := []string{
+		"auth.fusion_permission_ready",
+		"auth.fusion_scene_start_invoked",
+		"auth.fusion_login_success",
+		"auth.sms_login_success",
+		"auth.login_success",
+	}
+	for _, event := range successEvents {
+		if !adminAuthFunnelEventIsSuccess(event) {
+			t.Fatalf("event %s should count as explicit success", event)
+		}
+	}
+	notSuccessEvents := []string{
+		"auth.fusion_start_requested",
+		"auth.fusion_sdk_init_start",
+		"auth.fusion_env_warning",
+		"auth.sms_send_failed",
+		"auth.app_crash",
+	}
+	for _, event := range notSuccessEvents {
+		if adminAuthFunnelEventIsSuccess(event) {
+			t.Fatalf("event %s should not count as explicit success", event)
+		}
+	}
+}
+
 func TestAdminMonitoringNotesMatchCurrentOpsState(t *testing.T) {
 	notes := buildAdminMonitoringNotes()
 	if len(notes) == 0 {

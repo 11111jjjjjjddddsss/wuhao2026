@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -198,7 +199,18 @@ type AdminMonitoringAuthLogs struct {
 	EnvWarnings          int64                      `json:"env_warnings"`
 	LoginNetworkFailures int64                      `json:"login_network_failures"`
 	LastSeenAt           *int64                     `json:"last_seen_at,omitempty"`
+	Funnel               []AdminMonitoringAuthStage `json:"funnel"`
 	TopEvents            []ClientAppLogSummaryEntry `json:"top_events"`
+}
+
+type AdminMonitoringAuthStage struct {
+	Key       string                     `json:"key"`
+	Label     string                     `json:"label"`
+	Total     int64                      `json:"total"`
+	Successes int64                      `json:"successes"`
+	Warnings  int64                      `json:"warnings"`
+	Errors    int64                      `json:"errors"`
+	TopEvents []ClientAppLogSummaryEntry `json:"top_events"`
 }
 
 type AdminMonitoringAppUpdateLogs struct {
@@ -1582,6 +1594,138 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	return queues, nil
 }
 
+type adminAuthFunnelStageSpec struct {
+	Key    string
+	Label  string
+	Events []string
+}
+
+var adminAuthFunnelStageSpecs = []adminAuthFunnelStageSpec{
+	{
+		Key:   "environment",
+		Label: "环境预检",
+		Events: []string{
+			"auth.fusion_start_requested",
+			"auth.fusion_env_blocked",
+			"auth.fusion_env_warning",
+		},
+	},
+	{
+		Key:   "permission",
+		Label: "电话权限",
+		Events: []string{
+			"auth.fusion_permission_request",
+			"auth.fusion_permission_ready",
+			"auth.fusion_permission_denied",
+		},
+	},
+	{
+		Key:   "token",
+		Label: "取认证 Token",
+		Events: []string{
+			"auth.fusion_token_failed",
+			"auth.fusion_token_refresh_failed",
+			"auth.fusion_token_refresh_skipped",
+		},
+	},
+	{
+		Key:   "sdk",
+		Label: "SDK 初始化",
+		Events: []string{
+			"auth.fusion_activity_unavailable",
+			"auth.fusion_sdk_init_start",
+			"auth.fusion_sdk_init_failed",
+			"auth.fusion_ui_model_null",
+			"auth.fusion_ui_config_failed",
+		},
+	},
+	{
+		Key:   "auth_page",
+		Label: "授权页拉起",
+		Events: []string{
+			"auth.fusion_scene_starting",
+			"auth.fusion_scene_start_invoked",
+			"auth.fusion_scene_start_failed",
+			"auth.fusion_scene_cancelled",
+			"auth.fusion_template_finished",
+			"auth.fusion_verify_interrupt",
+			"auth.fusion_timeout",
+			"auth.fusion_timeout_ignored",
+			"auth.fusion_auth_event",
+			"auth.fusion_protocol_url_unavailable",
+			"auth.fusion_protocol_navigation_blocked",
+			"auth.fusion_protocol_load_failed",
+		},
+	},
+	{
+		Key:   "carrier_verify",
+		Label: "运营商取号",
+		Events: []string{
+			"auth.fusion_sdk_token_auth_failed",
+			"auth.fusion_empty_verify_token",
+			"auth.fusion_verify_duplicate",
+			"auth.fusion_halfway_unexpected",
+			"auth.fusion_verify_failed_ignored",
+			"auth.fusion_verify_failed",
+			"auth.fusion_template_finish_ignored",
+			"auth.fusion_get_phone_for_verification",
+			"auth.fusion_callback_attach_failed",
+		},
+	},
+	{
+		Key:   "server_login",
+		Label: "服务端换号",
+		Events: []string{
+			"auth.fusion_login_success",
+			"auth.fusion_login_failed",
+			"auth.login_network_failed",
+			"auth.login_success",
+			"auth.login_failed",
+		},
+	},
+	{
+		Key:   "sms",
+		Label: "短信验证码",
+		Events: []string{
+			"auth.sms_send_failed",
+			"auth.sms_login_success",
+			"auth.sms_login_failed",
+		},
+	},
+	{
+		Key:   "crash",
+		Label: "登录/运行闪退",
+		Events: []string{
+			"auth.app_crash",
+			"app.crash",
+		},
+	},
+}
+
+func adminAuthFunnelStageKeyForEvent(event string) string {
+	for _, spec := range adminAuthFunnelStageSpecs {
+		for _, candidate := range spec.Events {
+			if event == candidate {
+				return spec.Key
+			}
+		}
+	}
+	return ""
+}
+
+func adminAuthFunnelEventIsSuccess(event string) bool {
+	switch event {
+	case "auth.fusion_permission_ready",
+		"auth.fusion_scene_start_invoked",
+		"auth.fusion_login_success",
+		"auth.sms_login_success",
+		"auth.login_success":
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64) (AdminMonitoringAuthLogs, error) {
 	authLogs := AdminMonitoringAuthLogs{SinceMs: sinceMs}
 	var lastSeen sql.NullInt64
@@ -1625,12 +1769,95 @@ func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64)
 	if lastSeen.Valid {
 		authLogs.LastSeenAt = int64Ptr(lastSeen.Int64)
 	}
+	funnel, err := s.buildAdminMonitoringAuthFunnel(ctx, sinceMs)
+	if err != nil {
+		return authLogs, err
+	}
+	authLogs.Funnel = funnel
 	topEvents, err := s.summarizeClientAppLogsByPrefix(ctx, sinceMs, 10, "auth.", "app.crash")
 	if err != nil {
 		return authLogs, err
 	}
 	authLogs.TopEvents = topEvents
 	return authLogs, nil
+}
+
+func (s *Store) buildAdminMonitoringAuthFunnel(ctx context.Context, sinceMs int64) ([]AdminMonitoringAuthStage, error) {
+	stages := make([]AdminMonitoringAuthStage, len(adminAuthFunnelStageSpecs))
+	stageByKey := make(map[string]*AdminMonitoringAuthStage, len(adminAuthFunnelStageSpecs))
+	for i, spec := range adminAuthFunnelStageSpecs {
+		stages[i] = AdminMonitoringAuthStage{
+			Key:       spec.Key,
+			Label:     spec.Label,
+			TopEvents: []ClientAppLogSummaryEntry{},
+		}
+		stageByKey[spec.Key] = &stages[i]
+	}
+
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT event, level, COUNT(*)
+		   FROM client_app_logs
+		  WHERE created_at >= ?
+		    AND (event LIKE 'auth.%' OR event = 'app.crash')
+		  GROUP BY event, level`,
+		sinceMs,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var event string
+		var level string
+		var count int64
+		if err := rows.Scan(&event, &level, &count); err != nil {
+			return nil, err
+		}
+		stageKey := adminAuthFunnelStageKeyForEvent(event)
+		if stageKey == "" {
+			continue
+		}
+		stage := stageByKey[stageKey]
+		stage.Total += count
+		switch level {
+		case "warn":
+			stage.Warnings += count
+		case "error":
+			stage.Errors += count
+		}
+		if adminAuthFunnelEventIsSuccess(event) {
+			stage.Successes += count
+		}
+		stage.TopEvents = append(stage.TopEvents, ClientAppLogSummaryEntry{
+			Event: event,
+			Level: level,
+			Count: count,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for i := range stages {
+		sort.SliceStable(stages[i].TopEvents, func(left, right int) bool {
+			l := stages[i].TopEvents[left]
+			r := stages[i].TopEvents[right]
+			if l.Count != r.Count {
+				return l.Count > r.Count
+			}
+			if l.Event != r.Event {
+				return l.Event < r.Event
+			}
+			return l.Level < r.Level
+		})
+		if len(stages[i].TopEvents) > 6 {
+			stages[i].TopEvents = stages[i].TopEvents[:6]
+		}
+	}
+
+	return stages, nil
 }
 
 func (s *Store) buildAdminMonitoringAppUpdateLogs(ctx context.Context, sinceMs int64) (AdminMonitoringAppUpdateLogs, error) {

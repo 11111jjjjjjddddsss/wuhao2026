@@ -1186,6 +1186,36 @@ button {
   background: #fff5f5;
 }
 
+.auth-debug-full,
+.auth-funnel-panel {
+  grid-column: 1 / -1;
+}
+
+.auth-funnel-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+.section-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.row-actions.compact {
+  gap: 6px;
+}
+
+.row-actions.compact .button {
+  padding: 5px 8px;
+  font-size: 12px;
+}
+
 .auth-debug-summary strong {
   display: block;
   margin-top: 5px;

@@ -2832,9 +2832,121 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           ${filterButton("普通闪退", { event: "app.crash", window: "24h" })}
         </div>
       </div>
-      <div class="table-wrap">${authLogs.top_events?.length ? appLogSummaryTable(authLogs.top_events) : emptyState("暂无登录日志", "最近24小时没有 auth.* 或闪退补报。")}</div>
+      <div class="auth-funnel-panel">${authFunnelTable(authLogs.funnel || [])}</div>
+      <div class="table-wrap auth-debug-full">${authLogs.top_events?.length ? appLogSummaryTable(authLogs.top_events) : emptyState("暂无登录日志", "最近24小时没有 auth.* 或闪退补报。")}</div>
     </div>
   `;
+}
+
+function authFunnelTable(stages: AdminMonitoring["auth_logs"]["funnel"]): string {
+  if (!stages?.length) return emptyState("暂无登录阶段漏斗", "后端未返回登录阶段聚合。");
+  return `
+    <div class="section-title-row">
+      <div>
+        <strong>登录阶段漏斗</strong>
+        <div class="small muted">最近24小时按 App 自动日志归类；未识别的新事件仍会保留在下方 Top 事件。</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>阶段</th><th>状态</th><th>总数</th><th>明确成功</th><th>告警</th><th>错误</th><th>主要事件</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${stages.map((stage) => `
+            <tr>
+              <td><strong>${escapeHTML(stage.label || stage.key)}</strong><div class="small muted">${escapeHTML(authFunnelStageHint(stage.key))}</div></td>
+              <td>${authFunnelStagePill(stage)}</td>
+              <td>${stage.total ?? 0}</td>
+              <td>${stage.successes ?? 0}</td>
+              <td>${stage.warnings ?? 0}</td>
+              <td>${stage.errors ?? 0}</td>
+              <td class="wrap">${authFunnelEventButtons(stage.top_events || [])}</td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function authFunnelStageHint(key: string): string {
+  const hints: Record<string, string> = {
+    environment: "网络 / SIM / 移动数据能力",
+    permission: "电话状态权限申请与结果",
+    token: "后端签发融合认证 token",
+    sdk: "阿里云 SDK 初始化与 UI 配置",
+    auth_page: "授权页拉起、取消、超时和协议页",
+    carrier_verify: "运营商网关取号和 SDK verify 回调",
+    server_login: "服务端换手机号并签账号 session",
+    sms: "验证码发送和登录校验",
+    crash: "登录页或运行期崩溃补报",
+  };
+  return hints[key] || "未归类阶段";
+}
+
+function authFunnelStagePill(stage: AdminMonitoring["auth_logs"]["funnel"][number]): string {
+  if ((stage.errors ?? 0) > 0) return statusPill("异常", "bad");
+  if ((stage.warnings ?? 0) > 0) return statusPill("关注", "warn");
+  if ((stage.total ?? 0) > 0) return statusPill("有记录", "ok");
+  return statusPill("暂无", "info");
+}
+
+function authFunnelEventButtons(events: ClientAppLogSummaryEntry[]): string {
+  if (!events.length) return `<span class="muted">暂无</span>`;
+  return `
+    <div class="row-actions compact">
+      ${events.slice(0, 4).map((event) => filterButton(`${authEventLabel(event.event)} · ${event.count}`, { event: event.event, window: "24h" })).join("")}
+    </div>
+  `;
+}
+
+function authEventLabel(event: string): string {
+  const labels: Record<string, string> = {
+    "auth.fusion_start_requested": "开始一键",
+    "auth.fusion_env_blocked": "环境阻断",
+    "auth.fusion_env_warning": "混合网络",
+    "auth.fusion_permission_request": "申请权限",
+    "auth.fusion_permission_ready": "权限可用",
+    "auth.fusion_permission_denied": "拒绝权限",
+    "auth.fusion_token_failed": "取 token 失败",
+    "auth.fusion_token_refresh_failed": "刷新 token 失败",
+    "auth.fusion_token_refresh_skipped": "跳过刷新",
+    "auth.fusion_activity_unavailable": "页面不可用",
+    "auth.fusion_sdk_init_start": "初始化开始",
+    "auth.fusion_sdk_init_failed": "初始化失败",
+    "auth.fusion_ui_model_null": "UI 配置空",
+    "auth.fusion_ui_config_failed": "UI 配置失败",
+    "auth.fusion_scene_starting": "拉授权页",
+    "auth.fusion_scene_start_invoked": "授权页已拉起",
+    "auth.fusion_scene_start_failed": "授权页失败",
+    "auth.fusion_scene_cancelled": "授权页取消",
+    "auth.fusion_template_finished": "授权页结束",
+    "auth.fusion_verify_interrupt": "取号中断",
+    "auth.fusion_timeout": "一键超时",
+    "auth.fusion_auth_event": "SDK 事件",
+    "auth.fusion_protocol_load_failed": "协议页失败",
+    "auth.fusion_sdk_token_auth_failed": "SDK 取号失败",
+    "auth.fusion_empty_verify_token": "空 verify token",
+    "auth.fusion_verify_duplicate": "重复 verify",
+    "auth.fusion_halfway_unexpected": "半程回调",
+    "auth.fusion_verify_failed": "最终取号失败",
+    "auth.fusion_get_phone_for_verification": "取号确认",
+    "auth.fusion_callback_attach_failed": "回调绑定失败",
+    "auth.fusion_login_success": "一键成功",
+    "auth.fusion_login_failed": "换号失败",
+    "auth.login_network_failed": "请求网络失败",
+    "auth.login_success": "登录成功",
+    "auth.login_failed": "登录失败",
+    "auth.sms_send_failed": "短信发送失败",
+    "auth.sms_login_success": "短信成功",
+    "auth.sms_login_failed": "短信校验失败",
+    "auth.app_crash": "登录闪退",
+    "app.crash": "运行闪退",
+  };
+  return labels[event] || event.replace(/^auth\./, "");
 }
 
 function appUpdateTroubleshootingBlock(updateLogs: AdminMonitoring["app_update_logs"] | undefined): string {

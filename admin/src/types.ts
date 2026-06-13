@@ -183,6 +183,17 @@ export interface AdminMonitoringAuthLogs {
   env_warnings: number;
   login_network_failures: number;
   last_seen_at?: number;
+  funnel: AdminMonitoringAuthStage[];
+  top_events: ClientAppLogSummaryEntry[];
+}
+
+export interface AdminMonitoringAuthStage {
+  key: string;
+  label: string;
+  total: number;
+  successes: number;
+  warnings: number;
+  errors: number;
   top_events: ClientAppLogSummaryEntry[];
 }
 
