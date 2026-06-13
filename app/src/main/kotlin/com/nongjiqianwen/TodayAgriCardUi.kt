@@ -56,7 +56,7 @@ fun TodayAgriNewsCard(
         Surface(
             color = Color.White,
             shape = RoundedCornerShape(8.dp),
-            border = BorderStroke(0.8.dp, Color(0xFFDDE3DA)),
+            border = BorderStroke(0.8.dp, Color.Black),
             modifier = Modifier
                 .widthIn(max = maxCardWidth)
                 .fillMaxWidth()
@@ -210,9 +210,7 @@ private fun TodayAgriNewsItem(
                 text = summary,
                 color = Color(0xFF4F535A),
                 fontSize = 14.sp,
-                lineHeight = 20.sp,
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
+                lineHeight = 20.sp
             )
             if (source.isNotEmpty()) {
                 Text(

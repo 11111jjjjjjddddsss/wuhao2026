@@ -1,16 +1,17 @@
 # 手机号登录与融合认证 Runbook
 
-最后更新：2026-06-12
+最后更新：2026-06-13
 
 ## 当前状态
 
 - 后端已新增手机号账号骨架：`app_accounts`、`auth_sessions`、`user_id_migrations`。生产业务唯一长期身份是账号 ID `acct_...`；底层表和接口字段仍可能叫 `user_id`，但语义应按“账号ID”理解。手机号是登录凭证和回访线索，不作为业务主键；账号表保存 `phone_hash`、`phone_mask` 和用 `APP_SECRET` 派生密钥加密的 `phone_ciphertext`。
 - Android 已新增登录门和验证码登录页；登录成功后保存后端签发的长期 v2 bearer token
-- 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会调用该接口、清本地 auth token 并回到登录门；完整设备管理 / 远程吊销后续再迭代
+- 后端已新增 `POST /api/auth/logout` 当前设备退出接口：只吊销当前 token 对应的 `auth_sessions` 记录，Android 账号管理页“退出设备”会先弹二次确认，再调用该接口、清本地 auth token 并回到登录门；它不删除聊天历史、会员权益、礼品卡或反馈记录。完整设备管理 / 远程吊销后续再迭代
 - 登录成功后，Android 会随一键登录和短信登录 payload 提交旧本机 `legacy_user_id` 作为迁移线索；生产后端默认只有请求同时携带可证明同一旧 ID 的旧 bearer token 时才接受迁移，不再凭裸本机 UUID 直接合并资产。`acct_...` 永远不能作为 legacy bridge，避免账号之间互相合并。旧 bearer token 证明只用于登录迁移桥，不代表生产业务接口可以开启旧 token 鉴权；公开生产仍保持 `AUTH_STRICT=true` 且不设置 `AUTH_ALLOW_LEGACY_TOKEN`。迁移目标统一是手机号账号 `acct_...`，迁移覆盖记忆文档、聊天归档、会员 / 额度 / 加油包 / 订单、帮助反馈、App 日志、礼品卡、兑换尝试和注销申请；服务端会记录脱敏迁移审计日志，只写 legacy ID hash、迁移来源类型和目标账号ID，不打印手机号、验证码或原始旧 ID。若极特殊迁移窗口确需接受未证明 UUID，必须显式设置 `AUTH_ALLOW_UNPROVEN_LEGACY_UUID=true`，且生产 readiness 会把它视为失败配置。
 - 阿里云融合认证 Android 方案已通过 CLI 创建，DYPNS AccessKey / Secret、`DYPNS_FUSION_SCHEME_CODE`、包名和签名已写入本机密钥文件与 ECS `/etc/nongjiqiancha/server.env`
 - Android 一键登录 SDK / AAR 已导入并接入登录页；当前主链按阿里云融合认证 100001 一键登录流程拉取服务端 fusion token、初始化 SDK、拉起授权页，Android 不在 `onHalfWayVerifySuccess` 中调用后端校验，也不消费中途 token；最终只在 `onVerifySuccess` 收到 token 后提交给 `/api/auth/fusion/login`，由后端调用一次 `VerifyWithFusionAuthToken` 换手机号并签账号 token，不再用静态 token 或测试 ID 绕过登录。仓库当前使用的是融合认证 `AlicomFusionBusiness` / `fusionauth-1.2.15-online-release.aar` 链路，不是普通 `PhoneNumberAuthHelper` 三 AAR 直连链路；当前 AAR 内部已包含普通网关认证、日志类、native so 和授权页 Activity，并且 debug / release merged manifest 已合入 `FusionNumberAuthActivity`、`FusionSmsActivity`、`AlicomFusionUpSmsActivity`、`FusionGraphAuthActivity`、`LoginAuthActivity` 和 `PrivacyDialogActivity`。后续会诊时不要把普通一键登录文档里的“三个 AAR”直接当成当前仓库缺包结论；只有真机 logcat 出现 `NoClassDefFoundError` / `ClassNotFoundException` 指向 SDK logger / main / gatewayauth 类时，才重新下载完整融合认证 SDK 包核对。
-- Android 授权页已接 `AlicomFusionAuthUICallBack` 自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框可见且默认未勾选；用户点其他手机号登录、SDK 失败、取消或超时都会回到 App 自己的验证码登录页。2026-06-09 已按阿里云 Android 文档补融合认证协议页承接：Manifest 新增 `FusionAuthProtocolActivity`，`intent-filter` action 为包名专属 `com.nongjiqiancha.FUSION_AUTH_PROTOCOL`，`FusionOneLoginClient` 初始化后和授权页 UI model 均显式设置同一 `protocolAction`，并在 UI model builder 上同步 `setPackageName(BuildConfig.APPLICATION_ID)`，避免自定义协议 action 找不到当前 App Activity。2026-06-13 起协议页只承接 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 官方 HTTPS 页面，WebView 关闭 JS、file/content 访问，禁止明文 HTTP 和外域跳转；网页缺失或主页面加载失败时显示 App 内置协议要点兜底，避免点击服务协议 / 隐私政策时空白退出。协议 URL 缺失 / 非法、非法跳转和主页面加载失败会通过 `auth.fusion_protocol_url_unavailable`、`auth.fusion_protocol_navigation_blocked`、`auth.fusion_protocol_load_failed` 上报安全摘要，只带 reason / scheme / WebView 错误码，不上传完整 URL。
+- Android 授权页已接 `AlicomFusionAuthUICallBack` 自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框可见且默认未勾选；用户点其他手机号登录、SDK 失败、取消或超时都会回到 App 自己的验证码登录页。App 首次隐私同意门禁通过后，咱自己的登录页协议勾选默认承接为已同意，避免用户重复点两次自家协议；但阿里云运营商授权页的协议仍不默认勾选，因为它对应运营商取号授权，不能替用户默认同意。2026-06-09 已按阿里云 Android 文档补融合认证协议页承接：Manifest 新增 `FusionAuthProtocolActivity`，`intent-filter` action 为包名专属 `com.nongjiqiancha.FUSION_AUTH_PROTOCOL`，`FusionOneLoginClient` 初始化后和授权页 UI model 均显式设置同一 `protocolAction`，并在 UI model builder 上同步 `setPackageName(BuildConfig.APPLICATION_ID)`，避免自定义协议 action 找不到当前 App Activity。2026-06-13 起协议页只承接 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 官方 HTTPS 页面，WebView 关闭 JS、file/content 访问，禁止明文 HTTP 和外域跳转；网页缺失或主页面加载失败时显示 App 内置协议要点兜底，避免点击服务协议 / 隐私政策时空白退出。协议 URL 缺失 / 非法、非法跳转和主页面加载失败会通过 `auth.fusion_protocol_url_unavailable`、`auth.fusion_protocol_navigation_blocked`、`auth.fusion_protocol_load_failed` 上报安全摘要，只带 reason / scheme / WebView 错误码，不上传完整 URL。
+- 图形验证排障口径：阿里云“功能开启”页面里第 4 项“融合认证解决方案”必须保持开启，否则一键登录主链会被关掉；第 3 项“图形认证”关闭只代表独立图形认证产品功能关闭，不一定代表融合认证 100001 场景策略里没有图形节点。Android 当前已在 SDK 初始化前调用 `AlicomFusionBusiness.useSDKSupplyCaptchaModule(false)`，本地强制关闭 SDK 内置图形认证模块；控制台仍需进入“融合认证解决方案 / 认证策略设置 / 100001 场景策略”确认关闭或删除图形验证节点。若真机仍弹“请在下图依次点击”类验证码，优先查云端融合方案策略是否还包含图形节点或风控兜底，而不是关闭融合认证解决方案本身。
 - Android 端会在申请 `READ_PHONE_STATE` 权限和拉取 fusion token 前先做网络 / SIM 环境预检：无网络、无 SIM、SIM 未就绪、纯 WiFi / 未检测到可用移动数据会直接回落验证码登录并上报 `auth.fusion_env_blocked`，不先弹电话状态权限；有 SIM 且检测到可用移动数据能力时，即使当前开着 WiFi、VPN 或系统代理，也会放行一键登录尝试并上报 `auth.fusion_env_warning`，失败再回 App 自己的验证码登录。系统代理识别同时检查 active network 的 `LinkProperties.httpProxy`、Java proxy properties 和旧 Android proxy fallback，用于排障日志，不再作为有移动数据时的硬阻断。2026-06-09 已给 `FusionOneLoginClient` 补同一时间只允许一条一键登录、Activity `finish/destroy` 前置兜底、SDK token 成功后拉授权页前再次检查 Activity、`onSDKTokenAuthFailure` 失败收口、`onGetPhoneNumberForVerification` 非空手机号兜底并回验证码、`onVerifySuccess` 后忽略后到的模板结束 / verify failed 抢跑回调、重复 `onVerifySuccess` 只记录不重复提交，以及 100001 场景下意外 `onHalfWayVerifySuccess` 直接失败回验证码登录。2026-06-13 起，fusion token 首次请求使用短超时认证客户端，弱网下更快回验证码兜底；`onVerifyInterrupt` 不再只等全局超时，会记录 `auth.fusion_verify_interrupt` 后立即回 App 自己的验证码登录页，避免用户白等 30 秒。登录页销毁时会主动停止当前融合认证场景；不要把 SDK 授权页正常拉起造成的主 Activity `onPause` 误当成必须停止场景的信号。Android 端还会在一键登录、短信发送和短信登录阶段设置最小崩溃阶段标记，若进程直接退出，下次启动会通过 `auth.app_crash` 补报安全摘要
 - Android 主 manifest 已显式声明 `READ_PHONE_STATE`、`ACCESS_NETWORK_STATE`、`ACCESS_WIFI_STATE` 和 `CHANGE_NETWORK_STATE`，减少 release 构建依赖 AAR manifest merge 的不确定性，并满足少数 Wi-Fi + 移动数据切换取号场景；2026-06-12 起，登录页在用户明确点击“一键登录”后先做环境预检，明显应回验证码的环境不先弹 `READ_PHONE_STATE`，只有看起来可能走一键取号时才按需申请电话状态权限；拒绝授权时直接切换验证码登录并上报 `auth.fusion_permission_denied`，不再在缺权限状态下继续尝试拉起授权页。正式 release 前仍要检查 merged manifest，并继续用真机确认该 manifest 权限在当前融合认证链路和 ROM 组合下是否仍有必要保留
 - Android 网络安全配置默认仍禁止明文 HTTP，仅按阿里云 SDK FAQ 对移动 / 联通 / 电信取号网关 `onekey.cmpassport.com`、`enrichgw.10010.com`、`uac.189.cn` 做域名级明文放行；不要为了一键登录直接全局开启 `cleartextTrafficPermitted=true`
@@ -57,11 +58,12 @@
 ## 阿里云侧待办
 
 1. 在融合认证控制台确认 `农技千查` Android 方案，包名 `com.nongjiqiancha`，签名 MD5 与 release 包一致。
-2. 阿里云融合认证 Android SDK 已接入；后续真机回归时重点确认运营商网络、双卡 / 无 SIM、Wi-Fi-only、VPN / 代理和 SDK 取消态：无 SIM / 无移动数据应回落验证码登录；有移动数据但开 WiFi / VPN / 代理应先尝试一键登录，失败再回验证码登录；同时确认荣耀 / 华为 / Android 15+ 在按需电话权限审批后，一键登录授权页仍可稳定拉起。
-3. 当前 100001 一键登录只在最终 `onVerifySuccess` 后由 `/api/auth/fusion/login` 消费一次 token；真机回归时重点确认授权页可稳定拉起、SDK 协议勾选后最终登录成功、取消 / 超时 / 失败会回落验证码登录。
-4. 短信服务资质、签名和验证码模板已通过 CLI 配置；ECS 已写入 `DYPNS_SMS_SIGN_NAME`、`DYPNS_SMS_TEMPLATE_CODE` 并重启 `nongji-server`。
-5. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限或专用 RAM 用户口径，并重新配置 `DYPNS_ACCESS_KEY_ID` / `DYPNS_ACCESS_KEY_SECRET`。
-6. 配置完成后重启 `nongji-server`，检查 `/healthz` 中 `dypns / dypns_fusion / dypns_sms / sms / redis` 是否为 `ok`；当前这些项均已为 `ok`。
+2. 在“融合认证解决方案 / 认证策略设置 / 100001 场景策略”确认没有图形验证节点；不要关闭第 4 项“融合认证解决方案”，否则一键登录不可用。
+3. 阿里云融合认证 Android SDK 已接入；后续真机回归时重点确认运营商网络、双卡 / 无 SIM、Wi-Fi-only、VPN / 代理和 SDK 取消态：无 SIM / 无移动数据应回落验证码登录；有移动数据但开 WiFi / VPN / 代理应先尝试一键登录，失败再回验证码登录；同时确认荣耀 / 华为 / Android 15+ 在按需电话权限审批后，一键登录授权页仍可稳定拉起。
+4. 当前 100001 一键登录只在最终 `onVerifySuccess` 后由 `/api/auth/fusion/login` 消费一次 token；真机回归时重点确认授权页可稳定拉起、SDK 协议勾选后最终登录成功、取消 / 超时 / 失败会回落验证码登录，且不再弹图形验证码。
+5. 短信服务资质、签名和验证码模板已通过 CLI 配置；ECS 已写入 `DYPNS_SMS_SIGN_NAME`、`DYPNS_SMS_TEMPLATE_CODE` 并重启 `nongji-server`。
+6. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限或专用 RAM 用户口径，并重新配置 `DYPNS_ACCESS_KEY_ID` / `DYPNS_ACCESS_KEY_SECRET`。
+7. 配置完成后重启 `nongji-server`，检查 `/healthz` 中 `dypns / dypns_fusion / dypns_sms / sms / redis` 是否为 `ok`；当前这些项均已为 `ok`。
 
 ## 次数与费用巡检
 
@@ -101,6 +103,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-andro
 - 已生成的 debug / release merged manifest 里，融合认证 SDK Activity 没有吃到本地主题或 `exported=false`
 - 全局放开明文 HTTP，或新增非阿里云运营商取号网关的明文域名；当前仅允许移动 `onekey.cmpassport.com`、联通 `enrichgw.10010.com`、电信 `uac.189.cn`
 - Android 100001 一键登录重新调用半程 `/api/auth/fusion/verify`，或在 `onHalfWayVerifySuccess` 里消费 token
+- Android 一键登录初始化前不再关闭 SDK 内置图形认证模块，导致图形验证码可能从 SDK 内置链路重新弹出
 - VPN / 系统代理或纯 WiFi / 无可用移动数据时仍继续硬拉阿里云融合认证 SDK，或把验证码登录也误拦住；4G+WiFi 混合环境不应被误判成 WiFi-only 而禁止一键尝试
 - 验证码登录放宽到 4 / 5 位也请求后端，或 release logcat 打印阿里云 SDK 原始 `errorMsg / innerMsg`
 - debug-only 预览面板脱离 `BuildConfig.DEBUG` 守卫

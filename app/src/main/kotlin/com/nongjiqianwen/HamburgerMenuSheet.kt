@@ -1040,14 +1040,12 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Membership,
                 title = "会员中心",
-                subtitle = "查看当前权益和剩余次数",
                 onClick = onOpenMembership
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
-                subtitle = "查看登录状态并管理历史记录",
                 onClick = onOpenAccount
             )
         }
@@ -1056,7 +1054,6 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Feedback,
                 title = "帮助与反馈",
-                subtitle = "提交问题并查看处理进度",
                 showBadge = supportUnread,
                 onClick = onOpenSupport
             )
@@ -1064,28 +1061,24 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.TodayAgri,
                 title = "今日农情",
-                subtitle = "查看近30天农情简报",
                 onClick = onOpenTodayAgri
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Update,
                 title = "检查更新",
-                subtitle = "查看版本并安装更新",
                 onClick = onCheckUpdate
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
-                subtitle = "兑换礼品卡权益",
                 onClick = onOpenRedeem
             )
             HamburgerMenuDivider(startIndent = 52.dp)
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
-                subtitle = "查看协议、隐私与权限说明",
                 onClick = onOpenLegalHub
             )
         }
@@ -1094,7 +1087,6 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "当前账号",
-                subtitle = phoneMask ?: "未登录",
                 destructive = false,
                 showChevron = false,
                 onClick = { onPlaceholderClick(if (phoneMask != null) "当前设备已保持登录" else "请先登录") }
@@ -1822,14 +1814,12 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Membership,
             title = "会员中心",
-            subtitle = "查看当前权益和剩余次数",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Account,
             title = "账号管理",
-            subtitle = "查看登录状态并管理历史记录",
             onClick = {}
         )
     }
@@ -1837,7 +1827,6 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Feedback,
             title = "帮助与反馈",
-            subtitle = "提交问题并查看处理进度",
             showBadge = true,
             onClick = {}
         )
@@ -1845,28 +1834,24 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.TodayAgri,
             title = "今日农情",
-            subtitle = "查看近30天农情简报",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Update,
             title = "检查更新",
-            subtitle = "查看版本并安装更新",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Redeem,
             title = "礼品卡",
-            subtitle = "兑换礼品卡权益",
             onClick = {}
         )
         HamburgerMenuDivider(startIndent = 52.dp)
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
             title = "服务协议",
-            subtitle = "查看协议、隐私与权限说明",
             onClick = {}
         )
     }
@@ -1874,7 +1859,6 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Account,
             title = "当前账号",
-            subtitle = "138****8000",
             destructive = false,
             showChevron = false,
             onClick = {}
@@ -1910,6 +1894,7 @@ private fun HamburgerAccountManagementContent(
     modifier: Modifier = Modifier
 ) {
     var deleteHistoryDialogVisible by rememberSaveable { mutableStateOf(false) }
+    var logoutDialogVisible by rememberSaveable { mutableStateOf(false) }
     var accountDeletionDialogVisible by rememberSaveable { mutableStateOf(false) }
     var deleteHistorySubmitting by remember { mutableStateOf(false) }
     var accountDeletionSubmitting by remember { mutableStateOf(false) }
@@ -1981,18 +1966,7 @@ private fun HamburgerAccountManagementContent(
                         return@HamburgerAccountActionRow
                     }
                     if (logoutSubmitting) return@HamburgerAccountActionRow
-                    val accountScopeId = IdManager.getUserId()
-                    logoutSubmitting = true
-                    SessionApi.logoutCurrentSession { ok ->
-                        logoutSubmitting = false
-                        if (ok) {
-                            PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
-                            onPendingAction("已退出当前设备")
-                            onAuthSessionCleared()
-                        } else {
-                            onPendingAction("退出失败，请检查网络后重试")
-                        }
-                    }
+                    logoutDialogVisible = true
                 }
             )
         }
@@ -2033,6 +2007,30 @@ private fun HamburgerAccountManagementContent(
                         SessionApi.ClearSessionHistoryResult.Failure -> {
                             onPendingAction("删除失败，请检查网络后重试")
                         }
+                    }
+                }
+            }
+        )
+    }
+    if (logoutDialogVisible) {
+        HamburgerLogoutConfirmDialog(
+            submitting = logoutSubmitting,
+            onDismiss = {
+                if (!logoutSubmitting) logoutDialogVisible = false
+            },
+            onConfirm = {
+                if (logoutSubmitting) return@HamburgerLogoutConfirmDialog
+                val accountScopeId = IdManager.getUserId()
+                logoutSubmitting = true
+                SessionApi.logoutCurrentSession { ok ->
+                    logoutSubmitting = false
+                    if (ok) {
+                        logoutDialogVisible = false
+                        PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
+                        onPendingAction("已退出当前设备")
+                        onAuthSessionCleared()
+                    } else {
+                        onPendingAction("退出失败，请检查网络后重试")
                     }
                 }
             }
@@ -2277,7 +2275,7 @@ private fun HamburgerTodayAgriHistoryCard(card: SessionApi.TodayAgriCard) {
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(0.7.dp, Color(0xFFE1E4E8)),
+        border = BorderStroke(0.8.dp, Color.Black),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -2365,9 +2363,7 @@ private fun HamburgerTodayAgriHistoryItem(
                 text = summary,
                 color = Color(0xFF4F535A),
                 fontSize = 13.sp,
-                lineHeight = 19.sp,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
+                lineHeight = 19.sp
             )
             if (source.isNotEmpty()) {
                 Text(
@@ -3555,6 +3551,131 @@ internal fun HamburgerDeleteHistoryConfirmPreview() {
 }
 
 @Composable
+private fun HamburgerLogoutConfirmDialog(
+    submitting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {
+            if (!submitting) onDismiss()
+        },
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
+                .padding(horizontal = 28.dp, vertical = 20.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            HamburgerLogoutConfirmCard(
+                submitting = submitting,
+                onDismiss = onDismiss,
+                onConfirm = onConfirm,
+                modifier = Modifier.widthIn(max = 340.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HamburgerLogoutConfirmCard(
+    submitting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(22.dp),
+        shadowElevation = 18.dp,
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text(
+                text = "确认退出当前设备",
+                color = Color(0xFF111111),
+                fontSize = 20.sp,
+                lineHeight = 27.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = "退出后需要重新登录。历史对话、会员权益、礼品卡和反馈记录不会删除。",
+                color = Color(0xFF33363D),
+                fontSize = 15.sp,
+                lineHeight = 22.sp
+            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Surface(
+                    color = Color(0xFFF0F1F2),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !submitting,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "取消",
+                            color = Color(0xFF111111),
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+                Surface(
+                    color = if (submitting) Color(0xFFD8DADF) else Color(0xFFD24646),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !submitting,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onConfirm
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = if (submitting) "退出中" else "退出",
+                            color = if (submitting) Color(0xFF777B82) else Color.White,
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun HamburgerLogoutConfirmPreview() {
+    HamburgerLogoutConfirmCard(
+        submitting = false,
+        onDismiss = {},
+        onConfirm = {},
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
 private fun HamburgerAccountDeletionConfirmDialog(
     submitting: Boolean,
     onDismiss: () -> Unit,
@@ -4116,7 +4237,6 @@ private fun HamburgerMenuRow(
     icon: HamburgerMenuIcon,
     title: String,
     modifier: Modifier = Modifier,
-    subtitle: String? = null,
     destructive: Boolean = false,
     showBadge: Boolean = false,
     showChevron: Boolean = true,
@@ -4154,16 +4274,6 @@ private fun HamburgerMenuRow(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    color = if (destructive) Color(0xFFD24646).copy(alpha = 0.72f) else Color(0xFF686C74),
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
         if (showBadge) {
             Surface(
@@ -4475,31 +4585,24 @@ private fun HamburgerMenuGlyph(
                 drawLine(tint, Offset(w * 0.32f, h * 0.45f), Offset(w * 0.68f, h * 0.45f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.TodayAgri -> {
-                drawCircle(
+                drawRoundRect(
                     color = tint,
-                    radius = w * 0.36f,
-                    center = Offset(w * 0.50f, h * 0.50f),
+                    topLeft = Offset(w * 0.16f, h * 0.18f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.68f, h * 0.64f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.07f, h * 0.07f),
                     style = stroke
                 )
-                drawLine(
-                    tint,
-                    Offset(w * 0.50f, h * 0.20f),
-                    Offset(w * 0.50f, h * 0.80f),
-                    strokeWidth,
-                    cap = StrokeCap.Round
+                drawLine(tint, Offset(w * 0.28f, h * 0.32f), Offset(w * 0.72f, h * 0.32f), strokeWidth, cap = StrokeCap.Round)
+                drawRoundRect(
+                    color = tint,
+                    topLeft = Offset(w * 0.27f, h * 0.45f),
+                    size = androidx.compose.ui.geometry.Size(w * 0.17f, h * 0.18f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.03f, h * 0.03f),
+                    style = stroke
                 )
-                val leafLeft = Path().apply {
-                    moveTo(w * 0.50f, h * 0.48f)
-                    cubicTo(w * 0.29f, h * 0.30f, w * 0.21f, h * 0.46f, w * 0.27f, h * 0.61f)
-                    cubicTo(w * 0.37f, h * 0.66f, w * 0.45f, h * 0.58f, w * 0.50f, h * 0.48f)
-                }
-                val leafRight = Path().apply {
-                    moveTo(w * 0.50f, h * 0.42f)
-                    cubicTo(w * 0.72f, h * 0.25f, w * 0.81f, h * 0.45f, w * 0.72f, h * 0.60f)
-                    cubicTo(w * 0.61f, h * 0.62f, w * 0.55f, h * 0.52f, w * 0.50f, h * 0.42f)
-                }
-                drawPath(leafLeft, tint, style = stroke)
-                drawPath(leafRight, tint, style = stroke)
+                drawLine(tint, Offset(w * 0.51f, h * 0.47f), Offset(w * 0.72f, h * 0.47f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.51f, h * 0.59f), Offset(w * 0.68f, h * 0.59f), strokeWidth, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.28f, h * 0.73f), Offset(w * 0.72f, h * 0.73f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Logout -> {
                 drawLine(tint, Offset(w * 0.18f, h * 0.18f), Offset(w * 0.18f, h * 0.82f), strokeWidth, cap = StrokeCap.Round)

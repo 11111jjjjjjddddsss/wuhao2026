@@ -323,6 +323,7 @@ if ($failures.Count -eq 0) {
         Add-Failure $failures "onHalfWayVerifySuccess must not call backend login/verify or consume the token."
     }
     $fusionProtocolCheckedPattern = "model\.setProtocolChecked\s*\(\s*false\s*\)"
+    $fusionCaptchaDisabledPattern = "business\.useSDKSupplyCaptchaModule\s*\(\s*false\s*\)(?s:.*?)business\.initWithToken"
     $fusionHiddenSwitchPattern = "\.hiddenSwtichLogin\s*\(\s*true\s*\)"
     $fusionProtocolActionPattern = "\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)(?s:.*?)\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)"
     $fusionVpnWarningPattern = "fun\s+warningReason\(\):\s*String\?\s*=(?s:.*?)hasVpnTransport\s*->\s*`"vpn_active`""
@@ -333,6 +334,8 @@ if ($failures.Count -eq 0) {
 
     Require-Match $failures $fusionClient $fusionProtocolCheckedPattern `
         "Aliyun SDK protocol checkbox must remain visible and unchecked by default."
+    Require-Match $failures $fusionClient $fusionCaptchaDisabledPattern `
+        "Aliyun SDK built-in graphic captcha module must be disabled before SDK init."
     Require-Match $failures $fusionClient $fusionHiddenSwitchPattern `
         "Aliyun SDK built-in switch/more-login entry must stay hidden so SMS fallback remains in the app page."
     Require-Match $failures $fusionClient $fusionProtocolActionPattern `

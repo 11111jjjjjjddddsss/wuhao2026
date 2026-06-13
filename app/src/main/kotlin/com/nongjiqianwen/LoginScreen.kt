@@ -100,7 +100,8 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
 
     var phone by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
-    var agreed by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var agreed by remember { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
     val fusionOneLoginEnabled = BuildConfig.ENABLE_FUSION_ONE_LOGIN
     var smsMode by remember { mutableStateOf(!fusionOneLoginEnabled) }
     var busy by remember { mutableStateOf(false) }
@@ -108,7 +109,6 @@ private fun LoginScreen(onLoginSuccess: () -> Unit) {
     var countdown by remember { mutableIntStateOf(0) }
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
     val agreementText = remember { buildLoginAgreementText() }
-    val context = LocalContext.current
     DisposableEffect(Unit) {
         onDispose {
             FusionOneLoginClient.cancelActiveScene("login_screen_dispose")

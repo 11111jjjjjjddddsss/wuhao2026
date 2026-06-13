@@ -193,6 +193,7 @@ object FusionOneLoginClient {
             setAuthToken(snapshot.authToken.orEmpty())
         }
         val initResult = runCatching {
+            business.useSDKSupplyCaptchaModule(false)
             business.initWithToken(activity.applicationContext, snapshot.schemeCode.orEmpty(), token)
             business.setProtocolAction(PROTOCOL_ACTION)
             business.adapterPageShape(true)
