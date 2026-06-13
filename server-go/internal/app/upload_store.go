@@ -67,11 +67,15 @@ func (s LocalUploadStore) Name() string {
 }
 
 func (s LocalUploadStore) Save(_ context.Context, filename string, _ string, data []byte) error {
-	return os.WriteFile(filepath.Join(s.dir, filename), data, 0o644)
+	path := filepath.Join(s.dir, filepath.FromSlash(filename))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0o644)
 }
 
 func (s LocalUploadStore) Open(_ context.Context, filename string) (io.ReadCloser, string, error) {
-	file, err := os.Open(filepath.Join(s.dir, filename))
+	file, err := os.Open(filepath.Join(s.dir, filepath.FromSlash(filename)))
 	return file, "", err
 }
 
@@ -102,6 +106,9 @@ func (s *OSSUploadStore) Open(_ context.Context, filename string) (io.ReadCloser
 }
 
 func (s *OSSUploadStore) objectKey(filename string) string {
+	if isServableUploadObjectName(filename) && strings.Contains(filename, "/") {
+		return filename
+	}
 	return s.prefix + filename
 }
 

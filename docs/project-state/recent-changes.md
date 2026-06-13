@@ -5,6 +5,8 @@
 
 ## 2026-06-13
 
+- 按“客服图片和客服聊天记录别混”的口径收口帮助与反馈附件：Android 帮助与反馈上传图片继续复用后端 `/upload`，但新增 `purpose=support` 表单字段；后端据此把客服附件写入 OSS `support/` 并返回 `/uploads/support/<file>.jpg`，走已配置的 30 天生命周期。普通问诊图片不传 purpose，仍写 `uploads/` 并按 3 天删除；主聊天模型接口只接受普通 `/uploads/<file>.jpg`，拒绝 `/uploads/support/<file>.jpg`，避免客服截图误进问诊模型链。客服聊天记录正文、发送人、时间、已读状态仍保存在 MySQL `support_messages` / `support_conversations`，不随 OSS 图片 30 天生命周期自动删除；保存 / 删除 / 注销处理规则仍列为合规和客服系统后续收口项。上传 HTTP body 只把 multipart 额外预留从 `1MiB + 1KiB` 放宽到 `1MiB + 16KiB`，文件本身仍严格单张 `<=1MiB` JPEG。同步用阿里云 CLI 复查并更新 OSS 上传 RAM 策略默认版本到 v3，仅多放行 `support/*` 前缀，没有放大全桶写权限。
+
 - 继续按“长期单对话别卡、但别让用户以为历史丢了”的口径收口主界面：`/api/session/snapshot` 的 `round_total` 已接到 Android，主聊天仍只渲染最近 30 轮保护手机性能；当后端总轮数超过当前 UI 展示轮数时，聊天列表顶部会用普通用户口径提示“更早若干轮已保留，后续对话会尽量接上”，不暴露长期记忆、后端归档等内部机制，清空历史后同步清掉提示。输入框对超长粘贴会本地截到 6000 字并提示“已保留前6000字，超出部分未保留”，后端仍保留同样上限兜底。记忆文档提示词的写作目标从旧 900 / 1200 字口径上调为一般约 1000-1400 个中文字符，复杂连续场景可更长，但仍是提示词建议而不是后端硬截断，内容少时不强行扩写。Android Manifest 和 parity 脚本同步删除当前融合认证 AAR 中不存在的 `PrivacyActivity` 校验，保留实际存在的 `LoginAuthActivity` / `PrivacyDialogActivity` / 融合认证 Activity 护栏，避免 lint 报假缺类。
 
 - 本轮后端提示词已重新部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换、API 与后台 `/admin-api/` upstream 端口校验均通过；当前 active upstream 为 `3001`，后台 upstream 同为 `3001`，HTTPS healthz 200，未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后 `check-ecs-readiness.ps1`、`check-backend-data-boundaries.ps1`、`check-resource-capacity.ps1 -Strict` 均通过；当前仍没有正式用户、会员、订单或礼品卡资产，账号归属异常为 0。
@@ -300,7 +302,7 @@
 
 - 网站公安联网备案号已下发：`京公网安备11010602202723号`；官网 footer 已补真实编号、查询链接和警徽图标。公安备案数据码、证件号或平台账号信息不进入仓库；App 公安备案后续等 App 备案通过 / 正式信息齐后再补。
 
-- 继续按多代理巡检收口一批前后端和运维小坑：今日农情模型非 2xx 错误不再把上游原始 body 写入错误链 / 日志 / 数据库；App 自动日志 attrs 不只按敏感 key 过滤，也会丢弃普通字段名里包含 URL、token、AccessKey、手机号等敏感文本的 value；上传 multipart 超限明确返回 `413 body_too_large`，损坏 multipart 返回 `invalid multipart`。Android 图片导入和后台待发送补发在压缩前增加 32MB 原图读取上限，自更新 APK 下载增加默认 200MB 硬上限并按后端 file size 下载中断言；debug 测试包真实流式渲染速度与 release 对齐。内部客服回复不再对任意 `user_id` 自动创建用户资产行，必须已有帮助与反馈会话。运维侧 readiness 补 `dypns / dypns_fusion / dypns_sms / dev_order_endpoints=false` 断言，官网部署脚本改为断言 HTTP / HTTPS 状态码，回滚和 SLS 日志 runbook 修正为当前双端口 slot / 最小 SLS 真实入口；同时明确帮助与反馈图片当前仍复用 `/uploads/` 3 天生命周期，`support/` 30 天只是预留规则。
+- 继续按多代理巡检收口一批前后端和运维小坑：今日农情模型非 2xx 错误不再把上游原始 body 写入错误链 / 日志 / 数据库；App 自动日志 attrs 不只按敏感 key 过滤，也会丢弃普通字段名里包含 URL、token、AccessKey、手机号等敏感文本的 value；上传 multipart 超限明确返回 `413 body_too_large`，损坏 multipart 返回 `invalid multipart`。Android 图片导入和后台待发送补发在压缩前增加 32MB 原图读取上限，自更新 APK 下载增加默认 200MB 硬上限并按后端 file size 下载中断言；debug 测试包真实流式渲染速度与 release 对齐。内部客服回复不再对任意 `user_id` 自动创建用户资产行，必须已有帮助与反馈会话。运维侧 readiness 补 `dypns / dypns_fusion / dypns_sms / dev_order_endpoints=false` 断言，官网部署脚本改为断言 HTTP / HTTPS 状态码，回滚和 SLS 日志 runbook 修正为当前双端口 slot / 最小 SLS 真实入口；当时同时明确帮助与反馈图片仍复用 `/uploads/` 3 天生命周期，`support/` 30 天只是预留规则，后续已在 2026-06-13 切到 `support/`。
 
 - 按前后端深度巡检结果修复一轮小 bug / 风险点：Android 一键登录 SDK token 鉴权成功回调增加场景启动防重，避免重复拉起融合认证场景；登录页品牌绿叶改用透明 launcher 前景并由小黑圆底裁切承托，协议勾选区改为可换行布局；一键登录 token 接口失败文案不再把临时异常误报为“未配置”。Go 后端不再把模型上游非 2xx / 非 SSE 原始响应 body 写入日志或返回客户端，B/C 摘要错误同样只保留 HTTP 状态；App 自动日志自由 `message` 增加敏感文本降级并从服务端结构化日志字段中移除；主聊天用户输入服务端校验对齐 App 端 6000 字上限，仅兜底绕过 App 的直接接口调用，不限制模型输出或 B/C 摘要输出。同步修正 SLS、HTTP healthz 和双端口 slot 相关 runbook 旧口径。
 

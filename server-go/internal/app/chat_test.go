@@ -292,6 +292,11 @@ func TestValidateChatStreamImageURLsRequiresUploadedJPEG(t *testing.T) {
 			want:   "",
 		},
 		{
+			name:   "support image rejected from chat",
+			images: []string{"https://api.example.com/uploads/support/abc123.jpg"},
+			want:   "invalid image url",
+		},
+		{
 			name:   "external host rejected",
 			images: []string{"https://other.example.com/uploads/abc123.jpg"},
 			want:   "invalid image url",

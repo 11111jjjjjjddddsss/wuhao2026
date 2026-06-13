@@ -51,6 +51,11 @@ object ImageUploader {
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
     const val DECODE_FAIL_MESSAGE = "图片无法读取，请重新选择"
 
+    enum class UploadPurpose(val formValue: String?) {
+        Chat(null),
+        Support("support")
+    }
+
     /**
      * 压缩图片：
      * 固定降级序列（直到 ≤1MB）：1024@85 -> 1024@80 -> 896@80 -> 896@70 -> 768@70 -> 640@60 -> 512@60。
@@ -281,7 +286,8 @@ object ImageUploader {
     fun uploadImage(
         imageBytes: ByteArray,
         onSuccess: (String) -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
+        purpose: UploadPurpose = UploadPurpose.Chat
     ) {
         if (BuildConfig.DEBUG) {
             Log.d(TAG, "=== 开始上传图片 ===")
@@ -306,6 +312,9 @@ object ImageUploader {
                 
                 val requestBody = MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
+                    .also { builder ->
+                        purpose.formValue?.let { builder.addFormDataPart("purpose", it) }
+                    }
                     .addFormDataPart(
                         "file",
                         tempFile.name,
@@ -341,7 +350,8 @@ object ImageUploader {
                             message = "Image upload failed",
                             attrs = mapOf(
                                 "http_status" to code,
-                                "image_bytes" to imageBytes.size
+                                "image_bytes" to imageBytes.size,
+                                "purpose" to purpose.name.lowercase()
                             )
                         )
                         onError(errorMsg)
@@ -365,7 +375,8 @@ object ImageUploader {
                             message = "Image upload failed",
                             attrs = mapOf(
                                 "reason" to "response_format",
-                                "image_bytes" to imageBytes.size
+                                "image_bytes" to imageBytes.size,
+                                "purpose" to purpose.name.lowercase()
                             )
                         )
                         onError("上传失败：响应格式错误")
@@ -381,7 +392,8 @@ object ImageUploader {
                     attrs = mapOf(
                         "reason" to "exception",
                         "exception" to e.javaClass.simpleName,
-                        "image_bytes" to imageBytes.size
+                        "image_bytes" to imageBytes.size,
+                        "purpose" to purpose.name.lowercase()
                     )
                 )
                 onError("上传异常: ${e.message}")
@@ -396,7 +408,10 @@ object ImageUploader {
      * @param imageBytesList 图片字节数组列表（最多4张）
      * @return 成功返回URL列表，失败返回null
      */
-    fun uploadImages(imageBytesList: List<ByteArray>): List<String>? {
+    fun uploadImages(
+        imageBytesList: List<ByteArray>,
+        purpose: UploadPurpose = UploadPurpose.Chat
+    ): List<String>? {
         if (imageBytesList.isEmpty() || imageBytesList.size > MAX_IMAGE_COUNT) {
             Log.e(TAG, "图片数量无效: ${imageBytesList.size}，应在1-${MAX_IMAGE_COUNT}之间")
             return null
@@ -426,6 +441,7 @@ object ImageUploader {
                             }
                             latch.countDown()
                         },
+                        purpose = purpose,
                         onError = { error ->
                             Log.e(TAG, "图片[$index] 上传失败: $error")
                             errorRef.set(error)

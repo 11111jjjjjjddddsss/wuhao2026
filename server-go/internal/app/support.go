@@ -159,7 +159,7 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	if validationError := s.validateChatStreamImageURLs(r, imageURLs); validationError != "" {
+	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
@@ -283,7 +283,7 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	if validationError := s.validateChatStreamImageURLs(r, imageURLs); validationError != "" {
+	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
 		s.recordAdminAuditLog(r, "support_admin_secret", "internal.support.messages.create", "support_messages", "", userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
@@ -1137,4 +1137,30 @@ func supportImageURLsJSON(imageURLs []string) (any, error) {
 		return nil, err
 	}
 	return string(data), nil
+}
+
+func (s *Server) validateSupportImageURLs(r *http.Request, images []string) string {
+	if len(images) == 0 {
+		return ""
+	}
+	publicBaseURL := resolvePublicBaseURL(r)
+	baseURL, err := url.Parse(publicBaseURL)
+	if err != nil || baseURL.Scheme != "https" || baseURL.Host == "" {
+		return "image host not configured"
+	}
+	for _, image := range images {
+		parsed, err := url.Parse(image)
+		if err != nil ||
+			parsed.Scheme != "https" ||
+			!strings.EqualFold(parsed.Host, baseURL.Host) ||
+			parsed.RawQuery != "" ||
+			parsed.Fragment != "" {
+			return "invalid image url"
+		}
+		name := strings.TrimPrefix(parsed.Path, "/uploads/")
+		if name == parsed.Path || !isServableUploadObjectName(name) {
+			return "invalid image url"
+		}
+	}
+	return ""
 }

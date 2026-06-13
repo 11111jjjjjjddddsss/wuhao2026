@@ -45,6 +45,31 @@ func TestLocalUploadStoreSaveAndOpen(t *testing.T) {
 	}
 }
 
+func TestLocalUploadStoreSaveAndOpenSupportObject(t *testing.T) {
+	store := LocalUploadStore{dir: t.TempDir()}
+	const filename = "support/sample.jpg"
+	const body = "support-jpeg-bytes"
+
+	if err := store.Save(context.Background(), filename, "image/jpeg", []byte(body)); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+	reader, contentType, err := store.Open(context.Background(), filename)
+	if err != nil {
+		t.Fatalf("Open returned error: %v", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("ReadAll returned error: %v", err)
+	}
+	if string(data) != body {
+		t.Fatalf("unexpected body %q", string(data))
+	}
+	if contentType != "" {
+		t.Fatalf("local store should not synthesize content type, got %q", contentType)
+	}
+}
+
 func TestNewUploadStoreRejectsIncompleteOSSConfig(t *testing.T) {
 	t.Setenv("UPLOAD_STORAGE_BACKEND", "oss")
 	t.Setenv("OSS_BUCKET", "")

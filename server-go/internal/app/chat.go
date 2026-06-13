@@ -922,10 +922,7 @@ func isUploadedImagePath(path string) bool {
 	if name == path || name == "" {
 		return false
 	}
-	if strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
-		return false
-	}
-	return strings.HasSuffix(strings.ToLower(name), ".jpg")
+	return isPlainUploadFilename(name)
 }
 
 func updateAssistantAccumulator(data string, assistantText *strings.Builder, hasCitations *atomic.Bool, hasSources *atomic.Bool, modelUsage *bailianModelUsage) {

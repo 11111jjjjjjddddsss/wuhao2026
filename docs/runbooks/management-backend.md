@@ -105,7 +105,7 @@
 | 模块 | 当前能否直接接 | 当前真源 | 第一版要补 |
 |---|---|---|---|
 | 服务健康 / 监控面板 | 已接入首版 | `/healthz`、管理 API、业务表、App 自动日志、后台审计、`auth_logs`、`app_update_logs`、SLS 5 条 AlertHub 最小告警、SLS 告警只读巡检脚本 | 第一封告警邮件送达确认、Nginx access 聚合、登录精准漏斗 |
-| 帮助与反馈 | 已接入首版 | `support_messages`、`support_conversations`、`/internal/support/*`、`/admin-api/v1/support/*` | 正式坐席分配、标签、站外通知、客服绩效、保存 / 删除规则 |
+| 帮助与反馈 | 已接入首版 | `support_messages`、`support_conversations`、`/internal/support/*`、`/admin-api/v1/support/*`；客服图片附件走 OSS `support/` 30 天生命周期 | 正式坐席分配、标签、站外通知、客服绩效、聊天记录保存 / 删除规则 |
 | 注销申请 | 已接入申请队列 | `account_deletion_requests`、`/api/account/deletion-requests`、`/admin-api/v1/account-deletion-requests*` | 物理删除 / 匿名化规则、法定留存、处理责任和批量清理脚本 |
 | App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs`、监控页登录排障卡、检查更新排障卡 | 更细的版本 / 设备 / 地区聚合和告警 |
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
@@ -146,7 +146,7 @@
 - `admin_roles` 或等价角色字段：只读、客服、内容运营、发布运营、财务 / 订单、管理员。
 - `admin_sessions` 或等价登录态。
 - `admin_audit_logs`：已落地最小版本，记录 actor、动作、目标类型 / ID、目标用户、成功 / 失败、状态码、脱敏 IP、UA 和时间；当前不保存正文、图片 URL、手机号、token 或密钥。后续正式后台账号接入后再补角色、request_id、原因、变更前后等字段或等价扩展。
-- 帮助与反馈复用 `support_messages` 并新增 `support_conversations` 轻量会话状态表；当前已补会话列表、详情、回复、状态筛选、搜索、关闭和重开，后续补坐席分配、标签、站外通知、客服绩效和消息保存 / 删除规则。
+- 帮助与反馈复用 `support_messages` 并新增 `support_conversations` 轻量会话状态表；当前已补会话列表、详情、回复、状态筛选、搜索、关闭和重开。客服图片附件走 OSS `support/` 30 天生命周期，但客服聊天记录正文、发送人、时间和已读状态仍保存在 MySQL，不随图片自动过期；后续补坐席分配、标签、站外通知、客服绩效和聊天记录保存 / 删除规则。
 - 用户真实反馈 / 产品洞察建议新增独立聚合表或日报表，例如 `product_insight_reports`、`product_insight_items`、`product_insight_sources`；source 只保存来源类型、脱敏引用、时间、标签和必要短摘，不保存原始手机号、token、密钥、图片内容或完整聊天正文。若用户删除历史或后续做账号注销，必须同步设计洞察来源引用的清理 / 去标识化口径。
 - 检查更新建议补 `app_releases`，不要长期只靠环境变量手改。
 - 今日农情可先复用 `daily_agri_cards`，后台只做状态查看、补跑、停用和审计。

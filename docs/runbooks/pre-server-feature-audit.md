@@ -54,7 +54,7 @@
 - 额度扣减由 `quota_ledger` 防重复扣。
 - 模型 Key 池已支持 `DASHSCOPE_API_KEY_1/2/3` 和旧列表配置，按顺序主备使用，能在请求打开阶段遇到限流 / quota / 认证类错误时切换 Key；同一阿里云主账号多 Key 不扩真实 RPM / TPM。
 - 今日农情生成使用数据库 lease，能防多实例重复生成同一天卡片。
-- 图片上传当前限制为单张 JPEG 且 `<=1MB`，聊天图片 URL 只接受配置的公开基地址下 `/uploads/*.jpg`。
+- 图片上传当前限制为单张 JPEG 且 `<=1MB`；主聊天图片 URL 只接受配置的公开基地址下普通 `/uploads/*.jpg`，帮助与反馈图片可走 `/uploads/support/*.jpg`。
 
 买服务器前已补的低风险优化：
 
@@ -243,7 +243,7 @@
 - 文字、图片和图文混合问诊都只通过后端 `/api/chat/stream` 发起；Android 不保存模型 API Key，也不直连 Qwen / DashScope。
 - Android 发送时先把用户消息和 assistant placeholder 插入 UI，再走 `SessionApi.streamChat`；图片发送会先把本地图片消息上屏并清空输入框，上传成功后复用同一个 `client_msg_id` 进入主对话。
 - 图片先进入 App 私有 `files/composer_images` 稳定副本；合格 JPEG 直通，其他可解码图片转 JPEG 并压到最长边 / 单张 `<=1MB` 规则内。
-- Android 上传入口是后端 `POST /upload`，请求带 `X-User-Id` 和可选 bearer token；后端只接受单张 `<=1MB` JPEG，并返回配置公开基地址下的 `https://.../uploads/*.jpg`。
+- Android 上传入口是后端 `POST /upload`，请求带 `X-User-Id` 和可选 bearer token；后端只接受单张 `<=1MB` JPEG。普通问诊图返回配置公开基地址下的 `https://.../uploads/*.jpg`；帮助与反馈图传 `purpose=support` 后返回 `https://.../uploads/support/*.jpg`。
 - `/api/chat/stream` 会再次校验图片 URL：必须来自同一公开基地址、路径为 `/uploads/*.jpg`，不接受外部域名、非 jpg、query 或 fragment。
 - 带图发送会排一个唯一 WorkManager 兜底任务；前台活跃或远端启动保护窗内不抢跑，只在 App 被杀或前台未可靠完成时补发。后台兜底遇到图片上传失败、网络中断、流异常结束、`409`、限流或临时上游错误时，会用同一 `client_msg_id` 指数退避重试；普通可恢复失败最多重试 5 次后移除 pending。
 - 后端用 `chat_stream_inflight` 的同一用户活跃流唯一约束和 `client_msg_id + lease_token` 降低重复开流；轮次归档成功后才发 SSE `[DONE]`，扣次也在归档成功后执行。

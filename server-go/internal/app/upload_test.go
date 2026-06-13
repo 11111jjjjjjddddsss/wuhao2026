@@ -30,3 +30,35 @@ func TestUploadRateLimiterUsesEnv(t *testing.T) {
 		t.Fatalf("upload limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
 	}
 }
+
+func TestUploadPurposeBuildsSupportObjectName(t *testing.T) {
+	if got := normalizeUploadPurpose(" support "); got != uploadPurposeSupport {
+		t.Fatalf("normalizeUploadPurpose support = %q", got)
+	}
+	if got := normalizeUploadPurpose("chat"); got != "" {
+		t.Fatalf("normalizeUploadPurpose unknown = %q", got)
+	}
+	if got := uploadObjectNameForPurpose("abc.jpg", uploadPurposeSupport); got != "support/abc.jpg" {
+		t.Fatalf("support object name = %q", got)
+	}
+	if got := uploadObjectNameForPurpose("abc.jpg", ""); got != "abc.jpg" {
+		t.Fatalf("default object name = %q", got)
+	}
+}
+
+func TestServableUploadObjectName(t *testing.T) {
+	cases := map[string]bool{
+		"abc.jpg":                true,
+		"support/abc.jpg":        true,
+		"support/nested/abc.jpg": false,
+		"support/abc.png":        false,
+		"../abc.jpg":             false,
+		"support/../abc.jpg":     false,
+		"":                       false,
+	}
+	for input, want := range cases {
+		if got := isServableUploadObjectName(input); got != want {
+			t.Fatalf("isServableUploadObjectName(%q) = %v, want %v", input, got, want)
+		}
+	}
+}

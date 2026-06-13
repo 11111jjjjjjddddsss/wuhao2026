@@ -20,6 +20,7 @@ const (
 	defaultUploadRateLimitWindow        = 10 * time.Minute
 	defaultUploadRateLimitMaxHits       = 120
 	defaultUploadRateLimitPruneInterval = 10 * time.Minute
+	uploadPurposeSupport                = "support"
 )
 
 var uploadExtensions = map[string]string{
@@ -42,7 +43,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadFileSize+1024)
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadFileSize+16*1024)
 	if err := r.ParseMultipartForm(maxUploadFileSize); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
@@ -82,15 +83,16 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "upload failed")
 		return
 	}
+	objectName := uploadObjectNameForPurpose(filename, normalizeUploadPurpose(r.FormValue("purpose")))
 
-	if err := s.uploadStore.Save(r.Context(), filename, contentType, data); err != nil {
-		s.logger.Error("upload save failed", "filename", filename, "backend", s.uploadStore.Name(), "error", err)
+	if err := s.uploadStore.Save(r.Context(), objectName, contentType, data); err != nil {
+		s.logger.Error("upload save failed", "object", objectName, "backend", s.uploadStore.Name(), "error", err)
 		s.writeError(w, http.StatusInternalServerError, "upload failed")
 		return
 	}
 
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"url": strings.TrimRight(publicBaseURL, "/") + "/uploads/" + filename,
+		"url": strings.TrimRight(publicBaseURL, "/") + "/uploads/" + objectName,
 	})
 }
 
@@ -102,7 +104,7 @@ func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := strings.TrimPrefix(r.URL.Path, "/uploads/")
-	if name == "" || strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+	if !isServableUploadObjectName(name) {
 		http.NotFound(w, r)
 		return
 	}
@@ -156,6 +158,40 @@ func randomFilename(ext string, header *multipart.FileHeader) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(raw) + ext, nil
+}
+
+func normalizeUploadPurpose(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case uploadPurposeSupport:
+		return uploadPurposeSupport
+	default:
+		return ""
+	}
+}
+
+func uploadObjectNameForPurpose(filename string, purpose string) string {
+	if purpose == uploadPurposeSupport {
+		return uploadPurposeSupport + "/" + filename
+	}
+	return filename
+}
+
+func isServableUploadObjectName(name string) bool {
+	if isPlainUploadFilename(name) {
+		return true
+	}
+	const supportPrefix = uploadPurposeSupport + "/"
+	if !strings.HasPrefix(name, supportPrefix) {
+		return false
+	}
+	return isPlainUploadFilename(strings.TrimPrefix(name, supportPrefix))
+}
+
+func isPlainUploadFilename(name string) bool {
+	if name == "" || strings.Contains(name, "..") || strings.Contains(name, "/") || strings.Contains(name, "\\") {
+		return false
+	}
+	return strings.HasSuffix(strings.ToLower(name), ".jpg")
 }
 
 func newUploadRateLimiter(redisClient *redis.Client) rateLimiter {

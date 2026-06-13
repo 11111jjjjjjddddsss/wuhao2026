@@ -102,6 +102,40 @@ func TestSupportImageURLsJSON(t *testing.T) {
 	}
 }
 
+func TestValidateSupportImageURLsAllowsSupportObjects(t *testing.T) {
+	t.Setenv("BASE_PUBLIC_URL", "https://api.example.com")
+	server := &Server{}
+	req := httptest.NewRequest(http.MethodPost, "https://api.example.com/api/support/messages", nil)
+
+	images := []string{
+		"https://api.example.com/uploads/a.jpg",
+		"https://api.example.com/uploads/support/b.jpg",
+	}
+	if got := server.validateSupportImageURLs(req, images); got != "" {
+		t.Fatalf("validateSupportImageURLs = %q, want empty", got)
+	}
+}
+
+func TestValidateSupportImageURLsRejectsUnsafeURLs(t *testing.T) {
+	t.Setenv("BASE_PUBLIC_URL", "https://api.example.com")
+	server := &Server{}
+	req := httptest.NewRequest(http.MethodPost, "https://api.example.com/api/support/messages", nil)
+
+	cases := map[string]string{
+		"external host": "https://other.example.com/uploads/support/a.jpg",
+		"query":         "https://api.example.com/uploads/support/a.jpg?x=1",
+		"nested":        "https://api.example.com/uploads/support/nested/a.jpg",
+		"non jpg":       "https://api.example.com/uploads/support/a.png",
+	}
+	for name, image := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := server.validateSupportImageURLs(req, []string{image}); got != "invalid image url" {
+				t.Fatalf("validateSupportImageURLs = %q, want invalid image url", got)
+			}
+		})
+	}
+}
+
 func TestSupportMessageRateLimitKeyHashesSensitiveInputs(t *testing.T) {
 	t.Setenv("APP_SECRET", "test-secret")
 	key := supportMessageRateLimitKey("acct_sensitive_user", "203.0.113.9")
