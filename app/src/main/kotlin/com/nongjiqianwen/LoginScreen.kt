@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -128,6 +130,7 @@ private fun LoginScreen(
     }
 
     fun sendSmsCode() {
+        if (busy) return
         if (!requireAgreement()) return
         if (!isValidMainlandPhone(phone)) {
             message = "请输入正确的手机号"
@@ -150,6 +153,7 @@ private fun LoginScreen(
     }
 
     fun loginWithSms() {
+        if (busy) return
         if (!requireAgreement()) return
         if (!isValidMainlandPhone(phone) || code.length != 6) {
             message = "请填写手机号和6位验证码"
@@ -243,10 +247,16 @@ private fun LoginScreen(
                         onValueChange = { code = it.filter(Char::isDigit).take(6) },
                         singleLine = true,
                         placeholder = { Text("验证码") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(
+                            onDone = { loginWithSms() }
+                        ),
                         modifier = Modifier
                             .weight(1f)
-                            .height(56.dp)
+                            .heightIn(min = 56.dp)
                     )
                     OutlinedButton(
                         onClick = ::sendSmsCode,

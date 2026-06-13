@@ -286,9 +286,6 @@ internal fun HamburgerMenuSheet(
                             latestVersionCode > context.loadLastPromptedUpdateVersionCode()
                     if (shouldAutoPrompt) {
                         updateDialogInfo = info
-                        if (!userTriggered && latestVersionCode > 0) {
-                            context.saveLastPromptedUpdateVersionCode(latestVersionCode)
-                        }
                     } else if (userTriggered) {
                         updateDialogInfo = info
                     }
@@ -312,6 +309,9 @@ internal fun HamburgerMenuSheet(
     fun startAppUpdate(update: SessionApi.AppUpdateInfo) {
         if (updateDownloading) return
         val appContext = context.applicationContext
+        update.latestVersionCode
+            ?.takeIf { it > 0 }
+            ?.let { context.saveLastPromptedUpdateVersionCode(it) }
         if (!AppUpdateInstaller.canRequestInstallPackages(appContext)) {
             val opened = AppUpdateInstaller.openInstallPermissionSettings(appContext)
             pendingInstallPermissionUpdate = update.takeIf { opened }
@@ -3829,6 +3829,13 @@ private fun giftCardRedeemSuccessText(result: SessionApi.GiftCardRedeemResult): 
     }
 }
 
+private fun normalizeGiftCardCodeInput(raw: String): String =
+    raw.asSequence()
+        .filterNot { it.isWhitespace() || it == '-' }
+        .joinToString("")
+        .uppercase()
+        .take(64)
+
 private fun hamburgerTodayAgriDateText(dateCn: String?): String {
     val raw = dateCn?.trim().orEmpty()
     if (raw.length != 8 || raw.any { !it.isDigit() }) return ""
@@ -3867,7 +3874,10 @@ private fun HamburgerRedeemCodeContent(
     var redeeming by remember { mutableStateOf(false) }
     var redeemResult by remember { mutableStateOf<SessionApi.GiftCardRedeemResult?>(null) }
     fun submitRedeem() {
-        val code = redeemCode.trim()
+        val code = normalizeGiftCardCodeInput(redeemCode)
+        if (redeemCode != code) {
+            redeemCode = code
+        }
         if (redeeming) return
         if (code.isBlank()) {
             onPendingAction("请输入礼品卡码")
@@ -3951,7 +3961,9 @@ private fun HamburgerRedeemCodeContent(
                         ) {
                             BasicTextField(
                                 value = redeemCode,
-                                onValueChange = { next -> redeemCode = next },
+                                onValueChange = { next ->
+                                    redeemCode = normalizeGiftCardCodeInput(next)
+                                },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
                                     imeAction = ImeAction.Done
@@ -3966,7 +3978,25 @@ private fun HamburgerRedeemCodeContent(
                                     lineHeight = 25.sp,
                                     fontWeight = FontWeight.Normal,
                                     textAlign = TextAlign.Center
-                                )
+                                ),
+                                decorationBox = { innerTextField ->
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (redeemCode.isBlank()) {
+                                            Text(
+                                                text = "请输入礼品卡码",
+                                                color = Color(0xFF9AA0A8),
+                                                fontSize = 18.sp,
+                                                lineHeight = 25.sp,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                }
                             )
                         }
                     }

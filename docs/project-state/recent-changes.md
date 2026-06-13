@@ -3,6 +3,12 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-14
+
+- 继续按普通短信登录主线收口上线前巡检：服务端旧 `/api/auth/fusion/*` 路由暂不物理删除，但默认返回 `410 fusion_auth_disabled`，只有显式 `AUTH_FUSION_COMPAT_ENABLED=true` 才允许极短历史包兼容；`check-ecs-readiness.ps1` 同步硬拦生产误开该开关，并把普通短信 `SMS_ACCESS_KEY_ID / SMS_ACCESS_KEY_SECRET / SMS_SIGN_NAME / SMS_TEMPLATE_CODE` 列入脱敏 readiness 输出。Android 端做低风险体验修补：验证码输入键盘 Done 可直接登录、发送验证码 / 登录请求增加 busy 防重入、验证码框按最小高度适配大字体，主 Activity 锁竖屏避免登录和主界面在横屏手机上被挤乱，今日农情标题最多两行，礼品卡输入会自动去空格 / 横杠并转大写，检查更新不再因为仅弹出自动更新卡片就提前抑制后续提醒。公网黑盒脚本新增官网备案号、公安联网备案号、协议页和警徽图标检查；GitHub CI 删除旧 `FusionAuthProtocolActivity` 的 WebView 例外，防止融合协议页 / WebView 回潮。管理后台监控文案把礼品卡完整码可见性改成 `owner / finance_ops` 角色口径，避免误解为所有后台账号可见。阿里云资源巡检按官方文档校准：ECS 操作系统层内存指标需要 CloudMonitor 插件，本轮已通过阿里云 CLI `InstallMonitoringAgent` 给生产 ECS 补装 C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；资源巡检会把云监控规则 `INSUFFICIENT_DATA` 暴露为 warning / attention，不再假绿。
+
+- 本轮后端和后台已重新部署到生产：`scripts/deploy-ecs-server.ps1` 远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 active upstream 为 `3001`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录 `/admin-api/v1/auth/me` 返回 401。部署后 `check-ecs-readiness.ps1`、`check-public-blackbox.ps1`、`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning`、`check-resource-capacity.ps1 -Strict`、`check-backend-data-boundaries.ps1` 和 `check-launch-readiness.ps1 -AllowAttentionExitZero` 均已复查；总门禁唯一 attention 仍是本机没有后台 owner 明文密码，登录后后台 smoke 按安全规则跳过。公网 `POST /api/auth/fusion/token` 已验证返回 `410 fusion_auth_disabled`，说明旧融合入口在线上默认关闭。
+
 ## 2026-06-13
 
 - 按用户最新拍板把登录主链从阿里云融合认证切回普通短信验证码登录：用户已购买阿里云短信服务“国内通用短信套餐包”，本机 CLI 复查短信签名 `北京农技千问科技` 和模板 `SMS_507135108` 均为审核通过；后端现有普通短信链路走 `dysmsapi.SendSms`，`/healthz` 显示 `sms=ok / redis=ok`。Android 新包删除融合认证 AAR、`FusionOneLoginClient.kt`、`FusionAuthProtocolActivity.kt`、融合 Activity / ProGuard / 构建开关、电话状态 / Wi-Fi / 改网络权限和运营商取号明文域名例外；登录页只保留自有“农技千查 + 图标”、手机号、验证码、发送、登录和协议勾选，发送成功前端 60 秒倒计时，后端保留同手机号 5/10min、同 IP 20/10min、登录校验 10/10min 和 5 分钟验证码有效期。账号ID仍按手机号归一到同一个 `acct_...`，已注册账号ID和会员 / 礼品卡 / 记忆 / 聊天资产归属不因删除融合 SDK 改变。`scripts/check-android-build-parity.ps1` 已反向拦截融合认证 SDK / AAR / 权限 / 明文网关 / `/api/auth/fusion/*` 回潮，并要求 debug / release 除预览面板外继续同包名、同签名、同后端、同短信登录主链。服务端旧 `/api/auth/fusion/*` 暂保留给历史包兼容，新 Android 包不调用。

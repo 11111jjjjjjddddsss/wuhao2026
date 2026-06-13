@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"strconv"
@@ -281,6 +282,28 @@ func TestAuthSMSSendProviderFailureKeepsCachedCode(t *testing.T) {
 	sendBlock := text[blockStart : blockStart+blockEnd]
 	if strings.Contains(sendBlock, "clearSMSCode") {
 		t.Fatalf("SMS provider failure must not clear the cached code; provider timeouts can still deliver the SMS")
+	}
+}
+
+func TestAuthFusionCompatDisabledByDefault(t *testing.T) {
+	t.Setenv("AUTH_FUSION_COMPAT_ENABLED", "")
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	tests := map[string]http.HandlerFunc{
+		"/api/auth/fusion/token":  server.handleAuthFusionToken,
+		"/api/auth/fusion/login":  server.handleAuthFusionLogin,
+		"/api/auth/fusion/verify": server.handleAuthFusionVerify,
+	}
+	for path, handler := range tests {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{}`))
+		rr := httptest.NewRecorder()
+		handler(rr, req)
+		if rr.Code != http.StatusGone {
+			t.Fatalf("%s status=%d, want %d", path, rr.Code, http.StatusGone)
+		}
+		if !strings.Contains(rr.Body.String(), "fusion_auth_disabled") {
+			t.Fatalf("%s response missing disabled error: %s", path, rr.Body.String())
+		}
 	}
 }
 

@@ -517,6 +517,9 @@ foreach ($rule in $expectedMetricRules) {
         $resourceIds = @(Get-MetricRuleResourceIds -Rule $foundRule)
         $resourceText = if ($resourceIds.Count -gt 0) { $resourceIds -join "," } else { "none" }
         Write-Host "rule=$($foundRule.RuleId) namespace=$($foundRule.Namespace) metric=$($foundRule.MetricName) resource=$resourceText warn=$($foundRule.Escalations.Warn.Threshold)/$($foundRule.Escalations.Warn.Times) critical=$($foundRule.Escalations.Critical.Threshold)/$($foundRule.Escalations.Critical.Times) period=$($foundRule.Period) alert_state=$($foundRule.AlertState) enabled=$($foundRule.EnableState) contacts=$($foundRule.ContactGroups)"
+        if ([string]$foundRule.AlertState -eq "INSUFFICIENT_DATA") {
+            Add-WarningItem "cloudmonitor_metric_rule_insufficient_data:$($rule.RuleId)"
+        }
         if ($foundRule.Namespace -ne $rule.Namespace -or $foundRule.MetricName -ne $rule.MetricName) {
             Add-WarningItem "cloudmonitor_metric_rule_unexpected_target:$($rule.RuleId)"
         }

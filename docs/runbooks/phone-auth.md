@@ -1,6 +1,6 @@
 # 手机号登录与短信验证码 Runbook
 
-最后更新：2026-06-13
+最后更新：2026-06-14
 
 ## 当前结论
 
@@ -33,7 +33,7 @@
 - `POST /api/auth/sms/login`：校验手机号和验证码，归一到 `acct_...` 账号并签发 v2 session token。
 - `POST /api/auth/logout`：吊销当前设备 session，不删除聊天历史、会员权益、礼品卡或反馈记录。
 - `GET /api/auth/session`：校验当前 bearer token。
-- `/api/auth/fusion/*` 服务端旧接口暂保留给历史包 / 运维兼容，但新 Android 包不调用。
+- `/api/auth/fusion/*` 服务端旧接口默认返回 `410 fusion_auth_disabled`，只有显式配置 `AUTH_FUSION_COMPAT_ENABLED=true` 才临时放行历史包兼容；新 Android 包不调用。
 
 ## 发送频率和有效期
 
@@ -52,6 +52,7 @@
 - `SMS_REGION_ID`：默认 `cn-hangzhou`。
 - `SMS_SIGN_NAME`：普通短信签名；当前代码也兼容 `DYPNS_SMS_SIGN_NAME`。
 - `SMS_TEMPLATE_CODE`：普通短信模板 Code；当前代码也兼容 `DYPNS_SMS_TEMPLATE_CODE`。
+- `AUTH_FUSION_COMPAT_ENABLED`：生产保持未设置或 `false`；设置为 `true` 只用于极短历史包兼容窗口，readiness 会拦截生产误开。
 - `AUTH_SMS_*`：短信发送 / 登录校验限流。
 - `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD` / `REDIS_DB`：Redis 连接配置；配置后验证码和认证限流跨进程共享。
 
@@ -100,5 +101,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-andro
 ## 仍需注意
 
 - 普通短信验证码登录比融合认证简单稳定，但短信发送本身是成本入口，不能把后端限流全部去掉。
-- 当前服务端旧融合接口和相关健康字段暂未删除，主要为历史包兼容和降低一次性后端变更风险；新 Android 包不调用它们。后续确认不再需要旧包兼容后，可单独删服务端融合接口、环境变量和监控字段。
+- 当前服务端旧融合路由和相关健康字段暂未物理删除，但路由默认停用；新 Android 包不调用它们。后续确认不再需要旧包兼容后，可单独删服务端融合接口、环境变量和监控字段。
 - 上线前仍要轮换已经暴露过的主账号 AccessKey。

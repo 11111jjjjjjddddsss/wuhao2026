@@ -13,7 +13,7 @@
 - ECS 已验证内网 DNS、TCP 6379 和 `default` 账号密码认证可用
 - `server-go` 已新增可选 Redis 客户端：只要配置 `REDIS_ADDR` / `REDIS_USERNAME` / `REDIS_PASSWORD`，启动时会先 ping Redis，失败则 fail-fast
 - 生产 ECS 已配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD / REDIS_DB`，并已部署验证短信发送、短信登录、主聊天用户级频控、App 自动日志接收、帮助与反馈用户发消息和上传限流；`/healthz` 当前返回 `redis=ok`
-- 当前 Redis 只接短期认证状态和短期限流：`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/chat/stream` 用户级频控、`POST /api/app/logs`、`POST /api/app/logs/preauth`、`POST /api/support/messages` 和 `/upload`；服务端旧 `POST /api/auth/fusion/token`、`POST /api/auth/fusion/login` 兼容接口的短期限流暂保留给历史包，但新 Android 不调用。Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（主聊天 / App 日志 / 帮助与反馈 / 上传相关；登录前日志统一使用固定 `preauth`）和 IP hash，不保存明文手机号、验证码、verify token、auth token、聊天正文、反馈正文或图片内容
+- 当前 Redis 只接短期认证状态和短期限流：`POST /api/auth/sms/send`、`POST /api/auth/sms/login`、`POST /api/chat/stream` 用户级频控、`POST /api/app/logs`、`POST /api/app/logs/preauth`、`POST /api/support/messages` 和 `/upload`；服务端旧 `POST /api/auth/fusion/token`、`POST /api/auth/fusion/login` 兼容接口默认已停用，只有显式 `AUTH_FUSION_COMPAT_ENABLED=true` 的极短历史包兼容窗口才会用到对应短期限流，新 Android 不调用。Redis key 只包含 scope、手机号 HMAC / SHA256 hash（短信相关）、user_id hash（主聊天 / App 日志 / 帮助与反馈 / 上传相关；登录前日志统一使用固定 `preauth`）和 IP hash，不保存明文手机号、验证码、verify token、auth token、聊天正文、反馈正文或图片内容
 - 主聊天 `/api/chat/stream` 的内容、归档、额度和同用户单流仍使用 MySQL 业务真相、MySQL 用户级锁和 `chat_stream_inflight`；用户级频控配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。不要把 Redis 写成已经接管聊天内容、额度、订单、归档、摘要锁或会员资产
 - Redis 限流失败策略按链路区分：短信、登录、上传、礼品卡和内部 secret 等安全 / 成本敏感入口 fail closed；主聊天、帮助反馈和 App 自动日志在 Redis 限流操作错误或超时时 fail open，避免 Redis 短抖挡住正常问诊、客服反馈和排障日志。Redis 正常时这些链路仍按各自频率限制。
 
@@ -56,8 +56,8 @@ aliyun ecs RunCommand --RegionId cn-beijing --Type RunShellScript --InstanceId.1
 
 认证限流参数：
 
-- `AUTH_FUSION_TOKEN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_FUSION_TOKEN_RATE_LIMIT_MAX_HITS` / `AUTH_FUSION_TOKEN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：历史融合认证 token 获取限流，默认 10 分钟 20 次，新 Android 不调用
-- `AUTH_FUSION_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_FUSION_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_FUSION_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：历史融合认证登录校验限流，默认 10 分钟 20 次，新 Android 不调用
+- `AUTH_FUSION_TOKEN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_FUSION_TOKEN_RATE_LIMIT_MAX_HITS` / `AUTH_FUSION_TOKEN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：历史融合认证 token 获取限流，默认 10 分钟 20 次；只有 `AUTH_FUSION_COMPAT_ENABLED=true` 时才会用到，新 Android 不调用
+- `AUTH_FUSION_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_FUSION_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_FUSION_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：历史融合认证登录校验限流，默认 10 分钟 20 次；只有 `AUTH_FUSION_COMPAT_ENABLED=true` 时才会用到，新 Android 不调用
 - `AUTH_SMS_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送限流，默认 10 分钟 5 次
 - `AUTH_SMS_IP_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_IP_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_IP_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信发送 IP 总量限流，默认 10 分钟 20 次
 - `AUTH_SMS_LOGIN_RATE_LIMIT_WINDOW_SECONDS` / `AUTH_SMS_LOGIN_RATE_LIMIT_MAX_HITS` / `AUTH_SMS_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS`：短信登录校验限流，默认 10 分钟 10 次

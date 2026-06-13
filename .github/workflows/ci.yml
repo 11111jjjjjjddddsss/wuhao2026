@@ -124,10 +124,9 @@ jobs:
             exit 1
           fi
           webview_refs="$(git grep -n -E '\bWebView\b' -- app/src/main || true)"
-          unexpected_webview_refs="$(printf "%s\n" "$webview_refs" | grep -v 'app/src/main/kotlin/com/nongjiqianwen/FusionAuthProtocolActivity.kt' || true)"
-          if [ -n "$unexpected_webview_refs" ]; then
-            printf "%s\n" "$unexpected_webview_refs"
-            echo "Found unexpected WebView references outside FusionAuthProtocolActivity"
+          if [ -n "$webview_refs" ]; then
+            printf "%s\n" "$webview_refs"
+            echo "Found unexpected WebView references in app/src/main"
             exit 1
           fi
 

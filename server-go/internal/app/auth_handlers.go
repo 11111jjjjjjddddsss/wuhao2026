@@ -52,9 +52,21 @@ type authSMSSendRequest struct {
 	PhoneNumber string `json:"phone_number"`
 }
 
+func authFusionCompatEnabled() bool {
+	return parseBoolEnv(os.Getenv("AUTH_FUSION_COMPAT_ENABLED"))
+}
+
+func (s *Server) writeFusionCompatDisabled(w http.ResponseWriter) {
+	s.writeError(w, http.StatusGone, "fusion_auth_disabled")
+}
+
 func (s *Server) handleAuthFusionToken(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+	if !authFusionCompatEnabled() {
+		s.writeFusionCompatDisabled(w)
 		return
 	}
 	if s.fusionTokenLimiter != nil {
@@ -83,6 +95,10 @@ func (s *Server) handleAuthFusionToken(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAuthFusionLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+	if !authFusionCompatEnabled() {
+		s.writeFusionCompatDisabled(w)
 		return
 	}
 	var body authLoginRequest
@@ -125,6 +141,10 @@ func (s *Server) handleAuthFusionLogin(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAuthFusionVerify(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+	if !authFusionCompatEnabled() {
+		s.writeFusionCompatDisabled(w)
 		return
 	}
 	var body authLoginRequest

@@ -8,9 +8,9 @@
 
 本 runbook 只记录规格、用量、阈值和巡检入口；不记录 AccessKey、数据库密码、模型 Key、Redis 密码、服务器环境变量内容或公安备案数据码。
 
-## 2026-06-13 巡检结论
+## 2026-06-14 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-13 已新增只读公网黑盒脚本，可从公网视角检查 API、官网、www、后台入口和 HTTP->HTTPS 跳转；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮严格资源巡检显示 9 条云监控资源规则均为 `OK`。巡检脚本后续会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
 - ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 12 GiB（15%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
@@ -19,17 +19,17 @@
 - Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.20 MiB / 256 MiB（约 2.03%），CPU 峰值约 0.13%，连接使用约 0.05%；释放保护已开启
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 0、占用 0 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
-- 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。该组用于资源不足提前邮件提醒，不走短信 / 电话
+- 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。ECS 已补装 CloudMonitor C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；本轮严格巡检里 ECS 内存规则已回到 `OK`。若未来云监控返回 `INSUFFICIENT_DATA`，严格巡检会以 warning / attention 提醒。该组用于资源不足提前邮件提醒，不走短信 / 电话
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
 - 普通短信服务：已购买国内通用短信套餐包，新 Android 登录消耗普通短信余量；DYPNS / 融合认证统计只作为历史兼容观察
 
-统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
+统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-14 起，云监控规则若返回 `INSUFFICIENT_DATA` 也会输出 warning / attention，避免 ECS 内存等操作系统指标无数据时假绿；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
 ```
 
-当前脚本汇总状态为 `ready`。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。2026-06-13 严格巡检输出 `warnings=0 / errors=0 / status=ready`。
+当前脚本汇总状态以实时输出为准。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。2026-06-14 严格巡检输出 `warnings=0 / errors=0 / status=ready`，包括 ECS 内存告警数据回到 `OK`。
 
 公网黑盒只读巡检脚本会从当前运行机器直接请求公网域名，不通过 ECS 本机 `--resolve`，用于确认外部用户实际能访问 API、官网、www 和后台入口，并确认后台未登录仍是 401、HTTP 会跳 HTTPS：
 

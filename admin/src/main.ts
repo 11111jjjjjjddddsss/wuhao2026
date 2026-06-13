@@ -3303,7 +3303,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ${decisionCard(
         "礼品卡与权益",
         !giftReady ? "先生成卡" : giftWarn ? "看失败" : "可查可兑",
-        `${report.queues.gift_card_active} 张可兑换；后台能看完整码，已兑 ${report.queues.gift_card_redeemed} 张；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
+        `${report.queues.gift_card_active} 张可兑换；owner / finance_ops 可看完整码，已兑 ${report.queues.gift_card_redeemed} 张；24h 失败 ${report.queues.gift_card_failed_attempts} 次。`,
         giftWarn ? "warn" : "ok",
         "gift-cards",
       )}
