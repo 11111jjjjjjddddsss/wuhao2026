@@ -62,8 +62,6 @@ $dataExtractionRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/data_extrac
 $idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdManager.kt"
 $sessionApiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
 $appUpdateInstallerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/AppUpdateInstaller.kt"
-$fusionClientFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionOneLoginClient.kt"
-$fusionProtocolActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/FusionAuthProtocolActivity.kt"
 $mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MainActivity.kt"
 $privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentStore.kt"
 $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendWorker.kt"
@@ -77,7 +75,7 @@ $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Cha
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $fusionClientFile, $fusionProtocolActivityFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -92,8 +90,6 @@ if ($failures.Count -eq 0) {
     $idManager = Get-Content -LiteralPath $idManagerFile -Raw
     $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
     $appUpdateInstaller = Get-Content -LiteralPath $appUpdateInstallerFile -Raw
-    $fusionClient = Get-Content -LiteralPath $fusionClientFile -Raw
-    $fusionProtocolActivity = Get-Content -LiteralPath $fusionProtocolActivityFile -Raw
     $mainActivity = Get-Content -LiteralPath $mainActivityFile -Raw
     $privacyConsent = Get-Content -LiteralPath $privacyConsentFile -Raw
     $pendingWorker = Get-Content -LiteralPath $pendingWorkerFile -Raw
@@ -117,10 +113,10 @@ if ($failures.Count -eq 0) {
         "USE_BACKEND_AB must remain enabled for debug and release."
     Require-NoMatch $failures $build 'buildConfigField\s*\(\s*"boolean"\s*,\s*"USE_BACKEND_AB"\s*,\s*[^)]*false' `
         "USE_BACKEND_AB must not be disabled in any build type."
-    Require-Match $failures $build 'debug\s*\{(?s:.*?)signingConfigs\.findByName\s*\(\s*"release"\s*\)\?\.let\s*\{\s*signingConfig\s*=\s*it\s*\}(?s:.*?)buildConfigField\s*\(\s*"boolean"\s*,\s*"ENABLE_FUSION_SMS_LOGIN"\s*,\s*releaseSigningConfigured\.toString\(\)\s*\)' `
-        "Debug builds must use release signing when configured and enable fusion SMS login only under that condition."
-    Require-Match $failures $build 'release\s*\{(?s:.*?)buildConfigField\s*\(\s*"boolean"\s*,\s*"ENABLE_FUSION_SMS_LOGIN"\s*,\s*"true"\s*\)' `
-        "Release builds must keep fusion SMS login enabled."
+    Require-Match $failures $build 'debug\s*\{(?s:.*?)signingConfigs\.findByName\s*\(\s*"release"\s*\)\?\.let\s*\{\s*signingConfig\s*=\s*it\s*\}' `
+        "Debug builds must use release signing when configured so Android Studio tests match release signing."
+    Require-NoMatch $failures $build 'ENABLE_FUSION|fusionauth|fileTree\s*\(\s*mapOf\s*\(\s*"dir"\s+to\s+"libs"' `
+        "Android builds must not carry the removed fusion auth flag, AAR or libs fileTree dependency."
     Require-Match $failures $build 'Release signing is not configured' `
         "Release packaging must fail when release signing is missing."
     Require-Match $failures $build 'Release UPLOAD_BASE_URL must remain an https production URL' `
@@ -134,30 +130,15 @@ if ($failures.Count -eq 0) {
         "Main manifest must keep explicit dataExtractionRules."
     Require-Match $failures $manifest 'android:fullBackupContent="@xml/backup_rules"' `
         "Main manifest must keep explicit fullBackupContent rules."
-    Require-Match $failures $manifest 'android\.permission\.READ_PHONE_STATE(?s:.*?)tools:node="remove"' `
-        "Main manifest must remove READ_PHONE_STATE from the merged app because the visible login path is fusion SMS only."
     Require-Match $failures $manifest 'android\.permission\.ACCESS_NETWORK_STATE' `
-        "Manifest must declare ACCESS_NETWORK_STATE for login environment checks."
-    Require-Match $failures $manifest 'android\.permission\.ACCESS_WIFI_STATE' `
-        "Manifest must declare ACCESS_WIFI_STATE for Aliyun SDK network checks."
-    Require-Match $failures $manifest 'android\.permission\.CHANGE_NETWORK_STATE' `
-        "Manifest must declare CHANGE_NETWORK_STATE for Aliyun SDK network switching compatibility."
+        "Manifest must declare ACCESS_NETWORK_STATE for normal app networking checks."
+    Require-NoMatch $failures $manifest 'READ_PHONE_STATE|ACCESS_WIFI_STATE|CHANGE_NETWORK_STATE|com\.alicom\.fusion|com\.mobile\.auth\.gatewayauth|FusionAuthProtocolActivity' `
+        "Main manifest must not reintroduce fusion auth activities or old carrier-network permissions."
 
     Require-Match $failures $networkSecurity '<base-config\s+cleartextTrafficPermitted="false"\s*/>' `
         "Network security base config must keep cleartextTrafficPermitted=false."
-    Require-Match $failures $networkSecurity '<domain\s+includeSubdomains="true">enrichgw\.10010\.com</domain>' `
-        "Network security config must keep the Unicom one-click-login gateway exception."
-    Require-Match $failures $networkSecurity '<domain\s+includeSubdomains="true">onekey\.cmpassport\.com</domain>' `
-        "Network security config must keep the China Mobile one-click-login gateway exception."
-    Require-Match $failures $networkSecurity '<domain\s+includeSubdomains="true">uac\.189\.cn</domain>' `
-        "Network security config must keep the China Telecom one-click-login gateway exception."
-    $domains = [regex]::Matches($networkSecurity, '<domain\b[^>]*>([^<]+)</domain>') | ForEach-Object { $_.Groups[1].Value.Trim() }
-    $allowedDomains = @("enrichgw.10010.com", "onekey.cmpassport.com", "uac.189.cn")
-    foreach ($domain in $domains) {
-        if ($allowedDomains -notcontains $domain) {
-            Add-Failure $failures "Unexpected cleartext domain in network_security_config.xml: $domain"
-        }
-    }
+    Require-NoMatch $failures $networkSecurity '<domain-config|<domain\b|enrichgw\.10010\.com|onekey\.cmpassport\.com|uac\.189\.cn' `
+        "Network security config must not keep old carrier gateway cleartext exceptions after removing fusion auth."
     if (Test-Path -LiteralPath $debugManifestFile) {
         Add-Failure $failures "Debug manifest must not override production login/network behavior: $debugManifestFile"
     }
@@ -189,20 +170,16 @@ if ($failures.Count -eq 0) {
             continue
         }
         $mergedManifest = Get-Content -LiteralPath $manifestPath -Raw
-        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.mobile.auth.gatewayauth.LoginAuthActivity" "@style/Theme.NongjiQianwen.FusionAuthDialog"
-        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.mobile.auth.gatewayauth.PrivacyDialogActivity" "@style/Theme.NongjiQianwen.FusionAuthDialog"
-        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.numberauth.FusionNumberAuthActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
-        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.smsauth.FusionSmsActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
-        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.upsms.AlicomFusionUpSmsActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
-        Require-Manifest-Activity $failures $mergedManifest $manifestPath "com.alicom.fusion.auth.graphauth.FusionGraphAuthActivity" "@style/Theme.NongjiQianwen.FusionNumberAuth"
-        Require-NoMatch $failures $mergedManifest 'android\.permission\.READ_PHONE_STATE' `
-            "Generated manifests must not include READ_PHONE_STATE after switching the visible login path to fusion SMS only: $manifestPath"
+        Require-NoMatch $failures $mergedManifest 'android\.permission\.READ_PHONE_STATE|android\.permission\.ACCESS_WIFI_STATE|android\.permission\.CHANGE_NETWORK_STATE|com\.alicom\.fusion|com\.mobile\.auth\.gatewayauth|FusionAuthProtocolActivity' `
+            "Generated manifests must not include fusion auth activities or old carrier-network permissions: $manifestPath"
     }
 
-    Require-Match $failures $sessionApi 'endpoint\s*=\s*"/api/auth/fusion/login"' `
-        "Android fusion SMS login must submit the final SDK token to /api/auth/fusion/login."
-    Require-NoMatch $failures $sessionApi '/api/auth/fusion/verify' `
-        "Android 100001 fusion login must not call the half-way /api/auth/fusion/verify endpoint."
+    Require-Match $failures $sessionApi 'endpoint\s*=\s*"/api/auth/sms/login"' `
+        "Android login must use the backend ordinary SMS login endpoint."
+    Require-Match $failures $sessionApi '\.url\("\$base/api/auth/sms/send"\)' `
+        "Android must request verification codes from the backend ordinary SMS send endpoint."
+    Require-NoMatch $failures $sessionApi '/api/auth/fusion/|FusionAuthToken|loginWithFusion|requestFusion|fusionTokenRefreshClient|auth\.fusion_login_success' `
+        "Android SessionApi must not call or log the removed fusion auth client path."
     Require-Match $failures $sessionApi 'accountUserId\.startsWith\s*\(\s*"acct_"\s*\)' `
         "Android login must only persist backend account IDs with the acct_ prefix."
     Require-Match $failures $sessionApi 'non_account_user_id' `
@@ -213,8 +190,6 @@ if ($failures.Count -eq 0) {
         "IdManager must treat stale non-account auth_user_id values as logged-out."
     Require-Match $failures $sessionApi 'auth\.sms_login_success' `
         "Legacy Android SMS login success logging must remain for old-package compatibility diagnostics."
-    Require-Match $failures $sessionApi 'auth\.fusion_login_success' `
-        "Android fusion login success should be logged for login handoff diagnostics."
     Require-Match $failures $sessionApi 'latestCode\s*>\s*BuildConfig\.VERSION_CODE(?s:.*?)normalizeAppUpdateSha256\s*\(\s*apkSha256\s*\)\s*!=\s*null(?s:.*?)sizeBytes\s*>\s*0L(?s:.*?)sizeBytes\s*<=\s*APP_UPDATE_MAX_APK_DOWNLOAD_BYTES' `
         "Android app update availability must require a newer version, SHA-256 and a positive bounded file size."
     Require-Match $failures $appUpdateInstaller 'DownloadFailureReason\.MissingReleaseMetadata' `
@@ -225,14 +200,16 @@ if ($failures.Count -eq 0) {
         "Android app update downloader must not skip SHA-256 verification when SHA metadata is missing or invalid."
     Require-NoMatch $failures $appUpdateInstaller 'expectedVersionCode\s*!=\s*null\s*&&' `
         "Android app update downloader must not skip versionCode verification when version metadata is missing."
-    Require-Match $failures $loginScreen 'BuildConfig\.ENABLE_FUSION_SMS_LOGIN' `
-        "LoginScreen must gate the visible login entry on the fusion SMS build flag."
-    Require-Match $failures $loginScreen 'FusionOneLoginClient\.startSmsLogin' `
-        "LoginScreen must use the fusion SDK SMS login path as the single visible SMS entry."
-    Require-NoMatch $failures $loginScreen 'SessionApi\.sendSmsCode|SessionApi\.loginWithSms|rememberLauncherForActivityResult|ActivityResultContracts|ContextCompat\.checkSelfPermission|READ_PHONE_STATE' `
-        "LoginScreen must not expose the legacy app-owned SMS UI or request phone-state permission."
-    Require-NoMatch $failures $loginScreen '本机号码一键登录|使用备用验证码|收起备用验证码' `
-        "LoginScreen must not expose old one-click or backup SMS labels."
+    Require-Match $failures $loginScreen 'SessionApi\.sendSmsCode' `
+        "LoginScreen must expose the ordinary backend SMS send flow."
+    Require-Match $failures $loginScreen 'SessionApi\.loginWithSms' `
+        "LoginScreen must expose the ordinary backend SMS login flow."
+    Require-Match $failures $loginScreen 'code\.length\s*!=\s*6' `
+        "LoginScreen must require a 6-digit verification code."
+    Require-Match $failures $loginScreen 'countdown\s*=\s*60' `
+        "LoginScreen SMS send button must keep a 60-second cooldown."
+    Require-NoMatch $failures $loginScreen 'BuildConfig\.ENABLE_FUSION|FusionOneLoginClient|rememberLauncherForActivityResult|ActivityResultContracts|ContextCompat\.checkSelfPermission|READ_PHONE_STATE|本机号码一键登录|使用备用验证码|收起备用验证码' `
+        "LoginScreen must not reintroduce fusion auth, phone-state permission requests, one-click login or backup-SMS labels."
     $loginAgreementGatePattern = "if\s*\(\s*!agreed\s*\)(?s:.*?)message\s*="
     $mainActivityPrivacyCheckPattern = "PrivacyConsentStore\.isAccepted\s*\(\s*this\s*\)"
     $mainActivityExistingConsentInitPattern = "if\s*\(\s*privacyAcceptedOnCreate\s*\)\s*\{(?s:.*?)initializePostPrivacyConsentRuntime\s*\(\s*\)"
@@ -269,14 +246,6 @@ if ($failures.Count -eq 0) {
         "Chat screen must not prompt for location permission immediately on entry; request it in-context when sending."
     Require-Match $failures $chatScreen 'suspend\s+fun\s+refreshClientRegionForSend\s*\(\s*\)(?s:.*?)locationPermissionLauncher\.launch' `
         "Chat send path must be the place that first requests optional location permission."
-    Require-Match $failures $fusionProtocolActivity 'allowedProtocolHosts\s*=\s*setOf\s*\(\s*"nongjiqiancha\.cn"\s*,\s*"www\.nongjiqiancha\.cn"\s*\)' `
-        "Fusion auth protocol WebView must be limited to the official HTTPS domains."
-    Require-Match $failures $fusionProtocolActivity 'uri\.scheme\.equals\s*\(\s*"https"(?s:.*?)host\s+in\s+allowedProtocolHosts' `
-        "Fusion auth protocol WebView must reject non-HTTPS or non-official protocol URLs."
-    Require-NoMatch $failures $fusionProtocolActivity 'uri\.scheme\.equals\s*\(\s*"http"' `
-        "Fusion auth protocol WebView must not allow plain HTTP protocol URLs."
-    Require-Match $failures $fusionProtocolActivity 'addProtocolFallback(?s:.*?)resolveFallbackProtocolText' `
-        "Fusion auth protocol page must show an in-app fallback if the official web page cannot load."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsCard\b"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
@@ -316,49 +285,9 @@ if ($failures.Count -eq 0) {
     $composerCollapseOverlayPattern = "composerCollapseOverlay|ChatComposerCollapseOverlay|shouldDismissComposerCollapseOverlay|resolveBottomContentReservedHeightPx\s*\(\s*overlay"
     Require-NoMatch $failures ($chatScreen + $chatComposerCoordinator + $chatComposerPanel) $composerCollapseOverlayPattern `
         "Chat UI must not restore the dead composer collapse overlay chain; keep composer collapse on the single measured bottom-bar path."
-    $fusionVerifySuccessPattern = "override\s+fun\s+onVerifySuccess(?s:.*?)SessionApi\.loginWithFusionVerifyToken"
-    $fusionHalfwayUnexpectedPattern = "override\s+fun\s+onHalfWayVerifySuccess(?s:.*?)auth\.fusion_halfway_unexpected(?s:.*?)verifyResult\?\.verifyResult"
-    Require-Match $failures $fusionClient $fusionVerifySuccessPattern `
-        "Fusion one-click login must exchange the final onVerifySuccess token through the backend login endpoint."
-    Require-Match $failures $fusionClient $fusionHalfwayUnexpectedPattern `
-        "Unexpected half-way callbacks must only be logged and ended, not treated as the primary login path."
-    $fusionHalfwayBlockPattern = "override\s+fun\s+onHalfWayVerifySuccess(?s:.*?)override\s+fun\s+onVerifyFailed"
-    $halfwayMatch = [regex]::Match(
-        $fusionClient,
-        $fusionHalfwayBlockPattern,
-        [System.Text.RegularExpressions.RegexOptions]::Singleline
-    )
-    $fusionHalfwayForbiddenPattern = "SessionApi\.|/api/auth/fusion/login|/api/auth/fusion/verify|VerifyWithFusionAuthToken"
-    if (!$halfwayMatch.Success) {
-        Add-Failure $failures "Unable to locate onHalfWayVerifySuccess block for parity validation."
-    } elseif ($halfwayMatch.Value -match $fusionHalfwayForbiddenPattern) {
-        Add-Failure $failures "onHalfWayVerifySuccess must not call backend login/verify or consume the token."
-    }
-    $fusionProtocolCheckedPattern = "model\.setProtocolChecked\s*\(\s*false\s*\)"
-    $fusionCaptchaDisabledPattern = "business\.useSDKSupplyCaptchaModule\s*\(\s*false\s*\)(?s:.*?)business\.initWithToken"
-    $fusionHiddenSwitchPattern = "\.hiddenSwtichLogin\s*\(\s*true\s*\)"
-    $fusionProtocolActionPattern = "\.setProtocolAction\s*\(\s*PROTOCOL_ACTION\s*\)(?s:.*?)\.setPackageName\s*\(\s*BuildConfig\.APPLICATION_ID\s*\)"
-    Require-Match $failures $fusionClient $fusionProtocolCheckedPattern `
-        "Aliyun SDK protocol checkbox must remain visible and unchecked by default."
-    Require-Match $failures $fusionClient $fusionCaptchaDisabledPattern `
-        "Aliyun SDK built-in graphic captcha module must be disabled before SDK init."
-    Require-NoMatch $failures $fusionClient 'safeContinueScene\s*\(\s*business\s*,\s*false\s*\)' `
-        "Fusion failures must stop the SDK scene instead of continuing into SDK graph or alternate nodes."
-    Require-Match $failures $fusionClient $fusionHiddenSwitchPattern `
-        "Aliyun SDK built-in switch/more-login entry must stay hidden so users see one visible login entry."
-    Require-Match $failures $fusionClient $fusionProtocolActionPattern `
-        "Custom Aliyun protocolAction must also set packageName to the app applicationId."
-    Require-NoMatch $failures $fusionClient 'TelephonyManager|READ_PHONE_STATE|precheckOneLoginEnvironment|inspectAuthEnvironment|hasAnyCellularInternetTransport|android\.net\.Proxy' `
-        "Fusion SMS login must not keep the old phone-state / one-click environment precheck path."
-    $fusionDebugRawErrorPattern = "if\s*\(\s*BuildConfig\.DEBUG\s*\)\s*\{(?s:.*?)getErrorMsg\(\)(?s:.*?)getInnerMsg\(\)(?s:.*?)\}"
     $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
     $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
     $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"
-
-    Require-Match $failures $sessionApi 'fusionTokenRefreshClient\.newCall\s*\(\s*request\s*\)\.enqueue' `
-        "Initial fusion token requests must use the short-timeout auth client so login does not hang on weak networks."
-    Require-Match $failures $fusionClient $fusionDebugRawErrorPattern `
-        "Fusion release logcat must not print raw Aliyun SDK errorMsg/innerMsg; keep them debug-only."
 
     Require-Match $failures $chatScreen $chatDebugPreviewPattern `
         "Debug-only preview panel must stay behind BuildConfig.DEBUG."
@@ -374,4 +303,4 @@ if ($failures.Count -gt 0) {
 }
 
 Write-Host "Android build parity check passed."
-Write-Host "Debug and release keep the same production backend, account/login path, and network security baseline."
+Write-Host "Debug and release keep the same production backend, ordinary SMS login path, and network security baseline."

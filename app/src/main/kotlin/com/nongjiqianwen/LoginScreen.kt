@@ -1,8 +1,5 @@
 package com.nongjiqianwen
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -34,6 +31,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -42,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -66,6 +65,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.delay
 
 @Composable
 fun LoginGate(
@@ -103,18 +103,14 @@ private fun LoginScreen(
     }
 
     var phone by remember { mutableStateOf("") }
+    var code by remember { mutableStateOf("") }
     val context = LocalContext.current
     var agreed by remember { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
-    val fusionSmsLoginEnabled = BuildConfig.ENABLE_FUSION_SMS_LOGIN
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
+    var countdown by remember { mutableIntStateOf(0) }
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
     val agreementText = remember { buildLoginAgreementText() }
-    DisposableEffect(Unit) {
-        onDispose {
-            FusionOneLoginClient.cancelActiveScene("login_screen_dispose")
-        }
-    }
 
     fun acceptAgreementIfNeeded() {
         if (!PrivacyConsentStore.isAccepted(context)) {
@@ -131,26 +127,52 @@ private fun LoginScreen(
         return true
     }
 
-    fun startFusionSmsLogin(activity: Activity) {
-        AppCrashReporter.setAuthStage("auth.fusion_sms_start")
+    fun sendSmsCode() {
+        if (!requireAgreement()) return
+        if (!isValidMainlandPhone(phone)) {
+            message = "请输入正确的手机号"
+            return
+        }
+        AppCrashReporter.setAuthStage("auth.sms_send")
         busy = true
-        message = "正在打开验证码登录"
-        SessionApi.reportAuthClientLog(
-            level = "info",
-            event = "auth.fusion_sms_start_requested",
-            message = "fusion sms login requested",
-            attrs = mapOf("stage" to "login_screen_sms_start")
-        )
-        FusionOneLoginClient.startSmsLogin(
-            activity = activity,
-            verificationPhone = phone.takeIf(::isValidMainlandPhone)
-        ) { ok, error ->
+        message = null
+        SessionApi.sendSmsCode(phone) { ok, error ->
+            AppCrashReporter.clearAuthStage("auth.sms_send")
+            busy = false
+            if (ok) {
+                countdown = 60
+                message = "验证码已发送"
+            } else {
+                countdown = 0
+                message = error ?: "验证码发送失败，请稍后再试"
+            }
+        }
+    }
+
+    fun loginWithSms() {
+        if (!requireAgreement()) return
+        if (!isValidMainlandPhone(phone) || code.length != 6) {
+            message = "请填写手机号和6位验证码"
+            return
+        }
+        AppCrashReporter.setAuthStage("auth.sms_login")
+        busy = true
+        message = null
+        SessionApi.loginWithSms(phone, code) { ok, error ->
+            AppCrashReporter.clearAuthStage("auth.sms_login")
             busy = false
             if (ok) {
                 onLoginSuccess()
             } else {
-                message = error ?: "融合认证未完成，请稍后再试"
+                message = error ?: "登录失败，请稍后再试"
             }
+        }
+    }
+
+    LaunchedEffect(countdown) {
+        if (countdown > 0) {
+            delay(1000)
+            countdown -= 1
         }
     }
 
@@ -210,33 +232,41 @@ private fun LoginScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedTextField(
+                        value = code,
+                        onValueChange = { code = it.filter(Char::isDigit).take(6) },
+                        singleLine = true,
+                        placeholder = { Text("验证码") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(56.dp)
+                    )
+                    OutlinedButton(
+                        onClick = ::sendSmsCode,
+                        enabled = !busy && countdown == 0,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .height(56.dp)
+                            .widthIn(min = 96.dp)
+                    ) {
+                        Text(
+                            text = if (countdown > 0) "${countdown}s" else "发送",
+                            color = Color(0xFF111111),
+                            letterSpacing = 0.sp
+                        )
+                    }
+                }
+
                 Spacer(Modifier.height(14.dp))
                 Button(
-                    onClick = {
-                        if (!requireAgreement()) {
-                            return@Button
-                        }
-                        if (!isValidMainlandPhone(phone)) {
-                            message = "请输入正确的手机号"
-                            return@Button
-                        }
-                        if (!fusionSmsLoginEnabled) {
-                            message = "当前安装包未开启融合认证短信，请安装最新测试包"
-                            return@Button
-                        }
-                        val activity = context.findActivity()
-                        if (activity == null) {
-                            SessionApi.reportAuthClientLog(
-                                level = "warn",
-                                event = "auth.fusion_activity_unavailable",
-                                message = "fusion login activity unavailable",
-                                attrs = mapOf("stage" to "sms_button_click")
-                            )
-                            message = "融合认证暂不可用，请稍后再试"
-                            return@Button
-                        }
-                        startFusionSmsLogin(activity)
-                    },
+                    onClick = ::loginWithSms,
                     enabled = !busy,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
@@ -244,7 +274,7 @@ private fun LoginScreen(
                         .fillMaxWidth()
                         .height(52.dp)
                 ) {
-                    Text("验证码登录", fontSize = 17.sp, letterSpacing = 0.sp)
+                    Text("登录", fontSize = 17.sp, letterSpacing = 0.sp)
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -278,7 +308,7 @@ private fun LoginScreen(
                                 letterSpacing = 0.sp
                             ),
                             softWrap = true,
-                            maxLines = 2,
+                            maxLines = 3,
                             onClick = { offset ->
                                 agreementText.getStringAnnotations(start = offset, end = offset)
                                     .firstOrNull()
@@ -474,13 +504,6 @@ private enum class LoginLegalPage {
     ServiceAgreement,
     PrivacyPolicy
 }
-
-private tailrec fun Context.findActivity(): Activity? =
-    when (this) {
-        is Activity -> this
-        is ContextWrapper -> baseContext.findActivity()
-        else -> null
-    }
 
 private fun isValidMainlandPhone(value: String): Boolean =
     value.length == 11 && value.firstOrNull() == '1' && value.all(Char::isDigit)

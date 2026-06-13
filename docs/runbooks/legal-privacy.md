@@ -20,16 +20,16 @@
 - `https://nongjiqiancha.cn/legal/user-agreement/`
 - `https://nongjiqiancha.cn/legal/privacy-policy/`
 
-Android 融合认证 SDK 协议承接页只允许加载 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 官方 HTTPS 页面，禁止明文 HTTP 和外域跳转；网页缺失或加载失败时显示 App 内置协议要点兜底。
+新包不再集成阿里云融合认证 SDK，不再需要 SDK 协议承接页；协议与隐私入口均为 App 内本地页面和官网 HTTPS 页面。
 
 ## 登录与隐私同意
 
 - Android 首次隐私同意已合并到登录页协议勾选。
 - 本机未记录当前隐私同意版本时，App 直接进入登录页，协议勾选默认未选中。
 - 用户勾选“我已阅读并同意《服务协议》《隐私政策》”后，才记录隐私同意、初始化本机业务身份并补报待发送崩溃日志。
-- 未勾选时，不请求后端、不拉起融合认证 SDK、不初始化 `IdManager`。
-- 新包登录页只保留融合认证短信登录入口，不再展示本机号码一键登录，不再展示 App 自己的普通短信验证码备用表单。
-- 普通 Dysms 短信接口保留旧包 / 应急兼容，但新 Android 登录页不调用。
+- 未勾选时，不请求后端、不初始化 `IdManager`。
+- 新包登录页只保留自有普通短信验证码登录入口，不再展示本机号码一键登录，不再拉起阿里云 SDK 页面或图形验证。
+- 普通短信接口是当前新 Android 登录页主链：发送验证码调用 `/api/auth/sms/send`，登录调用 `/api/auth/sms/login`。
 
 ## 当前权限真相
 
@@ -37,12 +37,8 @@ Android 融合认证 SDK 协议承接页只允许加载 `nongjiqiancha.cn` / `ww
 
 - `INTERNET`
 - `ACCESS_NETWORK_STATE`
-- `ACCESS_WIFI_STATE`
-- `CHANGE_NETWORK_STATE`
-- `CHANGE_WIFI_STATE`
 - `ACCESS_COARSE_LOCATION`
 - `ACCESS_FINE_LOCATION`
-- `RECEIVE_USER_PRESENT`
 - `WAKE_LOCK`
 - `RECEIVE_BOOT_COMPLETED`
 - `FOREGROUND_SERVICE`
@@ -58,12 +54,12 @@ Android 融合认证 SDK 协议承接页只允许加载 `nongjiqiancha.cn` / `ww
 - 短信读取 / 发送权限
 - App 外通知 / 推送权限
 
-`READ_PHONE_STATE` 已在主 manifest 中用 `tools:node="remove"` 移除，`scripts/check-android-build-parity.ps1` 会检查 debug / release merged manifest 不含该权限。
+`READ_PHONE_STATE / ACCESS_WIFI_STATE / CHANGE_NETWORK_STATE` 已从主 manifest 和融合 SDK 依赖中移除，`scripts/check-android-build-parity.ps1` 会检查 debug / release merged manifest 不含这些权限和融合认证 Activity。
 
 ## 权限用途
 
-- 网络访问：连接后端、上传图片、流式回答、会员、反馈、今日农情、检查更新和融合认证短信登录。
-- 网络状态 / Wi-Fi 状态 / 网络连接状态：判断网络是否可用，支持登录认证和主聊天联网。
+- 网络访问：连接后端、上传图片、流式回答、会员、反馈、今日农情、检查更新和短信验证码登录。
+- 网络状态：判断网络是否可用，支持登录认证和主聊天联网。
 - 定位权限：仅用于用户问诊时把系统定位反查为省、市、区县等地区文本，提高农业建议的地区适配度。App 不上传经纬度，不保存轨迹，不接地图 SDK，不用于广告、推送、统计或线下人员定位。
 - WorkManager 相关后台任务权限：用于带图消息在 App 切后台、进程被系统回收或设备重启后按同一条待发送任务有限重试。
 - 安装未知应用相关权限：仅用于用户主动点击“立即更新”后下载 APK 并调起系统安装确认页。
@@ -78,7 +74,7 @@ Android 融合认证 SDK 协议承接页只允许加载 `nongjiqiancha.cn` / `ww
 
 - App 正文不暴露具体模型品牌、模型平台名或供应商账号信息。
 - 用户协议和隐私政策使用“第三方大模型和云服务”这类必要委托处理口径。
-- 第三方信息共享清单只列当前必要类别；当前使用 ECS / RDS / OSS / 第三方大模型服务，账号登录主线使用阿里云融合认证 SDK、手机号认证和短信验证码服务。
+- 第三方信息共享清单只列当前必要类别；当前使用 ECS / RDS / OSS / 第三方大模型服务，账号登录主线使用服务端手机号账号体系和阿里云短信服务发送验证码。
 - SLS 业务日志、支付 SDK 等未接入业务主链的能力不能写成已接入事实。
 - Redis 只用于手机号认证、主聊天用户级频控、App 自动日志接收、帮助与反馈用户发消息和上传短期限流，不能写成聊天内容、会员、订单或长期资产主链。
 - 本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase。
@@ -104,7 +100,7 @@ Android 融合认证 SDK 协议承接页只允许加载 `nongjiqiancha.cn` / `ww
 - App 备案编号、账号注销、个人信息查询 / 复制 / 更正 / 删除 / 撤回授权入口仍需补齐。
 - 图片、聊天记录、帮助与反馈、额度流水、礼品卡兑换记录和日志的保存期限仍需按合规口径收口。
 - 如果新增任何 Android 权限，必须同步修改 Manifest、应用权限页、隐私政策、个人信息收集清单和项目记忆。
-- 如果融合短信策略、普通短信兜底、支付、统计 SDK、推送、通知、地图、广告或第三方服务商发生变化，必须同步复核本 runbook、App 内 6 个页面和官网协议页。
+- 如果短信验证码登录、支付、统计 SDK、推送、通知、地图、广告或第三方服务商发生变化，必须同步复核本 runbook、App 内 6 个页面和官网协议页。
 
 ## 当前仍未补齐
 

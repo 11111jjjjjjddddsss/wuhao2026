@@ -70,7 +70,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-a
 | `nongji-server-slow` | `server-go` | `http_request_slow \| select count(1) as cnt` | `cnt >= 5` | 60 分钟 |
 | `nongji-nginx-upstream` | `nginx-error` | `upstream \| select count(1) as cnt` | `cnt > 0` | 30 分钟 |
 | `nongji-daily-agri-failed` | `server-go` | `generate today agri card failed \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
-| `nongji-model-auth-config` | `server-go` | `missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR fusion_auth_not_configured OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
+| `nongji-model-auth-config` | `server-go` | `missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
 
 验证云上规则：
 
@@ -84,7 +84,7 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 - 这些规则是“最小生产兜底”，不是完整告警中心
 - 当前会进入 AlertHub，并通过行动策略 `nongji-prod-email` 走邮件通知；后台页面不会自动弹窗，App 用户也不会收到系统通知
 - 2026-06-13 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 均符合仓库期望；`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
-- 后续仍需在真实或测试告警触发时确认第一封邮件可达，并继续补 DYPNS 认证用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
+- 后续仍需在真实或测试告警触发时确认第一封邮件可达，并继续补普通短信发送用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 
 ## 当前查询入口

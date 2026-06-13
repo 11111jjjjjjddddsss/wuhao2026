@@ -282,6 +282,7 @@ export interface AdminHealthStatus {
   dypns: string;
   dypns_fusion: string;
   dypns_sms: string;
+  sms: string;
   redis: string;
   upload_storage: string;
   auth_strict: boolean;

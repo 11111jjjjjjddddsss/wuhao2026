@@ -231,9 +231,6 @@ require_production_health() {
   body="`$1"
   grep -q '"auth_strict":true' "`$body" || { echo 'health auth_strict is not true' >&2; return 1; }
   grep -q '"bailian":"ok"' "`$body" || { echo 'health bailian is not ok' >&2; return 1; }
-  grep -q '"dypns":"ok"' "`$body" || { echo 'health dypns is not ok' >&2; return 1; }
-  grep -q '"dypns_fusion":"ok"' "`$body" || { echo 'health dypns_fusion is not ok' >&2; return 1; }
-  grep -q '"dypns_sms":"ok"' "`$body" || { echo 'health dypns_sms is not ok' >&2; return 1; }
   grep -q '"sms":"ok"' "`$body" || { echo 'health sms is not ok' >&2; return 1; }
   grep -q '"redis":"ok"' "`$body" || { echo 'health redis is not ok' >&2; return 1; }
   grep -q '"upload_storage":"oss"' "`$body" || { echo 'health upload_storage is not oss' >&2; return 1; }

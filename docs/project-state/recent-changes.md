@@ -5,7 +5,11 @@
 
 ## 2026-06-13
 
-- 按最新登录口径收口到单一可见入口：Android 新包删除本机号码一键登录和 App 自己普通短信备用表单，只保留“手机号输入 + 融合认证短信登录”。登录页不再申请 `READ_PHONE_STATE`，debug / release 构建字段改为 `ENABLE_FUSION_SMS_LOGIN`，构建一致性脚本会拦截一键登录按钮、备用验证码 UI、电话权限和普通短信接口重新进入新 UI。`FusionOneLoginClient` 新增 `startSmsLogin`，用户输入手机号后走 `/api/auth/fusion/token` -> 阿里云 100001 短信节点 -> 最终 `/api/auth/fusion/login`；普通 `/api/auth/sms/*` 只保留旧包 / 应急兼容。融合 SDK 短信页做了安全样式收口，按钮、标题和验证码框尽量贴近 App 黑白简洁风格。阿里云控制台当前策略应关闭号码认证和图形验证节点，只保留短信认证节点；若 SDK 仍弹号码认证或图形验证码，先查云端策略，不回头再加第二套短信。
+- 按用户最新拍板把登录主链从阿里云融合认证切回普通短信验证码登录：用户已购买阿里云短信服务“国内通用短信套餐包”，本机 CLI 复查短信签名 `北京农技千问科技` 和模板 `SMS_507135108` 均为审核通过；后端现有普通短信链路走 `dysmsapi.SendSms`，`/healthz` 显示 `sms=ok / redis=ok`。Android 新包删除融合认证 AAR、`FusionOneLoginClient.kt`、`FusionAuthProtocolActivity.kt`、融合 Activity / ProGuard / 构建开关、电话状态 / Wi-Fi / 改网络权限和运营商取号明文域名例外；登录页只保留自有“农技千查 + 图标”、手机号、验证码、发送、登录和协议勾选，发送成功前端 60 秒倒计时，后端保留同手机号 5/10min、同 IP 20/10min、登录校验 10/10min 和 5 分钟验证码有效期。账号ID仍按手机号归一到同一个 `acct_...`，已注册账号ID和会员 / 礼品卡 / 记忆 / 聊天资产归属不因删除融合 SDK 改变。`scripts/check-android-build-parity.ps1` 已反向拦截融合认证 SDK / AAR / 权限 / 明文网关 / `/api/auth/fusion/*` 回潮，并要求 debug / release 除预览面板外继续同包名、同签名、同后端、同短信登录主链。服务端旧 `/api/auth/fusion/*` 暂保留给历史包兼容，新 Android 包不调用。
+
+- 本轮后端和后台已按短信主线重新部署到生产：`scripts/deploy-ecs-server.ps1` 远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 active upstream 为 `3000`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录 `/admin-api/v1/auth/me` 返回 401。SLS 5 条 AlertHub 告警已同步去掉 `fusion_auth_not_configured` 查询，并重新绑定 `nongji-prod-email` 行动策略和 `nongji-prod-ops` 仪表盘；`check-launch-readiness.ps1 -AllowAttentionExitZero` 显示项目记忆、后台 surface、Android parity、ECS readiness、公网黑盒、SLS 严格巡检、资源容量和后端数据边界均 ready，唯一 attention 是本机没有后台 owner 明文密码，登录后后台 smoke 按安全规则跳过。
+
+- 历史过渡方案：曾短暂尝试把可见入口收口为“手机号输入 + 融合认证短信登录”，用户输入手机号后走 `/api/auth/fusion/token` -> 阿里云 100001 短信节点 -> 最终 `/api/auth/fusion/login`。该方案随后因 SDK 页面、图形验证和控制台策略不稳定被废弃；当前真相以上一条为准：新 Android 包只走自有普通短信验证码登录 `/api/auth/sms/send` / `/api/auth/sms/login`，不再集成或调用融合认证 SDK。
 
 - 手机连上后继续排查一键登录：`adb` 确认设备在线，系统代理为空，当前手机存在 WiFi 与蜂窝数据环境；后端数据边界脚本显示 `app_accounts=1 / auth_sessions=1 / auth_sessions_active=0`，所有账号资产归属异常仍为 0。最近 24 小时一键登录失败 Top 集中在 `auth.fusion_verify_interrupt`，更像 SDK 授权页 / 运营商取号未完成，不是 App 因 WiFi 存在而硬拦。Android 登录页一键失败提示改成灰色中性提示，文案不再写“WiFi 或代理环境”；阿里云授权页 UI 继续隐藏 SDK 默认“登录”标题，并微调号码、按钮和协议位置，尽量降低 SDK 页面突兀感。该改动只动 Android 登录体验和项目记忆，不改手机号账号、会员、礼品卡、短信验证码或后端鉴权主链。
 

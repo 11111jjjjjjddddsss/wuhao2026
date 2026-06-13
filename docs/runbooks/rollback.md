@@ -49,9 +49,7 @@ curl.exe --resolve api.nongjiqiancha.cn:443:39.106.1.151 https://api.nongjiqianc
 - `ok=true`
 - `auth_strict=true`
 - `bailian=ok`
-- `dypns=ok`
-- `dypns_fusion=ok`
-- `dypns_sms=ok`
+- `sms=ok`
 - `dev_order_endpoints=false`
 - `redis=ok`
 - `upload_storage=oss`
@@ -61,7 +59,7 @@ curl.exe --resolve api.nongjiqiancha.cn:443:39.106.1.151 https://api.nongjiqianc
 ## 不自动回滚的内容
 
 - MySQL 表结构、已写入的业务数据、额度 / 订单 / 会员资产
-- Redis 中的短期验证码、限流桶、融合认证 token
+- Redis 中的短期验证码、限流桶和历史兼容认证临时状态
 - OSS 中已上传图片
 - ECS `/etc/nongjiqiancha/server.env` 配置
 - DNS、证书、安全组、SLS 采集配置

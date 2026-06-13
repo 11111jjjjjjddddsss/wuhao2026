@@ -1341,7 +1341,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "二、基础运行和身份标识",
-            body = "为维持服务运行、区分会话和保障账号权益，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。手机号用于融合认证短信登录、账号识别、历史恢复和权益核对；App 不读取通讯录、短信内容或通话记录。"
+            body = "为维持服务运行、区分会话和保障账号权益，我们会处理本机用户标识、登录账号标识、手机号脱敏信息、认证 token、请求时间、接口路径、版本号、网络地址、设备网络状态、错误日志、会员额度状态和必要运行缓存。手机号用于短信验证码登录、账号识别、历史恢复和权益核对；App 不读取通讯录、短信内容或通话记录。"
         )
         HamburgerAgreementSection(
             title = "三、AI 问诊和图片处理",
@@ -1361,11 +1361,11 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "七、当前权限说明",
-            body = "当前 App 声明的权限包括：网络访问，用于连接后端、上传图片、流式回答、会员、反馈、今日农情和检查更新；网络状态、Wi-Fi 状态和网络连接状态，用于判断网络是否可用，并支持登录认证网络可用性判断；定位权限，用于在问诊时把系统定位反查为省、市、区县等地区文本，提高农业建议的地区适配度；后台任务、唤醒、开机后恢复调度和前台服务相关权限，用于带图消息在 App 切后台、进程被系统回收或设备重启后按同一条待发送任务有限重试；安装未知应用相关权限，仅用于您主动点击“立即更新”后下载 APK 并调起系统安装确认页。当前不申请相册 / 存储读写权限、录音、通讯录、短信、电话状态或通知权限，也不做 App 外推送通知。"
+            body = "当前 App 声明的权限包括：网络访问，用于连接后端、上传图片、流式回答、会员、反馈、今日农情和检查更新；网络状态，用于判断网络是否可用并在异常时给出提示；定位权限，用于在问诊时把系统定位反查为省、市、区县等地区文本，提高农业建议的地区适配度；后台任务、唤醒、开机后恢复调度和前台服务相关权限，用于带图消息在 App 切后台、进程被系统回收或设备重启后按同一条待发送任务有限重试；安装未知应用相关权限，仅用于您主动点击“立即更新”后下载 APK 并调起系统安装确认页。当前不申请相册 / 存储读写权限、录音、通讯录、短信、电话状态、Wi-Fi 状态或通知权限，也不做 App 外推送通知。"
         )
         HamburgerAgreementSection(
             title = "八、第三方大模型和云服务",
-            body = "我们通过服务端调用境内云服务器、数据库、大模型服务、手机号认证和短信服务，用于后端运行、登录认证、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。Android 端已接入阿里云融合认证 SDK，用于短信验证码登录和必要认证参数处理；上传图片由后端服务器保存；必要运行日志用于排查故障和保障服务安全。"
+            body = "我们通过服务端调用境内云服务器、数据库、大模型服务和短信服务，用于后端运行、短信验证码登录、生成农业技术参考建议、图片理解、摘要处理、今日农情生成、故障排查和安全保障。短信验证码由服务端调用阿里云短信服务发送，必要运行日志用于排查故障和保障服务安全。"
         )
         HamburgerAgreementSection(
             title = "九、本地缓存和后端保存",
@@ -1373,7 +1373,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十、第三方和系统能力清单",
-            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；阿里云融合认证 SDK 和短信服务用于手机号验证码登录；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase。"
+            body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈和必要日志；第三方大模型服务用于问诊回复、图片理解、摘要和今日农情；阿里云短信服务用于发送手机号登录验证码；系统浏览器、系统安装器、外部相机、Android Photo Picker 只在您主动点击相关功能时调用。本版本不包含广告、地图、推送、统计 SDK、支付 SDK、友盟、Bugly、极光或 Firebase。"
         )
         HamburgerAgreementSection(
             title = "十一、共享和公开",
@@ -1533,8 +1533,8 @@ private fun HamburgerThirdPartyListContent(
             body = "云服务器和数据库用于后端运行、保存会话、图片地址、额度、反馈、更新信息和必要日志。上传图片由后端服务器保存，必要运行日志用于排查故障和保障服务安全。"
         )
         HamburgerAgreementSection(
-            title = "四、手机号认证和短信服务",
-            body = "登录时，我们会通过阿里云融合认证 SDK、服务端手机号认证和短信服务完成验证码校验；必要时处理手机号、验证码校验结果、设备和网络相关认证参数。当前验证码需要您手动输入，App 不读取短信内容或通讯录。"
+            title = "四、手机号登录和短信服务",
+            body = "登录时，我们会通过服务端账号系统和阿里云短信服务完成验证码发送与校验；必要时处理手机号、验证码校验结果、登录账号标识和必要网络信息。当前验证码需要您手动输入，App 不读取短信内容或通讯录。"
         )
         HamburgerAgreementSection(
             title = "五、系统能力",
@@ -1657,8 +1657,8 @@ private fun HamburgerPermissionListContent(
             body = "用于连接后端、上传图片、流式回答、会员、帮助与反馈、今日农情和检查更新。"
         )
         HamburgerAgreementSection(
-            title = "二、网络状态和 Wi-Fi 状态",
-            body = "用于判断网络是否可用，并支持手机号认证流程判断网络状态；网络异常时用于给出提示。"
+            title = "二、网络状态",
+            body = "用于判断网络是否可用，并在网络异常时给出提示；短信验证码登录本身由后端和短信服务完成。当前不申请 Wi-Fi 状态权限。"
         )
         HamburgerAgreementSection(
             title = "三、安装更新 APK",
@@ -2816,14 +2816,23 @@ private fun HamburgerSupportFeedbackContent(
     val hasContent = inputText.trim().isNotEmpty() || selectedImages.isNotEmpty()
     val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
     var inputFocused by remember { mutableStateOf(false) }
+    var previousMessageCount by remember { mutableStateOf(messages.size) }
 
     LaunchedEffect(messages.size, loading, loadFailed) {
-        delay(80)
-        val targetIndex = when {
-            !loading && !loadFailed && messages.isNotEmpty() -> messages.lastIndex
-            else -> 0
+        val oldCount = previousMessageCount
+        val nearBottom = oldCount <= 1 ||
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= oldCount - 2 } != false
+        previousMessageCount = messages.size
+        val shouldAutoScroll = when {
+            loading || loadFailed || messages.isEmpty() -> false
+            oldCount == 0 -> true
+            messages.size > oldCount && nearBottom -> true
+            else -> false
         }
-        listState.animateScrollToItem(targetIndex)
+        if (shouldAutoScroll) {
+            delay(80)
+            listState.animateScrollToItem(messages.lastIndex)
+        }
     }
 
     Column(modifier = modifier) {

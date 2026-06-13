@@ -15,7 +15,7 @@ $expectedAlerts = @(
     @{ Name = "nongji-server-slow"; Logstore = "server-go"; Severity = 6; Query = "http_request_slow | select count(1) as cnt"; Condition = "cnt >= 5"; RepeatInterval = "60m" },
     @{ Name = "nongji-nginx-upstream"; Logstore = "nginx-error"; Severity = 8; Query = "upstream | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "30m" },
     @{ Name = "nongji-daily-agri-failed"; Logstore = "server-go"; Severity = 8; Query = "generate today agri card failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" },
-    @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8; Query = "missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR fusion_auth_not_configured OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" }
+    @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8; Query = "missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" }
 )
 
 function Invoke-JsonCommand {

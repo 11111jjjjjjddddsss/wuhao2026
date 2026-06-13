@@ -3,11 +3,6 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
-    <uses-permission
-        android:name="android.permission.READ_PHONE_STATE"
-        tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -60,37 +55,5 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity
-            android:name=".FusionAuthProtocolActivity"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="com.nongjiqiancha.FUSION_AUTH_PROTOCOL" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
-        <activity
-            android:name="com.mobile.auth.gatewayauth.LoginAuthActivity"
-            android:theme="@style/Theme.NongjiQianwen.FusionAuthDialog"
-            tools:replace="android:theme" />
-        <activity
-            android:name="com.mobile.auth.gatewayauth.PrivacyDialogActivity"
-            android:theme="@style/Theme.NongjiQianwen.FusionAuthDialog"
-            tools:replace="android:theme" />
-        <activity
-            android:name="com.alicom.fusion.auth.numberauth.FusionNumberAuthActivity"
-            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
-            tools:replace="android:theme" />
-        <activity
-            android:name="com.alicom.fusion.auth.smsauth.FusionSmsActivity"
-            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
-            tools:replace="android:theme" />
-        <activity
-            android:name="com.alicom.fusion.auth.upsms.AlicomFusionUpSmsActivity"
-            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
-            tools:replace="android:theme" />
-        <activity
-            android:name="com.alicom.fusion.auth.graphauth.FusionGraphAuthActivity"
-            android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
-            tools:replace="android:theme" />
     </application>
 </manifest>

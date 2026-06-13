@@ -1382,7 +1382,7 @@ func (s *Store) listAdminSupportInsightBreakdown(ctx context.Context, sinceMs in
 		label    string
 		patterns []string
 	}{
-		{key: "login", label: "登录 / 验证码", patterns: []string{"登录", "一键", "验证码", "短信", "号码认证", "auth", "login", "sms"}},
+		{key: "login", label: "登录 / 验证码", patterns: []string{"登录", "验证码", "短信", "auth", "login", "sms"}},
 		{key: "chat", label: "主聊天 / 问诊", patterns: []string{"聊天", "问诊", "回答", "回复", "ai", "模型", "诊断"}},
 		{key: "image_upload", label: "图片 / 上传", patterns: []string{"图片", "照片", "相机", "上传", "识图", "拍照", "image", "upload", "photo", "camera"}},
 		{key: "membership", label: "会员 / 额度", patterns: []string{"会员", "额度", "次数", "plus", "pro", "加油包", "权益"}},
@@ -1624,47 +1624,49 @@ type adminAuthFunnelStageSpec struct {
 
 var adminAuthFunnelStageSpecs = []adminAuthFunnelStageSpec{
 	{
-		Key:   "environment",
-		Label: "环境预检",
+		Key:   "sms",
+		Label: "短信验证码",
+		Events: []string{
+			"auth.sms_send_failed",
+			"auth.sms_login_success",
+			"auth.sms_login_failed",
+		},
+	},
+	{
+		Key:   "server_login",
+		Label: "账号会话",
+		Events: []string{
+			"auth.login_network_failed",
+			"auth.login_success",
+			"auth.login_failed",
+		},
+	},
+	{
+		Key:   "crash",
+		Label: "登录/运行闪退",
+		Events: []string{
+			"auth.app_crash",
+			"app.crash",
+		},
+	},
+	{
+		Key:   "legacy_fusion",
+		Label: "旧包融合认证",
 		Events: []string{
 			"auth.fusion_start_requested",
 			"auth.fusion_env_blocked",
 			"auth.fusion_env_warning",
-		},
-	},
-	{
-		Key:   "permission",
-		Label: "电话权限",
-		Events: []string{
 			"auth.fusion_permission_request",
 			"auth.fusion_permission_ready",
 			"auth.fusion_permission_denied",
-		},
-	},
-	{
-		Key:   "token",
-		Label: "取认证 Token",
-		Events: []string{
 			"auth.fusion_token_failed",
 			"auth.fusion_token_refresh_failed",
 			"auth.fusion_token_refresh_skipped",
-		},
-	},
-	{
-		Key:   "sdk",
-		Label: "SDK 初始化",
-		Events: []string{
 			"auth.fusion_activity_unavailable",
 			"auth.fusion_sdk_init_start",
 			"auth.fusion_sdk_init_failed",
 			"auth.fusion_ui_model_null",
 			"auth.fusion_ui_config_failed",
-		},
-	},
-	{
-		Key:   "auth_page",
-		Label: "授权页拉起",
-		Events: []string{
 			"auth.fusion_scene_starting",
 			"auth.fusion_scene_start_invoked",
 			"auth.fusion_scene_start_failed",
@@ -1677,12 +1679,6 @@ var adminAuthFunnelStageSpecs = []adminAuthFunnelStageSpec{
 			"auth.fusion_protocol_url_unavailable",
 			"auth.fusion_protocol_navigation_blocked",
 			"auth.fusion_protocol_load_failed",
-		},
-	},
-	{
-		Key:   "carrier_verify",
-		Label: "运营商取号",
-		Events: []string{
 			"auth.fusion_sdk_token_auth_failed",
 			"auth.fusion_empty_verify_token",
 			"auth.fusion_verify_duplicate",
@@ -1692,34 +1688,8 @@ var adminAuthFunnelStageSpecs = []adminAuthFunnelStageSpec{
 			"auth.fusion_template_finish_ignored",
 			"auth.fusion_get_phone_for_verification",
 			"auth.fusion_callback_attach_failed",
-		},
-	},
-	{
-		Key:   "server_login",
-		Label: "服务端换号",
-		Events: []string{
 			"auth.fusion_login_success",
 			"auth.fusion_login_failed",
-			"auth.login_network_failed",
-			"auth.login_success",
-			"auth.login_failed",
-		},
-	},
-	{
-		Key:   "sms",
-		Label: "短信验证码",
-		Events: []string{
-			"auth.sms_send_failed",
-			"auth.sms_login_success",
-			"auth.sms_login_failed",
-		},
-	},
-	{
-		Key:   "crash",
-		Label: "登录/运行闪退",
-		Events: []string{
-			"auth.app_crash",
-			"app.crash",
 		},
 	},
 }
@@ -1956,7 +1926,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 		}
 		items = append(items, AdminMonitoringActionItem{
 			Title: "登录失败需要看",
-			Body:  "最近 24 小时有一键登录或短信登录自动日志，先看登录排障卡和 App 日志里的 auth 事件。",
+			Body:  "最近 24 小时有短信验证码登录自动日志，先看登录排障卡和 App 日志里的 auth 事件。",
 			Level: level,
 			Route: "app-logs",
 			Count: queues.AuthFailures,
@@ -1987,8 +1957,8 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	}
 	if report.AuthLogs.EnvBlocked > 0 {
 		items = append(items, AdminMonitoringActionItem{
-			Title: "一键登录环境不满足",
-			Body:  "测试机存在无网络、无 SIM、SIM 未就绪或没有可用移动数据；一键登录先处理手机环境，验证码登录只要生产 HTTPS 可达仍应可用。",
+			Title: "旧包一键登录环境不满足",
+			Body:  "旧安装包上报了无网络、无 SIM、SIM 未就绪或没有可用移动数据；新包已改为短信验证码登录，重点确认短信收码和生产 HTTPS 可达。",
 			Level: "warn",
 			Route: "app-logs",
 			Count: report.AuthLogs.EnvBlocked,
@@ -1996,8 +1966,8 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	}
 	if report.AuthLogs.EnvWarnings > 0 {
 		items = append(items, AdminMonitoringActionItem{
-			Title: "一键登录混合网络已放行",
-			Body:  "测试机处在 4G+WiFi、VPN、系统代理或当前活动网络非蜂窝但移动数据可用的状态，App 已放行一键登录尝试；若失败再看 SDK 事件或改用验证码。",
+			Title: "旧包一键登录混合网络记录",
+			Body:  "旧安装包上报了 4G+WiFi、VPN、系统代理或当前活动网络非蜂窝的融合认证记录；新包不再拉 SDK。",
 			Level: "warn",
 			Route: "app-logs",
 			Count: report.AuthLogs.EnvWarnings,
@@ -2145,17 +2115,15 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner: "运维",
 	})
 	loginDepsOK := health.AuthStrict &&
-		strings.EqualFold(health.Dypns, "ok") &&
-		strings.EqualFold(health.DypnsFusion, "ok") &&
-		strings.EqualFold(health.DypnsSMS, "ok") &&
+		strings.EqualFold(health.SMS, "ok") &&
 		strings.EqualFold(health.Redis, "ok")
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "手机号登录",
 		Status: ternary(loginDepsOK, "attention", "blocked"),
 		Body: ternary(
 			loginDepsOK,
-			"云端配置和后端限流正常；正式上架前仍必须用真机确认一键登录和短信验证码。",
-			"一键登录 / 短信 / Redis / 严格鉴权任一异常都会挡住正式登录。",
+			"短信配置、Redis 和严格鉴权正常；正式上架前仍必须用真机确认短信收码和验证码登录。",
+			"短信 / Redis / 严格鉴权任一异常都会挡住正式登录。",
 		),
 		Route: "health",
 		Owner: "Android / 后端",
@@ -2295,7 +2263,7 @@ func recentMonitoringChatEvidence(report AdminMonitoring) (int64, int64) {
 func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 	return []AdminMonitoringCapability{
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
-		{Title: "账号登录", Status: "partial", Body: "账号ID收敛、云端登录配置和日志排障入口已接入；一键登录和短信登录仍需真机分别跑通后才算上线验收。", Route: "users"},
+		{Title: "账号登录", Status: "partial", Body: "账号ID收敛、短信验证码登录和日志排障入口已接入；仍需真机收码并登录成功后才算上线验收。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
 		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，按账号ID / 手机号 / 最近消息搜索，发送后台回复并关闭或重开会话。", Route: "support"},
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
@@ -2673,15 +2641,6 @@ func countUnreadyAdminDependencies(health AdminHealthStatus) int64 {
 		count++
 	}
 	if strings.ToLower(strings.TrimSpace(health.Bailian)) != "ok" {
-		count++
-	}
-	if strings.ToLower(strings.TrimSpace(health.Dypns)) != "ok" {
-		count++
-	}
-	if strings.ToLower(strings.TrimSpace(health.DypnsFusion)) != "ok" {
-		count++
-	}
-	if strings.ToLower(strings.TrimSpace(health.DypnsSMS)) != "ok" {
 		count++
 	}
 	if strings.ToLower(strings.TrimSpace(health.SMS)) != "ok" {

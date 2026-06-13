@@ -7354,7 +7354,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("首次登录页", "无独立同意页，登录页对号承接隐私同意", UiCopyPreviewKind.LoginInitial),
                     UiCopyPreviewItem("未勾选拦截", "不请求后端、不拉 SDK、不申请电话权限", UiCopyPreviewKind.LoginAgreementBlocked),
-                    UiCopyPreviewItem("验证码兜底", "一键失败 / 纯 WiFi / 取消后回自家验证码页", UiCopyPreviewKind.LoginSmsFallback)
+                    UiCopyPreviewItem("短信登录", "手机号 + 6位验证码 + 协议勾选", UiCopyPreviewKind.LoginSmsFallback)
                 )
             ),
             UiCopyPreviewGroup(
@@ -7934,7 +7934,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.LoginSmsFallback -> {
                     UiCopyPreviewLoginPage(
                         agreed = true,
-                        message = "融合认证未完成，请稍后再试"
+                        message = "验证码已发送"
                     )
                 }
                 UiCopyPreviewKind.CleanStateFirstLaunch -> {
@@ -8377,8 +8377,23 @@ private fun UiCopyPreviewLoginPage(
                 letterSpacing = 0.sp
             )
             UiCopyPreviewLoginField("手机号")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                UiCopyPreviewLoginField(
+                    text = "验证码",
+                    modifier = Modifier.weight(1f)
+                )
+                UiCopyPreviewLoginButton(
+                    text = "发送",
+                    primary = false,
+                    modifier = Modifier.width(88.dp)
+                )
+            }
             UiCopyPreviewLoginButton(
-                text = "验证码登录",
+                text = "登录",
                 primary = true
             )
             Row(
@@ -8417,8 +8432,8 @@ private fun UiCopyPreviewLoginPage(
             UiCopyPreviewPlainText(
                 listOf(
                     "同意前不初始化身份、不补报崩溃日志。",
-                    "同意前不请求后端、不拉融合认证 SDK。",
-                    "验证码发送和校验都走融合认证短信流程。"
+                    "验证码由后端短信服务发送和校验。",
+                    "登录成功后继续使用同一个账号ID。"
                 )
             )
         }
@@ -8428,15 +8443,14 @@ private fun UiCopyPreviewLoginPage(
 @Composable
 private fun UiCopyPreviewLoginButton(
     text: String,
-    primary: Boolean
+    primary: Boolean,
+    modifier: Modifier = Modifier.fillMaxWidth()
 ) {
     Surface(
         color = if (primary) Color(0xFF111111) else Color.White,
         shape = RoundedCornerShape(12.dp),
         border = if (primary) null else BorderStroke(0.8.dp, Color(0xFFD3D7DE)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(48.dp)
+        modifier = modifier.height(48.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(

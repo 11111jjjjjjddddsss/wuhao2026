@@ -144,7 +144,7 @@ func TestAdminSupportReplyUsesSupportImageValidation(t *testing.T) {
 	}
 }
 
-func TestAdminMonitoringAuthEnvironmentCopyMatchesEventSemantics(t *testing.T) {
+func TestAdminMonitoringLegacyFusionCopyMatchesCurrentLoginPolicy(t *testing.T) {
 	report := AdminMonitoring{
 		AuthLogs: AdminMonitoringAuthLogs{
 			EnvBlocked:  1,
@@ -152,37 +152,37 @@ func TestAdminMonitoringAuthEnvironmentCopyMatchesEventSemantics(t *testing.T) {
 		},
 	}
 	items := buildAdminMonitoringActionItems(report)
-	blocked := findAdminMonitoringActionItem(items, "一键登录环境不满足")
+	blocked := findAdminMonitoringActionItem(items, "旧包一键登录环境不满足")
 	if blocked == nil {
 		t.Fatalf("missing blocked environment item: %#v", items)
 	}
-	assertContainsAll(t, blocked.Body, "无网络", "无 SIM", "没有可用移动数据")
+	assertContainsAll(t, blocked.Body, "旧安装包", "无网络", "无 SIM", "新包已改为短信验证码登录")
 	assertNotContains(t, blocked.Body, "VPN", "系统代理")
 
-	warning := findAdminMonitoringActionItem(items, "一键登录混合网络已放行")
+	warning := findAdminMonitoringActionItem(items, "旧包一键登录混合网络记录")
 	if warning == nil {
 		t.Fatalf("missing warning environment item: %#v", items)
 	}
-	assertContainsAll(t, warning.Body, "4G+WiFi", "VPN", "系统代理", "已放行")
+	assertContainsAll(t, warning.Body, "旧安装包", "4G+WiFi", "VPN", "新包不再拉 SDK")
 }
 
 func TestAdminAuthFunnelStageMappingCoversKnownLoginEvents(t *testing.T) {
 	tests := map[string]string{
-		"auth.fusion_start_requested":            "environment",
-		"auth.fusion_env_blocked":                "environment",
-		"auth.fusion_env_warning":                "environment",
-		"auth.fusion_permission_request":         "permission",
-		"auth.fusion_permission_ready":           "permission",
-		"auth.fusion_permission_denied":          "permission",
-		"auth.fusion_token_failed":               "token",
-		"auth.fusion_sdk_init_failed":            "sdk",
-		"auth.fusion_scene_start_failed":         "auth_page",
-		"auth.fusion_protocol_load_failed":       "auth_page",
-		"auth.fusion_sdk_token_auth_failed":      "carrier_verify",
-		"auth.fusion_verify_failed":              "carrier_verify",
-		"auth.fusion_get_phone_for_verification": "carrier_verify",
-		"auth.fusion_login_failed":               "server_login",
-		"auth.fusion_login_success":              "server_login",
+		"auth.fusion_start_requested":            "legacy_fusion",
+		"auth.fusion_env_blocked":                "legacy_fusion",
+		"auth.fusion_env_warning":                "legacy_fusion",
+		"auth.fusion_permission_request":         "legacy_fusion",
+		"auth.fusion_permission_ready":           "legacy_fusion",
+		"auth.fusion_permission_denied":          "legacy_fusion",
+		"auth.fusion_token_failed":               "legacy_fusion",
+		"auth.fusion_sdk_init_failed":            "legacy_fusion",
+		"auth.fusion_scene_start_failed":         "legacy_fusion",
+		"auth.fusion_protocol_load_failed":       "legacy_fusion",
+		"auth.fusion_sdk_token_auth_failed":      "legacy_fusion",
+		"auth.fusion_verify_failed":              "legacy_fusion",
+		"auth.fusion_get_phone_for_verification": "legacy_fusion",
+		"auth.fusion_login_failed":               "legacy_fusion",
+		"auth.fusion_login_success":              "legacy_fusion",
 		"auth.login_network_failed":              "server_login",
 		"auth.sms_send_failed":                   "sms",
 		"auth.sms_login_failed":                  "sms",

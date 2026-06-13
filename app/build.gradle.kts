@@ -49,7 +49,6 @@ android {
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
 
         buildConfigField("boolean", "USE_BACKEND_AB", "true")
-        buildConfigField("boolean", "ENABLE_FUSION_SMS_LOGIN", "false")
     }
 
     signingConfigs {
@@ -66,11 +65,9 @@ android {
     buildTypes {
         debug {
             signingConfigs.findByName("release")?.let { signingConfig = it }
-            buildConfigField("boolean", "ENABLE_FUSION_SMS_LOGIN", releaseSigningConfigured.toString())
         }
         release {
             signingConfigs.findByName("release")?.let { signingConfig = it }
-            buildConfigField("boolean", "ENABLE_FUSION_SMS_LOGIN", "true")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -112,7 +109,6 @@ tasks.configureEach {
 }
 
 dependencies {
-    implementation(fileTree(mapOf("dir" to "libs", "include" to listOf("*.aar"))))
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.appcompat:appcompat:1.7.0")

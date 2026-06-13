@@ -1,14 +1,15 @@
 param(
     [string]$StartDate = (Get-Date).AddDays(-6).ToString("yyyyMMdd"),
     [string]$EndDate = (Get-Date).ToString("yyyyMMdd"),
-    [string]$Month = (Get-Date).ToString("yyyyMM"),
-    [string]$RegionId = "cn-hangzhou"
+    [string]$RegionId = "cn-hangzhou",
+    [string]$SignName = "北京农技千问科技",
+    [int]$PageSize = 20,
+    [int]$PageIndex = 1,
+    [string]$PhoneNumber = "",
+    [string]$SendDate = (Get-Date).ToString("yyyyMMdd")
 )
 
 $ErrorActionPreference = "Stop"
-
-Write-Warning "This script checks legacy DYPNS / fusion authentication usage only. New Android packages use ordinary SMS; use scripts/check-sms-usage.ps1 for current SMS send statistics."
-Write-Host
 
 function Invoke-AliyunJson {
     param([string[]]$ArgsList)
@@ -52,8 +53,8 @@ function Invoke-AliyunJson {
             -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
+            -replace '(?i)(phone-number\s+)[0-9]+', '${1}REDACTED' `
+            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|PhoneNumber|PhoneNum)"\s*:\s*")[^"]+', '${1}REDACTED'
         $safeCommand = if ($ArgsList.Length -ge 3) {
             "$($ArgsList[0]) $($ArgsList[1]) $($ArgsList[2])"
         } else {
@@ -68,46 +69,36 @@ function Invoke-AliyunJson {
     return $jsonText | ConvertFrom-Json
 }
 
-function Write-Statistic {
-    param(
-        [string]$Name,
-        [int]$AuthenticationType
-    )
-    Write-Host "== $Name statistic $StartDate-$EndDate =="
-    $result = Invoke-AliyunJson @(
-        "aliyun", "dypnsapi", "query-gate-verify-statistic-public",
+Write-Host "== domestic sms send statistics $StartDate-$EndDate =="
+$statsArgs = @(
+    "aliyun", "dysmsapi", "query-send-statistics",
+    "--api-version", "2017-05-25",
+    "--region", $RegionId,
+    "--is-globe", "1",
+    "--start-date", $StartDate,
+    "--end-date", $EndDate,
+    "--page-index", "$PageIndex",
+    "--page-size", "$PageSize",
+    "--template-type", "0"
+)
+if (-not [string]::IsNullOrWhiteSpace($SignName)) {
+    $statsArgs += @("--sign-name", $SignName)
+}
+$stats = Invoke-AliyunJson $statsArgs
+$stats | ConvertTo-Json -Depth 10
+
+if (-not [string]::IsNullOrWhiteSpace($PhoneNumber)) {
+    Write-Host
+    Write-Host "== single phone send details $SendDate =="
+    $details = Invoke-AliyunJson @(
+        "aliyun", "dysmsapi", "query-send-details",
+        "--api-version", "2017-05-25",
         "--region", $RegionId,
-        "--start-date", $StartDate,
-        "--end-date", $EndDate,
-        "--authentication-type", "$AuthenticationType"
+        "--phone-number", $PhoneNumber,
+        "--send-date", $SendDate,
+        "--current-page", "1",
+        "--page-size", "20"
     )
-    $dayStats = @($result.Data.DayStatistic)
-    if ($dayStats.Count -eq 0) {
-        Write-Host "no_data"
-        return
-    }
-    $dayStats | ConvertTo-Json -Depth 8
+    $details | ConvertTo-Json -Depth 10
 }
 
-function Write-Billing {
-    param(
-        [string]$Name,
-        [int]$AuthenticationType
-    )
-    Write-Host "== $Name billing $Month =="
-    $result = Invoke-AliyunJson @(
-        "aliyun", "dypnsapi", "query-gate-verify-billing-public",
-        "--region", $RegionId,
-        "--month", $Month,
-        "--authentication-type", "$AuthenticationType"
-    )
-    $result | ConvertTo-Json -Depth 8
-}
-
-Write-Statistic -Name "one_click_login" -AuthenticationType 1
-Write-Host
-Write-Statistic -Name "sms_auth" -AuthenticationType 3
-Write-Host
-Write-Billing -Name "one_click_login" -AuthenticationType 1
-Write-Host
-Write-Billing -Name "sms_auth" -AuthenticationType 4

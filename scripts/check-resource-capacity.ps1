@@ -583,15 +583,15 @@ if (Test-Path -LiteralPath $slsScript) {
 
 if (-not $SkipAuthUsage) {
     Write-Host
-    Write-Host "== auth usage =="
-    $authScript = Join-Path $PSScriptRoot "check-auth-usage.ps1"
-    if (Test-Path -LiteralPath $authScript) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $authScript
+    Write-Host "== sms usage =="
+    $smsScript = Join-Path $PSScriptRoot "check-sms-usage.ps1"
+    if (Test-Path -LiteralPath $smsScript) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $smsScript
         if ($LASTEXITCODE -ne 0) {
-            Add-WarningItem "auth_usage_check_failed"
+            Add-WarningItem "sms_usage_check_failed"
         }
     } else {
-        Add-WarningItem "auth_usage_script_missing"
+        Add-WarningItem "sms_usage_script_missing"
     }
 }
 

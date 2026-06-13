@@ -41,6 +41,7 @@ WATCHED_SCRIPT_EXACT = {
     "scripts/setup-sls-alerts.ps1",
     "scripts/query-ecs-logs.ps1",
     "scripts/check-auth-usage.ps1",
+    "scripts/check-sms-usage.ps1",
     "scripts/check-resource-capacity.ps1",
     "scripts/upload-android-release.ps1",
 }
@@ -69,6 +70,7 @@ CURRENT_STATUS_SCRIPT_EXACT = {
     "scripts/setup-sls-alerts.ps1",
     "scripts/query-ecs-logs.ps1",
     "scripts/check-auth-usage.ps1",
+    "scripts/check-sms-usage.ps1",
     "scripts/check-resource-capacity.ps1",
     "scripts/upload-android-release.ps1",
 }

@@ -42,12 +42,6 @@ object SessionApi {
     private val streamClient = client.newBuilder()
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
-    private val fusionTokenRefreshClient = client.newBuilder()
-        .connectTimeout(3, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .writeTimeout(5, TimeUnit.SECONDS)
-        .callTimeout(6, TimeUnit.SECONDS)
-        .build()
     private val currentStreamCall = AtomicReference<Call?>(null)
     private val runtimeGeneration = AtomicInteger(0)
     private val sessionGeneration = AtomicInteger(-1)
@@ -105,15 +99,6 @@ object SessionApi {
         val error: String? = null,
         @SerializedName("retry_after_seconds") val retryAfterSeconds: Int? = null
     )
-
-    data class FusionAuthTokenSnapshot(
-        @SerializedName("auth_token") val authToken: String? = null,
-        @SerializedName("scheme_code") val schemeCode: String? = null,
-        @SerializedName("expires_in") val expiresIn: Int? = null
-    ) {
-        val usable: Boolean
-            get() = !authToken.isNullOrBlank() && !schemeCode.isNullOrBlank()
-    }
 
     data class TodayAgriCardResponse(
         val status: String? = null,
@@ -233,100 +218,6 @@ object SessionApi {
             hex.all { ch -> ch in '0'..'9' || ch in 'a'..'f' }
         }
     }
-
-    fun requestFusionAuthToken(onResult: (FusionAuthTokenSnapshot?, String?) -> Unit) {
-        val base = baseUrl()
-        if (base.isEmpty()) {
-            onResult(null, "后端地址未配置")
-            return
-        }
-        val request = Request.Builder()
-            .url("$base/api/auth/fusion/token")
-            .post(ByteArray(0).toRequestBody(null))
-            .build()
-        fusionTokenRefreshClient.newCall(request).enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                reportAuthClientLog(
-                    level = "warn",
-                    event = "auth.fusion_token_failed",
-                    message = "fusion token network failure",
-                    attrs = mapOf(
-                        "reason" to "network",
-                        "exception" to e.javaClass.simpleName
-                    )
-                )
-                mainHandler.post { onResult(null, "网络连接失败，请稍后再试") }
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                response.use {
-                    val statusCode = it.code
-                    val body = it.body?.string().orEmpty()
-                    val token = if (it.isSuccessful) parseFusionAuthToken(body) else null
-                    if (token?.usable != true) {
-                        reportAuthClientLog(
-                            level = if (statusCode >= 500) "error" else "warn",
-                            event = "auth.fusion_token_failed",
-                            message = "fusion token unavailable",
-                            attrs = mapOf(
-                                "http_status" to statusCode,
-                                "error" to parseApiErrorCode(body),
-                                "reason" to if (it.isSuccessful) "invalid_response" else "http"
-                            )
-                        )
-                    }
-                    mainHandler.post {
-                        if (token?.usable == true) {
-                            onResult(token, null)
-                        } else {
-                            val message = when (statusCode) {
-                                429 -> "操作太频繁，请稍后再试"
-                                else -> "融合认证暂不可用，请稍后再试"
-                            }
-                            onResult(null, message)
-                        }
-                    }
-                }
-            }
-        })
-    }
-
-    fun requestFusionAuthTokenBlocking(): FusionAuthTokenSnapshot? {
-        val base = baseUrl()
-        if (base.isEmpty()) return null
-        val request = Request.Builder()
-            .url("$base/api/auth/fusion/token")
-            .post(ByteArray(0).toRequestBody(null))
-            .build()
-        return runCatching {
-            fusionTokenRefreshClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return null
-                parseFusionAuthToken(response.body?.string().orEmpty())?.takeIf { it.usable }
-            }
-        }.getOrNull()
-    }
-
-    fun loginWithFusionVerifyToken(
-        verifyToken: String,
-        shouldCommitSession: () -> Boolean = { true },
-        onResult: (Boolean, String?) -> Unit
-    ) {
-        loginWithAuthPayload(
-            endpoint = "/api/auth/fusion/login",
-            payload = mapOf(
-                "verify_token" to verifyToken.trim(),
-                "legacy_user_id" to IdManager.getLegacyUserId(),
-                "device_id" to IdManager.getDeviceId()
-            ),
-            shouldCommitSession = shouldCommitSession,
-            onResult = onResult
-        )
-    }
-
-    private fun parseFusionAuthToken(body: String): FusionAuthTokenSnapshot? =
-        runCatching {
-            gson.fromJson(body, FusionAuthTokenSnapshot::class.java)
-        }.getOrNull()
 
     fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
         val base = baseUrl()
@@ -855,11 +746,7 @@ object SessionApi {
                         if (!accountUserId.startsWith("acct_")) {
                             reportAuthClientLog(
                                 level = "error",
-                                event = when {
-                                    endpoint.contains("/sms/") -> "auth.sms_login_failed"
-                                    endpoint.contains("/fusion/") -> "auth.fusion_login_failed"
-                                    else -> "auth.login_failed"
-                                },
+                                event = if (endpoint.contains("/sms/")) "auth.sms_login_failed" else "auth.login_failed",
                                 message = "auth login returned non-account user id",
                                 attrs = mapOf(
                                     "endpoint" to endpoint.substringAfterLast('/').take(48),
@@ -882,11 +769,7 @@ object SessionApi {
                         )
                         reportAuthClientLog(
                             level = "info",
-                            event = when {
-                                endpoint.contains("/sms/") -> "auth.sms_login_success"
-                                endpoint.contains("/fusion/") -> "auth.fusion_login_success"
-                                else -> "auth.login_success"
-                            },
+                            event = if (endpoint.contains("/sms/")) "auth.sms_login_success" else "auth.login_success",
                             message = "auth login success",
                             attrs = mapOf(
                                 "endpoint" to endpoint.substringAfterLast('/').take(48),
@@ -899,11 +782,7 @@ object SessionApi {
                         val errorCode = parseApiErrorCode(body)
                         reportAuthClientLog(
                             level = if (statusCode >= 500) "error" else "warn",
-                            event = when {
-                                endpoint.contains("/sms/") -> "auth.sms_login_failed"
-                                endpoint.contains("/fusion/") -> "auth.fusion_login_failed"
-                                else -> "auth.login_failed"
-                            },
+                            event = if (endpoint.contains("/sms/")) "auth.sms_login_failed" else "auth.login_failed",
                             message = "auth login failed",
                             attrs = mapOf(
                                 "endpoint" to endpoint.substringAfterLast('/').take(48),
@@ -938,12 +817,11 @@ object SessionApi {
             statusCode == 429 -> "操作太频繁，请稍后再试"
             statusCode == 400 && errorCode == "invalid_phone" -> "请输入正确的手机号"
             statusCode == 400 && errorCode == "invalid_code" -> "请填写验证码"
-            statusCode == 400 && errorCode == "invalid_verify_token" -> "融合认证参数无效，请稍后再试"
             statusCode == 401 && isSms -> "验证码不正确或已过期"
-            statusCode == 401 -> "融合认证校验失败，请稍后再试"
+            statusCode == 401 -> "登录校验失败，请稍后再试"
             statusCode == 413 -> "请求内容过大，请重新尝试"
             statusCode >= 500 && isSms -> "验证码服务暂时不可用，请稍后再试"
-            statusCode >= 500 -> "融合认证暂时不可用，请稍后再试"
+            statusCode >= 500 -> "登录服务暂时不可用，请稍后再试"
             isSms -> "短信登录失败，请稍后再试"
             else -> "登录暂时失败，请稍后再试"
         }

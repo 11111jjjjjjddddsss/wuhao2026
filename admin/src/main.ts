@@ -428,7 +428,7 @@ async function monitoringPage(): Promise<string> {
       </section>
     </div>
     <section class="card" style="margin-top:12px">
-      <div class="card-head"><div class="card-title">登录排障</div><span class="small muted">一键登录 / 短信 / 闪退补报</span></div>
+      <div class="card-head"><div class="card-title">登录排障</div><span class="small muted">短信验证码 / 登录 / 闪退补报</span></div>
       <div class="card-body">${authTroubleshootingBlock(report.auth_logs)}</div>
     </section>
     <section class="card" style="margin-top:12px">
@@ -2872,11 +2872,11 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
         <div>
           <span class="small muted">最近24小时</span>
           <strong>${failures}</strong>
-          <p>认证失败；一键登录 ${authLogs.fusion_failures ?? 0}，短信 ${authLogs.sms_failures ?? 0}，登录前日志 ${authLogs.preauth_count ?? 0}，闪退补报 ${crashReports}。</p>
-          <p class="small muted">一键登录先确认移动数据和默认数据卡；验证码登录只要生产 HTTPS 可达，WiFi 或代理环境下也应可用。</p>
+          <p>认证失败；短信 ${authLogs.sms_failures ?? 0}，旧包融合 ${authLogs.fusion_failures ?? 0}，登录前日志 ${authLogs.preauth_count ?? 0}，闪退补报 ${crashReports}。</p>
+          <p class="small muted">新包只走短信验证码；WiFi 或代理环境下也应可用，只要生产 HTTPS、Redis 和短信服务正常。</p>
           <div class="auth-debug-metrics">
-            ${authDebugMetric("环境不满足", envBlocked, envBlocked ? "warn" : "ok")}
-            ${authDebugMetric("混合网络", envWarnings, envWarnings ? "warn" : "ok")}
+            ${authDebugMetric("旧包环境阻断", envBlocked, envBlocked ? "warn" : "ok")}
+            ${authDebugMetric("旧包混合网络", envWarnings, envWarnings ? "warn" : "ok")}
             ${authDebugMetric("请求网络失败", loginNetworkFailures, loginNetworkFailures ? "warn" : "ok")}
           </div>
           <p class="small muted">最近出现：${authLogs.last_seen_at ? formatTime(authLogs.last_seen_at) : "暂无"}</p>
@@ -2884,19 +2884,10 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
         <div class="row-actions">
           ${filterButton("全部登录日志", { eventPrefix: "auth.", window: "24h" })}
           ${filterButton("登录前日志", { userID: "preauth", window: "24h" })}
-          ${filterButton("环境不满足", { event: "auth.fusion_env_blocked", window: "24h" })}
-          ${filterButton("4G+WiFi提示", { event: "auth.fusion_env_warning", window: "24h" })}
           ${filterButton("请求网络失败", { event: "auth.login_network_failed", window: "24h" })}
-          ${filterButton("取 Token 失败", { event: "auth.fusion_token_failed", window: "24h" })}
-          ${filterButton("SDK 初始化失败", { event: "auth.fusion_sdk_init_failed", window: "24h" })}
-          ${filterButton("授权页拉起失败", { event: "auth.fusion_scene_start_failed", window: "24h" })}
-          ${filterButton("SDK 取号失败", { event: "auth.fusion_sdk_token_auth_failed", window: "24h" })}
-          ${filterButton("最终取号失败", { event: "auth.fusion_verify_failed", window: "24h" })}
-          ${filterButton("服务端换号失败", { event: "auth.fusion_login_failed", window: "24h" })}
-          ${filterButton("一键登录超时", { event: "auth.fusion_timeout", window: "24h" })}
-          ${filterButton("授权页未完成", { event: "auth.fusion_template_finished", window: "24h" })}
           ${filterButton("短信发送失败", { event: "auth.sms_send_failed", window: "24h" })}
           ${filterButton("短信登录失败", { event: "auth.sms_login_failed", window: "24h" })}
+          ${filterButton("旧包融合记录", { eventPrefix: "auth.fusion_", window: "24h" })}
           ${filterButton("登录闪退", { event: "auth.app_crash", window: "24h" })}
           ${filterButton("普通闪退", { event: "app.crash", window: "24h" })}
         </div>
@@ -2943,15 +2934,10 @@ function authFunnelTable(stages: AdminMonitoring["auth_logs"]["funnel"]): string
 
 function authFunnelStageHint(key: string): string {
   const hints: Record<string, string> = {
-    environment: "网络 / SIM / 移动数据能力",
-    permission: "电话状态权限申请与结果",
-    token: "后端签发融合认证 token",
-    sdk: "阿里云 SDK 初始化与 UI 配置",
-    auth_page: "授权页拉起、取消、超时和协议页",
-    carrier_verify: "运营商网关取号和 SDK verify 回调",
-    server_login: "服务端换手机号并签账号 session",
     sms: "验证码发送和登录校验",
+    server_login: "服务端签账号 session 和网络请求",
     crash: "登录页或运行期崩溃补报",
+    legacy_fusion: "旧安装包融合认证事件，仅作历史排障",
   };
   return hints[key] || "未归类阶段";
 }
@@ -2974,38 +2960,38 @@ function authFunnelEventButtons(events: ClientAppLogSummaryEntry[]): string {
 
 function authEventLabel(event: string): string {
   const labels: Record<string, string> = {
-    "auth.fusion_start_requested": "开始一键",
-    "auth.fusion_env_blocked": "环境阻断",
-    "auth.fusion_env_warning": "混合网络",
-    "auth.fusion_permission_request": "申请权限",
-    "auth.fusion_permission_ready": "权限可用",
-    "auth.fusion_permission_denied": "拒绝权限",
-    "auth.fusion_token_failed": "取 token 失败",
-    "auth.fusion_token_refresh_failed": "刷新 token 失败",
-    "auth.fusion_token_refresh_skipped": "跳过刷新",
-    "auth.fusion_activity_unavailable": "页面不可用",
-    "auth.fusion_sdk_init_start": "初始化开始",
-    "auth.fusion_sdk_init_failed": "初始化失败",
-    "auth.fusion_ui_model_null": "UI 配置空",
-    "auth.fusion_ui_config_failed": "UI 配置失败",
-    "auth.fusion_scene_starting": "拉授权页",
-    "auth.fusion_scene_start_invoked": "授权页已拉起",
-    "auth.fusion_scene_start_failed": "授权页失败",
-    "auth.fusion_scene_cancelled": "授权页取消",
-    "auth.fusion_template_finished": "授权页结束",
-    "auth.fusion_verify_interrupt": "取号中断",
-    "auth.fusion_timeout": "一键超时",
-    "auth.fusion_auth_event": "SDK 事件",
-    "auth.fusion_protocol_load_failed": "协议页失败",
-    "auth.fusion_sdk_token_auth_failed": "SDK 取号失败",
-    "auth.fusion_empty_verify_token": "空 verify token",
-    "auth.fusion_verify_duplicate": "重复 verify",
-    "auth.fusion_halfway_unexpected": "半程回调",
-    "auth.fusion_verify_failed": "最终取号失败",
-    "auth.fusion_get_phone_for_verification": "取号确认",
-    "auth.fusion_callback_attach_failed": "回调绑定失败",
-    "auth.fusion_login_success": "一键成功",
-    "auth.fusion_login_failed": "换号失败",
+    "auth.fusion_start_requested": "旧包开始",
+    "auth.fusion_env_blocked": "旧包环境阻断",
+    "auth.fusion_env_warning": "旧包混合网络",
+    "auth.fusion_permission_request": "旧包申请权限",
+    "auth.fusion_permission_ready": "旧包权限可用",
+    "auth.fusion_permission_denied": "旧包拒绝权限",
+    "auth.fusion_token_failed": "旧包取 token 失败",
+    "auth.fusion_token_refresh_failed": "旧包刷新 token 失败",
+    "auth.fusion_token_refresh_skipped": "旧包跳过刷新",
+    "auth.fusion_activity_unavailable": "旧包页面不可用",
+    "auth.fusion_sdk_init_start": "旧包初始化开始",
+    "auth.fusion_sdk_init_failed": "旧包初始化失败",
+    "auth.fusion_ui_model_null": "旧包 UI 配置空",
+    "auth.fusion_ui_config_failed": "旧包 UI 配置失败",
+    "auth.fusion_scene_starting": "旧包拉授权页",
+    "auth.fusion_scene_start_invoked": "旧包授权页已拉起",
+    "auth.fusion_scene_start_failed": "旧包授权页失败",
+    "auth.fusion_scene_cancelled": "旧包授权页取消",
+    "auth.fusion_template_finished": "旧包授权页结束",
+    "auth.fusion_verify_interrupt": "旧包取号中断",
+    "auth.fusion_timeout": "旧包超时",
+    "auth.fusion_auth_event": "旧包 SDK 事件",
+    "auth.fusion_protocol_load_failed": "旧包协议页失败",
+    "auth.fusion_sdk_token_auth_failed": "旧包 SDK 取号失败",
+    "auth.fusion_empty_verify_token": "旧包空 verify token",
+    "auth.fusion_verify_duplicate": "旧包重复 verify",
+    "auth.fusion_halfway_unexpected": "旧包半程回调",
+    "auth.fusion_verify_failed": "旧包最终取号失败",
+    "auth.fusion_get_phone_for_verification": "旧包取号确认",
+    "auth.fusion_callback_attach_failed": "旧包回调绑定失败",
+    "auth.fusion_login_success": "旧包融合成功",
+    "auth.fusion_login_failed": "旧包换号失败",
     "auth.login_network_failed": "请求网络失败",
     "auth.login_success": "登录成功",
     "auth.login_failed": "登录失败",
@@ -3293,10 +3279,10 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
   const loginBody = !loginDepsOK
     ? "登录依赖或严格鉴权异常，先打开服务健康。"
     : authTrouble > 0
-      ? "已有登录环境、网络、SDK 或闪退信号，先看 App 日志里的 auth.*。"
+      ? "已有短信、网络或闪退信号，先看 App 日志里的 auth.*。"
       : recentLoginSessions > 0
-        ? "24 小时内已有新登录 session；仍要分别回归一键登录和验证码登录。"
-        : "云端配置正常不等于真机已过；真机测试时重点看一键登录、验证码收码、默认数据卡和生产 HTTPS 可达性。";
+        ? "24 小时内已有新登录 session；仍要用真机确认短信收码和验证码登录。"
+        : "短信配置正常不等于真机已过；真机测试时重点看验证码收码和生产 HTTPS 可达性。";
   const appQualityLevel = crashReports > 0 || appErrors >= 10 || authFailures >= 10 ? "bad" : appErrors > 0 || authFailures > 0 ? "warn" : "ok";
   return `
     <section class="decision-grid">
@@ -3386,10 +3372,10 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
     appLogFilter?: { userID?: string; event?: string; eventPrefix?: string; level?: string; window?: string };
   }> = [
     {
-      title: "一键登录 / 短信登录",
+      title: "短信验证码登录",
       status: authTrouble > 0 ? "看日志" : recentLoginSessions > 0 ? "有登录" : "待真机",
       level: authTrouble > 0 ? "warn" : recentLoginSessions > 0 ? "ok" : "info",
-      body: authTrouble > 0 ? "已有登录环境、网络、SDK 或闪退信号，先点 App 日志看 auth.*。" : recentLoginSessions > 0 ? "24 小时内已有新登录 session；继续用真机分别回归一键登录和验证码登录。" : "云端配置正常不等于真机已过；测试时重点看默认数据卡、移动数据、验证码收码和生产 HTTPS 可达性。",
+      body: authTrouble > 0 ? "已有短信、网络或闪退信号，先点 App 日志看 auth.*。" : recentLoginSessions > 0 ? "24 小时内已有新登录 session；继续用真机回归验证码收码和登录。" : "短信配置正常不等于真机已过；测试时重点看验证码收码和生产 HTTPS 可达性。",
       route: "app-logs",
       appLogFilter: { eventPrefix: "auth.", window: "24h" },
     },
@@ -3524,9 +3510,7 @@ function primaryMonitoringActionRoute(report: AdminMonitoring, level: "ok" | "wa
 
 function loginHealthOK(health: AdminOverview["health"]): boolean {
   return health.auth_strict === true &&
-    String(health.dypns).toLowerCase() === "ok" &&
-    String(health.dypns_fusion).toLowerCase() === "ok" &&
-    String(health.dypns_sms).toLowerCase() === "ok" &&
+    String(health.sms).toLowerCase() === "ok" &&
     String(health.redis).toLowerCase() === "ok";
 }
 
@@ -3731,6 +3715,7 @@ function capabilityLevel(status: string): "ok" | "warn" | "bad" | "info" {
 function healthFieldNeedsAttention(key: string, value: unknown): boolean {
   if (key === "dev_order_endpoints") return value === true;
   if (key === "auth_strict") return value !== true;
+  if (key === "dypns" || key === "dypns_fusion" || key === "dypns_sms") return false;
   if (typeof value === "boolean") return false;
   const normalized = String(value).toLowerCase();
   return normalized !== "ok" && normalized !== "oss";
@@ -3892,9 +3877,10 @@ function labelFor(key: string): string {
   const labels: Record<string, string> = {
     api: "API",
     bailian: "百炼模型",
-    dypns: "DYPNS",
-    dypns_fusion: "一键登录",
-    dypns_sms: "短信登录",
+    dypns: "旧DYPNS",
+    dypns_fusion: "旧融合兼容",
+    dypns_sms: "旧短信兼容",
+    sms: "短信服务",
     redis: "Redis",
     upload_storage: "上传存储",
     auth_strict: "严格鉴权",
