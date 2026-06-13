@@ -309,7 +309,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $fusionClient $fusionVerifySuccessPattern `
         "Fusion one-click login must exchange the final onVerifySuccess token through the backend login endpoint."
     Require-Match $failures $fusionClient $fusionHalfwayUnexpectedPattern `
-        "Unexpected half-way callbacks must only be logged and continued, not treated as the primary login path."
+        "Unexpected half-way callbacks must only be logged and ended, not treated as the primary login path."
     $fusionHalfwayBlockPattern = "override\s+fun\s+onHalfWayVerifySuccess(?s:.*?)override\s+fun\s+onVerifyFailed"
     $halfwayMatch = [regex]::Match(
         $fusionClient,
@@ -336,6 +336,8 @@ if ($failures.Count -eq 0) {
         "Aliyun SDK protocol checkbox must remain visible and unchecked by default."
     Require-Match $failures $fusionClient $fusionCaptchaDisabledPattern `
         "Aliyun SDK built-in graphic captcha module must be disabled before SDK init."
+    Require-NoMatch $failures $fusionClient 'safeContinueScene\s*\(\s*business\s*,\s*false\s*\)' `
+        "Fusion one-click failures must stop the SDK scene and fall back to the app SMS page instead of continuing into SDK graph/SMS nodes."
     Require-Match $failures $fusionClient $fusionHiddenSwitchPattern `
         "Aliyun SDK built-in switch/more-login entry must stay hidden so SMS fallback remains in the app page."
     Require-Match $failures $fusionClient $fusionProtocolActionPattern `

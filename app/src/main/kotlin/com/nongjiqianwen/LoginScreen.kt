@@ -531,7 +531,7 @@ private fun LoginAgreementCheckbox(
 ) {
     val borderColor = if (checked) Color(0xFF111111) else Color(0xFF747682)
     Box(
-        contentAlignment = Alignment.CenterEnd,
+        contentAlignment = Alignment.Center,
         modifier = modifier
             .size(48.dp)
             .clickable(role = Role.Checkbox) { onCheckedChange(!checked) }

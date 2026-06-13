@@ -34,7 +34,6 @@ object FusionOneLoginClient {
     private const val LOGIN_TEMPLATE_ID = "100001"
     private const val PROTOCOL_ACTION = "com.nongjiqiancha.FUSION_AUTH_PROTOCOL"
     private const val LOGIN_TIMEOUT_MS = 30_000L
-    private const val VERIFY_FAILED_FALLBACK_MS = 1_500L
     private const val SERVICE_AGREEMENT_URL = "https://nongjiqiancha.cn/legal/user-agreement/"
     private const val PRIVACY_POLICY_URL = "https://nongjiqiancha.cn/legal/privacy-policy/"
     private const val ONE_LOGIN_FALLBACK_MESSAGE = "一键登录未成功，已切换到验证码登录；验证码登录可在 WiFi 或代理环境下继续使用"
@@ -323,13 +322,11 @@ object FusionOneLoginClient {
                 ) {
                     AppCrashReporter.setAuthStage("auth.fusion_verify_success")
                     if (generation != loginGeneration.get()) {
-                        safeContinueScene(business, false)
                         finish(business, completed, false, "一键登录已取消，请使用验证码登录", onResult)
                         return
                     }
                     val verifyToken = token.orEmpty().trim()
                     if (verifyToken.isEmpty()) {
-                        safeContinueScene(business, false)
                         reportAuthLog(
                             level = "warn",
                             event = "auth.fusion_empty_verify_token",
@@ -359,7 +356,6 @@ object FusionOneLoginClient {
                             safeContinueScene(business, true)
                             finish(business, completed, true, null, onResult)
                         } else {
-                            safeContinueScene(business, false)
                             reportAuthLog(
                                 level = "warn",
                                 event = "auth.fusion_login_failed",
@@ -392,7 +388,6 @@ object FusionOneLoginClient {
                         nodeName = nodeName
                     )
                     verifyResult?.verifyResult(false)
-                    safeContinueScene(business, false)
                     finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                 }
 
@@ -416,11 +411,7 @@ object FusionOneLoginClient {
                         error = error,
                         nodeName = nodeName
                     )
-                    safeContinueScene(business, false)
-                    mainHandler.postDelayed({
-                        if (completed.get() || serverLoginStarted.get()) return@postDelayed
-                        finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
-                    }, VERIFY_FAILED_FALLBACK_MS)
+                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
                 }
 
                 override fun onTemplateFinish(event: AlicomFusionEvent?) {
@@ -468,7 +459,6 @@ object FusionOneLoginClient {
                         nodeName = nodeId
                     )
                     if (normalizedPhone == null) {
-                        safeContinueScene(business, false)
                         finish(
                             business,
                             completed,
