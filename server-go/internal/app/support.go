@@ -2,9 +2,12 @@ package app
 
 import (
 	"context"
+	"crypto/sha1"
 	"crypto/subtle"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -34,6 +37,8 @@ const (
 	supportImageOnlyAutoReplyBody               = "已收到您上传的图片。请补充具体问题、发生时间或页面提示；后续回复会在本页显示。"
 	supportGreetingAutoReplyBody                = "您好，请说明您遇到的问题或反馈内容，客服会在本页跟进回复。"
 )
+
+var errSupportMessageBusy = errors.New("support message busy")
 
 type SupportMessage struct {
 	ID           int64    `json:"id"`
@@ -169,24 +174,16 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	nowMs := time.Now().UnixMilli()
-	latest, latestErr := s.store.getLatestSupportMessage(r.Context(), auth.UserID)
-	if latestErr != nil {
-		s.logger.Warn("get latest support message before auto reply failed", "userId", auth.UserID, "error", latestErr)
-	}
-	message, err := s.store.CreateSupportMessage(r.Context(), auth.UserID, "user", normalized, imageURLs, nowMs)
+	replyBody := supportAutoReplyBodyFor(normalized, imageURLs)
+	message, autoReply, err := s.store.CreateUserSupportMessageWithAutoReply(r.Context(), auth.UserID, normalized, imageURLs, nowMs, replyBody)
 	if err != nil {
+		if errors.Is(err, errSupportMessageBusy) {
+			s.writeError(w, http.StatusConflict, "support_message_in_progress")
+			return
+		}
 		s.logger.Error("create support message failed", "userId", auth.UserID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
-	}
-	var autoReply *SupportMessage
-	replyBody := supportAutoReplyBodyFor(normalized, imageURLs)
-	if latestErr == nil && shouldCreateSupportAutoReply(latest, nowMs, replyBody) {
-		autoReply, err = s.store.CreateSupportMessage(r.Context(), auth.UserID, "system", replyBody, nil, nowMs+1)
-		if err != nil {
-			s.logger.Error("create support auto reply failed", "userId", auth.UserID, "messageId", message.ID, "error", err)
-			autoReply = nil
-		}
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"message":    message,
@@ -716,15 +713,72 @@ func supportConversationNeedsReply(latestNonSystemSenderType sql.NullString) boo
 }
 
 func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderType string, body string, imageURLs []string, createdAt int64) (*SupportMessage, error) {
-	imagesJSON, err := supportImageURLsJSON(imageURLs)
-	if err != nil {
-		return nil, err
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 	defer rollbackQuietly(tx)
+	message, err := createSupportMessageTx(ctx, tx, userID, senderType, body, imageURLs, createdAt)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return message, nil
+}
+
+func (s *Store) CreateUserSupportMessageWithAutoReply(ctx context.Context, userID string, body string, imageURLs []string, createdAt int64, replyBody string) (*SupportMessage, *SupportMessage, error) {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer conn.Close()
+
+	lockName := supportMessageLockName(userID)
+	var acquired sql.NullInt64
+	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 5)", lockName).Scan(&acquired); err != nil {
+		return nil, nil, err
+	}
+	if !acquired.Valid || acquired.Int64 != 1 {
+		return nil, nil, errSupportMessageBusy
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), "SELECT RELEASE_LOCK(?)", lockName)
+	}()
+
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rollbackQuietly(tx)
+
+	latest, err := getLatestSupportMessageTx(ctx, tx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+	message, err := createSupportMessageTx(ctx, tx, userID, "user", body, imageURLs, createdAt)
+	if err != nil {
+		return nil, nil, err
+	}
+	var autoReply *SupportMessage
+	if shouldCreateSupportAutoReply(latest, createdAt, replyBody) {
+		autoReply, err = createSupportMessageTx(ctx, tx, userID, "system", replyBody, nil, createdAt+1)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	return message, autoReply, nil
+}
+
+func createSupportMessageTx(ctx context.Context, tx *sql.Tx, userID string, senderType string, body string, imageURLs []string, createdAt int64) (*SupportMessage, error) {
+	imagesJSON, err := supportImageURLsJSON(imageURLs)
+	if err != nil {
+		return nil, err
+	}
 	result, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO support_messages(user_id, sender_type, body, image_urls_json, created_at)
@@ -745,9 +799,6 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 	if err := upsertSupportConversationTx(ctx, tx, userID, senderType, id, createdAt); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, err
-	}
 	return &SupportMessage{
 		ID:         id,
 		UserID:     userID,
@@ -756,6 +807,11 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 		ImageURLs:  imageURLs,
 		CreatedAt:  createdAt,
 	}, nil
+}
+
+func supportMessageLockName(userID string) string {
+	sum := sha1.Sum([]byte(strings.TrimSpace(userID)))
+	return "support_message:" + hex.EncodeToString(sum[:])
 }
 
 func (s *Store) MarkSupportMessagesRead(ctx context.Context, userID string, readAt int64, lastSeenMessageID int64) error {
@@ -1076,6 +1132,26 @@ func nullableInt64FromNull(value sql.NullInt64) any {
 
 func (s *Store) getLatestSupportMessage(ctx context.Context, userID string) (*SupportMessage, error) {
 	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
+		   FROM support_messages
+		  WHERE user_id = ?
+		  ORDER BY created_at DESC, id DESC
+		  LIMIT 1`,
+		userID,
+	)
+	message, err := scanSupportMessage(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &message, nil
+}
+
+func getLatestSupportMessageTx(ctx context.Context, tx *sql.Tx, userID string) (*SupportMessage, error) {
+	row := tx.QueryRowContext(
 		ctx,
 		`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
 		   FROM support_messages

@@ -384,6 +384,7 @@ async function monitoringPage(): Promise<string> {
     ${pageHead("监控面板", "面向正式上架的健康、风险、运营队列和阻塞项。", "monitoring")}
     ${monitoringHero(report)}
     ${monitoringReadinessSummary(report)}
+    ${monitoringManualCheckStrip(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
       <div class="card-head"><div class="card-title">模型调用口径</div><span class="small muted">模型名和搜索策略分开看</span></div>
@@ -2919,6 +2920,45 @@ function monitoringReadinessSummary(report: AdminMonitoring): string {
         <strong>${escapeHTML(next?.title || "继续推进")}</strong>
         <p>${escapeHTML(next?.body || "当前可继续推进登录、礼品卡、模型问诊、图片问诊、反馈和更新配置。")}</p>
         ${routeActionButton(next?.route, "打开")}
+      </div>
+    </section>
+  `;
+}
+
+function monitoringManualCheckStrip(report: AdminMonitoring): string {
+  const rows = (report.launch_readiness || []).filter((row) => row.status !== "ready");
+  if (!rows.length) return "";
+  const visibleRows = rows.slice(0, 4);
+  const remaining = rows.length - visibleRows.length;
+  return `
+    <section class="manual-check-strip">
+      <div class="manual-check-head">
+        <div>
+          <strong>上线人工确认项</strong>
+          <p>这些不是程序崩了，而是正式上架前必须有人确认。</p>
+        </div>
+        <span class="small muted">${rows.length} 项待确认</span>
+      </div>
+      <div class="manual-check-list">
+        ${visibleRows
+          .map((row) => {
+            const level = launchStatusLevel(row.status);
+            return `
+              <article class="manual-check ${level}">
+                <div class="manual-check-copy">
+                  <span class="small muted">${escapeHTML(row.owner || "负责人待定")}</span>
+                  <strong>${escapeHTML(row.title)}</strong>
+                  <p>${escapeHTML(row.body)}</p>
+                </div>
+                <div class="manual-check-actions">
+                  ${statusPill(launchStatusText(row.status), level)}
+                  ${routeActionButton(row.route, "打开")}
+                </div>
+              </article>
+            `;
+          })
+          .join("")}
+        ${remaining > 0 ? `<div class="manual-check-more">还有 ${remaining} 项在正式上架检查里</div>` : ""}
       </div>
     </section>
   `;

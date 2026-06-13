@@ -147,6 +147,42 @@ func TestSupportMessageRateLimitKeyHashesSensitiveInputs(t *testing.T) {
 	}
 }
 
+func TestSupportMessageLockNameRedactsInput(t *testing.T) {
+	lockName := supportMessageLockName("acct_sensitive_user")
+	if strings.Contains(lockName, "acct_sensitive_user") {
+		t.Fatalf("supportMessageLockName leaked user id: %q", lockName)
+	}
+	if !strings.HasPrefix(lockName, "support_message:") {
+		t.Fatalf("supportMessageLockName prefix mismatch: %q", lockName)
+	}
+	if len(lockName) > 64 {
+		t.Fatalf("supportMessageLockName too long for MySQL named lock: %d", len(lockName))
+	}
+}
+
+func TestSupportUserCreateHandlerUsesAtomicAutoReplyStorePath(t *testing.T) {
+	source, err := os.ReadFile("support.go")
+	if err != nil {
+		t.Fatalf("read support.go: %v", err)
+	}
+	text := string(source)
+	start := strings.Index(text, "func (s *Server) handleCreateSupportMessage")
+	if start < 0 {
+		t.Fatalf("handleCreateSupportMessage not found")
+	}
+	end := strings.Index(text[start:], "func (s *Server) handleMarkSupportRead")
+	if end < 0 {
+		t.Fatalf("handleMarkSupportRead not found")
+	}
+	block := text[start : start+end]
+	if !strings.Contains(block, "CreateUserSupportMessageWithAutoReply") {
+		t.Fatalf("user support handler must use the atomic create+auto-reply store path")
+	}
+	if strings.Contains(block, "getLatestSupportMessage(") || strings.Contains(block, "s.store.CreateSupportMessage(") {
+		t.Fatalf("user support handler must not recreate the old read-then-double-insert auto reply flow")
+	}
+}
+
 func TestSupportMessageRateLimiterUsesEnv(t *testing.T) {
 	t.Setenv("SUPPORT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS", "30")
 	t.Setenv("SUPPORT_MESSAGE_RATE_LIMIT_MAX_HITS", "2")

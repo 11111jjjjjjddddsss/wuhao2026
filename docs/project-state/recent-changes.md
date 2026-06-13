@@ -5,6 +5,8 @@
 
 ## 2026-06-13
 
+- 继续把监控面板往“上线值班可用”推进：后台 `/admin-api/v1/monitoring` 的 SLS / 客服反馈能力文案已和当前生产状态对齐，不再误写“外部通知行动策略、仪表盘和资源水位告警仍待补”；现在明确 5 条 SLS AlertHub 最小告警已绑定邮件行动策略和最小仪表盘，资源水位另走云监控邮件，剩余人工确认是首封 SLS 告警邮件真实送达。登录环境排障文案同步按 Android 真实事件语义校正：`auth.fusion_env_blocked` 只代表无网络 / 无 SIM / SIM 未就绪 / 无可用移动数据，VPN / 系统代理和 4G+WiFi 归到 `auth.fusion_env_warning` 且 App 已放行一键登录尝试。监控页第一屏新增“上线人工确认项”紧凑条，直接列出阻塞 / 需处理事项、负责人和入口，让非运维也能先看出正式上架还差哪些人工确认。帮助与反馈用户发送消息时，用户消息和系统自动回复已收进同一条 MySQL 命名锁 + 事务路径，避免同一用户并发连发时重复插入自动回复；锁名只保存用户ID hash，不泄漏账号ID。
+
 - 按“客服图片和客服聊天记录别混”的口径收口帮助与反馈附件：Android 帮助与反馈上传图片继续复用后端 `/upload`，但新增 `purpose=support` 表单字段；后端据此把客服附件写入 OSS `support/` 并返回 `/uploads/support/<file>.jpg`，走已配置的 30 天生命周期。普通问诊图片不传 purpose，仍写 `uploads/` 并按 3 天删除；主聊天模型接口只接受普通 `/uploads/<file>.jpg`，拒绝 `/uploads/support/<file>.jpg`，避免客服截图误进问诊模型链。客服聊天记录正文、发送人、时间、已读状态仍保存在 MySQL `support_messages` / `support_conversations`，不随 OSS 图片 30 天生命周期自动删除；保存 / 删除 / 注销处理规则仍列为合规和客服系统后续收口项。上传 HTTP body 只把 multipart 额外预留从 `1MiB + 1KiB` 放宽到 `1MiB + 16KiB`，文件本身仍严格单张 `<=1MiB` JPEG。同步用阿里云 CLI 复查并更新 OSS 上传 RAM 策略默认版本到 v3，仅多放行 `support/*` 前缀，没有放大全桶写权限。
 
 - 继续按“长期单对话别卡、但别让用户以为历史丢了”的口径收口主界面：`/api/session/snapshot` 的 `round_total` 已接到 Android，主聊天仍只渲染最近 30 轮保护手机性能；当后端总轮数超过当前 UI 展示轮数时，聊天列表顶部会用普通用户口径提示“更早若干轮已保留，后续对话会尽量接上”，不暴露长期记忆、后端归档等内部机制，清空历史后同步清掉提示。输入框对超长粘贴会本地截到 6000 字并提示“已保留前6000字，超出部分未保留”，后端仍保留同样上限兜底。记忆文档提示词的写作目标从旧 900 / 1200 字口径上调为一般约 1000-1400 个中文字符，复杂连续场景可更长，但仍是提示词建议而不是后端硬截断，内容少时不强行扩写。Android Manifest 和 parity 脚本同步删除当前融合认证 AAR 中不存在的 `PrivacyActivity` 校验，保留实际存在的 `LoginAuthActivity` / `PrivacyDialogActivity` / 融合认证 Activity 护栏，避免 lint 报假缺类。

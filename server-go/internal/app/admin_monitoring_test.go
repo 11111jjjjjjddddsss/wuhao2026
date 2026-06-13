@@ -75,6 +75,63 @@ func TestAdminMonitoringCapabilitiesContract(t *testing.T) {
 	}
 }
 
+func TestAdminMonitoringSLSCopyMatchesCurrentOpsState(t *testing.T) {
+	report := AdminMonitoring{
+		Health: AdminHealthStatus{
+			API:               "ok",
+			Bailian:           "ok",
+			Dypns:             "ok",
+			DypnsFusion:       "ok",
+			DypnsSMS:          "ok",
+			Redis:             "ok",
+			UploadStorage:     "oss",
+			AuthStrict:        true,
+			DevOrderEndpoints: false,
+		},
+		Queues: AdminMonitoringQueues{
+			AppUpdate:          AdminMonitoringAppUpdate{Enabled: true, ConfigValid: true, DownloadArtifactsComplete: true},
+			GiftCardBatchCount: 1,
+			GiftCardTotal:      1,
+			GiftCardActive:     1,
+		},
+	}
+	launchItem := findAdminMonitoringLaunchItem(buildAdminMonitoringLaunchReadiness(report), "日志告警")
+	if launchItem == nil {
+		t.Fatalf("missing SLS launch readiness item")
+	}
+	assertContainsAll(t, launchItem.Body, "邮件行动策略", "最小仪表盘", "云监控邮件", "首封告警邮件")
+	assertNotContains(t, launchItem.Body, "行动策略和仪表盘仍需补", "资源水位告警仍待补")
+
+	capability := findAdminMonitoringCapability(buildAdminMonitoringCapabilities(), "SLS 告警")
+	if capability == nil {
+		t.Fatalf("missing SLS capability item")
+	}
+	assertContainsAll(t, capability.Body, "邮件行动策略", "最小仪表盘", "云监控邮件", "首封 SLS 告警邮件")
+	assertNotContains(t, capability.Body, "行动策略、仪表盘和资源水位告警仍待补")
+}
+
+func TestAdminMonitoringAuthEnvironmentCopyMatchesEventSemantics(t *testing.T) {
+	report := AdminMonitoring{
+		AuthLogs: AdminMonitoringAuthLogs{
+			EnvBlocked:  1,
+			EnvWarnings: 1,
+		},
+	}
+	items := buildAdminMonitoringActionItems(report)
+	blocked := findAdminMonitoringActionItem(items, "一键登录环境不满足")
+	if blocked == nil {
+		t.Fatalf("missing blocked environment item: %#v", items)
+	}
+	assertContainsAll(t, blocked.Body, "无网络", "无 SIM", "没有可用移动数据")
+	assertNotContains(t, blocked.Body, "VPN", "系统代理")
+
+	warning := findAdminMonitoringActionItem(items, "一键登录混合网络已放行")
+	if warning == nil {
+		t.Fatalf("missing warning environment item: %#v", items)
+	}
+	assertContainsAll(t, warning.Body, "4G+WiFi", "VPN", "系统代理", "已放行")
+}
+
 func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 	rows := buildAdminMonitoringModelUsagePolicy()
 	if len(rows) != 3 {
@@ -379,6 +436,15 @@ func hasAdminMonitoringActionTitle(items []AdminMonitoringActionItem, title stri
 	return false
 }
 
+func findAdminMonitoringActionItem(items []AdminMonitoringActionItem, title string) *AdminMonitoringActionItem {
+	for idx := range items {
+		if items[idx].Title == title {
+			return &items[idx]
+		}
+	}
+	return nil
+}
+
 func hasAdminMonitoringCapabilityStatus(items []AdminMonitoringCapability, title string, status string) bool {
 	for _, item := range items {
 		if item.Title == title && item.Status == status {
@@ -386,6 +452,33 @@ func hasAdminMonitoringCapabilityStatus(items []AdminMonitoringCapability, title
 		}
 	}
 	return false
+}
+
+func findAdminMonitoringCapability(items []AdminMonitoringCapability, title string) *AdminMonitoringCapability {
+	for idx := range items {
+		if items[idx].Title == title {
+			return &items[idx]
+		}
+	}
+	return nil
+}
+
+func assertContainsAll(t *testing.T, text string, needles ...string) {
+	t.Helper()
+	for _, needle := range needles {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("text %q should contain %q", text, needle)
+		}
+	}
+}
+
+func assertNotContains(t *testing.T, text string, needles ...string) {
+	t.Helper()
+	for _, needle := range needles {
+		if strings.Contains(text, needle) {
+			t.Fatalf("text %q should not contain %q", text, needle)
+		}
+	}
 }
 
 func hasAdminMonitoringModelPolicy(items []AdminMonitoringModelUsageRow, title string, model string, searchStrategy string, forcedSearch bool) bool {

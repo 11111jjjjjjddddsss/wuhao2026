@@ -1701,7 +1701,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	if report.AuthLogs.EnvBlocked > 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "一键登录环境不满足",
-			Body:  "测试机存在无网络、无 SIM、SIM 未就绪、VPN / 系统代理或没有可用移动数据，一键登录先处理手机环境；验证码登录只要生产 HTTPS 可达仍应可用。",
+			Body:  "测试机存在无网络、无 SIM、SIM 未就绪或没有可用移动数据；一键登录先处理手机环境，验证码登录只要生产 HTTPS 可达仍应可用。",
 			Level: "warn",
 			Route: "app-logs",
 			Count: report.AuthLogs.EnvBlocked,
@@ -1709,8 +1709,8 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	}
 	if report.AuthLogs.EnvWarnings > 0 {
 		items = append(items, AdminMonitoringActionItem{
-			Title: "一键登录混合网络",
-			Body:  "测试机处在 4G+WiFi 或当前活动网络非蜂窝但移动数据可用的状态，App 已放行一键登录尝试；若失败再看 SDK 事件或改用验证码。",
+			Title: "一键登录混合网络已放行",
+			Body:  "测试机处在 4G+WiFi、VPN、系统代理或当前活动网络非蜂窝但移动数据可用的状态，App 已放行一键登录尝试；若失败再看 SDK 事件或改用验证码。",
 			Level: "warn",
 			Route: "app-logs",
 			Count: report.AuthLogs.EnvWarnings,
@@ -1955,12 +1955,12 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "日志告警",
 		Status: slsStatus,
-		Body:   "Go 日志和 Nginx error 已进 SLS；App 自动日志已覆盖登录前失败和闪退补报；5 条 AlertHub 最小告警已接，可用 check-sls-alert-readiness 巡检，外部通知行动策略和仪表盘仍需补。",
+		Body:   "Go / Nginx 日志和 App 自动日志已接入；5 条 SLS AlertHub 最小告警已绑定邮件行动策略和最小仪表盘，资源水位另走云监控邮件；剩余重点是确认首封告警邮件真实送达。",
 		Route:  "app-logs",
 		Owner:  "运维",
 	})
 	supportStatus := "ready"
-	supportBody := "后台可看反馈会话并回复；正式运营前继续补工单状态、分配和搜索。"
+	supportBody := "后台已支持待回复 / 已回复 / 已关闭队列、搜索、回复、关闭和重开；正式运营后再补坐席分配、标签、站外通知和保存 / 删除规则。"
 	if queues.SupportNeedsReply > 0 {
 		supportStatus = "attention"
 		supportBody = "有用户反馈待回复；先处理，再继续公开测试。"
@@ -2010,13 +2010,13 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
 		{Title: "账号登录", Status: "partial", Body: "账号ID收敛、云端登录配置和日志排障入口已接入；一键登录和短信登录仍需真机分别跑通后才算上线验收。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
-		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，发送后台回复并关闭或重开会话。", Route: "support"},
+		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，按账号ID / 手机号 / 最近消息搜索，发送后台回复并关闭或重开会话。", Route: "support"},
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；完整卡码仅财务角色可见。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小、强制更新和停更状态；用户仍通过“检查更新”拉取新包。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
-		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已接 AlertHub；只读巡检脚本可确认规则状态，外部通知行动策略、仪表盘和资源水位告警仍待补。", Route: "health"},
+		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已接 AlertHub，并已绑定邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
 }
