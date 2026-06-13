@@ -1726,7 +1726,17 @@ object SessionApi {
                             val snapshotGeneration = json.session_generation ?: 0
                             updateSessionGeneration(snapshotGeneration)
                             val memoryDocument = json.memory_document ?: json.b_summary ?: ""
-                            onResult(SessionSnapshot(memoryDocument, full, forUi, snapshotGeneration))
+                            val roundTotal = json.round_total ?: full.size.coerceAtLeast(forUi.size)
+                            onResult(
+                                SessionSnapshot(
+                                    memory_document = memoryDocument,
+                                    b_summary = memoryDocument,
+                                    a_rounds_full = full,
+                                    a_rounds_for_ui = forUi,
+                                    round_total = roundTotal,
+                                    session_generation = snapshotGeneration
+                                )
+                            )
                         } catch (e: Exception) {
                             Log.e(TAG, "parse snapshot", e)
                             reportClientLog(
@@ -2130,6 +2140,7 @@ object SessionApi {
         @SerializedName("a_rounds_full") val a_rounds_full: List<ARoundJson>?,
         @SerializedName("a_rounds_for_ui") val a_rounds_for_ui: List<ARoundJson>?,
         @SerializedName("a_rounds") val a_rounds: List<ARoundJson>? = null,
+        @SerializedName("round_total") val round_total: Int? = null,
         @SerializedName("session_generation") val session_generation: Int? = null
     )
 

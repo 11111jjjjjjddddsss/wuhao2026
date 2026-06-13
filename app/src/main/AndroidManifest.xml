@@ -75,11 +75,6 @@
             android:theme="@style/Theme.NongjiQianwen.FusionAuthDialog"
             tools:replace="android:theme" />
         <activity
-            android:name="com.mobile.auth.gatewayauth.PrivacyActivity"
-            android:theme="@style/Theme.NongjiQianwen.FusionAuthDialog"
-            android:exported="false"
-            tools:replace="android:theme,android:exported" />
-        <activity
             android:name="com.alicom.fusion.auth.numberauth.FusionNumberAuthActivity"
             android:theme="@style/Theme.NongjiQianwen.FusionNumberAuth"
             tools:replace="android:theme" />

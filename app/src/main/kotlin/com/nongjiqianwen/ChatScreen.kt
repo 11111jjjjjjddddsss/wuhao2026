@@ -225,6 +225,13 @@ private sealed interface ChatTimelineItem {
     val stableKey: String
 
     @Immutable
+    data class HistoryNotice(
+        val hiddenRoundCount: Int
+    ) : ChatTimelineItem {
+        override val stableKey: String = "history-notice"
+    }
+
+    @Immutable
     data class Message(val message: ChatMessage) : ChatTimelineItem {
         override val stableKey: String = message.id
     }
@@ -273,9 +280,13 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
 private fun buildChatTimelineItems(
     messages: List<ChatMessage>,
     todayAgriCard: SessionApi.TodayAgriCard?,
-    todayAgriCardAnchorMessageId: String?
+    todayAgriCardAnchorMessageId: String?,
+    hiddenRoundCount: Int = 0
 ): List<ChatTimelineItem> {
-    val items = ArrayList<ChatTimelineItem>(messages.size + 1)
+    val items = ArrayList<ChatTimelineItem>(messages.size + 2)
+    if (hiddenRoundCount > 0) {
+        items += ChatTimelineItem.HistoryNotice(hiddenRoundCount)
+    }
     val validTodayAgriCard = todayAgriCard?.takeIf { it.isRenderableTodayAgriCard() }
     var todayAgriCardInserted = false
     if (validTodayAgriCard != null && todayAgriCardAnchorMessageId == TODAY_AGRI_CARD_ANCHOR_START) {
@@ -302,6 +313,38 @@ private fun buildChatTimelineItems(
         }
     }
     return items
+}
+
+@Composable
+private fun ChatHistoryWindowNotice(
+    hiddenRoundCount: Int,
+    horizontalPadding: Dp,
+    maxCardWidth: Dp
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = horizontalPadding, vertical = 6.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            modifier = Modifier.widthIn(max = maxCardWidth),
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFFF4F7F4),
+            border = BorderStroke(1.dp, Color(0xFFDDE6DD))
+        ) {
+            Text(
+                text = "仅展示最近 30 轮，更早 ${hiddenRoundCount} 轮已纳入长期记忆和后端归档",
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                ),
+                color = Color(0xFF667064),
+                textAlign = TextAlign.Center
+            )
+        }
+    }
 }
 
 private fun markLocalImageUploadPendingAsFailed(
@@ -2418,6 +2461,7 @@ fun ChatScreen() {
         }
     }
     var todayAgriCard by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.TodayAgriCard?>(null) }
+    var hiddenRemoteRoundCount by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var todayAgriCardAnchorDay by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(context.loadTodayAgriCardAnchorDaySync(chatScopeId))
     }
@@ -2483,6 +2527,7 @@ fun ChatScreen() {
         shouldShowTodayAgriCard,
         todayAgriCardAnchorForRender,
         waitingForTodayAgriCardAnchor,
+        hiddenRemoteRoundCount,
         messages
     ) {
         derivedStateOf {
@@ -2492,7 +2537,8 @@ fun ChatScreen() {
             buildChatTimelineItems(
                 messages = messages,
                 todayAgriCard = visibleTodayAgriCard,
-                todayAgriCardAnchorMessageId = todayAgriCardAnchorForRender
+                todayAgriCardAnchorMessageId = todayAgriCardAnchorForRender,
+                hiddenRoundCount = hiddenRemoteRoundCount
             )
         }
     }
@@ -4245,6 +4291,7 @@ fun ChatScreen() {
         context.clearLocalChatHistoryStateSync(chatScopeId)
         todayAgriCardAnchorDay = ""
         todayAgriCardAnchorMessageId = ""
+        hiddenRemoteRoundCount = 0
         messages.clear()
         chatListState.requestScrollToItem(0, 0)
         recyclerFirstVisibleItemIndex = 0
@@ -4335,6 +4382,12 @@ fun ChatScreen() {
                 PendingChatSendStore.has(context, chatScopeId, messageId)
             }
             val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
+            hiddenRemoteRoundCount =
+                if (snapshot == null) {
+                    0
+                } else {
+                    (snapshot.round_total - snapshot.a_rounds_for_ui.size).coerceAtLeast(0)
+                }
             val hydratedSnapshot = if (snapshot == null) {
                 retainLocalRecoverySnapshotForRemoteFallback(
                     localSnapshot = localSnapshotForMerge,
@@ -6383,6 +6436,7 @@ fun ChatScreen() {
                     itemKey = { it.stableKey },
                     itemContentType = { item ->
                         when (item) {
+                            is ChatTimelineItem.HistoryNotice -> "history_notice"
                             is ChatTimelineItem.Message -> item.message.role
                             is ChatTimelineItem.TodayAgriCard -> "today_agri_card"
                         }
@@ -6443,6 +6497,12 @@ fun ChatScreen() {
                         )
                 ) { msg ->
                     when (msg) {
+                        is ChatTimelineItem.HistoryNotice ->
+                            ChatHistoryWindowNotice(
+                                hiddenRoundCount = msg.hiddenRoundCount,
+                                horizontalPadding = listHorizontalPadding,
+                                maxCardWidth = chromeMaxWidth
+                            )
                         is ChatTimelineItem.Message -> renderConversationMessage(msg.message)
                         is ChatTimelineItem.TodayAgriCard ->
                             TodayAgriNewsCard(
@@ -6678,10 +6738,11 @@ fun ChatScreen() {
                         .padding(horizontal = 12.dp)
                 )
             }
-        ) { _ ->
+        ) { innerPadding ->
             Box(
                 modifier = Modifier
                     .fillMaxSize()
+                    .padding(innerPadding)
                     .background(pageSurface)
                     .pointerInput(imeVisible) {
                         awaitEachGesture {

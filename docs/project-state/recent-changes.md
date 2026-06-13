@@ -5,6 +5,10 @@
 
 ## 2026-06-13
 
+- 继续按“长期单对话别卡、但别让用户以为历史丢了”的口径收口主界面：`/api/session/snapshot` 的 `round_total` 已接到 Android，主聊天仍只渲染最近 30 轮保护手机性能；当后端总轮数超过当前 UI 展示轮数时，聊天列表顶部会提示更早轮次已纳入长期记忆和后端归档，清空历史后同步清掉提示。输入框对超长粘贴会本地截到 6000 字并提示，后端仍保留同样上限兜底。记忆文档提示词的写作目标从旧 900 / 1200 字口径上调为一般约 1000-1400 个中文字符，复杂连续场景可更长，但仍是提示词建议而不是后端硬截断，内容少时不强行扩写。Android Manifest 和 parity 脚本同步删除当前融合认证 AAR 中不存在的 `PrivacyActivity` 校验，保留实际存在的 `LoginAuthActivity` / `PrivacyDialogActivity` / 融合认证 Activity 护栏，避免 lint 报假缺类。
+
+- 本轮后端提示词已重新部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换、API 与后台 `/admin-api/` upstream 端口校验均通过；当前 active upstream 为 `3001`，后台 upstream 同为 `3001`，HTTPS healthz 200，未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后 `check-ecs-readiness.ps1`、`check-backend-data-boundaries.ps1`、`check-resource-capacity.ps1 -Strict` 均通过；当前仍没有正式用户、会员、订单或礼品卡资产，账号归属异常为 0。
+
 - 按用户“查清现在到底有哪些限制，别做着做着坑正常用户”的要求，新增 [docs/runbooks/app-traffic-limits.md](D:/wuhao/docs/runbooks/app-traffic-limits.md)，把 Android、Go、Redis、Nginx、会员次数、上传大小、短信 / 一键登录限流、App 日志、帮助反馈、礼品卡、MySQL 连接池、SSE 时长和外部云资源容量边界统一列清。线上 Cloud Assistant 复查后，已把 Nginx 主聊天流从旧的 `6r/m`、burst 3、单 IP 2 连接调宽为 `60r/m`、burst 80，并移除聊天 `limit_conn`；普通 API 仍为 `60r/m` burst 80，上传仍为 `20r/m` burst 8。Go 后端没有全局 App 用户数 / DAU / 主聊天总并发硬卡，主聊天也不设置 `max_tokens`。当前口径是保留短信、上传、礼品卡等必要防刷限制；若真机测试出现 429，先确认来源，不新增全局主聊天并发硬闸、不改模型参数。
 
 - 主界面性能按“少动主链、清掉明显浪费”的口径小步优化：Android 流式运行态不再把大段 `streamingMessageContent / streamingRevealBuffer` 放入 Activity saved-state，`isStreaming / streamingMessageId` 也同步改为运行时态，避免系统重建后出现“状态还在但内容为空”的错乱，恢复继续依赖已有流式草稿、远端快照和 pending 恢复链；流式吐字内部从反复 `drop()` 临时字符串改为索引推进，减少长回复时的临时分配和 GC 压力。聊天区远端图片缩略图新增 10 分钟失败短缓存，OSS 过期 / 失效图片滚回可见区时直接显示过期占位，不再反复发起 5 秒网络读取。后端 App 自动日志 Redis 限流改为异常时 fail open，避免日志系统影响主体验；短信、登录、礼品卡、上传和内部 secret 等安全 / 成本敏感入口仍 fail closed。

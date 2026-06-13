@@ -28,6 +28,7 @@
 - composer 是页面底部兄弟层，自己吃 `imePadding()`；列表不吃 IME 动画帧，不允许键盘抬升消息工作线
 - active / settled 渲染共用 unified soft-wrap renderer；不再用小分割 item、物理行预切、fresh suffix 灰色高亮动画
 - 流式运行态里的正文 / reveal buffer / message id / isStreaming 是运行时状态，不进入 Activity saved-state；切后台 / 重建恢复依赖已有流式草稿、远端快照和 pending 恢复链，避免大字符串进 saved-state 或出现“状态保存了但内容丢了”的半恢复状态
+- 主聊天只渲染最近 30 个用户轮次以保护长期使用性能；`/api/session/snapshot` 的 `round_total` 大于 `a_rounds_for_ui` 展示数时，列表顶部显示历史窗口轻提示，清空历史或 clean-state 后该提示必须消失
 - 标准 Markdown 表格降级成普通项目行文本；emoji 偶发输出时按普通文本渲染
 
 ## 禁止回归的旧链
@@ -152,11 +153,13 @@ a | b | c
 - 清数据后启动
 - 切后台 / 杀进程后重进
 - user 发送失败、assistant 中断失败、首 token 前失败
+- 账号下后端归档超过 30 轮时进入聊天页，再执行“删除所有历史对话”
 
 预期：
 - 无账号 / 手机号时，清数据后应是 clean-state，不从本地备份回灌旧 UI
 - 有稳定账号后，后端返回最近 30 轮业务记录属于账号级恢复，不是 UI 回退
 - 失败 footer 与正文一起恢复，不只剩正文或只剩用户消息
+- 归档超过 30 轮时顶部应提示更早轮次已纳入记忆和后端归档；删除历史成功后该提示消失，不应误导用户还有旧记录留在当前对话
 
 ### H. 弱网 / 后台 / 尾部动态
 

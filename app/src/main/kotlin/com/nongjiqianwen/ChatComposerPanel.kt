@@ -83,6 +83,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
 import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
@@ -119,6 +120,22 @@ internal const val COMPOSER_ATTACHMENT_PHOTO_TEXT = "照片"
 internal const val COMPOSER_ATTACHMENT_LIMIT_TEXT = "单次最多4张图片"
 internal const val COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT = "建议拍清病斑、异常部位、叶背或果实"
 private val ComposerAttachmentActionIconSize = 30.dp
+
+internal fun limitComposerInputValue(value: TextFieldValue, maxChars: Int): TextFieldValue {
+    if (maxChars <= 0 || value.text.length <= maxChars) return value
+    val limitedText = value.text.take(maxChars)
+    fun clamp(offset: Int): Int = offset.coerceIn(0, limitedText.length)
+    return value.copy(
+        text = limitedText,
+        selection = TextRange(
+            start = clamp(value.selection.start),
+            end = clamp(value.selection.end)
+        ),
+        composition = value.composition?.let { range ->
+            TextRange(start = clamp(range.start), end = clamp(range.end))
+        }
+    )
+}
 
 private fun composerPreviewInSampleSize(width: Int, height: Int, targetSize: Int): Int {
     var sampleSize = 1
@@ -345,10 +362,11 @@ internal fun ChatComposerBottomBar(
                             COMPOSER_DEFAULT_PLACEHOLDER_TEXT
                         },
                         onValueChange = {
-                            if (it.text.length > inputMaxChars && inputValue.text.length <= inputMaxChars) {
+                            val limitedValue = limitComposerInputValue(it, inputMaxChars)
+                            if (it.text.length > inputMaxChars) {
                                 onInputLimitExceeded()
                             }
-                            onInputValueChange(it)
+                            onInputValueChange(limitedValue)
                         },
                         modifier = Modifier
                             .weight(1f)

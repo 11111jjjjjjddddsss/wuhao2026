@@ -11,12 +11,20 @@ data class SessionSnapshot(
     val b_summary: String,
     val a_rounds_full: List<ARound>,
     val a_rounds_for_ui: List<ARound>,
+    val round_total: Int = 0,
     val session_generation: Int = 0
 ) {
     /** 兼容旧接口只返回 a_rounds 时：视为 for_ui，full 用 for_ui */
     constructor(memoryDocument: String, a_rounds: List<ARound>) : this(memoryDocument, memoryDocument, a_rounds, a_rounds)
     constructor(memoryDocument: String, a_rounds_full: List<ARound>, a_rounds_for_ui: List<ARound>, session_generation: Int = 0) :
-        this(memoryDocument, memoryDocument, a_rounds_full, a_rounds_for_ui, session_generation)
+        this(
+            memoryDocument,
+            memoryDocument,
+            a_rounds_full,
+            a_rounds_for_ui,
+            a_rounds_full.size.coerceAtLeast(a_rounds_for_ui.size),
+            session_generation
+        )
 }
 
 /** 单轮对话 (user, assistant) */
