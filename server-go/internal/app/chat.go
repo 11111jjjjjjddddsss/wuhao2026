@@ -531,6 +531,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"done_received", doneReceived.Load(),
 		"client_disconnected", clientDisconnected.Load(),
 	}
+	s.bailian.ObserveUsage(modelUsage)
 	logAttrs = appendBailianUsageLogAttrs(logAttrs, modelUsage)
 	s.logger.Info("bailian stream finished", logAttrs...)
 }

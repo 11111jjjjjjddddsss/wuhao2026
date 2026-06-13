@@ -26,6 +26,7 @@ type BailianClient struct {
 	keySelection    keySelectionMode
 	autoMu          sync.Mutex
 	autoRequests    []time.Time
+	autoTokenUsage  []bailianAutoTokenUsage
 	autoRRUntil     time.Time
 }
 
@@ -45,13 +46,19 @@ const (
 	defaultDashScopeResponseHeaderTimeout = 60 * time.Second
 	defaultDashScopeIdleConnTimeout       = 90 * time.Second
 	defaultDashScopeAutoRRWindow          = 10 * time.Second
-	defaultDashScopeAutoRRHold            = 60 * time.Second
-	defaultDashScopeAutoRRMinRequests     = 20
+	defaultDashScopeAutoRRHold            = 120 * time.Second
+	defaultDashScopeAutoRRMinRequests     = 200
+	defaultDashScopeAutoRRTokenThreshold  = 600000
 	bailianBodyPreviewLimit               = 64 * 1024
 	dailyAgriModelResponseBodyLimit       = 1024 * 1024
 )
 
 type keySelectionMode int
+
+type bailianAutoTokenUsage struct {
+	At     time.Time
+	Tokens int
+}
 
 var errResponseBodyTooLarge = errors.New("response body too large")
 
@@ -166,7 +173,9 @@ func (c *BailianClient) generateDailyAgriCardWithChatCompletions(ctx context.Con
 	if content == "" {
 		return "", nil, bailianModelUsage{}, fmt.Errorf("dashscope response empty content")
 	}
-	return content, nil, decoded.Usage.normalized(), nil
+	usage := decoded.Usage.normalized()
+	c.ObserveUsage(usage)
+	return content, nil, usage, nil
 }
 
 func (c *BailianClient) doJSONRequest(ctx context.Context, accept string, body map[string]any) (*http.Response, error) {
@@ -426,6 +435,40 @@ func (c *BailianClient) observeAutoKeySelectionRequest(keyCount int) {
 	kept = append(kept, now)
 	c.autoRequests = kept
 	if len(c.autoRequests) >= minRequests {
+		c.autoRRUntil = laterTime(c.autoRRUntil, now.Add(autoRoundRobinHoldDuration()))
+	}
+}
+
+func (c *BailianClient) ObserveUsage(usage bailianModelUsage) {
+	c.observeAutoKeySelectionTokens(usage.normalizedTotalTokens())
+}
+
+func (c *BailianClient) observeAutoKeySelectionTokens(tokens int) {
+	if tokens <= 0 || c.keySelection != keySelectionModeAuto || len(c.keyEntries()) < 2 {
+		return
+	}
+	window := envDurationWithDefault("DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS", defaultDashScopeAutoRRWindow)
+	threshold := envIntWithDefault("DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD", defaultDashScopeAutoRRTokenThreshold)
+	if window <= 0 || threshold <= 0 {
+		return
+	}
+
+	now := time.Now()
+	c.autoMu.Lock()
+	defer c.autoMu.Unlock()
+
+	cutoff := now.Add(-window)
+	kept := c.autoTokenUsage[:0]
+	total := tokens
+	for _, usage := range c.autoTokenUsage {
+		if usage.At.After(cutoff) {
+			kept = append(kept, usage)
+			total += usage.Tokens
+		}
+	}
+	kept = append(kept, bailianAutoTokenUsage{At: now, Tokens: tokens})
+	c.autoTokenUsage = kept
+	if total >= threshold {
 		c.autoRRUntil = laterTime(c.autoRRUntil, now.Add(autoRoundRobinHoldDuration()))
 	}
 }

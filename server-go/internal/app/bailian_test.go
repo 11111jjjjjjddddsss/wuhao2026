@@ -318,6 +318,60 @@ func TestOpenStreamAutoModeTurnsOnRoundRobinWhenRequestBurstIsHigh(t *testing.T)
 	}
 }
 
+func TestOpenStreamAutoModeTurnsOnRoundRobinWhenTokenUsageIsHigh(t *testing.T) {
+	authHeaders := []string{}
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "")
+	t.Setenv("DASHSCOPE_API_KEY_1", "primary-key")
+	t.Setenv("DASHSCOPE_API_KEY_2", "secondary-key")
+	t.Setenv("DASHSCOPE_API_KEY_3", "")
+	t.Setenv("DASHSCOPE_API_KEYS", "")
+	t.Setenv("DASHSCOPE_KEY_SELECTION_MODE", "auto")
+	t.Setenv("DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS", "999")
+	t.Setenv("DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD", "100")
+	t.Setenv("DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS", "60")
+	t.Setenv("DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS", "60")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	client := NewBailianClient()
+	response, err := client.OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "hello"}},
+	)
+	if err != nil {
+		t.Fatalf("open stream 1: %v", err)
+	}
+	_ = response.Body.Close()
+
+	client.ObserveUsage(bailianModelUsage{TotalTokens: 120})
+
+	for i := 0; i < 2; i++ {
+		response, err := client.OpenStream(
+			context.Background(),
+			[]BailianMessage{{Role: "user", Content: "hello"}},
+		)
+		if err != nil {
+			t.Fatalf("open stream %d: %v", i+2, err)
+		}
+		_ = response.Body.Close()
+	}
+
+	wantAuthHeaders := []string{
+		"Bearer primary-key",
+		"Bearer primary-key",
+		"Bearer secondary-key",
+	}
+	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
+		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)
+	}
+}
+
 func TestOpenStreamSkipsCoolingKeyOnNextRequest(t *testing.T) {
 	authHeaders := []string{}
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

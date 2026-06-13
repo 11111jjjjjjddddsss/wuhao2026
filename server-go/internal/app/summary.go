@@ -180,6 +180,7 @@ func (s *SummaryService) extractSummary(ctx context.Context, oldMemoryDocument s
 	var modelUsage bailianModelUsage
 	if usage, ok := parseBailianUsagePayload(payload["usage"]); ok {
 		modelUsage = usage
+		s.bailian.ObserveUsage(usage)
 		s.log().Info("memory document model usage", appendBailianUsageLogAttrs([]any{}, usage)...)
 	}
 	choices, _ := payload["choices"].([]any)

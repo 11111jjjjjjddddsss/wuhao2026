@@ -41,7 +41,7 @@ DASHSCOPE_API_KEYS
 ## 运行策略
 
 - 默认策略（`DASHSCOPE_KEY_SELECTION_MODE=auto`，留空也按 auto）下，平稳期仍优先使用第一把可用 Key；`DASHSCOPE_API_KEY_1` 健康且未冷却时，正常低流量请求不主动消耗 `DASHSCOPE_API_KEY_2`。
-- 自动高峰分流：auto 模式会在短窗口内请求量达到阈值时，临时进入请求级轮询分流；默认 10 秒内达到 20 次模型请求后进入 60 秒轮询窗口。窗口内健康 Key 会按轮询顺序选择，窗口结束后自动回到主 Key 优先，不需要手动改环境变量或为了切模式重启后端。
+- 自动高峰分流：auto 模式会按两个信号临时进入请求级轮询分流：默认 10 秒内达到 200 次模型请求，或 10 秒内已观测模型用量达到 600000 token。窗口内健康 Key 会按轮询顺序选择，默认持续 120 秒，窗口结束后自动回到主 Key 优先，不需要手动改环境变量或为了切模式重启后端。这些阈值不是用户限流，也不扣低主 Key 优先级，只是用来在真实高峰或接近主账号 RPM / TPM 压力前，让不同阿里云主账号 Key 提前分摊。token 阈值按主账号 500 万 TPM 折算约为 72% 的 10 秒窗口容量，给上游统计延迟和长回复留缓冲；请求数阈值只作为短请求洪峰兜底。
 - 自动故障分流：auto 模式下如果某把 Key 开流前已经触发限流 / 鉴权类 failover，后端也会自动进入一段轮询窗口，避免后续高峰继续压同一把 Key。
 - 强制平滑分流仍可显式设置 `DASHSCOPE_KEY_SELECTION_MODE=round_robin`（或 `rr`）。该模式在同一批请求间按轮询顺序选择健康 Key，仍保留每次请求内的限流 / 鉴权失败兜底切换。
 - 强制主备优先可显式设置 `DASHSCOPE_KEY_SELECTION_MODE=fallback`，用于只想省副账号费用、不做高峰自动分流的场景。
@@ -62,14 +62,16 @@ DASHSCOPE_API_KEYS
 ```text
 DASHSCOPE_KEY_SELECTION_MODE=auto
 # 取值：auto（默认）|fallback|round_robin|rr
-DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS=20
+DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS=200
+DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD=600000
 DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS=10
-DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=60
+DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=120
 ```
 
 ## 配置建议
 
 - 前期可以先配两把 Key：`DASHSCOPE_API_KEY_1` 作为主 Key，`DASHSCOPE_API_KEY_2` 作为副 Key。
+- 当前生产口径是“主 Key 套餐优先，副 Key 高峰 / 异常兜底”：低中流量默认走 `DASHSCOPE_API_KEY_1`；出现开流前限流 / 额度 / 鉴权类错误时立即尝试副 Key；短窗口内达到请求数或 token 压力阈值时才临时轮询 120 秒。
 - 第三把 `DASHSCOPE_API_KEY_3` 先留空，后续真实并发上来后再补。
 - 如果两把 Key 来自同一个阿里云主账号，它们只提供故障兜底、轮换和短暂冷却切换，不增加真实 RPM / TPM。
 - 朋友账号 Key 适合作为短期兜底，不建议作为长期生产主力：账单、密钥轮换、数据处理责任和账号权限都不在自己名下，后续迁移成本会变高。
