@@ -960,6 +960,23 @@ func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Requ
 	s.writeJSON(w, http.StatusOK, result)
 }
 
+func (s *Server) handleAdminAppUpdateAndroidEvents(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "owner", "release_ops", "ops_readonly", "auditor")
+	if !ok {
+		return
+	}
+	limit := parseAdminLimit(r.URL.Query().Get("limit"))
+	events, err := s.store.ListAndroidUpdateEvents(r.Context(), limit)
+	if err != nil {
+		s.logger.Error("admin app update events read failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.events", "app_update", "android", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.events", "app_update", "android", "", true, http.StatusOK, map[string]any{"row_count": len(events)})
+	s.writeJSON(w, http.StatusOK, map[string]any{"events": events})
+}
+
 type adminAppUpdateWriteRequest struct {
 	Enabled           bool   `json:"enabled"`
 	LatestVersionCode int    `json:"latest_version_code"`

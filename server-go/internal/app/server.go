@@ -51,6 +51,7 @@ type Server struct {
 	supportMessageLimiter rateLimiter
 	uploadLimiter         rateLimiter
 	internalSecretLimiter rateLimiter
+	adminLoginLimiter     rateLimiter
 	giftCardRedeemLimiter rateLimiter
 }
 
@@ -166,6 +167,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		supportMessageLimiter: newSupportMessageRateLimiter(redisClient),
 		uploadLimiter:         newUploadRateLimiter(redisClient),
 		internalSecretLimiter: newInternalSecretRateLimiter(redisClient),
+		adminLoginLimiter:     newAdminLoginRateLimiter(redisClient),
 		giftCardRedeemLimiter: newGiftCardRedeemRateLimiter(redisClient),
 	}
 	server.registerRoutes()
@@ -205,6 +207,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /admin-api/v1/today-agri/cards", s.handleAdminTodayAgriCards)
 	s.mux.HandleFunc("POST /admin-api/v1/today-agri/generate", s.handleAdminGenerateTodayAgriCard)
 	s.mux.HandleFunc("GET /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroid)
+	s.mux.HandleFunc("GET /admin-api/v1/app-update/android/events", s.handleAdminAppUpdateAndroidEvents)
 	s.mux.HandleFunc("POST /admin-api/v1/app-update/android", s.handleAdminAppUpdateAndroidWrite)
 	s.mux.HandleFunc("GET /admin-api/v1/gift-cards/batches", s.handleAdminGiftCardBatches)
 	s.mux.HandleFunc("POST /admin-api/v1/gift-cards/batches", s.handleAdminCreateGiftCardBatch)

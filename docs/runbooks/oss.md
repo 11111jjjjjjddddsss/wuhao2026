@@ -24,7 +24,7 @@
   - `support/`：帮助与反馈图片 30 天自动删除
   - 未完成分片上传：1 天自动清理
 - `server-go` 已新增 OSS 上传存储后端。2026-05-31 已创建最小权限 RAM 子账号 / 策略、完成上传 / 下载 / 删除冒烟测试，并把生产 ECS 配置为 `UPLOAD_STORAGE_BACKEND=oss`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com` 和 OSS 凭证；2026-06-13 已把该 RAM 策略默认版本更新到 v3，仅放行 Bucket 本体、`uploads/*` 和 `support/*` 所需对象操作，避免帮助与反馈图片切到 `support/` 后生产上传失败。当前 `/healthz` 返回 `upload_storage=oss`，`/upload` 写私有 OSS，且默认按 `user_id + IP` 做 10 分钟 120 次短期限流，防异常客户端循环刷上传成本。App、模型和历史 URL 仍走本后端 `https://api.nongjiqiancha.cn/uploads/<file>.jpg` 或 `https://api.nongjiqiancha.cn/uploads/support/<file>.jpg`，不把 OSS AK/SK 下发 Android。未配置 OSS 的其他环境仍可回退 ECS 本机 `/var/lib/nongjiqiancha/uploads`
-- 2026-06-13 起，帮助与反馈图片仍复用后端 `/upload` 接口，但 Android 会额外传 `purpose=support`；后端写入 OSS `support/` 前缀并返回 `/uploads/support/<file>.jpg`，按 30 天生命周期删除。普通问诊图片不传 purpose，继续写入 `uploads/` 并按 3 天删除。主聊天接口只接受普通 `/uploads/<file>.jpg`，不接受 `/uploads/support/<file>.jpg`，避免客服截图误进主模型图片链
+- 2026-06-13 起，帮助与反馈图片仍复用后端 `/upload` 接口，但 Android 会先按主聊天同一压缩链把图片压成 `<=1MiB` JPEG，再额外传 `purpose=support`；后端写入 OSS `support/` 前缀并返回 `/uploads/support/<file>.jpg`，按 30 天生命周期删除。普通问诊图片不传 purpose，继续写入 `uploads/` 并按 3 天删除。主聊天接口只接受普通 `/uploads/<file>.jpg`，不接受 `/uploads/support/<file>.jpg`，避免客服截图误进主模型图片链
 
 ## 存储包口径
 

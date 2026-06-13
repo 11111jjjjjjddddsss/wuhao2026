@@ -16,8 +16,9 @@
 - 生产部署脚本：[deploy-ecs-admin.ps1](D:/wuhao/scripts/deploy-ecs-admin.ps1)。脚本会构建 `admin/dist`、同步 `admin` A 记录、上传静态包、配置 Nginx、签发 / 复用 Let's Encrypt HTTPS 证书，并验证首页和未登录 API 状态。
 - 生产入口：`https://admin.nongjiqiancha.cn/`。HTTP 80 只用于 ACME challenge 和 301 跳转；HTTPS 下 `/admin-api/` 由 Nginx 反代到当前 active Go slot。
 - 登录后只读烟测：[check-admin-authenticated-smoke.ps1](D:/wuhao/scripts/check-admin-authenticated-smoke.ps1)。该脚本不会把后台密码写入仓库或输出到日志；运行前在当前 PowerShell 临时设置 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`，然后执行 `.\scripts\check-admin-authenticated-smoke.ps1 -RequireOwner`。它会登录后台、访问总览 / 监控 / 洞察 / 用户 / 会员 / 订单 / 礼品卡 / 帮助反馈 / App 日志 / 审计 / 今日农情 / 检查更新 / 注销申请等只读 API，最后退出；这比只看未登录 `/auth/me=401` 更能证明后台登录后核心页面可用。
+- 公网黑盒只读烟测：[check-public-blackbox.ps1](D:/wuhao/scripts/check-public-blackbox.ps1)。该脚本不登录、不带后台密码、不读密钥，从公网域名请求 API healthz、官网、www、后台首页、后台未登录 `/auth/me=401` 和 HTTP->HTTPS 跳转，验证外部用户视角的入口可达性；它不能替代登录后 owner smoke，也不是自动告警。
 - 管理后台 API：`/admin-api/v1/*`，由 `server-go` 提供，不单独起第二套后端。
-- 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。
+- 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。登录入口有两层防刷：外层保留 IP 级内部接口保护，内层按“用户名 hash + IP hash”默认 `10/10min` 限制失败 / 尝试请求，可用 `ADMIN_LOGIN_RATE_LIMIT_*` 调整；限流 key 不保存明文用户名或 IP。
 - 后台账号安全：`POST /admin-api/v1/auth/change-password` 支持登录后自助修改当前后台密码；后端验证当前密码、限制新密码最短 8 字符、改密后清 `must_change_password` 并吊销同账号其它后台会话。若账号被标记为必须改密，除 `/auth/me`、`/auth/logout` 和 `/auth/change-password` 外，其它后台 API 会返回 `password_change_required`。
 - 后台账号：服务启动时可用 `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` 初始化；密码会以 PBKDF2-SHA256 hash 存入 `admin_users`，明文不得写入仓库、文档或前端。
 - 后台角色：首版支持 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`；服务端校验权限，不能靠前端隐藏按钮。前端侧栏和监控快捷入口会按同一角色矩阵隐藏无权页面，减少误点和 403，但这只是体验收敛，不是安全边界。
@@ -43,7 +44,7 @@
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，可按账号ID、精确事件名、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号、等级和时间范围筛选；精确 `event` 优先于前缀筛选，不展示聊天正文、图片 URL、手机号、token、APK URL 或 SHA-256 原文。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
 - 今日农情：`GET /admin-api/v1/today-agri/cards`、`POST /admin-api/v1/today-agri/generate`。
-- 检查更新：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`；后台可直接维护 Android 版本号、HTTPS APK、SHA-256、文件大小、强制更新和停更状态，对外 `/api/app/update` 优先读取数据库表 `app_release_configs`，无记录时才回退环境变量。
+- 检查更新：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`、`GET /admin-api/v1/app-update/android/events`；后台可直接维护 Android 版本号、HTTPS APK、SHA-256、文件大小、强制更新和停更状态，每次保存会追加 `app_release_events` 发布历史，对外 `/api/app/update` 优先读取数据库表 `app_release_configs`，无记录时才回退环境变量。
 - 账号安全：`POST /admin-api/v1/auth/change-password`；所有后台角色都可进入“账号安全”页修改自己的密码，强制改密账号登录后会先停留在该页。
 - 产品洞察：`GET /admin-api/v1/insights`，首版只读展示今日 / 24h / 7d / 30d 用户增长、登录 session、问诊、图片问诊、App 异常、登录排障、反馈、礼品卡和今日农情失败趋势；同时聚合反馈主题固定关键词命中、App 事件分类、Top App 事件和礼品卡失败原因。该接口只返回计数、比例、事件名和固定分类，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码。
 
@@ -100,7 +101,7 @@
 - 帮助与反馈：会话列表、未回复队列、详情、后台回复、处理状态、关闭 / 重开和搜索已接入；后续补正式坐席分配、标签、站外通知、客服绩效和消息保存 / 删除规则。
 - App 自动日志：按时间、用户、事件名、level、App 版本、系统版本、设备筛选；接 `GET /internal/app/logs`，后续再并入 SLS 摘要。
 - 今日农情：当天卡片状态、来源、生成时间、失败原因、手动补跑、停用当天卡片，所有动作审计。
-- 检查更新：当前发布版本、APK URL、SHA-256、文件大小、是否启用、停更开关、发布记录；后续落 `app_releases` 表，不长期手改环境变量。
+- 检查更新：当前发布版本、APK URL、SHA-256、文件大小、是否启用、停更开关、发布历史；不长期手改环境变量，APK 上传和完整回滚入口后续再补。
 - 后台操作审计：登录、查询、回复、改配置、补权益、礼品卡操作、发版、今日农情补跑等操作记录，支持按 actor / action / target_user / 时间筛选。
 - 产品洞察：首版 `GET /admin-api/v1/insights` 已展示脱敏聚合趋势、反馈主题命中、App 事件分类、Top App 事件和礼品卡失败原因，不直接铺完整聊天正文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码。
 - 用户聊天 / 反馈洞察：后续再由后台任务定期扫描最近 N 天脱敏归档和反馈，抽取问题标签、影响人数、严重度、代表短摘和建议改动，写入产品洞察日报 / 报表；Codex 后续优先读洞察报表，不直接长期读取生产库完整聊天全文。
@@ -118,12 +119,12 @@
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
 | 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |
 | 今日农情 | 已接入状态查看和补跑 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards`、`/admin-api/v1/today-agri/generate`、`nongji-daily-agri-failed` AlertHub 告警 | 停用 API、首封告警邮件送达确认和发布记录 |
-| 检查更新 | 已接入发布 / 停更配置和排障日志 | `app_release_configs`、`/api/app/update`、`/admin-api/v1/app-update/android`、`app_update.*` 自动日志 | 发布历史、APK 上传、回滚记录和更细二次确认 |
+| 检查更新 | 已接入发布 / 停更配置、发布历史和排障日志 | `app_release_configs`、`app_release_events`、`/api/app/update`、`/admin-api/v1/app-update/android*`、`app_update.*` 自动日志 | APK 上传、完整回滚入口和更细二次确认 |
 | 订单 / 订购 | 已接只读核查，不能当正式支付功能 | 当前 `orders` 仅开发期记录，`/admin-api/v1/orders` 只读查询 | 正式订单、支付回调、退款、对账和幂等表 |
 | 礼品卡 | 已接入首版 | `gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`/api/gift-cards/redeem`、`/admin-api/v1/gift-cards/*` | 批量发放、发放对象管理、更细风控；完整卡码批量导出暂不开放 |
 | 产品洞察 | 已接入首版脱敏聚合 | `/admin-api/v1/insights`、`support_messages`、`client_app_logs`、`session_round_archive`、`gift_card_redemption_attempts` | 洞察日报、人工标签、代表短摘、处理状态和独立报表表 |
 
-注意：当前迁移仍按 SQL 文件幂等执行，没有独立 `schema_migrations` 版本表；后续新增后台表必须继续保持幂等，避免重复 `ALTER` 造成启动风险。
+注意：当前迁移仍按 SQL 文件幂等执行，没有独立 `schema_migrations` 版本表；后续新增后台表必须继续保持幂等，避免重复 `ALTER` 造成启动风险。2026-06-13 已把早期 `004/005` 里 `expire_at` 改 nullable 的 `ALTER` 包成 `information_schema` 条件执行，降低每次启动重跑旧 SQL 的风险，但这不等于已经有正式迁移版本表。
 
 ### 第一版不要做的事
 

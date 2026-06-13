@@ -1,6 +1,6 @@
 # App 更新 Runbook
 
-最后更新：2026-06-12
+最后更新：2026-06-13
 
 当前 Android “检查更新”走自有服务器 APK 分发，不走应用商店，也不做静默安装。
 
@@ -38,7 +38,7 @@ Codex 默认按下面流程处理：
 2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
 3. Codex 负责记录 APK 文件大小、SHA-256、包名、`versionCode`、签名指纹和更新说明
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接
-5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256、文件大小和更新说明；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小，再用旧版 App 点“检查更新”验证
+5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256、文件大小和更新说明；后台每次保存 / 强更 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小，再用旧版 App 点“检查更新”验证
 6. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
 
 这件事不需要你手写接口，也不需要你自己拼 JSON。
@@ -54,8 +54,8 @@ Codex 默认按下面流程处理：
 ## 回滚时你只做这几步
 
 1. 如果新 APK 有问题，先告诉 Codex 或运维“停掉这个更新”
-2. 把后端运行环境里的 `APP_ANDROID_APK_URL` 清空，或者把 `APP_ANDROID_LATEST_VERSION_CODE` 改回稳定版本号
-3. 后端会返回“无更新”，旧版 App 就不会继续提示下载那个坏包
+2. 优先在管理后台“检查更新”页取消“对外启用更新”并保存；这会写入发布历史，旧版 App 后续检查更新会返回“无更新”
+3. 如果后台不可用，再把后端运行环境里的 `APP_ANDROID_APK_URL` 清空，或者把 `APP_ANDROID_LATEST_VERSION_CODE` 改回稳定版本号
 
 已经点进系统安装页并完成安装的用户，需要后续再发一个更高 `versionCode` 的修复包来覆盖。
 
@@ -64,7 +64,7 @@ Codex 默认按下面流程处理：
 接口：
 
 - 用户侧：`GET /api/app/update`
-- 后台侧：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`
+- 后台侧：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`、`GET /admin-api/v1/app-update/android/events`
 
 当前 Android 检查更新优先读取数据库表 `app_release_configs` 里的 `android` 记录；如果数据库里还没有记录，才回退读后端环境变量。
 
@@ -79,7 +79,7 @@ Codex 默认按下面流程处理：
 - `APP_ANDROID_FILE_SIZE_BYTES`：必填，APK 字节大小，用于更新卡片展示和下载后校验；缺失或小于等于 0 时，后端不会对外返回可用更新
 - `APP_ANDROID_UPDATE_ENABLED`：可选，兼容环境变量开关；未配置时若版本号和 APK URL 都存在，默认视为启用，但仍必须同时具备 SHA-256 和文件大小才会下发
 
-管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明、是否强制更新、是否对外启用。后台保存后立即写入 `app_release_configs`，`/api/app/update` 会优先按这份配置对外返回；取消“对外启用更新”并保存，就是停更。
+管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明、是否强制更新、是否对外启用。后台保存后会在同一事务里更新 `app_release_configs` 并追加 `app_release_events` 发布历史，`/api/app/update` 会优先按当前配置对外返回；取消“对外启用更新”并保存，就是停更，也会留下停更记录。发布历史只记录版本、物料状态、操作人、时间和更新说明，不替代 APK 文件上传、真机覆盖安装验收或正式回滚演练。
 
 管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL 这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts`。
 
@@ -103,7 +103,7 @@ Codex 默认按下面流程处理：
 1. 构建 release APK，并确认 `app/build.gradle.kts` 里的 `versionCode` 比线上旧包更大、`applicationId` 仍是 `com.nongjiqiancha`，且 release 构建使用 https `UPLOAD_BASE_URL`
 2. 记录 APK 文件大小和 SHA-256
 3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK
-4. 在管理后台“检查更新”页填写版本号、HTTPS APK、SHA-256、文件大小和更新说明，勾上“对外启用更新”后保存；如暂时不走后台，也可继续改 `APP_ANDROID_*` 环境变量
+4. 在管理后台“检查更新”页填写版本号、HTTPS APK、SHA-256、文件大小和更新说明，勾上“对外启用更新”后保存；保存成功后检查“发布历史”出现本次记录；如暂时不走后台，也可继续改 `APP_ANDROID_*` 环境变量，但环境变量兜底不会自动写发布历史
 5. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
 6. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开
 

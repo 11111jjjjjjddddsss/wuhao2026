@@ -42,6 +42,24 @@ type androidUpdateConfigRecord struct {
 	UpdatedAt int64
 }
 
+type AdminAppUpdateEvent struct {
+	ID                int64  `json:"id"`
+	Platform          string `json:"platform"`
+	Action            string `json:"action"`
+	Enabled           bool   `json:"enabled"`
+	LatestVersionCode int    `json:"latest_version_code"`
+	LatestVersionName string `json:"latest_version_name,omitempty"`
+	APKURL            string `json:"apk_url,omitempty"`
+	APKChecksumSHA256 string `json:"apk_sha256,omitempty"`
+	ReleaseNotes      string `json:"release_notes,omitempty"`
+	ForceUpdate       bool   `json:"force_update"`
+	FileSizeBytes     int64  `json:"file_size_bytes,omitempty"`
+	Actor             string `json:"actor,omitempty"`
+	CreatedAt         int64  `json:"created_at"`
+	ConfigValid       bool   `json:"config_valid"`
+	ArtifactsComplete bool   `json:"artifacts_complete"`
+}
+
 func (s *Server) handleAppUpdate(w http.ResponseWriter, r *http.Request) {
 	platform := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("platform")))
 	if platform == "" {
@@ -241,7 +259,17 @@ func (s *Store) ReadAndroidUpdateConfigRecord(ctx context.Context) (androidUpdat
 }
 
 func (s *Store) UpsertAndroidUpdateConfigRecord(ctx context.Context, cfg androidUpdateConfig, actor string, nowMs int64) error {
-	_, err := s.db.ExecContext(
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	_, err = tx.ExecContext(
 		ctx,
 		`INSERT INTO app_release_configs(
 			platform, enabled, latest_version_code, latest_version_name, apk_url, apk_sha256, release_notes, force_update, file_size_bytes, updated_by, created_at, updated_at
@@ -270,5 +298,110 @@ func (s *Store) UpsertAndroidUpdateConfigRecord(ctx context.Context, cfg android
 		nowMs,
 		nowMs,
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO app_release_events(
+			platform, action, enabled, latest_version_code, latest_version_name, apk_url, apk_sha256, release_notes, force_update, file_size_bytes, actor, created_at
+		) VALUES (
+			'android', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+		)`,
+		androidUpdateEventAction(cfg),
+		cfg.Enabled,
+		cfg.LatestVersionCode,
+		cfg.LatestVersionName,
+		cfg.APKURL,
+		cfg.APKChecksumSHA256,
+		cfg.ReleaseNotes,
+		cfg.ForceUpdate,
+		cfg.FileSizeBytes,
+		strings.TrimSpace(actor),
+		nowMs,
+	)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
+func androidUpdateEventAction(cfg androidUpdateConfig) string {
+	if cfg.Enabled {
+		if cfg.ForceUpdate {
+			return "force_publish"
+		}
+		return "publish"
+	}
+	return "disable"
+}
+
+func (s *Store) ListAndroidUpdateEvents(ctx context.Context, limit int) ([]AdminAppUpdateEvent, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, platform, action, enabled, latest_version_code, latest_version_name, apk_url, apk_sha256, release_notes, force_update, file_size_bytes, actor, created_at
+		   FROM app_release_events
+		  WHERE platform = 'android'
+		  ORDER BY created_at DESC, id DESC
+		  LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	events := make([]AdminAppUpdateEvent, 0, limit)
+	for rows.Next() {
+		var event AdminAppUpdateEvent
+		var enabled bool
+		if err := rows.Scan(
+			&event.ID,
+			&event.Platform,
+			&event.Action,
+			&enabled,
+			&event.LatestVersionCode,
+			&event.LatestVersionName,
+			&event.APKURL,
+			&event.APKChecksumSHA256,
+			&event.ReleaseNotes,
+			&event.ForceUpdate,
+			&event.FileSizeBytes,
+			&event.Actor,
+			&event.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		event.Enabled = enabled
+		cfg := androidUpdateConfig{
+			Enabled:           event.Enabled,
+			LatestVersionCode: event.LatestVersionCode,
+			LatestVersionName: strings.TrimSpace(event.LatestVersionName),
+			APKURL:            strings.TrimSpace(event.APKURL),
+			APKChecksumSHA256: normalizeSHA256Hex(event.APKChecksumSHA256),
+			ReleaseNotes:      strings.TrimSpace(event.ReleaseNotes),
+			ForceUpdate:       event.ForceUpdate,
+			FileSizeBytes:     event.FileSizeBytes,
+		}
+		event.LatestVersionName = cfg.LatestVersionName
+		event.APKURL = cfg.APKURL
+		event.APKChecksumSHA256 = cfg.APKChecksumSHA256
+		event.ReleaseNotes = cfg.ReleaseNotes
+		event.ConfigValid = androidUpdateConfigValid(cfg)
+		event.ArtifactsComplete = androidUpdateDownloadArtifactsComplete(cfg)
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
 }

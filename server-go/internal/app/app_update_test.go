@@ -103,3 +103,22 @@ func TestNormalizeSHA256Hex(t *testing.T) {
 		t.Fatalf("expected invalid sha to normalize empty")
 	}
 }
+
+func TestAndroidUpdateEventAction(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  androidUpdateConfig
+		want string
+	}{
+		{name: "disabled", cfg: androidUpdateConfig{}, want: "disable"},
+		{name: "publish", cfg: androidUpdateConfig{Enabled: true}, want: "publish"},
+		{name: "force publish", cfg: androidUpdateConfig{Enabled: true, ForceUpdate: true}, want: "force_publish"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := androidUpdateEventAction(tt.cfg); got != tt.want {
+				t.Fatalf("androidUpdateEventAction = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

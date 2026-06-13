@@ -151,6 +151,17 @@ func (s *Server) handleAdminLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	username := normalizeAdminUsername(body.Username)
+	if s.adminLoginLimiter != nil {
+		if allowed, retryAfterSec := s.adminLoginLimiter.Consume(adminLoginRateLimitKey(username, GetClientIP(r)), time.Now()); !allowed {
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfterSec))
+			s.recordAdminAuditLog(r, "anonymous", "admin.login", "admin_user", username, "", false, http.StatusTooManyRequests, map[string]any{"error_code": "rate_limited"})
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":           "rate_limited",
+				"retry_after_sec": retryAfterSec,
+			})
+			return
+		}
+	}
 	user, passwordHash, err := s.store.GetAdminUserForLogin(r.Context(), username)
 	if err != nil {
 		if err != sql.ErrNoRows {

@@ -14,6 +14,9 @@ const (
 	defaultInternalSecretRateLimitWindow        = 10 * time.Minute
 	defaultInternalSecretRateLimitMaxHits       = 120
 	defaultInternalSecretRateLimitPruneInterval = 10 * time.Minute
+	defaultAdminLoginRateLimitWindow            = 10 * time.Minute
+	defaultAdminLoginRateLimitMaxHits           = 10
+	defaultAdminLoginRateLimitPruneInterval     = 10 * time.Minute
 )
 
 func newInternalSecretRateLimiter(redisClient *redis.Client) rateLimiter {
@@ -30,6 +33,23 @@ func newInternalSecretRateLimiter(redisClient *redis.Client) rateLimiter {
 		defaultInternalSecretRateLimitWindow,
 		defaultInternalSecretRateLimitMaxHits,
 		defaultInternalSecretRateLimitPruneInterval,
+	))
+}
+
+func newAdminLoginRateLimiter(redisClient *redis.Client) rateLimiter {
+	config := rateLimitConfig{
+		Window:        envDurationWithDefault("ADMIN_LOGIN_RATE_LIMIT_WINDOW_SECONDS", defaultAdminLoginRateLimitWindow),
+		MaxHits:       envIntWithDefault("ADMIN_LOGIN_RATE_LIMIT_MAX_HITS", defaultAdminLoginRateLimitMaxHits),
+		PruneInterval: envDurationWithDefault("ADMIN_LOGIN_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", defaultAdminLoginRateLimitPruneInterval),
+	}
+	if redisClient != nil {
+		return newRedisRateLimiter(redisClient, config, redisRateLimitPrefix, defaultAdminLoginRateLimitWindow, defaultAdminLoginRateLimitMaxHits)
+	}
+	return newChatRateLimiterWithConfig(normalizeRateLimitConfig(
+		config,
+		defaultAdminLoginRateLimitWindow,
+		defaultAdminLoginRateLimitMaxHits,
+		defaultAdminLoginRateLimitPruneInterval,
 	))
 }
 
@@ -56,4 +76,13 @@ func internalSecretRateLimitKey(scope string, ip string) string {
 		scope = "internal"
 	}
 	return "internal_secret:" + scope + ":" + rateLimitHash(ip, secret)
+}
+
+func adminLoginRateLimitKey(username string, ip string) string {
+	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
+	username = strings.TrimSpace(strings.ToLower(username))
+	if username == "" {
+		username = "anonymous"
+	}
+	return "admin_login:" + rateLimitHash(username, secret) + ":" + rateLimitHash(ip, secret)
 }

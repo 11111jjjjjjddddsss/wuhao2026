@@ -633,6 +633,24 @@ export interface AdminAppUpdateConfig {
   has_file_size: boolean;
 }
 
+export interface AdminAppUpdateEvent {
+  id: number;
+  platform: string;
+  action: string;
+  enabled: boolean;
+  latest_version_code: number;
+  latest_version_name?: string;
+  apk_url?: string;
+  apk_sha256?: string;
+  release_notes?: string;
+  force_update: boolean;
+  file_size_bytes?: number;
+  actor?: string;
+  created_at: number;
+  config_valid: boolean;
+  artifacts_complete: boolean;
+}
+
 export interface ApiListResponse<T> {
   [key: string]: unknown;
   filter?: JsonObject;
@@ -644,5 +662,6 @@ export interface ApiListResponse<T> {
   cards?: T[];
   batches?: T[];
   attempts?: T[];
+  events?: T[];
   summary?: ClientAppLogSummaryEntry[];
 }

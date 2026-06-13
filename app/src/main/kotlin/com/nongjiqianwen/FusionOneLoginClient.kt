@@ -767,8 +767,8 @@ object FusionOneLoginClient {
                 "no_network" -> "当前网络不可用，请联网后重试，或使用验证码登录"
                 "no_sim" -> "未检测到可用 SIM 卡，请插卡并打开移动数据，或使用验证码登录"
                 "sim_not_ready" -> "SIM 卡暂不可用，请确认默认移动数据卡正常，或使用验证码登录"
-                "vpn_active" -> "检测到代理或 VPN，一键取号可能失败，已切换到验证码登录；验证码登录可继续使用"
-                "proxy_active" -> "检测到系统代理，一键取号可能失败，已切换到验证码登录；验证码登录可继续使用"
+                "vpn_active" -> "检测到代理或 VPN，一键取号可能失败；失败后可使用验证码登录"
+                "proxy_active" -> "检测到系统代理，一键取号可能失败；失败后可使用验证码登录"
                 "no_cellular_data" -> "一键登录需要可用移动数据，已切换到验证码登录；验证码登录可继续使用"
                 else -> ONE_LOGIN_FALLBACK_MESSAGE
             }

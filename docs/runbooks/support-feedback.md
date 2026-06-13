@@ -29,7 +29,7 @@
   - 请求体：`{"body":"...","images":["https://.../uploads/support/xxx.jpg"]}` 或历史普通上传图 URL
   - 当前限制正文最多 2000 字
   - 支持纯文字、纯图片或图文混合；单次最多 4 张图片
-  - Android 先复用主聊天图片链压缩并上传到 `/upload`，但会额外传 `purpose=support`；后端把图片写入 OSS `support/` 并返回 `/uploads/support/<file>.jpg`，再把返回 URL 写入帮助与反馈消息
+  - Android 先复用主聊天图片链压缩并上传到 `/upload`，上传前会把图片压成 JPEG 且不超过 1MB，并额外传 `purpose=support`；后端把图片写入 OSS `support/` 并返回 `/uploads/support/<file>.jpg`，再把返回 URL 写入帮助与反馈消息
   - 默认同一 `user_id + IP` 10 分钟最多 20 条；配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。Redis key 只保存 user_id hash 和 IP hash，不保存正文、图片内容、手机号或 token
   - 用户首次提交反馈，或距上一条通用反馈已超过 24 小时时，后端会额外写入一条 `sender_type=system` 的固定自动回复，响应体会带 `auto_reply`；Android 新版会立即展示并标记已读。该自动回复不调用模型、不承诺 SLA、不替代后台人工回复。当前逻辑保持简单：短问候请用户说明问题并提示客服会在本页跟进；纯图片或“见图 / 看图”提示已收到图片并请补充具体问题；其他内容统一走通用兜底，说明本页主要处理 App 使用反馈、后续回复会在本页显示，农业技术咨询可回主聊天页继续问
   - Android 发送反馈时会在输入框上方显示轻量状态：带图先显示“正在上传图片...”，上传完成后显示“正在提交反馈...”；纯文字直接显示“正在提交反馈...”

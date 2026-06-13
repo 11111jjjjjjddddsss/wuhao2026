@@ -8,15 +8,15 @@
 
 本 runbook 只记录规格、用量、阈值和巡检入口；不记录 AccessKey、数据库密码、模型 Key、Redis 密码、服务器环境变量内容或公安备案数据码。
 
-## 2026-06-12 巡检结论
+## 2026-06-13 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。剩余更该补的是独立公网黑盒 healthz 监控、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-13 已新增只读公网黑盒脚本，可从公网视角检查 API、官网、www、后台入口和 HTTP->HTTPS 跳转；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
-- ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.8 GiB，系统盘 79 GiB 已用约 9.9 GiB（14%），近 7 天未见 OOM
+- ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 12 GiB（15%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
 - ECS 系统盘：80 GiB ESSD Entry，已绑定普通低频自动快照策略 `sp-2ze9ufwsu2i5hxm2wmrk` / `nongjiqiancha-prod-basic-7d`：每周二、周六北京时间 04:00 创建，保留 7 天，不启用跨地域复制或归档。ECS 是包年包月 `PrePaid`，删除保护接口不适用，不能把 `deletion_protection=false` 当成未买保护
-- RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 2.98 GiB（约 5.96%）；近 30 分钟 QPS/TPS 峰值约 9.25、IOPS 约 5.4、内存 / CPU 指标约 11.6%、连接 0；备份保留 7 天，日志备份已启用
-- Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.08 MiB / 256 MiB（约 1.99%），CPU 峰值约 0.16%，连接使用约 0.05%；释放保护已开启
+- RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 3.08 GiB（约 6.17%）；近 30 分钟 QPS/TPS 峰值约 14.15、IOPS 约 7.32、内存 / CPU 指标约 11.66%、连接约 1；备份保留 7 天，日志备份已启用
+- Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.20 MiB / 256 MiB（约 2.03%），CPU 峰值约 0.13%，连接使用约 0.05%；释放保护已开启
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 0、占用 0 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。该组用于资源不足提前邮件提醒，不走短信 / 电话
@@ -29,7 +29,20 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
 ```
 
-当前脚本汇总状态为 `ready`。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。
+当前脚本汇总状态为 `ready`。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。2026-06-13 严格巡检输出 `warnings=0 / errors=0 / status=ready`。
+
+公网黑盒只读巡检脚本会从当前运行机器直接请求公网域名，不通过 ECS 本机 `--resolve`，用于确认外部用户实际能访问 API、官网、www 和后台入口，并确认后台未登录仍是 401、HTTP 会跳 HTTPS：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-public-blackbox.ps1
+```
+
+当前脚本会检查：
+
+- `https://api.nongjiqiancha.cn/healthz` 返回 200，且包含 `auth_strict=true`、`bailian=ok`、DYPNS / 短信 / Redis / OSS 等关键生产标记。
+- `https://nongjiqiancha.cn/`、`https://www.nongjiqiancha.cn/`、`https://admin.nongjiqiancha.cn/` 返回 200。
+- `https://admin.nongjiqiancha.cn/admin-api/v1/auth/me` 未登录返回 401。
+- `http://api.nongjiqiancha.cn/healthz`、根域名、www 和后台 HTTP 入口返回 301 / 302 / 307 / 308 到对应 HTTPS 地址。
 
 如果把 SLS 外部通知、仪表盘、查询语句、严重级别、触发条件和重复提醒漂移都作为上线硬门槛，可用严格模式；当前生产应通过，若失败说明告警、行动策略、仪表盘或规则配置发生漂移：
 
@@ -79,6 +92,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-r
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
+```
+
+公网黑盒巡检：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-public-blackbox.ps1
 ```
 
 ECS 规格：
@@ -153,7 +172,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 ## 后续动作
 
 - 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；ECS 系统盘已开启普通低频自动快照；SLS 应用日志已绑定邮件行动策略和最小仪表盘；继续补 API healthz / Go 服务 inactive 这类应用可用性告警
-- 当前还没有独立公网黑盒 healthz 可用性监控；`check-ecs-readiness.ps1` 能人工 / CI 巡检，后续仍应补自动化探测和通知
+- 当前已有独立公网黑盒只读脚本；`check-ecs-readiness.ps1` 能人工 / CI 巡检服务器内部和反代状态，`check-public-blackbox.ps1` 能从公网视角确认 API / 官网 / 后台可达。后续仍应把黑盒探测接成自动定时通知，而不是只靠人工跑脚本
 - 登录链路监控至少覆盖 DYPNS 一键登录次数 / 成功率 / 失败率 / 账单、短信认证次数 / 账单、后端 `/api/auth/fusion/*` 和 `/api/auth/sms/*` 入口错误率
 - 若继续使用单 ECS 双端口发布，部署 / 回滚前必须清理旧 `nongji-drain-stop-*` transient systemd 任务，避免多个排空任务叠加
 - 管理后台上线后，容量快照、到期时间、5xx 和 App 自动日志应做成只读运维面板

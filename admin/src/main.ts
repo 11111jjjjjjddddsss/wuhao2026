@@ -3,6 +3,7 @@ import { ApiError, apiFetch, getStoredAuth, setStoredAuth, toQuery } from "./api
 import type {
   AccountDeletionRequest,
   AdminAppUpdateConfig,
+  AdminAppUpdateEvent,
   AdminAuditLogEntry,
   AdminDailyAgriEntry,
   AdminEntitlementSummary,
@@ -807,9 +808,12 @@ function isPreviewableTodayAgriCard(row: AdminDailyAgriEntry): boolean {
 }
 
 async function appUpdatePage(): Promise<string> {
-  const config = await apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android");
+  const [config, eventsResponse] = await Promise.all([
+    apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android"),
+    apiFetch<{ events: AdminAppUpdateEvent[] }>("/admin-api/v1/app-update/android/events?limit=20"),
+  ]);
   return `
-    ${pageHead("检查更新", "用户当前通过“检查更新”拉取新包；系统自动推送未接，本页已支持发布、强更和停更。", "app-update")}
+    ${pageHead("检查更新", "没有系统通知推送；App 启动会静默检查，用户也可手动检查。本页支持发布、强更和停更。", "app-update")}
     <div class="grid two">
       <section class="card">
         <div class="card-head">
@@ -825,6 +829,13 @@ async function appUpdatePage(): Promise<string> {
         </div>
       </section>
     </div>
+    <section class="card">
+      <div class="card-head">
+        <div class="card-title">发布历史</div>
+        <span class="small muted">${eventsResponse.events.length} 条</span>
+      </div>
+      <div class="table-wrap">${appUpdateEventsTable(eventsResponse.events)}</div>
+    </section>
   `;
 }
 
@@ -1348,8 +1359,8 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     return;
   }
   const confirmText = enabled
-    ? `确认对外${forceUpdate ? "强制" : "启用"}检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\n\n保存后，旧版 App 检查更新会拿到这份配置。`
-    : "确认保存为停更状态？停更后，用户点“检查更新”将不会拿到新包。";
+    ? `确认对外${forceUpdate ? "强制" : "启用"}检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\n\n保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。${forceUpdate ? "\n\n强制更新会阻断继续使用，请确认已完成真机覆盖安装验证。" : ""}`
+    : "确认保存为停更状态？停更后，App 启动静默检查和用户手动检查都不会拿到新包。";
   if (!window.confirm(confirmText)) {
     return;
   }
@@ -2519,8 +2530,8 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
 function appUpdateEditForm(config: AdminAppUpdateConfig): string {
   return `
     <form id="app-update-form" class="stack">
-      ${notice("怎么发新包", "填 versionCode、HTTPS APK、SHA-256 和文件大小；勾上“对外启用更新”后保存，旧版 App 点“检查更新”就会拿到新包。取消勾选并保存，就是停更。", "info")}
-      ${notice("自动推送还没接", "当前没有通知权限和推送服务，所以主链仍是用户手动点“检查更新”。", "warn")}
+      ${notice("怎么发新包", "填 versionCode、HTTPS APK、SHA-256 和文件大小；勾上“对外启用更新”后保存，旧版 App 启动后会静默检查，用户也可手动检查。取消勾选并保存，就是停更。", "info")}
+      ${notice("不是系统推送", "当前没有通知权限和推送服务；普通更新每个版本最多自动提醒一次，强制更新会阻断继续使用，保存前请确认物料和版本号。", "warn")}
       <label class="field">
         <span>versionCode</span>
         <input class="input" name="latest_version_code" type="number" min="0" step="1" value="${escapeAttr(String(config.latest_version_code || ""))}" placeholder="例如 10023" />
@@ -2564,6 +2575,67 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
       </div>
     </form>
   `;
+}
+
+function appUpdateEventsTable(rows: AdminAppUpdateEvent[]): string {
+  if (!rows.length) return emptyState("没有发布历史", "后台还没有保存过 Android 更新配置。");
+  return `
+    <table>
+      <thead>
+        <tr>
+          <th>时间</th><th>动作</th><th>版本</th><th>状态</th><th>物料</th><th>操作人</th><th>说明</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows
+          .map((row) => {
+            const version = `${row.latest_version_name || "未命名"} (${row.latest_version_code || 0})`;
+            const artifactText = [
+              row.apk_url ? "APK" : "缺APK",
+              row.apk_sha256 ? "SHA" : "缺SHA",
+              row.file_size_bytes ? formatBytes(row.file_size_bytes) : "缺大小",
+            ].join(" / ");
+            return `
+              <tr>
+                <td>${formatTime(row.created_at)}</td>
+                <td>${statusPill(appUpdateActionLabel(row.action), appUpdateActionLevel(row.action))}</td>
+                <td>${escapeHTML(version)}</td>
+                <td>${row.enabled ? statusPill("启用", row.force_update ? "warn" : "ok") : statusPill("停更", "warn")}${row.force_update ? " " + statusPill("强更", "warn") : ""}</td>
+                <td>${statusPill(row.config_valid ? "配置合法" : "配置异常", row.config_valid ? "ok" : "warn")} ${statusPill(row.artifacts_complete ? "物料已齐" : "物料未齐", row.artifacts_complete ? "ok" : "warn")}<div class="small muted">${escapeHTML(artifactText)}</div></td>
+                <td>${escapeHTML(row.actor || "未记录")}</td>
+                <td class="wrap">${escapeHTML(row.release_notes || "")}</td>
+              </tr>
+            `;
+          })
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function appUpdateActionLabel(action: string): string {
+  switch (action) {
+    case "force_publish":
+      return "强更发布";
+    case "publish":
+      return "发布";
+    case "disable":
+      return "停更";
+    default:
+      return action || "未知";
+  }
+}
+
+function appUpdateActionLevel(action: string): "ok" | "warn" | "bad" | "info" {
+  switch (action) {
+    case "force_publish":
+    case "disable":
+      return "warn";
+    case "publish":
+      return "ok";
+    default:
+      return "info";
+  }
 }
 
 async function userScopedPage(options: {

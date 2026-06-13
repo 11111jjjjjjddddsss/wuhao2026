@@ -2509,7 +2509,9 @@ private fun HamburgerSupportFeedbackPage(
             for (image in images) {
                 val bytes = context.readImageBytes(Uri.parse(image.uri))
                     ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                uploadBytes.add(bytes)
+                val compressed = ImageUploader.compressImage(bytes)
+                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                uploadBytes.add(compressed.bytes)
             }
             val urls = ImageUploader.uploadImages(uploadBytes, purpose = ImageUploader.UploadPurpose.Support)
             if (urls == null) null to "图片上传失败，请稍后再试" else urls to null
