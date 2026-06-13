@@ -5,7 +5,7 @@
 
 ## 2026-06-13
 
-- 继续按“长期单对话别卡、但别让用户以为历史丢了”的口径收口主界面：`/api/session/snapshot` 的 `round_total` 已接到 Android，主聊天仍只渲染最近 30 轮保护手机性能；当后端总轮数超过当前 UI 展示轮数时，聊天列表顶部会提示更早轮次已纳入长期记忆和后端归档，清空历史后同步清掉提示。输入框对超长粘贴会本地截到 6000 字并提示，后端仍保留同样上限兜底。记忆文档提示词的写作目标从旧 900 / 1200 字口径上调为一般约 1000-1400 个中文字符，复杂连续场景可更长，但仍是提示词建议而不是后端硬截断，内容少时不强行扩写。Android Manifest 和 parity 脚本同步删除当前融合认证 AAR 中不存在的 `PrivacyActivity` 校验，保留实际存在的 `LoginAuthActivity` / `PrivacyDialogActivity` / 融合认证 Activity 护栏，避免 lint 报假缺类。
+- 继续按“长期单对话别卡、但别让用户以为历史丢了”的口径收口主界面：`/api/session/snapshot` 的 `round_total` 已接到 Android，主聊天仍只渲染最近 30 轮保护手机性能；当后端总轮数超过当前 UI 展示轮数时，聊天列表顶部会用普通用户口径提示“更早若干轮已保留，后续对话会尽量接上”，不暴露长期记忆、后端归档等内部机制，清空历史后同步清掉提示。输入框对超长粘贴会本地截到 6000 字并提示“已保留前6000字，超出部分未保留”，后端仍保留同样上限兜底。记忆文档提示词的写作目标从旧 900 / 1200 字口径上调为一般约 1000-1400 个中文字符，复杂连续场景可更长，但仍是提示词建议而不是后端硬截断，内容少时不强行扩写。Android Manifest 和 parity 脚本同步删除当前融合认证 AAR 中不存在的 `PrivacyActivity` 校验，保留实际存在的 `LoginAuthActivity` / `PrivacyDialogActivity` / 融合认证 Activity 护栏，避免 lint 报假缺类。
 
 - 本轮后端提示词已重新部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot 健康检查、Nginx 切换、API 与后台 `/admin-api/` upstream 端口校验均通过；当前 active upstream 为 `3001`，后台 upstream 同为 `3001`，HTTPS healthz 200，未登录后台鉴权 401，且 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss`。部署后 `check-ecs-readiness.ps1`、`check-backend-data-boundaries.ps1`、`check-resource-capacity.ps1 -Strict` 均通过；当前仍没有正式用户、会员、订单或礼品卡资产，账号归属异常为 0。
 

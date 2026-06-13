@@ -10,7 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.geometry.Rect
 
-internal const val INPUT_TOO_LONG_HINT_TEXT = "已超过6000字，暂时不能发送"
+internal const val INPUT_TOO_LONG_HINT_TEXT = "已保留前6000字，超出部分未保留"
 
 internal data class ChatComposerRuntimeState(
     val inputLimitHintVisible: MutableState<Boolean>,

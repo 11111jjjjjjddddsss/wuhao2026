@@ -334,7 +334,7 @@ private fun ChatHistoryWindowNotice(
             border = BorderStroke(1.dp, Color(0xFFDDE6DD))
         ) {
             Text(
-                text = "仅展示最近 30 轮，更早 ${hiddenRoundCount} 轮已纳入长期记忆和后端归档",
+                text = "仅显示最近 30 轮；更早 ${hiddenRoundCount} 轮已保留，后续对话会尽量接上",
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.sp,
