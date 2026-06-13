@@ -1,14 +1,8 @@
 package com.nongjiqianwen
 
 import android.app.Activity
-import android.Manifest
-import android.content.pm.PackageManager
 import android.content.Context
 import android.content.ContextWrapper
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
@@ -40,7 +34,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -49,7 +42,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,7 +66,6 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import kotlinx.coroutines.delay
 
 @Composable
 fun LoginGate(
@@ -112,14 +103,11 @@ private fun LoginScreen(
     }
 
     var phone by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
     val context = LocalContext.current
     var agreed by remember { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
-    val fusionOneLoginEnabled = BuildConfig.ENABLE_FUSION_ONE_LOGIN
-    var smsMode by remember { mutableStateOf(!fusionOneLoginEnabled) }
+    val fusionSmsLoginEnabled = BuildConfig.ENABLE_FUSION_SMS_LOGIN
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var countdown by remember { mutableIntStateOf(0) }
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
     val agreementText = remember { buildLoginAgreementText() }
     DisposableEffect(Unit) {
@@ -143,17 +131,17 @@ private fun LoginScreen(
         return true
     }
 
-    fun startFusionOneLogin(activity: Activity) {
-        AppCrashReporter.setAuthStage("auth.fusion_start")
+    fun startFusionSmsLogin(activity: Activity) {
+        AppCrashReporter.setAuthStage("auth.fusion_sms_start")
         busy = true
-        message = "正在打开运营商手机号授权页"
+        message = "正在打开验证码登录"
         SessionApi.reportAuthClientLog(
             level = "info",
-            event = "auth.fusion_start_requested",
-            message = "fusion one login requested",
-            attrs = mapOf("stage" to "login_screen_start")
+            event = "auth.fusion_sms_start_requested",
+            message = "fusion sms login requested",
+            attrs = mapOf("stage" to "login_screen_sms_start")
         )
-        FusionOneLoginClient.start(
+        FusionOneLoginClient.startSmsLogin(
             activity = activity,
             verificationPhone = phone.takeIf(::isValidMainlandPhone)
         ) { ok, error ->
@@ -161,48 +149,8 @@ private fun LoginScreen(
             if (ok) {
                 onLoginSuccess()
             } else {
-                smsMode = true
-                message = error ?: "一键登录未完成，请使用验证码登录"
+                message = error ?: "融合认证未完成，请稍后再试"
             }
-        }
-    }
-
-    val phoneStatePermissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            val activity = context.findActivity()
-            if (activity == null) {
-                SessionApi.reportAuthClientLog(
-                    level = "warn",
-                    event = "auth.fusion_activity_unavailable",
-                    message = "fusion login activity unavailable",
-                    attrs = mapOf("stage" to "permission_granted")
-                )
-                smsMode = true
-                busy = false
-                message = "一键登录暂不可用，请使用验证码登录"
-            } else {
-                startFusionOneLogin(activity)
-            }
-        } else {
-            SessionApi.reportAuthClientLog(
-                level = "info",
-                event = "auth.fusion_permission_denied",
-                message = "fusion phone state permission denied",
-                attrs = mapOf("permission" to "READ_PHONE_STATE")
-            )
-            AppCrashReporter.clearAuthStage("auth.fusion_start")
-            smsMode = true
-            busy = false
-            message = "未授予电话状态权限，已切换到验证码登录"
-        }
-    }
-
-    LaunchedEffect(countdown) {
-        if (countdown > 0) {
-            delay(1000)
-            countdown -= 1
         }
     }
 
@@ -252,185 +200,51 @@ private fun LoginScreen(
                 }
                 Spacer(Modifier.height(32.dp))
 
-                if (fusionOneLoginEnabled) {
-                    Button(
-                        onClick = {
-                            if (!requireAgreement()) {
-                                return@Button
-                            }
-                            FusionOneLoginClient.precheckOneLoginEnvironment(context)?.let { fallbackMessage ->
-                                smsMode = true
-                                busy = false
-                                message = fallbackMessage
-                                return@Button
-                            }
-                            val activity = context.findActivity()
-                            if (activity == null) {
-                                SessionApi.reportAuthClientLog(
-                                    level = "warn",
-                                    event = "auth.fusion_activity_unavailable",
-                                    message = "fusion login activity unavailable",
-                                    attrs = mapOf("stage" to "button_click")
-                                )
-                                smsMode = true
-                                message = "一键登录暂不可用，请使用验证码登录"
-                                return@Button
-                            }
-                            val hasPhoneStatePermission =
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.READ_PHONE_STATE
-                                ) == PackageManager.PERMISSION_GRANTED
-                            if (hasPhoneStatePermission || Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-                                SessionApi.reportAuthClientLog(
-                                    level = "info",
-                                    event = "auth.fusion_permission_ready",
-                                    message = "fusion phone state permission already granted",
-                                    attrs = mapOf("permission" to "READ_PHONE_STATE")
-                                )
-                                startFusionOneLogin(activity)
-                            } else {
-                                SessionApi.reportAuthClientLog(
-                                    level = "info",
-                                    event = "auth.fusion_permission_request",
-                                    message = "fusion phone state permission requested",
-                                    attrs = mapOf("permission" to "READ_PHONE_STATE")
-                                )
-                                AppCrashReporter.setAuthStage("auth.fusion_start")
-                                busy = true
-                                message = "请先授权电话状态权限，以便尝试本机号码登录"
-                                phoneStatePermissionLauncher.launch(Manifest.permission.READ_PHONE_STATE)
-                            }
-                        },
-                        enabled = !busy,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(54.dp)
-                    ) {
-                        Text("本机号码一键登录", fontSize = 17.sp, letterSpacing = 0.sp)
-                    }
+                Spacer(Modifier.height(18.dp))
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it.filter(Char::isDigit).take(11) },
+                    singleLine = true,
+                    label = { Text("手机号") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
 
-                    Spacer(Modifier.height(14.dp))
-                    OutlinedButton(
-                        onClick = {
-                            if (busy) {
-                                FusionOneLoginClient.cancelActiveScene("switch_to_sms")
-                                busy = false
-                            }
-                            smsMode = !smsMode
-                            message = null
-                        },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                    ) {
-                        Text(
-                            text = if (smsMode) "收起验证码登录" else "验证码登录",
-                            color = Color(0xFF111111),
-                            fontSize = 16.sp,
-                            letterSpacing = 0.sp
-                        )
-                    }
-                }
-
-                if (smsMode) {
-                    Spacer(Modifier.height(18.dp))
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { phone = it.filter(Char::isDigit).take(11) },
-                        singleLine = true,
-                        label = { Text("手机号") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        OutlinedTextField(
-                            value = code,
-                            onValueChange = { code = it.filter(Char::isDigit).take(6) },
-                            singleLine = true,
-                            placeholder = { Text("验证码") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(56.dp)
-                        )
-                        OutlinedButton(
-                            onClick = {
-                                if (!requireAgreement()) {
-                                    return@OutlinedButton
-                                }
-                                if (!isValidMainlandPhone(phone)) {
-                                    message = "请输入正确的手机号"
-                                    return@OutlinedButton
-                                }
-                                AppCrashReporter.setAuthStage("auth.sms_send")
-                                busy = true
-                                message = null
-                                SessionApi.sendSmsCode(phone) { ok, error ->
-                                    AppCrashReporter.clearAuthStage("auth.sms_send")
-                                    busy = false
-                                    if (ok) {
-                                        countdown = 60
-                                        message = "验证码已发送"
-                                    } else {
-                                        countdown = 0
-                                        message = error ?: "验证码发送失败"
-                                    }
-                                }
-                            },
-                            enabled = !busy && countdown == 0,
-                            shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier
-                                .height(56.dp)
-                                .widthIn(min = 96.dp)
-                        ) {
-                            Text(
-                                text = if (countdown > 0) "${countdown}s" else "发送",
-                                color = Color(0xFF111111),
-                                letterSpacing = 0.sp
-                            )
+                Spacer(Modifier.height(14.dp))
+                Button(
+                    onClick = {
+                        if (!requireAgreement()) {
+                            return@Button
                         }
-                    }
-                    Spacer(Modifier.height(14.dp))
-                    Button(
-                        onClick = {
-                            if (!requireAgreement()) {
-                                return@Button
-                            }
-                            if (!isValidMainlandPhone(phone) || code.length != 6) {
-                                message = "请填写手机号和6位验证码"
-                                return@Button
-                            }
-                            AppCrashReporter.setAuthStage("auth.sms_login")
-                            busy = true
-                            message = null
-                            SessionApi.loginWithSms(phone, code) { ok, error ->
-                                AppCrashReporter.clearAuthStage("auth.sms_login")
-                                busy = false
-                                if (ok) {
-                                    onLoginSuccess()
-                                } else {
-                                    message = error ?: "登录失败，请稍后再试"
-                                }
-                            }
-                        },
-                        enabled = !busy,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp)
-                    ) {
-                        Text("登录", fontSize = 17.sp, letterSpacing = 0.sp)
-                    }
+                        if (!isValidMainlandPhone(phone)) {
+                            message = "请输入正确的手机号"
+                            return@Button
+                        }
+                        if (!fusionSmsLoginEnabled) {
+                            message = "当前安装包未开启融合认证短信，请安装最新测试包"
+                            return@Button
+                        }
+                        val activity = context.findActivity()
+                        if (activity == null) {
+                            SessionApi.reportAuthClientLog(
+                                level = "warn",
+                                event = "auth.fusion_activity_unavailable",
+                                message = "fusion login activity unavailable",
+                                attrs = mapOf("stage" to "sms_button_click")
+                            )
+                            message = "融合认证暂不可用，请稍后再试"
+                            return@Button
+                        }
+                        startFusionSmsLogin(activity)
+                    },
+                    enabled = !busy,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                ) {
+                    Text("验证码登录", fontSize = 17.sp, letterSpacing = 0.sp)
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -480,20 +294,22 @@ private fun LoginScreen(
                 }
                 message?.let {
                     val positive = it.contains("已发送") || it.startsWith("正在")
+                    val noticeShape = RoundedCornerShape(10.dp)
+                    val noticeTextColor = if (positive) Color(0xFF3E6B2F) else Color(0xFF4E5661)
+                    val noticeBackground = if (positive) Color(0xFFF3F8F1) else Color(0xFFF1F3F5)
+                    val noticeBorder = if (positive) Color(0xFFD8E8D1) else Color(0xFFD9DEE5)
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text = it,
-                        color = if (positive) Color(0xFF4F6A3A) else Color(0xFF8A5A00),
+                        color = noticeTextColor,
                         fontSize = 14.sp,
                         textAlign = TextAlign.Center,
                         lineHeight = 20.sp,
                         letterSpacing = 0.sp,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(
-                                if (positive) Color(0xFFF2F8EA) else Color(0xFFFFF4D8),
-                                RoundedCornerShape(10.dp)
-                            )
+                            .background(noticeBackground, noticeShape)
+                            .border(BorderStroke(0.8.dp, noticeBorder), noticeShape)
                             .padding(horizontal = 12.dp, vertical = 10.dp)
                     )
                 }

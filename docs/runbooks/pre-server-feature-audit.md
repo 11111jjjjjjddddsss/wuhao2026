@@ -205,8 +205,8 @@
 - 设置页只有一个“服务协议”入口，进入本地内置目录页。
 - 目录页包含 6 个二级页面：用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示。
 - 6 个二级页面都走设置页右进左出的页面栈；左上角返回和系统返回键会先回到服务协议目录，再回到设置菜单。
-- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE / READ_PHONE_STATE / REQUEST_INSTALL_PACKAGES`；引入阿里云融合认证 SDK 后，合并 Manifest 还会包含 `CHANGE_NETWORK_STATE / CHANGE_WIFI_STATE / RECEIVE_USER_PRESENT` 等登录认证所需权限；AndroidX WorkManager 还会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
-- App 当前已申请定位权限用于问诊地区上下文校准，但只上传系统反查出的省 / 市 / 区县等地区文本，不上传经纬度、不保存轨迹；当前仍不申请 App 相机、相册 / 存储读写、录音、通讯录、短信或通知权限。手机号一键登录 SDK 接入后会按需使用电话状态、网络状态和 Wi-Fi 状态来判断 SIM 卡、运营商网络和认证环境。
+- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / ACCESS_WIFI_STATE / REQUEST_INSTALL_PACKAGES`，并显式移除 `READ_PHONE_STATE`；引入阿里云融合认证 SDK 后，合并 Manifest 还会包含 `CHANGE_NETWORK_STATE / CHANGE_WIFI_STATE / RECEIVE_USER_PRESENT` 等登录认证所需权限；AndroidX WorkManager 还会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
+- App 当前已申请定位权限用于问诊地区上下文校准，但只上传系统反查出的省 / 市 / 区县等地区文本，不上传经纬度、不保存轨迹；当前仍不申请 App 相机、相册 / 存储读写、录音、通讯录、短信或通知权限。新包融合短信登录不再申请电话状态权限；网络状态和 Wi-Fi 状态只用于联网可用性判断。
 - Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，便于用户找回现场照片；本轮已把该口径补进隐私政策、个人信息收集清单和应用权限页。
 - 用户可见正文没有暴露具体模型品牌、模型平台名或供应商账号信息，只使用“第三方大模型和云服务”这类必要委托处理口径。
 
@@ -353,7 +353,7 @@
 
 ### 10. 账号 / 手机号登录与生产鉴权
 
-结论：当前账号链路已经进入手机号登录骨架阶段，但还不是公开生产账号体系。后端已有严格鉴权开关、v2 session token、手机号账号表、旧本机身份迁移桥和短信 / 融合认证接口；Redis 认证短期限流已部署到 ECS 并健康。阿里云 SchemeCode、短信签名模板、DYPNS 环境变量和 Android 一键登录 SDK 客户端链路已落地；`api.nongjiqiancha.cn` HTTPS 已补齐，真正上线前缺的是 HTTPS 公网入口下的真机登录回归、AccessKey 轮换和旧 `X-User-Id` 兜底隔离，不是 Go 语言性能问题。
+结论：当前账号链路已经进入手机号登录骨架阶段，但还不是公开生产账号体系。后端已有严格鉴权开关、v2 session token、手机号账号表、旧本机身份迁移桥和短信 / 融合认证接口；Redis 认证短期限流已部署到 ECS 并健康。阿里云 SchemeCode、短信签名模板、DYPNS 环境变量和 Android 融合短信 SDK 客户端链路已落地；`api.nongjiqiancha.cn` HTTPS 已补齐，真正上线前缺的是 HTTPS 公网入口下的真机登录回归、AccessKey 轮换和旧 `X-User-Id` 兜底隔离，不是 Go 语言性能问题。
 
 当前代码真相：
 
@@ -380,7 +380,7 @@
 
 买服务器后必须补：
 
-- 阿里云手机号认证收口：一键登录 Android SDK、SchemeCode、短信签名模板、DYPNS 环境变量和真机登录回归；Redis 分布式认证限流已接入，后续只需继续观察生产健康。
+- 阿里云手机号认证收口：融合短信 Android SDK、SchemeCode、短信签名模板、DYPNS 环境变量和真机登录回归；Redis 分布式认证限流已接入，后续只需继续观察生产健康。
 - 后端 token 刷新 / 主动吊销 / 多设备管理机制；Android 已保存 per-user token，但当前按“长期保持登录”口径不提供用户可点退出。
 - 本机 `user_id` 到账号 `user_id` 的迁移策略需要继续真机验证，至少覆盖 `session_ab`、`session_round_archive`、会员 / 额度 / 加油包、帮助与反馈、订单 / 礼品卡未来表。
 - 账号注销和个人信息查询 / 删除入口，明确聊天、图片、摘要、归档、反馈、会员权益、订单、礼品卡和日志的删除 / 匿名化 / 法定留存范围。

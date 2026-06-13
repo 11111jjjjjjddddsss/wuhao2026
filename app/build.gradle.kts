@@ -49,7 +49,7 @@ android {
         buildConfigField("String", "UPLOAD_BASE_URL", "\"$uploadBaseUrl\"")
 
         buildConfigField("boolean", "USE_BACKEND_AB", "true")
-        buildConfigField("boolean", "ENABLE_FUSION_ONE_LOGIN", "false")
+        buildConfigField("boolean", "ENABLE_FUSION_SMS_LOGIN", "false")
     }
 
     signingConfigs {
@@ -66,11 +66,11 @@ android {
     buildTypes {
         debug {
             signingConfigs.findByName("release")?.let { signingConfig = it }
-            buildConfigField("boolean", "ENABLE_FUSION_ONE_LOGIN", releaseSigningConfigured.toString())
+            buildConfigField("boolean", "ENABLE_FUSION_SMS_LOGIN", releaseSigningConfigured.toString())
         }
         release {
             signingConfigs.findByName("release")?.let { signingConfig = it }
-            buildConfigField("boolean", "ENABLE_FUSION_ONE_LOGIN", "true")
+            buildConfigField("boolean", "ENABLE_FUSION_SMS_LOGIN", "true")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

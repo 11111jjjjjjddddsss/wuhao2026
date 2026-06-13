@@ -48,7 +48,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-backe
 - 不查询手机号明文、聊天正文、反馈正文、图片 URL、礼品卡完整码、token 或模型 Key
 - 只要会员、订单、礼品卡、聊天、反馈、日志、注销等需要账号归属的表出现非 `acct_...`，脚本失败
 
-## 2026-06-12 线上只读结果
+## 2026-06-13 线上只读结果
+
+- `app_accounts=1 / auth_sessions=1 / auth_sessions_active=0 / user_entitlement=1 / orders=0 / gift_cards=0 / session_ab=0 / session_round_archive=0`
+- `client_app_logs=120`，其中 24h error 1、auth warn/error 6，属于当前登录联调和排障日志，不是用户资产
+- 24h App warn / error Top 事件为：`auth.fusion_verify_interrupt=3`、`auth.fusion_env_blocked=1`、`auth.fusion_activity_unavailable=1`、`auth.app_crash=1`
+- `daily_agri_cards=6`，ready 5、failed 1
+- `admin_users=1 / admin_sessions_active=0 / admin_audit_logs=423`
+- 所有账号归属检查均为 0：会员、额度、订单、聊天、帮助反馈、App 日志、礼品卡兑换、注销申请等没有非 `acct_...` 资产归属
+
+## 2026-06-12 线上只读结果（历史基线）
 
 - `app_accounts=0 / auth_sessions=0 / user_entitlement=0 / orders=0 / gift_cards=0 / session_ab=0 / session_round_archive=0`
 - `client_app_logs=74`，其中 24h error 11、auth warn/error 19，属于当前登录联调和排障日志，不是用户资产
@@ -59,7 +68,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-backe
 
 ## 当前注意点
 
-- 线上当前还没有正式用户，也没有真实会员、订单或礼品卡资产；这是继续收紧账号和资产边界的好窗口
+- 线上当前已有首个手机号账号联调记录，但还没有真实付费会员、订单或礼品卡资产；这是继续收紧账号和资产边界的好窗口
 - 帮助与反馈图片当前复用 `/upload`，但 Android 会传 `purpose=support`，后端实际写到 OSS `support/` 前缀并按 30 天生命周期过期；普通问诊图仍写 `uploads/` 并按 3 天过期。客服聊天记录正文、发送人、时间和已读状态保存在 MySQL，不随图片生命周期自动删除
 - `client_app_logs` 登录前允许 `preauth`，脚本会排除它；除 `preauth` 外，App 日志也应按账号ID归属
 - 后续接真实支付前，订单和权益发放必须继续由服务端验签回调 / 对账驱动，不能让 Android 或开发期接口直接改会员资产

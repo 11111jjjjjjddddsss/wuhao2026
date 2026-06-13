@@ -280,8 +280,8 @@ object SessionApi {
                             onResult(token, null)
                         } else {
                             val message = when (statusCode) {
-                                429 -> "操作太频繁，请稍后再试或使用验证码登录"
-                                else -> "一键登录暂不可用，请使用验证码登录"
+                                429 -> "操作太频繁，请稍后再试"
+                                else -> "融合认证暂不可用，请稍后再试"
                             }
                             onResult(null, message)
                         }
@@ -938,12 +938,12 @@ object SessionApi {
             statusCode == 429 -> "操作太频繁，请稍后再试"
             statusCode == 400 && errorCode == "invalid_phone" -> "请输入正确的手机号"
             statusCode == 400 && errorCode == "invalid_code" -> "请填写验证码"
-            statusCode == 400 && errorCode == "invalid_verify_token" -> "一键登录参数无效，请使用验证码登录"
+            statusCode == 400 && errorCode == "invalid_verify_token" -> "融合认证参数无效，请稍后再试"
             statusCode == 401 && isSms -> "验证码不正确或已过期"
-            statusCode == 401 -> "一键登录校验失败，请使用验证码登录"
+            statusCode == 401 -> "融合认证校验失败，请稍后再试"
             statusCode == 413 -> "请求内容过大，请重新尝试"
             statusCode >= 500 && isSms -> "验证码服务暂时不可用，请稍后再试"
-            statusCode >= 500 -> "一键登录暂时不可用，请使用验证码登录"
+            statusCode >= 500 -> "融合认证暂时不可用，请稍后再试"
             isSms -> "短信登录失败，请稍后再试"
             else -> "登录暂时失败，请稍后再试"
         }

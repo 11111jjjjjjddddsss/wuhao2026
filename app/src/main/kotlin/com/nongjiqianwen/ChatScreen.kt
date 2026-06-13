@@ -7443,7 +7443,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
                     UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
-                    UiCopyPreviewItem("应用权限", "定位、一键登录、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
+                    UiCopyPreviewItem("应用权限", "定位、手机号认证、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
                     UiCopyPreviewItem("礼品卡成功样式", "展示真实档位、30天、每日次数和到期时间", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )
@@ -7922,22 +7922,19 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.LoginInitial -> {
                     UiCopyPreviewLoginPage(
                         agreed = false,
-                        smsMode = false,
                         message = "首次打开直接是登录页；勾选后才记录隐私同意。"
                     )
                 }
                 UiCopyPreviewKind.LoginAgreementBlocked -> {
                     UiCopyPreviewLoginPage(
                         agreed = false,
-                        smsMode = false,
                         message = "请先同意服务协议和隐私政策"
                     )
                 }
                 UiCopyPreviewKind.LoginSmsFallback -> {
                     UiCopyPreviewLoginPage(
                         agreed = true,
-                        smsMode = true,
-                        message = "一键登录未完成，请使用验证码登录"
+                        message = "融合认证未完成，请稍后再试"
                     )
                 }
                 UiCopyPreviewKind.CleanStateFirstLaunch -> {
@@ -8356,7 +8353,6 @@ private fun UiCopyPreviewNarrowFrame(
 @Composable
 private fun UiCopyPreviewLoginPage(
     agreed: Boolean,
-    smsMode: Boolean,
     message: String?
 ) {
     Surface(
@@ -8380,46 +8376,11 @@ private fun UiCopyPreviewLoginPage(
                 overflow = TextOverflow.Ellipsis,
                 letterSpacing = 0.sp
             )
+            UiCopyPreviewLoginField("手机号")
             UiCopyPreviewLoginButton(
-                text = "本机号码一键登录",
+                text = "验证码登录",
                 primary = true
             )
-            UiCopyPreviewLoginButton(
-                text = if (smsMode) "收起验证码登录" else "验证码登录",
-                primary = false
-            )
-            if (smsMode) {
-                UiCopyPreviewLoginField("手机号")
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    UiCopyPreviewLoginField(
-                        text = "验证码",
-                        modifier = Modifier.weight(1f)
-                    )
-                    Surface(
-                        color = Color.White,
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(0.8.dp, Color(0xFFD3D7DE)),
-                        modifier = Modifier.widthIn(min = 72.dp)
-                    ) {
-                        Text(
-                            text = "发送",
-                            color = Color(0xFF111111),
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center,
-                            letterSpacing = 0.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp)
-                        )
-                    }
-                }
-                UiCopyPreviewLoginButton(
-                    text = "登录",
-                    primary = true
-                )
-            }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.fillMaxWidth()
@@ -8436,10 +8397,10 @@ private fun UiCopyPreviewLoginPage(
                 )
             }
             message?.let {
-                val positive = it.contains("勾选后")
+                val positive = it.contains("已发送") || it.startsWith("正在")
                 Text(
                     text = it,
-                    color = if (positive) Color(0xFF4F6A3A) else Color(0xFF8A5A00),
+                    color = if (positive) Color(0xFF3E6B2F) else Color(0xFF4E5661),
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     textAlign = TextAlign.Center,
@@ -8447,7 +8408,7 @@ private fun UiCopyPreviewLoginPage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            if (positive) Color(0xFFF2F8EA) else Color(0xFFFFF4D8),
+                            if (positive) Color(0xFFF3F8F1) else Color(0xFFF1F3F5),
                             RoundedCornerShape(10.dp)
                         )
                         .padding(horizontal = 12.dp, vertical = 9.dp)
@@ -8456,8 +8417,8 @@ private fun UiCopyPreviewLoginPage(
             UiCopyPreviewPlainText(
                 listOf(
                     "同意前不初始化身份、不补报崩溃日志。",
-                    "同意前不请求后端、不拉一键登录 SDK、不申请电话状态权限。",
-                    "阿里云运营商授权页仍需要用户单独勾选。"
+                    "同意前不请求后端、不拉融合认证 SDK。",
+                    "验证码发送和校验都走融合认证短信流程。"
                 )
             )
         }

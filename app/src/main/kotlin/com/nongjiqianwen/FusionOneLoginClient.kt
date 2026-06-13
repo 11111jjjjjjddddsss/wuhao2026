@@ -1,16 +1,12 @@
 package com.nongjiqianwen
 
 import android.app.Activity
-import android.content.Context
 import android.graphics.Color
+import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.ConnectivityManager
-import android.net.Network
-import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.telephony.TelephonyManager
 import android.util.Log
 import android.view.Gravity
 import androidx.lifecycle.Lifecycle
@@ -23,6 +19,9 @@ import com.alicom.fusion.auth.AlicomFusionLog
 import com.alicom.fusion.auth.error.AlicomFusionEvent
 import com.alicom.fusion.auth.numberauth.AlicomFusionSwitchLogin
 import com.alicom.fusion.auth.numberauth.FusionNumberAuthModel
+import com.alicom.fusion.auth.smsauth.AlicomFusionAutoInputView
+import com.alicom.fusion.auth.smsauth.AlicomFusionInputView
+import com.alicom.fusion.auth.smsauth.AlicomFusionSendVerifyCodeView
 import com.alicom.fusion.auth.smsauth.AlicomFusionVerifyCodeView
 import com.alicom.fusion.auth.token.AlicomFusionAuthToken
 import com.alicom.fusion.auth.upsms.AlicomFusionUpSMSView
@@ -36,7 +35,7 @@ object FusionOneLoginClient {
     private const val LOGIN_TIMEOUT_MS = 30_000L
     private const val SERVICE_AGREEMENT_URL = "https://nongjiqiancha.cn/legal/user-agreement/"
     private const val PRIVACY_POLICY_URL = "https://nongjiqiancha.cn/legal/privacy-policy/"
-    private const val ONE_LOGIN_FALLBACK_MESSAGE = "一键登录未成功，已切换到验证码登录；验证码登录可在 WiFi 或代理环境下继续使用"
+    private const val FUSION_SMS_FALLBACK_MESSAGE = "融合认证未完成，请稍后再试"
     private val mainHandler = Handler(Looper.getMainLooper())
     private val loginInFlight = AtomicBoolean(false)
     private val loginGeneration = AtomicLong(0L)
@@ -46,19 +45,6 @@ object FusionOneLoginClient {
 
     @Volatile
     private var currentCompleted: AtomicBoolean? = null
-
-    fun precheckOneLoginEnvironment(context: Context): String? {
-        val environment = inspectAuthEnvironment(context)
-        val blockReason = environment.blockReason() ?: return null
-        reportAuthEnvironment(
-            level = "warn",
-            event = "auth.fusion_env_blocked",
-            stage = "pre_permission_env_check",
-            environment = environment,
-            reason = blockReason
-        )
-        return environment.userMessageFor(blockReason)
-    }
 
     fun cancelActiveScene(reason: String) {
         loginGeneration.incrementAndGet()
@@ -88,13 +74,34 @@ object FusionOneLoginClient {
         }
     }
 
-    fun start(
+    fun startSmsLogin(
+        activity: Activity,
+        verificationPhone: String?,
+        onResult: (Boolean, String?) -> Unit
+    ) {
+        val normalizedPhone = verificationPhone
+            ?.filter(Char::isDigit)
+            ?.takeIf(::isValidMainlandPhoneNumber)
+        if (normalizedPhone == null) {
+            onResult(false, "请输入正确的手机号")
+            return
+        }
+        start(
+            activity = activity,
+            verificationPhone = normalizedPhone,
+            fallbackMessage = FUSION_SMS_FALLBACK_MESSAGE,
+            onResult = onResult
+        )
+    }
+
+    private fun start(
         activity: Activity,
         verificationPhone: String? = null,
+        fallbackMessage: String,
         onResult: (Boolean, String?) -> Unit
     ) {
         if (!loginInFlight.compareAndSet(false, true)) {
-            onResult(false, "一键登录正在处理中，请稍候")
+            onResult(false, "融合认证正在处理中，请稍候")
             return
         }
         val generation = loginGeneration.incrementAndGet()
@@ -107,33 +114,8 @@ object FusionOneLoginClient {
                 stage = "start",
                 error = null
             )
-            onResult(false, "一键登录暂不可用，请使用验证码登录")
+            onResult(false, "融合认证暂不可用，请稍后再试")
             return
-        }
-        AppCrashReporter.setAuthStage("auth.fusion_env_check")
-        val environment = inspectAuthEnvironment(activity)
-        val blockReason = environment.blockReason()
-        if (blockReason != null) {
-            AppCrashReporter.clearAuthStage("auth.fusion_env_check")
-            loginInFlight.set(false)
-            reportAuthEnvironment(
-                level = "warn",
-                event = "auth.fusion_env_blocked",
-                stage = "env_check",
-                environment = environment,
-                reason = blockReason
-            )
-            onResult(false, environment.userMessageFor(blockReason))
-            return
-        }
-        environment.warningReason()?.let { reason ->
-            reportAuthEnvironment(
-                level = "info",
-                event = "auth.fusion_env_warning",
-                stage = "env_check",
-                environment = environment,
-                reason = reason
-            )
         }
         AppCrashReporter.setAuthStage("auth.fusion_token")
         SessionApi.requestFusionAuthToken { snapshot, error ->
@@ -149,16 +131,16 @@ object FusionOneLoginClient {
                     stage = "fusion_token",
                     error = null
                 )
-                onResult(false, error ?: ONE_LOGIN_FALLBACK_MESSAGE)
+                onResult(false, error ?: fallbackMessage)
                 return@requestFusionAuthToken
             }
             if (!activity.isUsableForFusionAuth()) {
                 AppCrashReporter.clearAuthStage("auth.fusion_token")
                 loginInFlight.set(false)
-                onResult(false, "一键登录已取消，请使用验证码登录")
+                onResult(false, "融合认证已取消，请稍后再试")
                 return@requestFusionAuthToken
             }
-            startWithToken(activity, snapshot, verificationPhone, generation, onResult)
+            startWithToken(activity, snapshot, verificationPhone, generation, fallbackMessage, onResult)
         }
     }
 
@@ -167,6 +149,7 @@ object FusionOneLoginClient {
         snapshot: SessionApi.FusionAuthTokenSnapshot,
         verificationPhone: String?,
         generation: Long,
+        fallbackMessage: String,
         onResult: (Boolean, String?) -> Unit
     ) {
         val business = AlicomFusionBusiness()
@@ -205,7 +188,7 @@ object FusionOneLoginClient {
                 stage = "sdk_init",
                 error = null
             )
-            finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+            finish(business, completed, false, fallbackMessage, onResult)
             return
         }
 
@@ -240,7 +223,7 @@ object FusionOneLoginClient {
                 override fun onSDKTokenAuthSuccess() {
                     activity.runOnUiThread {
                         if (generation != loginGeneration.get()) {
-                            finish(business, completed, false, "一键登录已取消，请使用验证码登录", onResult)
+                            finish(business, completed, false, "融合认证已取消，请稍后再试", onResult)
                             return@runOnUiThread
                         }
                         if (!completed.get() && sceneStarted.compareAndSet(false, true)) {
@@ -255,7 +238,7 @@ object FusionOneLoginClient {
                                     business,
                                     completed,
                                     false,
-                                    "一键登录已取消，请使用验证码登录",
+                                    "融合认证已取消，请稍后再试",
                                     onResult
                                 )
                                 return@runOnUiThread
@@ -286,7 +269,7 @@ object FusionOneLoginClient {
                                     business,
                                     completed,
                                     false,
-                                    ONE_LOGIN_FALLBACK_MESSAGE,
+                                    fallbackMessage,
                                     onResult
                                 )
                             } else {
@@ -312,7 +295,7 @@ object FusionOneLoginClient {
                         stage = "token_auth",
                         error = error
                     )
-                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+                    finish(business, completed, false, fallbackMessage, onResult)
                 }
 
                 override fun onVerifySuccess(
@@ -322,7 +305,7 @@ object FusionOneLoginClient {
                 ) {
                     AppCrashReporter.setAuthStage("auth.fusion_verify_success")
                     if (generation != loginGeneration.get()) {
-                        finish(business, completed, false, "一键登录已取消，请使用验证码登录", onResult)
+                        finish(business, completed, false, "融合认证已取消，请稍后再试", onResult)
                         return
                     }
                     val verifyToken = token.orEmpty().trim()
@@ -334,7 +317,7 @@ object FusionOneLoginClient {
                             error = event,
                             nodeName = nodeName
                         )
-                        finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+                        finish(business, completed, false, fallbackMessage, onResult)
                         return
                     }
                     if (!serverLoginStarted.compareAndSet(false, true)) {
@@ -366,7 +349,7 @@ object FusionOneLoginClient {
                                 business,
                                 completed,
                                 false,
-                                loginError ?: ONE_LOGIN_FALLBACK_MESSAGE,
+                                loginError ?: fallbackMessage,
                                 onResult
                             )
                         }
@@ -379,7 +362,7 @@ object FusionOneLoginClient {
                     event: AlicomFusionEvent?,
                     verifyResult: HalfWayVerifyResult?
                 ) {
-                    Log.w(TAG, "unexpected fusion half-way callback for one-login: node=$nodeName ${describeEvent(event)}")
+                    Log.w(TAG, "unexpected fusion half-way callback for sms login: node=$nodeName ${describeEvent(event)}")
                     reportAuthLog(
                         level = "warn",
                         event = "auth.fusion_halfway_unexpected",
@@ -388,7 +371,7 @@ object FusionOneLoginClient {
                         nodeName = nodeName
                     )
                     verifyResult?.verifyResult(false)
-                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+                    finish(business, completed, false, fallbackMessage, onResult)
                 }
 
                 override fun onVerifyFailed(error: AlicomFusionEvent?, nodeName: String?) {
@@ -411,7 +394,7 @@ object FusionOneLoginClient {
                         error = error,
                         nodeName = nodeName
                     )
-                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+                    finish(business, completed, false, fallbackMessage, onResult)
                 }
 
                 override fun onTemplateFinish(event: AlicomFusionEvent?) {
@@ -432,7 +415,7 @@ object FusionOneLoginClient {
                         stage = "template_finish",
                         error = event
                     )
-                    finish(business, completed, false, "一键登录未完成，可继续使用验证码登录", onResult)
+                    finish(business, completed, false, fallbackMessage, onResult)
                 }
 
                 override fun onAuthEvent(event: AlicomFusionEvent?) {
@@ -463,7 +446,7 @@ object FusionOneLoginClient {
                             business,
                             completed,
                             false,
-                            "请使用验证码登录",
+                            "请输入正确的手机号",
                             onResult
                         )
                     }
@@ -477,7 +460,7 @@ object FusionOneLoginClient {
                         stage = "verify_interrupt",
                         error = event
                     )
-                    finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+                    finish(business, completed, false, fallbackMessage, onResult)
                 }
             })
         }.isSuccess
@@ -489,7 +472,7 @@ object FusionOneLoginClient {
                 stage = "callback_attach",
                 error = null
             )
-            finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+            finish(business, completed, false, fallbackMessage, onResult)
             return
         }
         mainHandler.postDelayed({
@@ -509,7 +492,7 @@ object FusionOneLoginClient {
                 stage = "timeout",
                 error = null
             )
-            finish(business, completed, false, ONE_LOGIN_FALLBACK_MESSAGE, onResult)
+            finish(business, completed, false, fallbackMessage, onResult)
         }, LOGIN_TIMEOUT_MS)
     }
 
@@ -537,7 +520,7 @@ object FusionOneLoginClient {
                 configureNumberAuthModel(model)
                 model.setSwitchLoginBack(
                     AlicomFusionSwitchLogin {
-                        finish(business, completed, false, "请使用验证码登录", onResult)
+                        finish(business, completed, false, "融合认证未完成，请稍后再试", onResult)
                     }
                 )
             }
@@ -548,7 +531,7 @@ object FusionOneLoginClient {
                 isAutoInput: Boolean,
                 view: AlicomFusionVerifyCodeView?
             ) {
-                view?.getTitleContentTV()?.text = "验证码登录"
+                view?.let(::configureSmsCodeView)
             }
 
             override fun onSMSSendVerifyUICustomView(
@@ -558,9 +541,145 @@ object FusionOneLoginClient {
                 phoneNumber: String?,
                 smsContent: String?
             ) {
-                view?.getTitleContentTV()?.text = "短信验证"
+                view?.let(::configureUpSmsView)
             }
         }
+
+    private fun configureSmsCodeView(view: AlicomFusionVerifyCodeView) {
+        runCatching {
+            view.getRootRl()?.setBackgroundColor(Color.WHITE)
+            view.getTitleRl()?.setBackgroundColor(Color.WHITE)
+            view.getContentRL()?.setBackgroundColor(Color.WHITE)
+            view.getTitleContentTV()?.apply {
+                text = "验证码登录"
+                setTextColor(Color.rgb(17, 17, 17))
+                textSize = 18f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+            }
+            configureSmsInputView(view.getInputView())
+            configureSmsAutoInputView(view.getAutoInputView())
+            configureSmsSendCodeView(view.getSendVerifyCodeView())
+        }.onFailure {
+            reportAuthLog(
+                level = "warn",
+                event = "auth.fusion_sms_ui_config_failed",
+                stage = "sms_ui_config",
+                error = null
+            )
+        }
+    }
+
+    private fun configureSmsInputView(view: AlicomFusionInputView?) {
+        view ?: return
+        view.getInputNumberRootRL()?.setBackgroundColor(Color.WHITE)
+        view.getInputNumberET()?.apply {
+            hint = "手机号"
+            setTextColor(Color.rgb(17, 17, 17))
+            setHintTextColor(Color.rgb(112, 118, 128))
+            textSize = 16f
+        }
+        view.getmCountryTV()?.apply {
+            setTextColor(Color.rgb(17, 17, 17))
+            textSize = 16f
+        }
+        view.getInputNumberRequestCodeTV()?.apply {
+            text = "发送验证码"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            background = loginButtonBackground()
+        }
+        view.getPrivacyTV()?.setTextColor(Color.rgb(87, 93, 102))
+    }
+
+    private fun configureSmsAutoInputView(view: AlicomFusionAutoInputView?) {
+        view ?: return
+        view.getAutoInputRootRL()?.setBackgroundColor(Color.WHITE)
+        view.getAutoInputPhoneNumTV()?.apply {
+            setTextColor(Color.rgb(17, 17, 17))
+            textSize = 22f
+        }
+        view.getAutoInputPhoneHintTV()?.apply {
+            text = "请接收短信验证码"
+            setTextColor(Color.rgb(87, 93, 102))
+            textSize = 13f
+        }
+        view.getAutoInputRequestCodeTV()?.apply {
+            text = "发送验证码"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            background = loginButtonBackground()
+        }
+    }
+
+    private fun configureSmsSendCodeView(view: AlicomFusionSendVerifyCodeView?) {
+        view ?: return
+        view.getSendsmsRootRl()?.setBackgroundColor(Color.WHITE)
+        view.getSendSmsHint()?.apply {
+            setTextColor(Color.rgb(87, 93, 102))
+            textSize = 16f
+        }
+        val codeBoxBackground = codeInputBackground()
+        listOf(
+            view.getFirstCode(),
+            view.getSecondCode(),
+            view.getThirdCode(),
+            view.getFourCode(),
+            view.getFivthCode(),
+            view.getSixthCode()
+        ).forEach { code ->
+            code?.apply {
+                setTextColor(Color.rgb(17, 17, 17))
+                setHintTextColor(Color.rgb(144, 149, 158))
+                textSize = 18f
+                background = codeBoxBackground.constantState?.newDrawable() ?: codeInputBackground()
+            }
+        }
+        view.getSendSmsCode()?.apply {
+            text = "登录"
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            typeface = Typeface.DEFAULT_BOLD
+            background = loginButtonBackground()
+        }
+    }
+
+    private fun configureUpSmsView(view: AlicomFusionUpSMSView) {
+        runCatching {
+            view.getRootRl()?.setBackgroundColor(Color.WHITE)
+            view.getTitleRl()?.setBackgroundColor(Color.WHITE)
+            view.getTitleContentTV()?.apply {
+                text = "短信验证"
+                setTextColor(Color.rgb(17, 17, 17))
+                textSize = 18f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+            }
+            listOf(
+                view.getSmsRemindTV(),
+                view.getSmsContentTV(),
+                view.getReceiveSmsNumberTV(),
+                view.getHadSenTSmsTV()
+            ).forEach { text ->
+                text?.setTextColor(Color.rgb(87, 93, 102))
+            }
+            view.getSendSmsTV()?.apply {
+                setTextColor(Color.WHITE)
+                textSize = 16f
+                typeface = Typeface.DEFAULT_BOLD
+                background = loginButtonBackground()
+            }
+        }.onFailure {
+            reportAuthLog(
+                level = "warn",
+                event = "auth.fusion_upsms_ui_config_failed",
+                stage = "upsms_ui_config",
+                error = null
+            )
+        }
+    }
 
     private fun configureNumberAuthModel(model: FusionNumberAuthModel) {
         val configured = runCatching {
@@ -569,6 +688,7 @@ object FusionOneLoginClient {
                 .setBottomNavColor(Color.WHITE)
                 .setLightColor(true)
                 .setNavHidden(true)
+                .hiddenLoginText(true)
                 .setNavReturnHidden(false)
                 .setNavText("农技千查")
                 .setNavTextColor(Color.rgb(17, 17, 17))
@@ -577,21 +697,21 @@ object FusionOneLoginClient {
                 .setSloganHidden(true)
                 .hiddenNumberCountry(true)
                 .setNumberColor(Color.rgb(17, 17, 17))
-                .setNumberSizeDp(28)
+                .setNumberSizeDp(26)
                 .setNumberLayoutGravity(Gravity.CENTER_HORIZONTAL)
-                .setNumFieldOffsetY(136)
-                .setLogBtnText("本机号码一键登录")
+                .setNumFieldOffsetY(118)
+                .setLogBtnText("验证码登录")
                 .setLogBtnTextColor(Color.WHITE)
                 .setLogBtnTextSizeDp(17)
                 .setLogBtnBackgroundDrawable(loginButtonBackground())
                 .setLogBtnHeight(50)
                 .setLogBtnMarginLeftAndRight(32)
-                .setLogBtnOffsetY(224)
+                .setLogBtnOffsetY(198)
                 .hiddenSwtichLogin(true)
                 .setSwitchAccText("其他手机号登录")
                 .setSwitchAccTextColor(Color.rgb(17, 17, 17))
                 .setSwitchAccTextSizeDp(15)
-                .setSwitchOffsetY(340)
+                .setSwitchOffsetY(286)
                 .setCheckboxHidden(false)
                 .setCheckBoxWidth(18)
                 .setCheckBoxHeight(18)
@@ -600,7 +720,7 @@ object FusionOneLoginClient {
                 .setPrivacyEnd("")
                 .setPrivacyTextSizeDp(11)
                 .setPrivacyMargin(20)
-                .setPrivacyOffsetY_B(36)
+                .setPrivacyOffsetY_B(52)
                 .setAppPrivacyOne("《服务协议》", SERVICE_AGREEMENT_URL)
                 .setAppPrivacyTwo("《隐私政策》", PRIVACY_POLICY_URL)
                 .setAppPrivacyColor(Color.rgb(17, 17, 17), Color.rgb(87, 93, 102))
@@ -648,6 +768,14 @@ object FusionOneLoginClient {
             cornerRadius = 12f
         }
 
+    private fun codeInputBackground(): GradientDrawable =
+        GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.WHITE)
+            setStroke(1, Color.rgb(183, 188, 196))
+            cornerRadius = 6f
+        }
+
     private fun reportAuthLog(
         level: String,
         event: String,
@@ -667,163 +795,6 @@ object FusionOneLoginClient {
             message = event,
             attrs = attrs
         )
-    }
-
-    private fun reportAuthEnvironment(
-        level: String,
-        event: String,
-        stage: String,
-        environment: AuthEnvironmentSnapshot,
-        reason: String
-    ) {
-        SessionApi.reportAuthClientLog(
-            level = level,
-            event = event,
-            message = event,
-            attrs = mapOf(
-                "stage" to stage,
-                "reason" to reason,
-                "network" to environment.networkLabel(),
-                "sim_state" to environment.simStateLabel,
-                "sim_count" to (environment.simCount ?: 0)
-            )
-        )
-    }
-
-    private data class AuthEnvironmentSnapshot(
-        val hasActiveNetwork: Boolean,
-        val hasInternetCapability: Boolean,
-        val hasCellularTransport: Boolean,
-        val hasAnyCellularInternetTransport: Boolean,
-        val hasWifiTransport: Boolean,
-        val hasVpnTransport: Boolean,
-        val hasProxyConfigured: Boolean,
-        val simState: Int?,
-        val simCount: Int?
-    ) {
-        val simStateLabel: String
-            get() = when (simState) {
-                TelephonyManager.SIM_STATE_ABSENT -> "absent"
-                TelephonyManager.SIM_STATE_NETWORK_LOCKED -> "network_locked"
-                TelephonyManager.SIM_STATE_PIN_REQUIRED -> "pin_required"
-                TelephonyManager.SIM_STATE_PUK_REQUIRED -> "puk_required"
-                TelephonyManager.SIM_STATE_READY -> "ready"
-                TelephonyManager.SIM_STATE_NOT_READY -> "not_ready"
-                TelephonyManager.SIM_STATE_PERM_DISABLED -> "perm_disabled"
-                TelephonyManager.SIM_STATE_CARD_IO_ERROR -> "card_io_error"
-                TelephonyManager.SIM_STATE_CARD_RESTRICTED -> "card_restricted"
-                TelephonyManager.SIM_STATE_UNKNOWN, null -> "unknown"
-                else -> "other"
-            }
-
-        fun networkLabel(): String =
-            listOfNotNull(
-                "active".takeIf { hasActiveNetwork },
-                "internet".takeIf { hasInternetCapability },
-                "cellular".takeIf { hasCellularTransport },
-                "cellular_available".takeIf { hasAnyCellularInternetTransport && !hasCellularTransport },
-                "wifi".takeIf { hasWifiTransport },
-                "vpn".takeIf { hasVpnTransport },
-                "proxy".takeIf { hasProxyConfigured }
-            ).ifEmpty { listOf("none") }.joinToString(separator = "+")
-
-        fun blockReason(): String? =
-            when {
-                !hasActiveNetwork || !hasInternetCapability -> "no_network"
-                simCount == 0 -> "no_sim"
-                simState == TelephonyManager.SIM_STATE_ABSENT -> "no_sim"
-                simState in setOf(
-                    TelephonyManager.SIM_STATE_NETWORK_LOCKED,
-                    TelephonyManager.SIM_STATE_PIN_REQUIRED,
-                    TelephonyManager.SIM_STATE_PUK_REQUIRED,
-                    TelephonyManager.SIM_STATE_NOT_READY,
-                    TelephonyManager.SIM_STATE_PERM_DISABLED,
-                    TelephonyManager.SIM_STATE_CARD_IO_ERROR,
-                    TelephonyManager.SIM_STATE_CARD_RESTRICTED
-                ) -> "sim_not_ready"
-                !hasAnyCellularInternetTransport -> "no_cellular_data"
-                else -> null
-            }
-
-        fun warningReason(): String? =
-            when {
-                hasVpnTransport -> "vpn_active"
-                hasProxyConfigured -> "proxy_active"
-                !hasCellularTransport && hasAnyCellularInternetTransport -> "wifi_with_cellular_available"
-                hasWifiTransport -> "wifi_and_cellular"
-                else -> null
-            }
-
-        fun userMessageFor(reason: String): String =
-            when (reason) {
-                "no_network" -> "当前网络不可用，请联网后重试，或使用验证码登录"
-                "no_sim" -> "未检测到可用 SIM 卡，请插卡并打开移动数据，或使用验证码登录"
-                "sim_not_ready" -> "SIM 卡暂不可用，请确认默认移动数据卡正常，或使用验证码登录"
-                "vpn_active" -> "检测到代理或 VPN，一键取号可能失败；失败后可使用验证码登录"
-                "proxy_active" -> "检测到系统代理，一键取号可能失败；失败后可使用验证码登录"
-                "no_cellular_data" -> "一键登录需要可用移动数据，已切换到验证码登录；验证码登录可继续使用"
-                else -> ONE_LOGIN_FALLBACK_MESSAGE
-            }
-    }
-
-    private fun inspectAuthEnvironment(context: Context): AuthEnvironmentSnapshot {
-        val connectivity = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-        val network = connectivity?.activeNetwork
-        val capabilities = network?.let { connectivity.getNetworkCapabilities(it) }
-        @Suppress("DEPRECATION")
-        val allNetworks = connectivity?.allNetworks.orEmpty()
-        val hasAnyCellularInternetTransport = allNetworks.any { candidate ->
-            val candidateCapabilities = connectivity?.getNetworkCapabilities(candidate)
-            candidateCapabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true &&
-                candidateCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-        }
-        val hasProxyConfigured = isSystemProxyConfigured(context, connectivity, network)
-        val telephony = context.getSystemService(Context.TELEPHONY_SERVICE) as? TelephonyManager
-        val simState = runCatching { telephony?.simState }.getOrNull()
-        val simCount = runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                telephony?.activeModemCount
-            } else {
-                @Suppress("DEPRECATION")
-                telephony?.phoneCount
-            }
-        }.getOrNull()
-        return AuthEnvironmentSnapshot(
-            hasActiveNetwork = network != null,
-            hasInternetCapability = capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true,
-            hasCellularTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) == true,
-            hasAnyCellularInternetTransport = hasAnyCellularInternetTransport,
-            hasWifiTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true,
-            hasVpnTransport = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true,
-            hasProxyConfigured = hasProxyConfigured,
-            simState = simState,
-            simCount = simCount
-        )
-    }
-
-    private fun isSystemProxyConfigured(
-        context: Context,
-        connectivity: ConnectivityManager?,
-        network: Network?
-    ): Boolean {
-        val activeNetworkProxy = runCatching {
-            network?.let { connectivity?.getLinkProperties(it)?.httpProxy }
-        }.getOrNull()?.let { proxy ->
-            !proxy.host.isNullOrBlank() || proxy.port > 0
-        } == true
-        if (activeNetworkProxy) return true
-
-        val javaProxy = listOf(
-            "http.proxyHost",
-            "https.proxyHost",
-            "socksProxyHost"
-        ).any { key ->
-            !System.getProperty(key).isNullOrBlank()
-        }
-        if (javaProxy) return true
-
-        @Suppress("DEPRECATION")
-        return !android.net.Proxy.getHost(context).isNullOrBlank()
     }
 
     private fun finish(

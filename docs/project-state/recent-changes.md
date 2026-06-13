@@ -5,7 +5,11 @@
 
 ## 2026-06-13
 
-- 按真机反馈删除独立首次隐私同意大页：App 首次打开现在直接进入登录页，仍只在用户勾选登录页“我已阅读并同意《服务协议》《隐私政策》”后才记录隐私同意、初始化 `IdManager`、补报待发送崩溃日志并允许一键登录 / 短信验证码 / 短信登录；未勾选时不请求后端、不拉起一键登录 SDK、不申请电话状态权限。后台待发送图文 Worker 仍保留同意前 retry，不初始化身份或调用后端。`PrivacyConsentStore` 从独立页面文件拆成单独存储文件，构建一致性脚本同步改为护住登录页协议勾选和同意后初始化顺序。
+- 按最新登录口径收口到单一可见入口：Android 新包删除本机号码一键登录和 App 自己普通短信备用表单，只保留“手机号输入 + 融合认证短信登录”。登录页不再申请 `READ_PHONE_STATE`，debug / release 构建字段改为 `ENABLE_FUSION_SMS_LOGIN`，构建一致性脚本会拦截一键登录按钮、备用验证码 UI、电话权限和普通短信接口重新进入新 UI。`FusionOneLoginClient` 新增 `startSmsLogin`，用户输入手机号后走 `/api/auth/fusion/token` -> 阿里云 100001 短信节点 -> 最终 `/api/auth/fusion/login`；普通 `/api/auth/sms/*` 只保留旧包 / 应急兼容。融合 SDK 短信页做了安全样式收口，按钮、标题和验证码框尽量贴近 App 黑白简洁风格。阿里云控制台当前策略应关闭号码认证和图形验证节点，只保留短信认证节点；若 SDK 仍弹号码认证或图形验证码，先查云端策略，不回头再加第二套短信。
+
+- 手机连上后继续排查一键登录：`adb` 确认设备在线，系统代理为空，当前手机存在 WiFi 与蜂窝数据环境；后端数据边界脚本显示 `app_accounts=1 / auth_sessions=1 / auth_sessions_active=0`，所有账号资产归属异常仍为 0。最近 24 小时一键登录失败 Top 集中在 `auth.fusion_verify_interrupt`，更像 SDK 授权页 / 运营商取号未完成，不是 App 因 WiFi 存在而硬拦。Android 登录页一键失败提示改成灰色中性提示，文案不再写“WiFi 或代理环境”；阿里云授权页 UI 继续隐藏 SDK 默认“登录”标题，并微调号码、按钮和协议位置，尽量降低 SDK 页面突兀感。该改动只动 Android 登录体验和项目记忆，不改手机号账号、会员、礼品卡、短信验证码或后端鉴权主链。
+
+- 按真机反馈删除独立首次隐私同意大页：App 首次打开现在直接进入登录页，仍只在用户勾选登录页“我已阅读并同意《服务协议》《隐私政策》”后才记录隐私同意、初始化 `IdManager`、补报待发送崩溃日志并允许一键登录 / 短信验证码 / 短信登录；未勾选时不请求后端、不拉起融合认证 SDK、不申请电话状态权限。后台待发送图文 Worker 仍保留同意前 retry，不初始化身份或调用后端。`PrivacyConsentStore` 从独立页面文件拆成单独存储文件，构建一致性脚本同步改为护住登录页协议勾选和同意后初始化顺序。
 
 - 同步更新 debug-only UI 文案预览面板：新增“登录与协议”分组，覆盖首次登录页、未勾选拦截和验证码兜底三种状态；检查更新权限提示改为“授权后返回 App 自动继续”口径；预览面板仍只在 debug 包显示，构建一致性脚本继续校验 debug / release 除预览面板和调试日志外保持同生产后端、同登录主链和同网络安全基线。
 
@@ -13,7 +17,7 @@
 
 - 阿里云融合认证控制台策略同步收口：本机生产配置确认当前使用的方案 Code 与控制台“农技千查 / Android / FA000000009823740907 / 100001”一致；用户截图确认已在该方案策略里关闭两处“图形验证码”节点。首版推荐继续把阿里云 SDK 侧风控 / 短信 / 上行短信 / 通过手机号评分节点作为非必需能力处理，优先只保留号码认证一键登录，失败后回 App 自己的验证码页；策略侧变更按阿里云控制台口径等待约 5-10 分钟后再真机复测。
 
-- 继续按真机登录反馈收口一键登录和账号页误操作：Android 一键登录初始化前调用阿里云融合认证 SDK 的 `useSDKSupplyCaptchaModule(false)`，本地强制关闭 SDK 内置图形认证模块；同时文档明确“功能开启页的图形认证关闭”不等于“融合方案策略里没有图形节点”，云端 100001 认证策略仍需确认关闭 / 删除图形验证节点，不能关闭“融合认证解决方案”本身，否则一键登录主链会被关掉。本条当时仍保留独立首次隐私同意页；随后已在同日把首次同意合并到登录页协议勾选，减少重复点同意；阿里云运营商授权页协议仍不默认勾选，避免替用户默认同意取号授权。账号管理页“退出设备”新增二次确认弹窗，退出只吊销当前设备 session，不删除历史对话、会员权益、礼品卡或反馈记录。构建一致性脚本已加护栏，防止 SDK 内置图形认证关闭被回退。该改动只影响 Android 登录 / 设置体验，不改后端账号ID、会员、礼品卡或短信验证码业务真相。
+- 继续按真机登录反馈收口一键登录和账号页误操作：Android 一键登录初始化前调用阿里云融合认证 SDK 的 `useSDKSupplyCaptchaModule(false)`，本地强制关闭 SDK 内置图形认证模块；同时文档明确“功能开启页的图形认证关闭”不等于“融合方案策略里没有图形节点”，云端 100001 认证策略仍需确认关闭 / 删除图形验证节点，不能关闭“融合认证解决方案”本身，否则融合短信主链会被关掉。本条当时仍保留独立首次隐私同意页；随后已在同日把首次同意合并到登录页协议勾选，减少重复点同意；阿里云运营商授权页协议仍不默认勾选，避免替用户默认同意取号授权。账号管理页“退出设备”新增二次确认弹窗，退出只吊销当前设备 session，不删除历史对话、会员权益、礼品卡或反馈记录。构建一致性脚本已加护栏，防止 SDK 内置图形认证关闭被回退。该改动只影响 Android 登录 / 设置体验，不改后端账号ID、会员、礼品卡或短信验证码业务真相。
 
 - 按真机截图反馈收口今日农情和设置页视觉：主聊天今日农情卡和侧边栏农情历史卡外框统一改为黑色细边，农情摘要不再按固定行数省略，避免 90-130 字摘要展示不全；设置页主菜单去掉每项下方说明文字，当前账号行也不再显示手机号小字，整体更简洁；今日农情菜单图标从叶片圆形改为更直观的简报 / 报纸线性图标。该改动只影响 Android 展示层，不改今日农情后端生成、提示词、登录、会员或礼品卡链路，已通过 Android debug/release Kotlin 编译和测试包 / 正式包一致性检查。
 
@@ -65,7 +69,7 @@
 
 - 主界面性能按“少动主链、清掉明显浪费”的口径小步优化：Android 流式运行态不再把大段 `streamingMessageContent / streamingRevealBuffer` 放入 Activity saved-state，`isStreaming / streamingMessageId` 也同步改为运行时态，避免系统重建后出现“状态还在但内容为空”的错乱，恢复继续依赖已有流式草稿、远端快照和 pending 恢复链；流式吐字内部从反复 `drop()` 临时字符串改为索引推进，减少长回复时的临时分配和 GC 压力。聊天区远端图片缩略图新增 10 分钟失败短缓存，OSS 过期 / 失效图片滚回可见区时直接显示过期占位，不再反复发起 5 秒网络读取。后端 App 自动日志 Redis 限流改为异常时 fail open，避免日志系统影响主体验；短信、登录、礼品卡、上传和内部 secret 等安全 / 成本敏感入口仍 fail closed。
 
-- 继续按普通用户体验和 Android 官方权限 / 可访问性口径小步收口：登录页和首次隐私同意门禁的协议勾选框视觉不变，但点击目标扩大到 48dp，降低用户点不中导致“一键登录 / 验证码登录老提示未同意”的概率；聊天页不再一进主界面就弹定位权限，未授权时改为用户首次发送问诊时按需请求一次，首轮仍可用缓存地区或后端 IP 粗定位兜底，不阻塞提问。阿里云融合认证协议承接页只允许加载农技千查官方 HTTPS 域名，禁止明文 HTTP 和外域跳转，网页缺失或加载失败时显示 App 内置协议要点兜底，并会同时根据协议 URL / title 判断展示用户协议或隐私政策要点。用户点一键登录时，fusion token 首次请求改用 6 秒短超时；VPN / 系统代理在仍检测到可用移动数据时从硬拦改成 warning 后继续尝试一键登录，失败再回验证码登录，纯 WiFi / 无可用移动数据仍直接验证码兜底。发版脚本补齐后台 `/admin-api/` upstream 端口校验，避免后台还指旧 slot 却被 401 健康检查误判成功。`check-android-build-parity.ps1` 已补 Android 侧回归护栏；主聊天滚动主链、登录 token 主链、会员 / 礼品卡、用户记忆和今日农情模型语义未改。
+- 继续按普通用户体验和 Android 官方权限 / 可访问性口径小步收口：登录页和首次隐私同意门禁的协议勾选框视觉不变，但点击目标扩大到 48dp，降低用户点不中导致“融合短信登录登录老提示未同意”的概率；聊天页不再一进主界面就弹定位权限，未授权时改为用户首次发送问诊时按需请求一次，首轮仍可用缓存地区或后端 IP 粗定位兜底，不阻塞提问。阿里云融合认证协议承接页只允许加载农技千查官方 HTTPS 域名，禁止明文 HTTP 和外域跳转，网页缺失或加载失败时显示 App 内置协议要点兜底，并会同时根据协议 URL / title 判断展示用户协议或隐私政策要点。用户点一键登录时，fusion token 首次请求改用 6 秒短超时；VPN / 系统代理在仍检测到可用移动数据时从硬拦改成 warning 后继续尝试一键登录，失败再回验证码登录，纯 WiFi / 无可用移动数据仍直接验证码兜底。发版脚本补齐后台 `/admin-api/` upstream 端口校验，避免后台还指旧 slot 却被 401 健康检查误判成功。`check-android-build-parity.ps1` 已补 Android 侧回归护栏；主聊天滚动主链、登录 token 主链、会员 / 礼品卡、用户记忆和今日农情模型语义未改。
 
 - 继续补后台读路径性能护栏：新增 `035_admin_order_gift_indexes.sql`，给订单按账号ID / 时间查询和礼品卡兑换失败原因聚合补索引，降低后续真实用户、订单和礼品卡日志增长后后台订单页 / 监控面板扫表的风险；该迁移只优化后台查询，不改变订单、会员、礼品卡兑换、升级补偿或账号ID归属规则。
 
@@ -179,7 +183,7 @@
 
 ## 2026-06-10
 
-- 官网合规页和公安备案 footer 补齐并已部署验证：`site` 新增 `/legal/user-agreement/` 与 `/legal/privacy-policy/` 两个静态页面，一键登录 SDK 协议 URL 改指向这两个独立页面；官网 footer 使用真实公安备案号 `京公网安备11010602202723号`、查询链接和本地警徽图标 `/gongan.png`。`scripts/deploy-ecs-site.ps1` 已补本地构建文件检查和远端验证，公网首页、`/gongan.png`、根域名 / www 的两条协议 URL 均返回 200，首页包含 ICP、公安备案号和公安查询链接。
+- 官网合规页和公安备案 footer 补齐并已部署验证：`site` 新增 `/legal/user-agreement/` 与 `/legal/privacy-policy/` 两个静态页面，融合认证 SDK 协议 URL 改指向这两个独立页面；官网 footer 使用真实公安备案号 `京公网安备11010602202723号`、查询链接和本地警徽图标 `/gongan.png`。`scripts/deploy-ecs-site.ps1` 已补本地构建文件检查和远端验证，公网首页、`/gongan.png`、根域名 / www 的两条协议 URL 均返回 200，首页包含 ICP、公安备案号和公安查询链接。
 
 - 一键登录真机风险继续压缩：`FusionOneLoginClient` 协议 URL 不再指向官网首页；全局 30 秒 timeout 若已进入服务端换号阶段，不再抢先 finish 失败，只上报 `auth.fusion_timeout_ignored`；`onSDKTokenUpdate` 若在主线程回调，直接返回当前 token 并上报 `auth.fusion_token_refresh_skipped`，避免同步网络请求卡住授权页。仍需真机完成本机号码一键登录和短信登录回归。
 
@@ -264,7 +268,7 @@
 
 - 管理后台“产品洞察”从占位页推进到首版脱敏聚合报表：后端新增 `GET /admin-api/v1/insights`，前端“产品洞察”页展示今日 / 24h / 7d / 30d 用户增长、登录 session、问诊、图片问诊、App 异常、登录排障、反馈、礼品卡和今日农情失败趋势，同时展示反馈主题固定关键词命中、App 事件分类、Top App 事件和礼品卡失败原因。该接口只返回计数、比例、事件名和固定分类，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码；监控能力卡同步把“产品洞察”从 planned 改成 partial，表示首版可看，但洞察日报、人工标签、代表短摘、处理状态和独立报表表仍待补。
 
-- 新增 Android debug / release 构建一致性护栏：`scripts/check-android-build-parity.ps1` 会检查 Android 构建固定走 `https://api.nongjiqiancha.cn`、`USE_BACKEND_AB=true`、debug 有 release 签名时同签名并开启一键登录、release 必须开启一键登录、debug 不允许另加 manifest / 明文网络分叉、100001 一键登录只把最终 `onVerifySuccess` token 交给 `/api/auth/fusion/login`、不在半程回调消费 token，以及 debug-only 预览面板必须由 `BuildConfig.DEBUG` 隔离。GitHub Android CI 已接入该脚本，后续再改登录、构建或网络安全配置时会自动挡住“测试包和正式包业务链路又走偏”的改动。
+- 新增 Android debug / release 构建一致性护栏：`scripts/check-android-build-parity.ps1` 会检查 Android 构建固定走 `https://api.nongjiqiancha.cn`、`USE_BACKEND_AB=true`、debug 有 release 签名时同签名并开启融合短信登录、release 必须开启一键登录、debug 不允许另加 manifest / 明文网络分叉、100001 一键登录只把最终 `onVerifySuccess` token 交给 `/api/auth/fusion/login`、不在半程回调消费 token，以及 debug-only 预览面板必须由 `BuildConfig.DEBUG` 隔离。GitHub Android CI 已接入该脚本，后续再改登录、构建或网络安全配置时会自动挡住“测试包和正式包业务链路又走偏”的改动。
 
 - 管理后台登录排障按钮继续细化：此前“一键登录失败”按钮只筛 `auth.fusion_verify_failed`，会漏掉取 fusion token、SDK 初始化、授权页拉起、SDK token auth、服务端换号、超时和授权页未完成等真实失败阶段；现在登录排障卡把这些阶段拆成独立筛选按钮，并把短信拆成“短信发送失败 / 短信登录失败”，方便明天真机测试时直接定位卡在哪一步。
 
@@ -282,9 +286,9 @@
 
 - 补齐登录前自动日志链路：此前 `POST /api/app/logs` 需要账号鉴权，导致一键登录拉起失败、SDK 初始化失败、最终 token 校验失败、短信发送失败这类“还没拿到账号 token”的问题无法进入后台 App 日志。后端新增 `POST /api/app/logs/preauth`，只允许 `auth.` 前缀事件并统一写为 `user_id=preauth`，继续使用 8KiB body 上限、字段清洗、脱敏 IP 和 Redis / 单进程短期限流；Android 一键登录和短信登录失败点会 fire-and-forget 上报 `auth.fusion_*`、`auth.sms_*`，只带阶段、节点和错误码等安全字段，不上传手机号、verify token、短信验证码、URL、正文或图片内容。Android 端也补了敏感 value 过滤，字段值里出现 URL、token、AccessKey 或连续 11 位数字时直接丢弃。
 
-- 继续把测试包和正式包登录链路收成一致：本机存在固定 release 签名配置时，`debug` 构建也使用同一把 release 签名并开启 `ENABLE_FUSION_ONE_LOGIN`，因此 Android Studio 直接 Run / 打 debug 包也按 `com.nongjiqiancha + 正式签名 + 正式 HTTPS 后端` 走一键登录；只有缺少 release 签名配置的环境才关闭一键登录、退到验证码登录。正式 release 包仍强制要求 release 签名和 HTTPS 后端。阿里云融合认证授权页改用 `startSceneWithTemplateId(..., AlicomFusionAuthUICallBack)` 接入自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框保持可见且默认未勾选；当前 100001 一键登录主链不再调用半程 verify-only，不再提前消费 token，只在最终 `onVerifySuccess` 后调 `/api/auth/fusion/login`。短信后端同步收紧为最小参数：默认模板变量只保留 `{"code":"##code##"}`，不再默认传 `SchemeName=农技千查`，`DYPNS_SMS_SCHEME_NAME` 只有显式配置才发送，降低阿里云 `SendSmsVerifyCode` 返回“非法参数”的风险。
+- 继续把测试包和正式包登录链路收成一致：本机存在固定 release 签名配置时，`debug` 构建也使用同一把 release 签名并开启 `ENABLE_FUSION_ONE_LOGIN`，因此 Android Studio 直接 Run / 打 debug 包也按 `com.nongjiqiancha + 正式签名 + 正式 HTTPS 后端` 走一键登录；只有缺少 release 签名配置的环境才关闭一键登录、退到验证码登录。正式 release 包仍强制要求 release 签名和 HTTPS 后端。阿里云融合认证授权页改用 `startSceneWithTemplateId(..., AlicomFusionAuthUICallBack)` 接入自定义 UI，拉开手机号、登录按钮、其他手机号登录和协议区位置，SDK 协议勾选框保持可见且默认未勾选；当前 100001 融合短信主链不再调用半程 verify-only，不再提前消费 token，只在最终 `onVerifySuccess` 后调 `/api/auth/fusion/login`。短信后端同步收紧为最小参数：默认模板变量只保留 `{"code":"##code##"}`，不再默认传 `SchemeName=农技千查`，`DYPNS_SMS_SCHEME_NAME` 只有显式配置才发送，降低阿里云 `SendSmsVerifyCode` 返回“非法参数”的风险。
 
-- 修复 Android 本机号码一键登录“一点就退”崩溃：根因是 `FusionOneLoginClient` 在 `AlicomFusionBusiness.initWithToken(...)` 之前调用 `setAlicomFusionAuthCallBack(...)`，阿里云融合认证 SDK 内部 `authProxy` 尚未创建时被解引用导致 NPE。现按 SDK 实际依赖顺序先 `initWithToken` 初始化并适配页面，再挂认证回调；场景启动、继续、停止和销毁都加了安全兜底，SDK 初始化 / 拉起失败时切回验证码登录，不再让 App 进程崩溃。已用本地 AAR 字节码确认 `initWithToken` 会创建 `authProxy`，`setAlicomFusionAuthCallBack` 会使用该对象；有固定 release 签名配置的 debug 包和 release 包都会启用一键登录，缺签名配置的本机 debug 包才回落验证码登录。最终一键登录 / 验证码真实手机号回归仍需用户在关闭代理、优先手机流量条件下继续确认。
+- 修复 Android 本机号码一键登录“一点就退”崩溃：根因是 `FusionOneLoginClient` 在 `AlicomFusionBusiness.initWithToken(...)` 之前调用 `setAlicomFusionAuthCallBack(...)`，阿里云融合认证 SDK 内部 `authProxy` 尚未创建时被解引用导致 NPE。现按 SDK 实际依赖顺序先 `initWithToken` 初始化并适配页面，再挂认证回调；场景启动、继续、停止和销毁都加了安全兜底，SDK 初始化 / 拉起失败时切回验证码登录，不再让 App 进程崩溃。已用本地 AAR 字节码确认 `initWithToken` 会创建 `authProxy`，`setAlicomFusionAuthCallBack` 会使用该对象；有固定 release 签名配置的 debug 包和 release 包都会启用一键登录，缺签名配置的本机 debug 包才回落验证码登录。最终融合短信登录真实手机号回归仍需用户在关闭代理、优先手机流量条件下继续确认。
 
 - 轻量收紧 Android 登录页视觉：`LoginScreen.kt` 将品牌黑圆内绿色叶片前景继续放大，让叶片更贴近外圈；协议勾选框不再用字体对号，改为 Canvas 两段线绘制的常规勾；“我已阅读并同意《服务协议》《隐私政策》”收成单个单行可点击协议文本，减少真机窄屏换行。该改动只影响登录页 UI，不改一键登录 / 短信登录 / 协议内容 / 后端认证逻辑。
 
@@ -328,7 +332,7 @@
 
 - 将账号ID收敛、礼品卡追溯和监控面板增强提交 `5321ffe9` 部署到 ECS 和管理后台：远端 `go test ./...`、编译、切换双端口 slot、Nginx 配置检查和公网 healthz 均通过，当前 Nginx active upstream 为 `3001`；后台静态前端重新构建并部署到 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录访问 `/admin-api/v1/monitoring` 返回 401。部署后轻量冒烟确认 `https://api.nongjiqiancha.cn/healthz` 为 200，返回 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / redis=ok / upload_storage=oss`；融合认证 token 入口返回 200 且有 token / scheme，短信发送接口对非法手机号返回 400。输出不打印任何 token、AccessKey、模型 Key 或密码。
 
-- 继续按正式上架路线收敛账号、礼品卡和监控面板：明确全局长期业务身份统一为账号ID `acct_...`，手机号注册 / 登录只作为凭证归到该账号ID下，底层 `user_id` 字段在生产语义上按账号ID理解；Android 一键登录和短信登录 payload 会带旧本机 `legacy_user_id`，后端只接受本机 UUID 形态或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为迁移桥，并把礼品卡兑换和兑换尝试纳入旧 ID 到账号ID的数据迁移。礼品卡后台新增 summary 接口、卡码尾号 / 批次 / 账号ID追溯、兑换尝试成功状态和失败原因筛选、最近 7 天失败原因聚合；监控面板前端新增“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡和快捷入口，继续往非运维也能看懂的生产面板推进。debug 包与正式包默认接同一个生产 HTTPS 后端，区别只保留 debug-only 预览面板和调试日志。
+- 继续按正式上架路线收敛账号、礼品卡和监控面板：明确全局长期业务身份统一为账号ID `acct_...`，手机号注册 / 登录只作为凭证归到该账号ID下，底层 `user_id` 字段在生产语义上按账号ID理解；Android 融合短信登录和兼容短信登录 payload 会带旧本机 `legacy_user_id`，后端只接受本机 UUID 形态或可由旧 bearer token 证明的 legacy ID，不接受 `acct_...` 作为迁移桥，并把礼品卡兑换和兑换尝试纳入旧 ID 到账号ID的数据迁移。礼品卡后台新增 summary 接口、卡码尾号 / 批次 / 账号ID追溯、兑换尝试成功状态和失败原因筛选、最近 7 天失败原因聚合；监控面板前端新增“当前结论 / 登录与账号ID / 礼品卡与权益 / App质量”决策卡和快捷入口，继续往非运维也能看懂的生产面板推进。debug 包与正式包默认接同一个生产 HTTPS 后端，区别只保留 debug-only 预览面板和调试日志。
 
 - 轻量补充 OpenCode CI 记忆同步提示：全局 OpenCode 提示词和 [docs/opencode-codex-bridge.md](D:/wuhao/docs/opencode-codex-bridge.md) 写明 Android CI 会运行 `scripts/check_project_memory.py`，改动 `app/src/main/kotlin/...`、`server-go/`、`docs/adr/`、`docs/runbooks/`、`README.md`、`app/AGENTS.md` 或 `server-go/AGENTS.md` 等关键真相文件时，需要判断并同步更新 `AGENTS.md` 或 `docs/project-state/*`，提交前优先本地运行项目记忆检查。该规则只补轻量提示，不把大型项目记忆重新加入自动 `instructions`。
 
@@ -354,7 +358,7 @@
 
 - 继续按多代理巡检收口一批前后端和运维小坑：今日农情模型非 2xx 错误不再把上游原始 body 写入错误链 / 日志 / 数据库；App 自动日志 attrs 不只按敏感 key 过滤，也会丢弃普通字段名里包含 URL、token、AccessKey、手机号等敏感文本的 value；上传 multipart 超限明确返回 `413 body_too_large`，损坏 multipart 返回 `invalid multipart`。Android 图片导入和后台待发送补发在压缩前增加 32MB 原图读取上限，自更新 APK 下载增加默认 200MB 硬上限并按后端 file size 下载中断言；debug 测试包真实流式渲染速度与 release 对齐。内部客服回复不再对任意 `user_id` 自动创建用户资产行，必须已有帮助与反馈会话。运维侧 readiness 补 `dypns / dypns_fusion / dypns_sms / dev_order_endpoints=false` 断言，官网部署脚本改为断言 HTTP / HTTPS 状态码，回滚和 SLS 日志 runbook 修正为当前双端口 slot / 最小 SLS 真实入口；当时同时明确帮助与反馈图片仍复用 `/uploads/` 3 天生命周期，`support/` 30 天只是预留规则，后续已在 2026-06-13 切到 `support/`。
 
-- 按前后端深度巡检结果修复一轮小 bug / 风险点：Android 一键登录 SDK token 鉴权成功回调增加场景启动防重，避免重复拉起融合认证场景；登录页品牌绿叶改用透明 launcher 前景并由小黑圆底裁切承托，协议勾选区改为可换行布局；一键登录 token 接口失败文案不再把临时异常误报为“未配置”。Go 后端不再把模型上游非 2xx / 非 SSE 原始响应 body 写入日志或返回客户端，B/C 摘要错误同样只保留 HTTP 状态；App 自动日志自由 `message` 增加敏感文本降级并从服务端结构化日志字段中移除；主聊天用户输入服务端校验对齐 App 端 6000 字上限，仅兜底绕过 App 的直接接口调用，不限制模型输出或 B/C 摘要输出。同步修正 SLS、HTTP healthz 和双端口 slot 相关 runbook 旧口径。
+- 按前后端深度巡检结果修复一轮小 bug / 风险点：Android 融合认证 SDK token 鉴权成功回调增加场景启动防重，避免重复拉起融合认证场景；登录页品牌绿叶改用透明 launcher 前景并由小黑圆底裁切承托，协议勾选区改为可换行布局；一键登录 token 接口失败文案不再把临时异常误报为“未配置”。Go 后端不再把模型上游非 2xx / 非 SSE 原始响应 body 写入日志或返回客户端，B/C 摘要错误同样只保留 HTTP 状态；App 自动日志自由 `message` 增加敏感文本降级并从服务端结构化日志字段中移除；主聊天用户输入服务端校验对齐 App 端 6000 字上限，仅兜底绕过 App 的直接接口调用，不限制模型输出或 B/C 摘要输出。同步修正 SLS、HTTP healthz 和双端口 slot 相关 runbook 旧口径。
 
 - Android 登录页品牌标题补绿叶标识：在“农技千查”左侧加入小黑色圆形底的绿色叶片图标，圆底贴近绿叶、不使用完整黑底方形 App 图标，保持白底登录页更稳的品牌识别；不改一键登录、验证码登录、协议勾选或后端认证逻辑。
 
@@ -474,7 +478,7 @@
 - 继续补上传成本防刷边界：`/upload` 在已有登录鉴权、单张 `<=1MiB`、仅 JPEG、公开 base URL 必须 https 和 OSS 私有写入基础上新增短期限流，默认同一 `user_id + IP` 10 分钟 120 次；配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。Redis key 只保存 `user_id` hash 和 IP hash，不保存图片内容、图片 URL、手机号、token、聊天正文或模型 Key；该刀只保护上传入口和 OSS 成本，不改 Android 压缩链、图片预览、WorkManager、聊天流、额度、摘要或帮助与反馈消息结构。`go test ./...`、`git diff --check` 和项目记忆检查已通过；commit `065a3f73` 已部署到 ECS，readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`。
 - 继续补帮助与反馈防刷边界：`POST /api/support/messages` 在已有登录鉴权、正文 2000 字、单次最多 4 图和图片 URL 校验基础上新增短期限流，默认同一 `user_id + IP` 10 分钟 20 条；配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。Redis key 只保存 `user_id` hash 和 IP hash，不保存反馈正文、图片内容、手机号、token、聊天正文或模型 Key；该刀只保护帮助与反馈写库，不改客服历史读取、后台回复、图片上传、聊天主链、额度、摘要或 Android 滚动链。`go test ./...`、`git diff --check` 和项目记忆检查已通过；commit `4bedc613` 已部署到 ECS，readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`。
 - 继续补后端防刷边界：`POST /api/app/logs` 在已有登录鉴权、8KiB body 上限和字段清洗基础上新增短期限流，默认同一 `user_id + IP` 10 分钟 60 次；配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流。Redis key 只保存 `user_id` hash 和 IP hash，不保存明文手机号、token、聊天正文、图片内容或反馈正文；该刀只防 App 自动日志异常循环写库，不改日志字段、Android 上报点、帮助与反馈、聊天主链或 SLS 方案。`go test ./...`、`git diff --check` 和项目记忆检查已通过；commit `ac52cc55` 已部署到 ECS，readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`。
-- 在已有 Redis 认证限流基础上，补齐融合认证 token 入口的短期限流：`POST /api/auth/fusion/token` 现在默认按 IP hash 做 10 分钟 20 次频控，配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流；该 key 不保存明文 IP、手机号、验证码、token、聊天正文或图片内容。此刀只保护一键登录 SDK 后续接入后的阿里云 token 获取入口，不改短信发送 / 登录校验、不改账号 session 签发、不碰主聊天流、额度、归档、摘要、OSS 或 Android 滚动链。`go test ./...`、`git diff --check` 和项目记忆检查已通过；commit `9be4cc76` 已部署到 ECS，readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`；当时缺的 DYPNS 融合认证 / 短信配置已在 2026-06-01 补齐，当前仍缺 DashScope 模型 Key。
+- 在已有 Redis 认证限流基础上，补齐融合认证 token 入口的短期限流：`POST /api/auth/fusion/token` 现在默认按 IP hash 做 10 分钟 20 次频控，配置 Redis 时跨进程共享，未配置 Redis 时回退本进程限流；该 key 不保存明文 IP、手机号、验证码、token、聊天正文或图片内容。此刀只保护融合认证 SDK 后续接入后的阿里云 token 获取入口，不改短信发送 / 登录校验、不改账号 session 签发、不碰主聊天流、额度、归档、摘要、OSS 或 Android 滚动链。`go test ./...`、`git diff --check` 和项目记忆检查已通过；commit `9be4cc76` 已部署到 ECS，readiness 复查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`；当时缺的 DYPNS 融合认证 / 短信配置已在 2026-06-01 补齐，当前仍缺 DashScope 模型 Key。
 - 后端 Redis 先按最小生产口径接到认证限流，不碰聊天主链：`server-go` 新增可选 Redis 客户端，配置 `REDIS_ADDR / REDIS_USERNAME / REDIS_PASSWORD` 后启动会先 ping，失败 fail-fast；短信发送 `POST /api/auth/sms/send` 和短信登录校验 `POST /api/auth/sms/login` 改为可走 Redis 分布式短期限流，key 只保存 scope、手机号 hash 和 IP hash，不保存明文手机号、验证码、token、聊天正文或图片内容；未配置 Redis 时仍回退本进程限流。主聊天 `/api/chat/stream`、额度扣减、轮次归档、摘要和订单仍走原 MySQL / 现有主链，没有切 Redis。`go test ./...` 已通过；随后已把 `REDIS_*` 写入 ECS 环境文件并部署 commit `5b86941b`，只读就绪检查显示 systemd active、Nginx OK、Host healthz 200、`redis=ok`、`upload_storage=oss`；当时缺的 DYPNS 融合认证 / 短信配置已在 2026-06-01 补齐，当前仍缺 DashScope 模型 Key。
 
 ## 2026-05-31

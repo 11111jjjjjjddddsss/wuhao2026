@@ -21,7 +21,7 @@
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。该组用于资源不足提前邮件提醒，不走短信 / 电话
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
-- DYPNS 一键登录 / 短信认证：最近 7 天统计均为 `no_data`，说明当前还没有真实认证消耗
+- DYPNS 融合认证 / 短信认证：最近 7 天统计均为 `no_data`，说明当前还没有真实认证消耗
 
 统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
 
@@ -77,7 +77,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 - Redis：256 MiB 标准主备，到期 `2027-05-30T16:00:00Z`。CLI 显示实例 Normal、连接上限 10000、QPS 规格 100000；近 10 分钟监控内存约 4.4 MiB / 256 MiB（约 1.7%）、CPU 0 到 0.4%、连接使用约 0.03% 到 0.05%
 - OSS：`nongjiqiancha-prod` 当前 `du` 为 0 MB，100 GiB 标准-本地冗余资源包足够；`uploads/` 3 天、`support/` 30 天生命周期仍是控制成本的关键
 - CDN：当前未启用，也不是早期必需项。阿里云 CDN 不是纯免费资源，按官方口径会产生下行流量 / 带宽等基础费用，HTTPS 静态请求有月度免费额度但超出仍计费；早期问诊图片继续走后端 `/uploads/` 中转 + OSS 生命周期，不把私有问诊图片直接改成 CDN 长缓存。若后续 APK 下载、官网静态资源或公开图片流量明显挤占 5 Mbps ECS 出口，再评估 CDN / OSS 下行分流 / 带宽升级
-- DYPNS 融合认证 / 短信认证：已新增 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 查询一键登录和短信认证统计 / 月账单。2026-06-06 默认查询最近 7 天时统计均为 `no_data`，说明当前尚未形成真实认证消耗
+- DYPNS 融合认证 / 短信认证：已新增 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 查询融合认证和短信认证统计 / 月账单。2026-06-06 默认查询最近 7 天时统计均为 `no_data`，说明当前尚未形成真实认证消耗
 - API / 官网：2026-06-06 巡检时发现一次 502，根因不是资源不足，而是双端口发布的多个 drain-stop 定时任务叠加，把当前 slot 也停掉；已启动当前 active slot 恢复 `https://api.nongjiqiancha.cn/healthz` 200，并修复部署 / 回滚脚本以清理旧 drain 任务，就绪检查脚本也改成 HTTPS healthz 非 200 或 active slot inactive 时直接失败。后续复查最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 等探测请求被限流拦截，未见新的 API 5xx 计数；API HTTP 80 已改为 ACME challenge + 301 HTTPS 跳转，不再直接反代业务 API
 
 ## 固定巡检命令
@@ -140,7 +140,7 @@ OSS Bucket 用量：
 aliyun oss du oss://nongjiqiancha-prod --block-size MB
 ```
 
-一键登录 / 短信认证次数和账单：
+融合认证 / 短信认证次数和账单：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-usage.ps1
@@ -159,7 +159,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 - Redis 内存超过 70%、连接超过 60%、出现 evicted keys / rejected connections / latency 明显升高时，提示升配或拆分用途
 - OSS 资源包使用超过 70% 提醒观察，超过 85% 提醒购买更大资源包或调整生命周期
 - 模型 Key / 百炼账号出现连续限流、余额不足、套餐消耗接近上限或主副账号账单不可控时，提示充值、购买节省计划或统一账号
-- DYPNS 一键登录 / 短信认证调用量突然超过真实用户访问规模、失败率超过 20%、未知率持续不为 0，或月账单明显异常时，提示排查 SDK、限流、密钥和半程 / 最终校验链路；上线早期若单日认证调用量超过 100 次也要提醒复查，后续按真实用户量重设阈值
+- DYPNS 融合认证 / 短信认证调用量突然超过真实用户访问规模、失败率超过 20%、未知率持续不为 0，或月账单明显异常时，提示排查 SDK、限流、密钥和半程 / 最终校验链路；上线早期若单日认证调用量超过 100 次也要提醒复查，后续按真实用户量重设阈值
 - ECS、RDS、Redis、OSS 资源包、域名、HTTPS 证书、短信 / 认证服务到期前 60 / 30 / 7 天都要提醒；证书虽有自动续期，也要在到期前人工复查一次
 
 ## 当前不急着升级的原因
@@ -173,6 +173,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-auth-
 
 - 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；ECS 系统盘已开启普通低频自动快照；SLS 应用日志已绑定邮件行动策略和最小仪表盘；继续补 API healthz / Go 服务 inactive 这类应用可用性告警
 - 当前已有独立公网黑盒只读脚本；`check-ecs-readiness.ps1` 能人工 / CI 巡检服务器内部和反代状态，`check-public-blackbox.ps1` 能从公网视角确认 API / 官网 / 后台可达。后续仍应把黑盒探测接成自动定时通知，而不是只靠人工跑脚本
-- 登录链路监控至少覆盖 DYPNS 一键登录次数 / 成功率 / 失败率 / 账单、短信认证次数 / 账单、后端 `/api/auth/fusion/*` 和 `/api/auth/sms/*` 入口错误率
+- 登录链路监控至少覆盖 DYPNS 融合认证次数 / 成功率 / 失败率 / 账单、短信认证次数 / 账单、后端 `/api/auth/fusion/*` 和 `/api/auth/sms/*` 入口错误率
 - 若继续使用单 ECS 双端口发布，部署 / 回滚前必须清理旧 `nongji-drain-stop-*` transient systemd 任务，避免多个排空任务叠加
 - 管理后台上线后，容量快照、到期时间、5xx 和 App 自动日志应做成只读运维面板
