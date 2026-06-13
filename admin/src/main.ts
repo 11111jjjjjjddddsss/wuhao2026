@@ -57,6 +57,7 @@ const routes: RouteItem[] = [
   { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "状态/补跑", roles: ["content_ops", "ops_readonly", "auditor"] },
   { key: "app-update", label: "检查更新", section: "运营工作台", hint: "发布/停更", roles: ["release_ops", "ops_readonly", "auditor"] },
   { key: "audit", label: "审计", section: "安全与系统", hint: "可查", roles: ["auditor", "ops_readonly"] },
+  { key: "account", label: "账号安全", section: "安全与系统", hint: "改密" },
   { key: "insights", label: "产品洞察", section: "安全与系统", hint: "聚合报表" },
   { key: "health", label: "服务健康", section: "安全与系统", hint: "可查" },
 ];
@@ -137,6 +138,9 @@ async function render(): Promise<void> {
   if (!auth) {
     renderLogin();
     return;
+  }
+  if (auth.admin_user.must_change_password) {
+    activeRoute = "account";
   }
   if (!isRouteVisible(activeRoute)) {
     activeRoute = defaultRoute();
@@ -265,6 +269,8 @@ function topbarHTML(): string {
       <div class="topbar-right">
         <span class="role-badge">${escapeHTML(user?.role || "unknown")}</span>
         <span class="small">${escapeHTML(user?.display_name || user?.username || "")}</span>
+        ${user?.must_change_password ? `<span class="pill warn">需要改密</span>` : ""}
+        <button class="button" data-action="route" data-route="account">账号安全</button>
         <button class="button" data-action="refresh">刷新</button>
         <button class="button" data-action="logout">退出</button>
       </div>
@@ -298,6 +304,8 @@ async function routeContent(route: RouteKey): Promise<string> {
       return appUpdatePage();
     case "audit":
       return auditPage();
+    case "account":
+      return accountSecurityPage();
     case "insights":
       return insightsPage();
     case "health":
@@ -957,9 +965,60 @@ async function healthPage(): Promise<string> {
   `;
 }
 
+async function accountSecurityPage(): Promise<string> {
+  const user = auth?.admin_user;
+  if (!user) return errorBlock(new Error("missing_admin_user"));
+  return `
+    ${pageHead("账号安全", "查看当前后台账号并更新登录密码。", "account")}
+    ${user.must_change_password ? notice("需要先更新后台密码", "当前账号被标记为必须改密。改完密码后，其他后台页面会恢复访问。", "warn") : ""}
+    <div class="grid two">
+      <section class="card">
+        <div class="card-head"><div class="card-title">当前账号</div></div>
+        <div class="card-body">
+          <table class="table">
+            <tbody>
+              ${metricRow("账号", user.username)}
+              ${metricRow("显示名", user.display_name || user.username)}
+              ${metricRow("角色", user.role)}
+              ${metricRow("状态", user.enabled ? "启用" : "停用")}
+              ${metricRow("需要改密", user.must_change_password ? "是" : "否")}
+              ${metricRow("上次登录", user.last_login_at ? formatTime(user.last_login_at) : "未返回")}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><div class="card-title">修改密码</div></div>
+        <div class="card-body">
+          <form id="admin-password-form" class="login-form" autocomplete="on">
+            <label class="field">
+              <span>当前密码</span>
+              <input class="input" name="current_password" type="password" autocomplete="current-password" required />
+            </label>
+            <label class="field">
+              <span>新密码</span>
+              <input class="input" name="new_password" type="password" autocomplete="new-password" minlength="8" required />
+            </label>
+            <label class="field">
+              <span>确认新密码</span>
+              <input class="input" name="confirm_password" type="password" autocomplete="new-password" minlength="8" required />
+            </label>
+            <div class="muted small">至少 8 个字符。密码不会写入日志、审计详情或前端持久化存储。</div>
+            <button class="button primary" type="submit">更新密码</button>
+          </form>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 async function handleSubmit(form: HTMLFormElement): Promise<void> {
   if (form.id === "login-form") {
     await submitLogin(form);
+    return;
+  }
+  if (form.id === "admin-password-form") {
+    await submitAdminPasswordChange(form);
     return;
   }
   if (form.id === "users-filter-form") {
@@ -1030,6 +1089,12 @@ async function handleAction(button: HTMLElement): Promise<void> {
   const action = button.dataset.action || "";
   if (action === "route") {
     const route = button.dataset.route as RouteKey;
+    if (auth?.admin_user.must_change_password && route !== "account") {
+      activeRoute = "account";
+      location.hash = "account";
+      await render();
+      return;
+    }
     if (isRouteVisible(route)) {
       location.hash = route;
     }
@@ -1130,10 +1195,44 @@ async function submitLogin(form: HTMLFormElement): Promise<void> {
       json: { username, password },
     });
     setStoredAuth(auth);
-    activeRoute = routeFromHash();
+    activeRoute = auth.admin_user.must_change_password ? "account" : routeFromHash();
     await render();
   } catch (error) {
     renderLogin(`登录失败：${errorMessage(error)}`);
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function submitAdminPasswordChange(form: HTMLFormElement): Promise<void> {
+  const currentPassword = formValue(form, "current_password");
+  const newPassword = formValue(form, "new_password");
+  const confirmPassword = formValue(form, "confirm_password");
+  if (Array.from(newPassword).length < 8) {
+    window.alert("新密码至少 8 个字符。");
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    window.alert("两次输入的新密码不一致。");
+    return;
+  }
+  if (newPassword === currentPassword) {
+    window.alert("新密码不能和当前密码相同。");
+    return;
+  }
+  const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
+  if (button) button.disabled = true;
+  try {
+    auth = await apiFetch<AuthPayload>("/admin-api/v1/auth/change-password", {
+      method: "POST",
+      json: { current_password: currentPassword, new_password: newPassword },
+    });
+    setStoredAuth(auth);
+    activeRoute = "account";
+    window.alert("密码已更新。");
+    await render();
+  } catch (error) {
+    window.alert(`更新失败：${errorMessage(error)}`);
   } finally {
     if (button) button.disabled = false;
   }
@@ -3589,6 +3688,9 @@ function friendlyError(error: unknown): { title: string; body: string } {
     }
     if (error.status === 403) {
       return { title: "当前账号没有权限", body: "这个模块或操作不对当前角色开放，需要换有权限的后台账号。" };
+    }
+    if (error.status === 428) {
+      return { title: "需要先更新后台密码", body: "请打开账号安全页修改密码，再继续使用其他后台页面。" };
     }
     if (error.status >= 500) {
       return { title: "后台服务暂时异常", body: "请先刷新页面；如果持续出现，再看服务健康和后端日志。" };

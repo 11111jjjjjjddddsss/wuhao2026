@@ -2135,7 +2135,7 @@ func filterAdminMonitoringLaunchRoutes(items []AdminMonitoringLaunchItem, role s
 
 func adminRouteAllowed(role string, route string) bool {
 	switch strings.TrimSpace(route) {
-	case "", "overview", "monitoring", "health", "insights":
+	case "", "overview", "monitoring", "health", "insights", "account":
 		return adminRoleAllowed(role)
 	case "users", "entitlements", "orders":
 		return adminRoleAllowed(role, "ops_readonly", "support", "finance_ops")

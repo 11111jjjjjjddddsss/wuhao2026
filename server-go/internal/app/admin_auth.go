@@ -56,6 +56,11 @@ type adminLoginRequest struct {
 	Password string `json:"password"`
 }
 
+type adminChangePasswordRequest struct {
+	CurrentPassword string `json:"current_password"`
+	NewPassword     string `json:"new_password"`
+}
+
 type adminRequestContext struct {
 	User      AdminUser
 	ExpiresAt int64
@@ -200,6 +205,82 @@ func (s *Server) handleAdminMe(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (s *Server) handleAdminChangePassword(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r)
+	if !ok {
+		return
+	}
+	var body adminChangePasswordRequest
+	if err := decodeJSONBodyLimited(r, &body, 8*1024); err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.password.change", "admin_user", admin.User.Username, "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	if strings.TrimSpace(body.CurrentPassword) == "" || strings.TrimSpace(body.NewPassword) == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.password.change", "admin_user", admin.User.Username, "", false, http.StatusBadRequest, map[string]any{"error_code": "password_required"})
+		s.writeError(w, http.StatusBadRequest, "password_required")
+		return
+	}
+	if runeCount(body.NewPassword) < minAdminPasswordRunes {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.password.change", "admin_user", admin.User.Username, "", false, http.StatusBadRequest, map[string]any{"error_code": "password_too_short"})
+		s.writeError(w, http.StatusBadRequest, "password_too_short")
+		return
+	}
+	currentHash, err := s.store.GetAdminPasswordHash(r.Context(), admin.User.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			s.writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		s.logger.Error("admin password lookup failed", "admin", admin.User.Username, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !verifyAdminPasswordHash(body.CurrentPassword, currentHash) {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.password.change", "admin_user", admin.User.Username, "", false, http.StatusUnauthorized, map[string]any{"error_code": "current_password_invalid"})
+		s.writeError(w, http.StatusUnauthorized, "current_password_invalid")
+		return
+	}
+	if verifyAdminPasswordHash(body.NewPassword, currentHash) {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.password.change", "admin_user", admin.User.Username, "", false, http.StatusBadRequest, map[string]any{"error_code": "password_unchanged"})
+		s.writeError(w, http.StatusBadRequest, "password_unchanged")
+		return
+	}
+	newHash, err := createAdminPasswordHash(body.NewPassword)
+	if err != nil {
+		s.logger.Error("admin password hash failed", "admin", admin.User.Username, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	nowMs := time.Now().UnixMilli()
+	if err := s.store.UpdateAdminPassword(r.Context(), admin.User.ID, newHash, nowMs); err != nil {
+		if err == sql.ErrNoRows {
+			s.writeError(w, http.StatusUnauthorized, "unauthorized")
+			return
+		}
+		s.logger.Error("admin password update failed", "admin", admin.User.Username, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	revokedOtherSessions := false
+	rawSession := adminSessionTokenFromRequest(r)
+	if rawSession != "" {
+		if err := s.store.RevokeOtherAdminSessions(r.Context(), admin.User.ID, hashAdminToken(rawSession), nowMs); err != nil {
+			s.logger.Warn("revoke other admin sessions failed", "admin", admin.User.Username, "error", err)
+		} else {
+			revokedOtherSessions = true
+		}
+	}
+	admin.User.MustChangePassword = false
+	admin.User.UpdatedAt = nowMs
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.password.change", "admin_user", admin.User.Username, "", true, http.StatusOK, map[string]any{"revoked_other_sessions": revokedOtherSessions})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"admin_user": admin.User,
+		"expires_at": admin.ExpiresAt,
+		"csrf_token": adminCSRFTokenFromCookie(r),
+	})
+}
+
 func (s *Server) handleAdminLogout(w http.ResponseWriter, r *http.Request) {
 	admin, ok := s.requireAdmin(w, r)
 	if !ok {
@@ -242,6 +323,10 @@ func (s *Server) requireAdmin(w http.ResponseWriter, r *http.Request, roles ...s
 			s.writeError(w, http.StatusForbidden, "csrf_required")
 			return nil, false
 		}
+	}
+	if session.AdminUser.MustChangePassword && !adminPasswordChangeAllowedPath(r.URL.Path) {
+		s.writeError(w, http.StatusPreconditionRequired, "password_change_required")
+		return nil, false
 	}
 	_ = s.store.TouchAdminSession(contextBackground(), hashAdminToken(rawSession), time.Now().UnixMilli())
 	return &adminRequestContext{User: session.AdminUser, ExpiresAt: session.ExpiresAt}, true
@@ -308,6 +393,46 @@ func (s *Store) GetAdminUserForLogin(ctx context.Context, username string) (Admi
 		user.LastLoginAt = int64Ptr(lastLogin.Int64)
 	}
 	return user, passwordHash, nil
+}
+
+func (s *Store) GetAdminPasswordHash(ctx context.Context, adminUserID int64) (string, error) {
+	var passwordHash string
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT password_hash
+		   FROM admin_users
+		  WHERE id = ?
+		    AND enabled = 1
+		  LIMIT 1`,
+		adminUserID,
+	).Scan(&passwordHash)
+	return passwordHash, err
+}
+
+func (s *Store) UpdateAdminPassword(ctx context.Context, adminUserID int64, passwordHash string, nowMs int64) error {
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE admin_users
+		    SET password_hash = ?,
+		        must_change_password = 0,
+		        updated_at = ?
+		  WHERE id = ?
+		    AND enabled = 1`,
+		passwordHash,
+		nowMs,
+		adminUserID,
+	)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
 }
 
 func (s *Store) CreateAdminSession(ctx context.Context, adminUserID int64, role string, sessionHash string, csrfHash string, nowMs int64, expiresAt int64) error {
@@ -390,6 +515,30 @@ func (s *Store) TouchAdminSession(ctx context.Context, sessionHash string, nowMs
 func (s *Store) RevokeAdminSession(ctx context.Context, sessionHash string, revokedAt int64) error {
 	_, err := s.db.ExecContext(ctx, "UPDATE admin_sessions SET revoked_at = ? WHERE session_hash = ? AND revoked_at IS NULL", revokedAt, sessionHash)
 	return err
+}
+
+func (s *Store) RevokeOtherAdminSessions(ctx context.Context, adminUserID int64, keepSessionHash string, revokedAt int64) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE admin_sessions
+		    SET revoked_at = ?
+		  WHERE admin_user_id = ?
+		    AND session_hash <> ?
+		    AND revoked_at IS NULL`,
+		revokedAt,
+		adminUserID,
+		keepSessionHash,
+	)
+	return err
+}
+
+func adminPasswordChangeAllowedPath(path string) bool {
+	switch strings.TrimSpace(path) {
+	case "/admin-api/v1/auth/me", "/admin-api/v1/auth/logout", "/admin-api/v1/auth/change-password":
+		return true
+	default:
+		return false
+	}
 }
 
 func normalizeAdminUsername(raw string) string {

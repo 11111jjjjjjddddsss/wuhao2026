@@ -6,7 +6,7 @@
 
 记录“农技千查”统一管理后台当前实现、上线方式、第一版页面能力和仍需补齐的安全边界。
 
-当前第一版后台已进入代码并已部署到生产：`admin` 是 Vite 静态前端，`server-go` 暴露 `/admin-api/v1/*` 管理 API，并新增后台账号 / session / CSRF、角色校验和审计。生产入口为 `https://admin.nongjiqiancha.cn/`，Nginx 静态托管后台前端并同域反代 `/admin-api/` 到当前 active Go slot；一次性 bootstrap 环境变量已用于初始化 owner 账号，随后已从 ECS 环境文件清理。
+当前第一版后台已进入代码并已部署到生产：`admin` 是 Vite 静态前端，`server-go` 暴露 `/admin-api/v1/*` 管理 API，并新增后台账号 / session / CSRF、角色校验、账号安全改密和审计。生产入口为 `https://admin.nongjiqiancha.cn/`，Nginx 静态托管后台前端并同域反代 `/admin-api/` 到当前 active Go slot；一次性 bootstrap 环境变量已用于初始化 owner 账号，随后已从 ECS 环境文件清理。
 
 详细页面结构、筛选项、指标和版面建议见 [admin-dashboard-design.md](D:/wuhao/docs/runbooks/admin-dashboard-design.md)。
 
@@ -18,6 +18,7 @@
 - 登录后只读烟测：[check-admin-authenticated-smoke.ps1](D:/wuhao/scripts/check-admin-authenticated-smoke.ps1)。该脚本不会把后台密码写入仓库或输出到日志；运行前在当前 PowerShell 临时设置 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`，然后执行 `.\scripts\check-admin-authenticated-smoke.ps1 -RequireOwner`。它会登录后台、访问总览 / 监控 / 洞察 / 用户 / 会员 / 订单 / 礼品卡 / 帮助反馈 / App 日志 / 审计 / 今日农情 / 检查更新 / 注销申请等只读 API，最后退出；这比只看未登录 `/auth/me=401` 更能证明后台登录后核心页面可用。
 - 管理后台 API：`/admin-api/v1/*`，由 `server-go` 提供，不单独起第二套后端。
 - 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。
+- 后台账号安全：`POST /admin-api/v1/auth/change-password` 支持登录后自助修改当前后台密码；后端验证当前密码、限制新密码最短 8 字符、改密后清 `must_change_password` 并吊销同账号其它后台会话。若账号被标记为必须改密，除 `/auth/me`、`/auth/logout` 和 `/auth/change-password` 外，其它后台 API 会返回 `password_change_required`。
 - 后台账号：服务启动时可用 `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` 初始化；密码会以 PBKDF2-SHA256 hash 存入 `admin_users`，明文不得写入仓库、文档或前端。
 - 后台角色：首版支持 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`；服务端校验权限，不能靠前端隐藏按钮。前端侧栏和监控快捷入口会按同一角色矩阵隐藏无权页面，减少误点和 403，但这只是体验收敛，不是安全边界。
 - 后台审计：登录、登出、查询用户、客服回复、日志查询、审计日志查询、今日农情、检查更新、检查更新校验失败、礼品卡生成 / 查询 / 作废 / 用户兑换等会写审计记录。
@@ -43,6 +44,7 @@
 - 后台审计：`GET /admin-api/v1/audit-logs`。
 - 今日农情：`GET /admin-api/v1/today-agri/cards`、`POST /admin-api/v1/today-agri/generate`。
 - 检查更新：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`；后台可直接维护 Android 版本号、HTTPS APK、SHA-256、文件大小、强制更新和停更状态，对外 `/api/app/update` 优先读取数据库表 `app_release_configs`，无记录时才回退环境变量。
+- 账号安全：`POST /admin-api/v1/auth/change-password`；所有后台角色都可进入“账号安全”页修改自己的密码，强制改密账号登录后会先停留在该页。
 - 产品洞察：`GET /admin-api/v1/insights`，首版只读展示今日 / 24h / 7d / 30d 用户增长、登录 session、问诊、图片问诊、App 异常、登录排障、反馈、礼品卡和今日农情失败趋势；同时聚合反馈主题固定关键词命中、App 事件分类、Top App 事件和礼品卡失败原因。该接口只返回计数、比例、事件名和固定分类，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码。
 
 仍保留的内部共享密钥接口：
@@ -82,8 +84,8 @@
 - 审计：所有后台登录、查询敏感用户、回复反馈、改版本、补权益、礼品卡生成 / 作废、今日农情补跑 / 停用都写服务端审计。
 - 权限：第一版也要有最小角色，而不是所有人一个超级密码。建议 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`。
 - 安全：后台入口必须 HTTPS、SameSite Cookie、接口限流、登录失败限制、密码哈希、服务端授权校验和审计；不要把“前端隐藏按钮”当权限。
-- 账号初始化：后台初始账号只能通过一次性环境变量、Cloud Assistant 脚本或本机安全脚本写入数据库 hash；账号名和明文密码不能写进仓库、文档、前端代码或部署脚本。初始化成功后必须禁用 bootstrap；当前还没有自助改密 / 强制首次改密页面，后续多账号运营前要补改密、重置和账号禁用流程。
-- 生产初始化状态：2026-06-07 已通过一次性 bootstrap 创建 owner 账号，随后已从 `/etc/nongjiqiancha/server.env` 删除 `ADMIN_BOOTSTRAP_*` 并重启 active slot；`scripts/check-ecs-readiness.ps1` 会把残留 `ADMIN_BOOTSTRAP_*` 视为生产 readiness 失败。后续若忘记密码，应通过临时 bootstrap 或受控运维脚本重置，仍不得在仓库或文档中记录明文密码。
+- 账号初始化：后台初始账号只能通过一次性环境变量、Cloud Assistant 脚本或本机安全脚本写入数据库 hash；账号名和明文密码不能写进仓库、文档、前端代码或部署脚本。初始化成功后必须禁用 bootstrap；当前已有自助改密和 `must_change_password` 强制改密硬兜底，后续多账号运营前仍要补受控重置、账号禁用和角色管理流程。
+- 生产初始化状态：2026-06-07 已通过一次性 bootstrap 创建 owner 账号，随后已从 `/etc/nongjiqiancha/server.env` 删除 `ADMIN_BOOTSTRAP_*` 并重启 active slot；`scripts/check-ecs-readiness.ps1` 会把残留 `ADMIN_BOOTSTRAP_*` 视为生产 readiness 失败。后台账号可在“账号安全”页自助改密码；后续若忘记密码，应通过临时 bootstrap 或受控运维脚本重置，仍不得在仓库或文档中记录明文密码。
 
 ### 第一版页面建议
 
@@ -112,6 +114,7 @@
 | 注销申请 | 已接入申请队列 | `account_deletion_requests`、`/api/account/deletion-requests`、`/admin-api/v1/account-deletion-requests*` | 物理删除 / 匿名化规则、法定留存、处理责任和批量清理脚本 |
 | App 自动日志 | 已接入首版 | `client_app_logs`、`/internal/app/logs`、`/admin-api/v1/app-logs`、监控页登录排障卡、检查更新排障卡 | 更细的版本 / 设备 / 地区聚合和告警 |
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
+| 后台账号安全 | 已接入首版 | `admin_users`、`admin_sessions`、`/admin-api/v1/auth/change-password` | 受控重置、账号禁用、角色管理 |
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
 | 会员 / 额度 | 已接入用户级只读 | `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits` | 全局统计、人工补偿二次确认和审计 |
 | 今日农情 | 已接入状态查看和补跑 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards`、`/admin-api/v1/today-agri/generate`、`nongji-daily-agri-failed` AlertHub 告警 | 停用 API、首封告警邮件送达确认和发布记录 |

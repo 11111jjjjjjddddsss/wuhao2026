@@ -13,6 +13,7 @@ export type AdminRouteKey =
   | "today-agri"
   | "app-update"
   | "audit"
+  | "account"
   | "insights"
   | "health";
 export type AdminMonitoringLevel = "ok" | "warn" | "bad" | "error";
