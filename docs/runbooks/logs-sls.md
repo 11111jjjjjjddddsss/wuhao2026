@@ -1,6 +1,6 @@
 # 日志排查 Runbook
 
-最后更新：2026-06-12
+最后更新：2026-06-13
 
 ## 目的
 
@@ -50,16 +50,16 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-a
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1 -DryRun
 ```
 
-只读巡检当前告警闭环，不修改云上配置；脚本会校验规则是否启用、Logstore、严重级别、是否进入 AlertHub，以及查询语句是否和仓库期望一致：
+只读巡检当前告警闭环，不修改云上配置；脚本会校验规则是否启用、Logstore、严重级别、是否进入 AlertHub，以及查询语句、触发条件和重复提醒是否和仓库期望一致：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1
 ```
 
-若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；若还要把查询语句、严重级别、runbook 注解等 warning 当成失败，可再加 `-FailOnWarning`。`check-resource-capacity.ps1 -Strict` 会自动带上这个参数，避免 SLS 规则漂移时总巡检假绿：
+若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；若还要把查询语句、严重级别、触发条件、重复提醒、runbook 注解、行动策略 ID 和仪表盘 ID 等 warning 当成失败，可再加 `-FailOnWarning`。`check-resource-capacity.ps1 -Strict` 会自动带上这个参数，避免 SLS 规则漂移时总巡检假绿：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning
 ```
 
 当前已创建的最小规则：
@@ -83,7 +83,7 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 
 - 这些规则是“最小生产兜底”，不是完整告警中心
 - 当前会进入 AlertHub，并通过行动策略 `nongji-prod-email` 走邮件通知；后台页面不会自动弹窗，App 用户也不会收到系统通知
-- 2026-06-12 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，且 `actionPolicyId` 和 dashboard 均已绑定；`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard` 返回 `status=ready`
+- 2026-06-13 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 均符合仓库期望；`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
 - 后续仍需在真实或测试告警触发时确认第一封邮件可达，并继续补 DYPNS 认证用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 

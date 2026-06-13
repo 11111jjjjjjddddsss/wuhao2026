@@ -31,6 +31,7 @@ type AdminHealthStatus struct {
 	Dypns             string `json:"dypns"`
 	DypnsFusion       string `json:"dypns_fusion"`
 	DypnsSMS          string `json:"dypns_sms"`
+	SMS               string `json:"sms"`
 	Redis             string `json:"redis"`
 	UploadStorage     string `json:"upload_storage"`
 	AuthStrict        bool   `json:"auth_strict"`
@@ -633,7 +634,7 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	phoneNumberVisible := adminCanViewAccountPhone(admin.User.Role)
 	giftCardCodeVisible := adminCanViewGiftCardCodes(admin.User.Role)
-	detail, err := s.store.GetAdminUserDetail(r.Context(), userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible)
+	detail, err := s.store.GetAdminUserDetail(r.Context(), userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible, giftCardCodeVisible)
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "internal_error"
@@ -742,12 +743,14 @@ func (s *Server) handleAdminCreateSupportMessage(w http.ResponseWriter, r *http.
 		s.writeError(w, http.StatusBadRequest, "user_id_required")
 		return
 	}
-	normalized, imageURLs, validationError := normalizeSupportMessagePayload(body.Body, body.Images)
+	normalized, imageURLs, validationError := normalizeAdminSupportMessagePayload(body.Body, body.Images)
 	if validationError != "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	if validationError := s.validateChatStreamImageURLs(r, imageURLs); validationError != "" {
+	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
@@ -795,7 +798,13 @@ func (s *Server) handleAdminUpdateSupportConversationStatus(w http.ResponseWrite
 		s.writeError(w, http.StatusBadRequest, "invalid_status")
 		return
 	}
-	if err := s.store.UpdateSupportConversationStatus(r.Context(), userID, status, admin.User.Username, body.Note, time.Now().UnixMilli()); err != nil {
+	note, validationError := normalizeAccountDeletionFreeText(body.Note, "note")
+	if validationError != "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.status", "support_conversations", userID, userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError, "status": status})
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	if err := s.store.UpdateSupportConversationStatus(r.Context(), userID, status, admin.User.Username, note, time.Now().UnixMilli()); err != nil {
 		httpStatus := http.StatusInternalServerError
 		code := "internal_error"
 		if err == sql.ErrNoRows {
@@ -848,21 +857,27 @@ func (s *Server) handleAdminAppLogs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminAuditLogs(w http.ResponseWriter, r *http.Request) {
-	_, ok := s.requireAdmin(w, r, "auditor", "ops_readonly")
+	admin, ok := s.requireAdmin(w, r, "auditor", "ops_readonly")
 	if !ok {
 		return
 	}
 	filter, validationError := parseAdminAuditLogQuery(r.URL.Query(), time.Now())
 	if validationError != "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.audit_logs.list", "admin_audit_logs", "", filter.TargetUserID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
 	logs, err := s.store.ListAdminAuditLogs(r.Context(), filter)
 	if err != nil {
 		s.logger.Error("admin list audit logs failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.audit_logs.list", "admin_audit_logs", "", filter.TargetUserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.audit_logs.list", "admin_audit_logs", "", filter.TargetUserID, true, http.StatusOK, map[string]any{
+		"row_count": len(logs),
+		"action":    filter.Action,
+	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "filter": filter})
 }
 
@@ -973,6 +988,7 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 	}
 	var body adminAppUpdateWriteRequest
 	if err := decodeJSONBodyLimited(r, &body, 8*1024); err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.write", "app_update", "android", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
 		s.writeError(w, http.StatusBadRequest, "invalid_json")
 		return
 	}
@@ -994,26 +1010,32 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		cfg.ForceUpdate ||
 		cfg.FileSizeBytes > 0
 	if hasAnyConfig && cfg.LatestVersionCode <= 0 {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "latest_version_code_required")
 		s.writeError(w, http.StatusBadRequest, "latest_version_code_required")
 		return
 	}
 	if strings.TrimSpace(body.APKChecksumSHA256) != "" && cfg.APKChecksumSHA256 == "" {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "invalid_apk_sha256")
 		s.writeError(w, http.StatusBadRequest, "invalid_apk_sha256")
 		return
 	}
 	if cfg.APKURL != "" && !isHTTPSURL(cfg.APKURL) {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "invalid_apk_url")
 		s.writeError(w, http.StatusBadRequest, "invalid_apk_url")
 		return
 	}
 	if len([]rune(cfg.ReleaseNotes)) > 200 {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "release_notes_too_long")
 		s.writeError(w, http.StatusBadRequest, "release_notes_too_long")
 		return
 	}
 	if cfg.FileSizeBytes < 0 {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "invalid_file_size")
 		s.writeError(w, http.StatusBadRequest, "invalid_file_size")
 		return
 	}
 	if cfg.Enabled && !androidUpdateDownloadArtifactsComplete(cfg) {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "missing_release_artifacts")
 		s.writeError(w, http.StatusBadRequest, "missing_release_artifacts")
 		return
 	}
@@ -1041,6 +1063,18 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		"force_update":        result.ForceUpdate,
 	})
 	s.writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) recordAdminAppUpdateValidationFailure(r *http.Request, actor string, cfg androidUpdateConfig, code string) {
+	s.recordAdminAuditLog(r, actor, "admin.app_update.write", "app_update", "android", "", false, http.StatusBadRequest, map[string]any{
+		"error_code":          code,
+		"enabled":             cfg.Enabled,
+		"latest_version_code": cfg.LatestVersionCode,
+		"has_apk_url":         strings.TrimSpace(cfg.APKURL) != "",
+		"has_sha256":          strings.TrimSpace(cfg.APKChecksumSHA256) != "",
+		"has_file_size":       cfg.FileSizeBytes > 0,
+		"force_update":        cfg.ForceUpdate,
+	})
 }
 
 type AdminUserQuery struct {
@@ -1122,11 +1156,7 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 	report := AdminMonitoring{
 		Health: health,
 		NowMs:  nowMs,
-		Notes: []AdminStatusNote{
-			{Title: "不是完整告警中心", Body: "本页先展示业务表、App 自动日志、审计和健康检查聚合；SLS 已有 5 条 AlertHub 最小告警，外部通知、资源水位和完整 Nginx access 仪表盘后续再接。", Level: "info"},
-			{Title: "发版后先看这些", Body: "发版或切 slot 后，优先看服务异常、App 报错、后台失败、未回复反馈和今日农情状态。", Level: "info"},
-			{Title: "用户隐私", Body: "监控面板不展示聊天全文、图片 URL、手机号全文、token、模型 Key 或 AccessKey。", Level: "info"},
-		},
+		Notes:  buildAdminMonitoringNotes(),
 	}
 	windows := []struct {
 		key     string
@@ -1179,6 +1209,14 @@ func (s *Store) BuildAdminMonitoring(ctx context.Context, health AdminHealthStat
 	report.Capabilities = buildAdminMonitoringCapabilities()
 	report.ModelUsagePolicy = buildAdminMonitoringModelUsagePolicy()
 	return report, nil
+}
+
+func buildAdminMonitoringNotes() []AdminStatusNote {
+	return []AdminStatusNote{
+		{Title: "不是完整告警中心", Body: "本页先展示业务表、App 自动日志、审计和健康检查聚合；SLS 已有 5 条 AlertHub 最小告警并已绑定邮件行动策略和最小仪表盘，资源水位另走云监控邮件；剩余重点是首封 SLS 告警邮件送达确认、更细趋势和完整 Nginx access 聚合。", Level: "info"},
+		{Title: "发版后先看这些", Body: "发版或切 slot 后，优先看服务异常、App 报错、后台失败、未回复反馈和今日农情状态。", Level: "info"},
+		{Title: "用户隐私", Body: "监控面板不展示聊天全文、图片 URL、手机号全文、token、模型 Key 或 AccessKey。", Level: "info"},
+	}
 }
 
 func (s *Store) BuildAdminInsights(ctx context.Context, dayCN string, dayStartMs int64, nowMs int64, updateCfg androidUpdateConfig) (AdminInsights, error) {
@@ -2397,6 +2435,9 @@ func countUnreadyAdminDependencies(health AdminHealthStatus) int64 {
 	if strings.ToLower(strings.TrimSpace(health.DypnsSMS)) != "ok" {
 		count++
 	}
+	if strings.ToLower(strings.TrimSpace(health.SMS)) != "ok" {
+		count++
+	}
 	if strings.ToLower(strings.TrimSpace(health.Redis)) != "ok" {
 		count++
 	}
@@ -2487,7 +2528,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	return users, rows.Err()
 }
 
-func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool) (AdminUserDetail, error) {
+func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool, includeGiftCardCodes bool) (AdminUserDetail, error) {
 	users, err := s.ListAdminUsers(ctx, AdminUserQuery{ExactUserID: userID, DayCN: dayCN, Limit: 1, NowMs: nowMs, SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli(), IncludePhoneNumber: includePhoneNumber})
 	if err != nil {
 		return AdminUserDetail{}, err
@@ -2538,7 +2579,7 @@ func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN str
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
-	giftCards, err := s.ListGiftCards(ctx, GiftCardListQuery{UserID: userID, Limit: 20})
+	giftCards, err := s.ListGiftCards(ctx, GiftCardListQuery{UserID: userID, Limit: 20, IncludeCode: includeGiftCardCodes})
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
@@ -3037,6 +3078,7 @@ func (s *Server) adminHealthStatus() AdminHealthStatus {
 		Dypns:             ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		DypnsFusion:       ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
 		DypnsSMS:          ternary(s.sms.HasConfigured() && redisStatus == "ok", "ok", "missing_config"),
+		SMS:               ternary(s.sms.HasConfigured() && redisStatus == "ok", "ok", "missing_config"),
 		Redis:             redisStatus,
 		UploadStorage:     uploadStoreHealthStatus(s.uploadStore),
 		AuthStrict:        IsAuthStrict(),

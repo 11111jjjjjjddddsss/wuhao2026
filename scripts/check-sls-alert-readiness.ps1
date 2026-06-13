@@ -1,6 +1,8 @@
 param(
     [string]$RegionId = "cn-beijing",
     [string]$ProjectName = "nongjiqiancha-prod-1159547719787456",
+    [string]$ExpectedActionPolicyId = "nongji-prod-email",
+    [string]$ExpectedDashboardId = "nongji-prod-ops",
     [switch]$RequireExternalNotification,
     [switch]$RequireDashboard,
     [switch]$FailOnWarning
@@ -9,11 +11,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $expectedAlerts = @(
-    @{ Name = "nongji-server-5xx"; Logstore = "server-go"; Severity = 8; Query = "http_request_error | select count(1) as cnt" },
-    @{ Name = "nongji-server-slow"; Logstore = "server-go"; Severity = 6; Query = "http_request_slow | select count(1) as cnt" },
-    @{ Name = "nongji-nginx-upstream"; Logstore = "nginx-error"; Severity = 8; Query = "upstream | select count(1) as cnt" },
-    @{ Name = "nongji-daily-agri-failed"; Logstore = "server-go"; Severity = 8; Query = "generate today agri card failed | select count(1) as cnt" },
-    @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8; Query = "missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR fusion_auth_not_configured OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured | select count(1) as cnt" }
+    @{ Name = "nongji-server-5xx"; Logstore = "server-go"; Severity = 8; Query = "http_request_error | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "30m" },
+    @{ Name = "nongji-server-slow"; Logstore = "server-go"; Severity = 6; Query = "http_request_slow | select count(1) as cnt"; Condition = "cnt >= 5"; RepeatInterval = "60m" },
+    @{ Name = "nongji-nginx-upstream"; Logstore = "nginx-error"; Severity = 8; Query = "upstream | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "30m" },
+    @{ Name = "nongji-daily-agri-failed"; Logstore = "server-go"; Severity = 8; Query = "generate today agri card failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" },
+    @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8; Query = "missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR fusion_auth_not_configured OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" }
 )
 
 function Invoke-JsonCommand {
@@ -101,6 +103,19 @@ function Get-AlertSeverity {
     return [int]$configs[0].severity
 }
 
+function Get-AlertCondition {
+    param([object]$Alert)
+    $condition = [string]$Alert.configuration.conditionConfiguration.condition
+    if (-not [string]::IsNullOrWhiteSpace($condition)) {
+        return $condition
+    }
+    $configs = @($Alert.configuration.severityConfigurations)
+    if ($configs.Count -gt 0) {
+        return [string]$configs[0].evalCondition.condition
+    }
+    return ""
+}
+
 $response = Invoke-JsonCommand @(
     "aliyun", "sls", "list-alerts",
     "--region", $RegionId,
@@ -147,6 +162,13 @@ foreach ($expected in $expectedAlerts) {
     }
     $runbook = Get-AnnotationValue -Alert $alert -Key "runbook"
     $severity = Get-AlertSeverity -Alert $alert
+    $condition = Get-AlertCondition -Alert $alert
+    $severityCondition = ""
+    $severityConfigs = @($alert.configuration.severityConfigurations)
+    if ($severityConfigs.Count -gt 0) {
+        $severityCondition = [string]$severityConfigs[0].evalCondition.condition
+    }
+    $repeatInterval = [string]$alert.configuration.policyConfiguration.repeatInterval
 
     if (-not $enabled) {
         $errors.Add("disabled_alert:$name")
@@ -167,6 +189,15 @@ foreach ($expected in $expectedAlerts) {
     if ($null -eq $severity -or $severity -ne [int]$expected.Severity) {
         $warnings.Add("unexpected_severity:${name}:$severity")
     }
+    if ([string]$condition -ne [string]$expected.Condition) {
+        $warnings.Add("unexpected_condition:${name}:$condition")
+    }
+    if ([string]$severityCondition -ne [string]$expected.Condition) {
+        $warnings.Add("unexpected_severity_condition:${name}:$severityCondition")
+    }
+    if ([string]$repeatInterval -ne [string]$expected.RepeatInterval) {
+        $warnings.Add("unexpected_repeat_interval:${name}:$repeatInterval")
+    }
     if ([string]::IsNullOrWhiteSpace($runbook)) {
         $warnings.Add("missing_runbook_annotation:$name")
     }
@@ -174,17 +205,25 @@ foreach ($expected in $expectedAlerts) {
         $warnings.Add("external_notification_not_configured:$name")
     } else {
         $attachedActionPolicies += 1
+        if (-not [string]::IsNullOrWhiteSpace($ExpectedActionPolicyId) -and $actionPolicyId -ne $ExpectedActionPolicyId) {
+            $warnings.Add("unexpected_action_policy:${name}:$actionPolicyId")
+        }
     }
     if ([string]::IsNullOrWhiteSpace($dashboardId)) {
         $warnings.Add("dashboard_not_linked:$name")
     } else {
         $linkedDashboards += 1
+        if (-not [string]::IsNullOrWhiteSpace($ExpectedDashboardId) -and $dashboardId -ne $ExpectedDashboardId) {
+            $warnings.Add("unexpected_dashboard:${name}:$dashboardId")
+        }
     }
 
-    Write-Host ("alert={0} enabled={1} alerthub={2} action_policy={3} dashboard={4} runbook={5}" -f `
+    Write-Host ("alert={0} enabled={1} alerthub={2} condition={3} repeat={4} action_policy={5} dashboard={6} runbook={7}" -f `
         $name, `
         $enabled, `
         $alertHub, `
+        $condition, `
+        $repeatInterval, `
         ($(if ([string]::IsNullOrWhiteSpace($actionPolicyId)) { "none" } else { "set" })), `
         ($(if ([string]::IsNullOrWhiteSpace($dashboardId)) { "none" } else { "set" })), `
         ($(if ([string]::IsNullOrWhiteSpace($runbook)) { "none" } else { $runbook })))

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -83,6 +84,7 @@ func TestAdminMonitoringSLSCopyMatchesCurrentOpsState(t *testing.T) {
 			Dypns:             "ok",
 			DypnsFusion:       "ok",
 			DypnsSMS:          "ok",
+			SMS:               "ok",
 			Redis:             "ok",
 			UploadStorage:     "oss",
 			AuthStrict:        true,
@@ -110,6 +112,38 @@ func TestAdminMonitoringSLSCopyMatchesCurrentOpsState(t *testing.T) {
 	assertNotContains(t, capability.Body, "行动策略、仪表盘和资源水位告警仍待补")
 }
 
+func TestAdminMonitoringHealthCountsPlainSMSStatus(t *testing.T) {
+	health := AdminHealthStatus{
+		API:               "ok",
+		Bailian:           "ok",
+		Dypns:             "ok",
+		DypnsFusion:       "ok",
+		DypnsSMS:          "ok",
+		SMS:               "missing_config",
+		Redis:             "ok",
+		UploadStorage:     "oss",
+		AuthStrict:        true,
+		DevOrderEndpoints: false,
+	}
+	if got := countUnreadyAdminDependencies(health); got != 1 {
+		t.Fatalf("unready count = %d, want 1 for plain sms status", got)
+	}
+}
+
+func TestAdminSupportReplyUsesSupportImageValidation(t *testing.T) {
+	source := mustReadFileForTest(t, "admin_api.go")
+	block := functionBlockForTest(source, "func (s *Server) handleAdminCreateSupportMessage")
+	if !strings.Contains(block, "validateSupportImageURLs") {
+		t.Fatalf("admin support reply must validate support upload URLs")
+	}
+	if !strings.Contains(block, "normalizeAdminSupportMessagePayload") {
+		t.Fatalf("admin support reply must use admin-sensitive payload validation")
+	}
+	if strings.Contains(block, "validateChatStreamImageURLs") {
+		t.Fatalf("admin support reply must not use chat image URL validation")
+	}
+}
+
 func TestAdminMonitoringAuthEnvironmentCopyMatchesEventSemantics(t *testing.T) {
 	report := AdminMonitoring{
 		AuthLogs: AdminMonitoringAuthLogs{
@@ -130,6 +164,19 @@ func TestAdminMonitoringAuthEnvironmentCopyMatchesEventSemantics(t *testing.T) {
 		t.Fatalf("missing warning environment item: %#v", items)
 	}
 	assertContainsAll(t, warning.Body, "4G+WiFi", "VPN", "系统代理", "已放行")
+}
+
+func TestAdminMonitoringNotesMatchCurrentOpsState(t *testing.T) {
+	notes := buildAdminMonitoringNotes()
+	if len(notes) == 0 {
+		t.Fatalf("expected monitoring notes")
+	}
+	joined := ""
+	for _, note := range notes {
+		joined += note.Title + note.Body
+	}
+	assertContainsAll(t, joined, "邮件行动策略", "最小仪表盘", "云监控邮件", "首封 SLS 告警邮件")
+	assertNotContains(t, joined, "外部通知、资源水位", "外部通知、资源水位和完整 Nginx access 仪表盘后续再接")
 }
 
 func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
@@ -372,6 +419,21 @@ func TestAdminCanViewAccountPhone(t *testing.T) {
 	}
 }
 
+func TestAdminCanViewGiftCardCodes(t *testing.T) {
+	allowed := []string{"owner", "finance_ops"}
+	for _, role := range allowed {
+		if !adminCanViewGiftCardCodes(role) {
+			t.Fatalf("role %q should view gift card codes", role)
+		}
+	}
+	blocked := []string{"support", "ops_readonly", "auditor", "content_ops", "release_ops", ""}
+	for _, role := range blocked {
+		if adminCanViewGiftCardCodes(role) {
+			t.Fatalf("role %q should not view gift card codes", role)
+		}
+	}
+}
+
 func TestAndroidUpdateConfigValidityContract(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -479,6 +541,40 @@ func assertNotContains(t *testing.T, text string, needles ...string) {
 			t.Fatalf("text %q should not contain %q", text, needle)
 		}
 	}
+}
+
+func mustReadFileForTest(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(data)
+}
+
+func functionBlockForTest(source string, signature string) string {
+	start := strings.Index(source, signature)
+	if start < 0 {
+		return ""
+	}
+	open := strings.Index(source[start:], "{")
+	if open < 0 {
+		return ""
+	}
+	open += start
+	depth := 0
+	for idx := open; idx < len(source); idx++ {
+		switch source[idx] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return source[start : idx+1]
+			}
+		}
+	}
+	return source[start:]
 }
 
 func hasAdminMonitoringModelPolicy(items []AdminMonitoringModelUsageRow, title string, model string, searchStrategy string, forcedSearch bool) bool {

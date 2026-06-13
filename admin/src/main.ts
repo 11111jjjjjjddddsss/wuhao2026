@@ -50,12 +50,12 @@ const routes: RouteItem[] = [
   { key: "users", label: "用户管理", section: "用户与增长", hint: "可查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "orders", label: "订单", section: "权益与交易", hint: "只读核查", roles: ["ops_readonly", "support", "finance_ops"] },
-  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "可生成/可追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
+  { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "发卡/追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
   { key: "account-deletion", label: "注销申请", section: "运营工作台", hint: "待处理/核验", roles: ["support", "ops_readonly", "auditor", "finance_ops"] },
-  { key: "support", label: "帮助反馈", section: "运营工作台", hint: "可回复", roles: ["support", "ops_readonly", "auditor"] },
+  { key: "support", label: "帮助反馈", section: "运营工作台", hint: "回复/查看", roles: ["support", "ops_readonly", "auditor"] },
   { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
-  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "只读状态", roles: ["content_ops", "ops_readonly", "auditor"] },
-  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "可发布/可停更", roles: ["release_ops", "ops_readonly", "auditor"] },
+  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "状态/补跑", roles: ["content_ops", "ops_readonly", "auditor"] },
+  { key: "app-update", label: "检查更新", section: "运营工作台", hint: "发布/停更", roles: ["release_ops", "ops_readonly", "auditor"] },
   { key: "audit", label: "审计", section: "安全与系统", hint: "可查", roles: ["auditor", "ops_readonly"] },
   { key: "insights", label: "产品洞察", section: "安全与系统", hint: "聚合报表" },
   { key: "health", label: "服务健康", section: "安全与系统", hint: "可查" },
@@ -953,7 +953,7 @@ async function healthPage(): Promise<string> {
         `)
         .join("")}
     </div>
-    <div style="margin-top:12px">${planningNotice("SLS 已接最小告警", "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已进 AlertHub；外部通知、资源水位和仪表盘仍需继续补。")}</div>
+    <div style="margin-top:12px">${planningNotice("SLS 告警已接入", "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / DYPNS 配置错误已进 AlertHub，并已绑定邮件行动策略和最小仪表盘；资源水位另走云监控邮件，剩余重点是首封 SLS 告警邮件送达确认和更细趋势。")}</div>
   `;
 }
 
@@ -1155,6 +1155,13 @@ async function submitSupportReply(form: HTMLFormElement): Promise<void> {
   const userID = formValue(form, "user_id");
   const body = formValue(form, "body");
   if (!userID || !body) return;
+  if (
+    !window.confirm(
+      "确认发送这条客服回复？回复会展示在用户 App 的帮助与反馈里，请确认没有完整手机号、礼品卡完整卡码、token、密钥或其它敏感内容。",
+    )
+  ) {
+    return;
+  }
   const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
   if (button) button.disabled = true;
   try {
@@ -1241,6 +1248,12 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     window.alert("启用更新前，必须补齐 versionCode、HTTPS APK、SHA-256 和文件大小。");
     return;
   }
+  const confirmText = enabled
+    ? `确认对外${forceUpdate ? "强制" : "启用"}检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\n\n保存后，旧版 App 检查更新会拿到这份配置。`
+    : "确认保存为停更状态？停更后，用户点“检查更新”将不会拿到新包。";
+  if (!window.confirm(confirmText)) {
+    return;
+  }
   const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
   if (button) button.disabled = true;
   try {
@@ -1322,9 +1335,13 @@ async function updateAccountDeletionStatus(requestID: string, status: string, bu
   };
   let note = "";
   if (["completed", "rejected", "cancelled"].includes(status)) {
-    const input = window.prompt("处理备注，可留空。不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
+    const input = window.prompt("处理备注必填。不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
     if (input === null) return;
     note = input.trim();
+    if (!note) {
+      window.alert("已处理、驳回或取消注销申请时，处理备注不能为空。");
+      return;
+    }
   }
   if (!window.confirm(`确认${labels[status] || "更新状态"}？`)) return;
   await withButtonBusy(button, "更新中", async () => {
@@ -1541,8 +1558,12 @@ function accountPhoneDisplay(user: AdminUserListEntry): string {
 
 function phoneDisplay(phoneNumber?: string, phoneMask?: string): string {
   const fullPhone = (phoneNumber || "").trim();
-  if (fullPhone) {
+  if (fullPhone && canViewAccountPhone()) {
     return `${escapeHTML(fullPhone)} <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(fullPhone)}">复制</button>`;
+  }
+  if (fullPhone) {
+    const masked = phoneMask ? escapeHTML(phoneMask) : "完整号";
+    return `${masked} <span class="small muted">仅客服/财务可见</span>`;
   }
   if (phoneMask) {
     return `${escapeHTML(phoneMask)} <span class="small muted">完整号待下次登录补齐</span>`;
@@ -2060,7 +2081,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
             (row) => `
               <tr>
                 <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
-                <td><div class="mono code-cell">${row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "仅财务可见"}</div>${row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
+                <td><div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "仅财务可见"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
                 <td>${statusPill(row.tier)}</td><td>${statusPill(row.status)}</td>
                 <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
@@ -2185,9 +2206,9 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
 }
 
 function supportMessageImages(message: AdminSupportMessage): string {
-  const urls = message.image_urls ?? [];
+  const urls = (message.image_urls ?? []).map((url) => safeAdminURL(url, true)).filter(Boolean);
   if (!message.has_images || !urls.length) {
-    return message.has_images ? `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片。</div>` : "";
+    return message.has_images ? `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片，图片地址未通过后台安全展示校验。</div>` : "";
   }
   return `
     <div style="margin-top:8px">
@@ -2247,7 +2268,7 @@ function appLogsTable(rows: ClientAppLogEntry[]): string {
                 <td>${formatTime(row.created_at)}</td><td>${statusPill(row.level)}</td><td>${escapeHTML(row.event)}</td>
                 <td>${escapeHTML(row.user_id)}</td><td>${escapeHTML([row.app_version_name || String(row.app_version_code || ""), row.build_type].filter(Boolean).join(" / "))}</td>
                 <td>${escapeHTML([row.platform, row.os_version, row.device_model].filter(Boolean).join(" / "))}</td>
-                <td class="wrap">${escapeHTML(row.message || "")}</td><td class="wrap">${jsonInline(row.attrs)}</td>
+                <td class="wrap">${escapeHTML(redactSensitiveDisplayText(row.message || ""))}</td><td class="wrap">${jsonInline(redactSensitiveDisplayValue(row.attrs))}</td>
               </tr>
             `,
           )
@@ -2311,6 +2332,7 @@ function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
 
 function todayAgriItemCard(item: DailyAgriItem, index: number): string {
   const meta = [item.source, item.publishedDate].filter(Boolean).join(" · ");
+  const sourceURL = safeAdminURL(item.url, false);
   return `
     <article class="today-agri-item">
       <div class="today-agri-item-index">${index + 1}</div>
@@ -2319,7 +2341,7 @@ function todayAgriItemCard(item: DailyAgriItem, index: number): string {
         <p>${escapeHTML(item.summary || "未返回摘要")}</p>
         <div class="today-agri-source">
           <span>${escapeHTML(meta || "未返回来源")}</span>
-          ${item.url ? `<a href="${escapeAttr(item.url)}" target="_blank" rel="noreferrer">打开来源</a>` : ""}
+          ${sourceURL ? `<a href="${escapeAttr(sourceURL)}" target="_blank" rel="noreferrer">打开来源</a>` : ""}
         </div>
       </div>
     </article>
@@ -2764,6 +2786,9 @@ function authDebugMetric(label: string, value: number, level: "ok" | "warn" | "b
 }
 
 function filterButton(label: string, filter: { userID?: string; event?: string; eventPrefix?: string; level?: string; window?: string }): string {
+  if (!isRouteVisible("app-logs")) {
+    return `<span class="action-muted">${escapeHTML(label)} · 无日志权限</span>`;
+  }
   return `<button class="button" data-action="open-app-log-filter" data-user-id="${escapeAttr(filter.userID || "")}" data-event="${escapeAttr(filter.event || "")}" data-event-prefix="${escapeAttr(filter.eventPrefix || "")}" data-level="${escapeAttr(filter.level || "")}" data-window="${escapeAttr(filter.window || "24h")}">${escapeHTML(label)}</button>`;
 }
 
@@ -3370,6 +3395,11 @@ function canViewGiftCardCodes(): boolean {
   return canManageGiftCards();
 }
 
+function canViewAccountPhone(): boolean {
+  const role = currentAdminRole();
+  return role === "owner" || role === "support" || role === "finance_ops";
+}
+
 function canManageSupport(): boolean {
   const role = currentAdminRole();
   return role === "owner" || role === "support";
@@ -3617,6 +3647,76 @@ function jsonInline(value: JsonValue | unknown): string {
   if (value === undefined || value === null || value === "") return "";
   const text = typeof value === "string" ? value : JSON.stringify(value);
   return escapeHTML(text.length > 260 ? `${text.slice(0, 260)}...` : text);
+}
+
+function redactSensitiveDisplayValue(value: JsonValue | unknown): JsonValue | unknown {
+  if (value === undefined || value === null) return value;
+  if (typeof value === "string") return redactSensitiveDisplayText(value);
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map((item) => redactSensitiveDisplayValue(item) as JsonValue);
+  if (typeof value !== "object") return value;
+  const out: JsonObject = {};
+  Object.entries(value as Record<string, unknown>).forEach(([key, item]) => {
+    if (isSensitiveDisplayKey(key)) {
+      out[key] = "[redacted]";
+      return;
+    }
+    out[key] = redactSensitiveDisplayValue(item) as JsonValue;
+  });
+  return out;
+}
+
+function redactSensitiveDisplayText(raw: string): string {
+  let text = String(raw || "");
+  text = text.replace(/\b1[3-9](?:[\s\-_.()（）]*\d){9}\b/g, "[phone]");
+  text = text.replace(/(bearer\s+)[A-Za-z0-9._~+/=-]{12,}/gi, "$1[redacted]");
+  text = text.replace(/\b(sk|ak|pk)-[A-Za-z0-9_-]{12,}\b/g, "[key]");
+  text = text.replace(/((?:accesskey(?:id|secret)?|api[_-]?key|token|secret|password|signature(?:nonce)?)\s*[:=]\s*)[^,\s"']+/gi, "$1[redacted]");
+  return text;
+}
+
+function isSensitiveDisplayKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return (
+    normalized.includes("token") ||
+    normalized.includes("secret") ||
+    normalized.includes("password") ||
+    normalized.includes("authorization") ||
+    normalized.includes("accesskey") ||
+    normalized.includes("api_key") ||
+    normalized.includes("apikey") ||
+    normalized.includes("phone") ||
+    normalized.includes("image_url") ||
+    normalized.includes("imageurl") ||
+    normalized.includes("url")
+  );
+}
+
+function safeAdminURL(raw: string | undefined, allowSameOriginPath: boolean): string {
+  const value = String(raw || "").trim();
+  if (!value) return "";
+  try {
+    const parsed = new URL(value, window.location.origin);
+    if (
+      allowSameOriginPath &&
+      parsed.origin === window.location.origin &&
+      !parsed.search &&
+      !parsed.hash &&
+      isSafeSupportUploadPath(parsed.pathname)
+    ) {
+      return parsed.pathname;
+    }
+    if (allowSameOriginPath) return "";
+    if (parsed.protocol !== "https:") return "";
+    if (parsed.username || parsed.password) return "";
+    return parsed.href;
+  } catch {
+    return "";
+  }
+}
+
+function isSafeSupportUploadPath(pathname: string): boolean {
+  return /^\/uploads\/support\/[^/\\]+\.jpg$/i.test(pathname) && !pathname.includes("..");
 }
 
 function asJsonObject(value: JsonValue | undefined): JsonObject | null {

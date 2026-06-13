@@ -223,7 +223,8 @@ for key in \
   DYPNS_ACCESS_KEY_ID DYPNS_ACCESS_KEY_SECRET DYPNS_FUSION_SCHEME_CODE \
   DYPNS_SMS_SIGN_NAME DYPNS_SMS_TEMPLATE_CODE \
   REDIS_ADDR REDIS_USERNAME REDIS_PASSWORD \
-  SUPPORT_ADMIN_SECRET DAILY_AGRI_JOB_SECRET; do
+  SUPPORT_ADMIN_SECRET DAILY_AGRI_JOB_SECRET \
+  ADMIN_BOOTSTRAP_USERNAME ADMIN_BOOTSTRAP_PASSWORD ADMIN_BOOTSTRAP_ROLE ADMIN_BOOTSTRAP_DISPLAY_NAME ADMIN_BOOTSTRAP_UPDATE_EXISTING; do
   check_env "$key"
 done
 
@@ -238,6 +239,14 @@ if is_truthy "$allow_dev_order_endpoints"; then
   echo 'ALLOW_DEV_ORDER_ENDPOINTS must not be enabled in production readiness' >&2
   exit 16
 fi
+
+for key in ADMIN_BOOTSTRAP_USERNAME ADMIN_BOOTSTRAP_PASSWORD ADMIN_BOOTSTRAP_ROLE ADMIN_BOOTSTRAP_DISPLAY_NAME ADMIN_BOOTSTRAP_UPDATE_EXISTING; do
+  value=$(env_value "$key" || true)
+  if [ -n "$value" ]; then
+    echo "${key} must be removed after production admin bootstrap" >&2
+    exit 17
+  fi
+done
 
 echo
 echo '== ip2region data =='

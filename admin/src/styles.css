@@ -1655,6 +1655,10 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .filters .wide {
+    grid-column: auto;
+  }
+
   .content {
     padding: 14px;
   }

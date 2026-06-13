@@ -230,11 +230,12 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := GiftCardListQuery{
-		BatchID:    strings.TrimSpace(r.URL.Query().Get("batch_id")),
-		Status:     normalizeGiftCardStatus(r.URL.Query().Get("status")),
-		UserID:     normalizeUserID(r.URL.Query().Get("user_id")),
-		CodeSuffix: normalizeGiftCardCodeSuffix(r.URL.Query().Get("code_suffix")),
-		Limit:      parseAdminLimit(r.URL.Query().Get("limit")),
+		BatchID:     strings.TrimSpace(r.URL.Query().Get("batch_id")),
+		Status:      normalizeGiftCardStatus(r.URL.Query().Get("status")),
+		UserID:      normalizeUserID(r.URL.Query().Get("user_id")),
+		CodeSuffix:  normalizeGiftCardCodeSuffix(r.URL.Query().Get("code_suffix")),
+		Limit:       parseAdminLimit(r.URL.Query().Get("limit")),
+		IncludeCode: adminCanViewGiftCardCodes(admin.User.Role),
 	}
 	cards, err := s.store.ListGiftCards(r.Context(), filter)
 	if err != nil {
@@ -242,7 +243,7 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	codeVisible := adminCanViewGiftCardCodes(admin.User.Role)
+	codeVisible := filter.IncludeCode
 	if !codeVisible {
 		stripGiftCardCodes(cards)
 	}
@@ -385,11 +386,12 @@ type GiftCardBatchInput struct {
 }
 
 type GiftCardListQuery struct {
-	BatchID    string `json:"batch_id,omitempty"`
-	Status     string `json:"status,omitempty"`
-	UserID     string `json:"user_id,omitempty"`
-	CodeSuffix string `json:"code_suffix,omitempty"`
-	Limit      int    `json:"limit"`
+	BatchID     string `json:"batch_id,omitempty"`
+	Status      string `json:"status,omitempty"`
+	UserID      string `json:"user_id,omitempty"`
+	CodeSuffix  string `json:"code_suffix,omitempty"`
+	Limit       int    `json:"limit"`
+	IncludeCode bool   `json:"-"`
 }
 
 type GiftCardAttemptQuery struct {
@@ -553,7 +555,11 @@ func (s *Store) ListGiftCards(ctx context.Context, filter GiftCardListQuery) ([]
 	if limit <= 0 || limit > maxAdminListLimit {
 		limit = defaultAdminListLimit
 	}
-	query := `SELECT card_id, batch_id, code_mask, code_suffix, code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at FROM gift_cards`
+	codeCiphertextSelect := "NULL AS code_ciphertext"
+	if filter.IncludeCode {
+		codeCiphertextSelect = "code_ciphertext"
+	}
+	query := `SELECT card_id, batch_id, code_mask, code_suffix, ` + codeCiphertextSelect + `, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at FROM gift_cards`
 	clauses := []string{}
 	args := []any{}
 	if strings.TrimSpace(filter.BatchID) != "" {
@@ -584,7 +590,7 @@ func (s *Store) ListGiftCards(ctx context.Context, filter GiftCardListQuery) ([]
 	defer rows.Close()
 	cards := []AdminGiftCardEntry{}
 	for rows.Next() {
-		card, err := scanGiftCardEntry(rows)
+		card, err := scanGiftCardEntry(rows, filter.IncludeCode)
 		if err != nil {
 			return nil, err
 		}
@@ -899,7 +905,7 @@ func getGiftCardForUpdate(ctx context.Context, tx *sql.Tx, codeHash string) (Adm
 		  FOR UPDATE`,
 		codeHash,
 	)
-	return scanGiftCardEntry(row)
+	return scanGiftCardEntry(row, false)
 }
 
 func (s *Store) applyGiftCardTierTx(ctx context.Context, tx *sql.Tx, userID string, cardTier Tier, durationDays int, nowMs int64) (Tier, int64, error) {
@@ -1023,7 +1029,7 @@ type giftCardScanner interface {
 	Scan(dest ...any) error
 }
 
-func scanGiftCardEntry(scanner giftCardScanner) (AdminGiftCardEntry, error) {
+func scanGiftCardEntry(scanner giftCardScanner, includeCode bool) (AdminGiftCardEntry, error) {
 	var card AdminGiftCardEntry
 	var tier string
 	var validUntil, redeemedAt, membershipExpireAt, voidedAt sql.NullInt64
@@ -1055,7 +1061,7 @@ func scanGiftCardEntry(scanner giftCardScanner) (AdminGiftCardEntry, error) {
 		return card, err
 	}
 	card.Tier = Tier(tier)
-	if codeCiphertext.Valid && strings.TrimSpace(codeCiphertext.String) != "" {
+	if includeCode && codeCiphertext.Valid && strings.TrimSpace(codeCiphertext.String) != "" {
 		code, err := decryptGiftCardCode(codeCiphertext.String)
 		if err == nil {
 			card.Code = code

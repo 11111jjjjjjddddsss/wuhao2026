@@ -71,6 +71,40 @@ func TestNormalizeSupportMessagePayloadRejectsInvalidInput(t *testing.T) {
 	}
 }
 
+func TestNormalizeAdminSupportMessagePayloadRejectsSensitiveReply(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "phone", body: "请联系 138-0013-8000 处理"},
+		{name: "gift card code", body: "补发礼品卡 NQ-M7AB-CD23-EF45-GH67"},
+		{name: "token", body: "token=secret-value"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, _, validationError := normalizeAdminSupportMessagePayload(tt.body, nil)
+			if validationError != "body_contains_sensitive_value" {
+				t.Fatalf("validationError = %q, want body_contains_sensitive_value", validationError)
+			}
+		})
+	}
+}
+
+func TestNormalizeAdminSupportMessagePayloadAllowsOperationalReply(t *testing.T) {
+	body, images, validationError := normalizeAdminSupportMessagePayload("  已收到，我们会继续核实订单和会员状态。  ", []string{
+		"https://example.com/uploads/support/a.jpg",
+	})
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	if body != "已收到，我们会继续核实订单和会员状态。" {
+		t.Fatalf("body = %q, want trimmed reply", body)
+	}
+	if len(images) != 1 {
+		t.Fatalf("images len = %d, want 1", len(images))
+	}
+}
+
 func TestSupportImageURLsJSON(t *testing.T) {
 	raw, err := supportImageURLsJSON([]string{
 		"https://example.com/uploads/a.jpg",
@@ -108,7 +142,6 @@ func TestValidateSupportImageURLsAllowsSupportObjects(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "https://api.example.com/api/support/messages", nil)
 
 	images := []string{
-		"https://api.example.com/uploads/a.jpg",
 		"https://api.example.com/uploads/support/b.jpg",
 	}
 	if got := server.validateSupportImageURLs(req, images); got != "" {
@@ -123,6 +156,7 @@ func TestValidateSupportImageURLsRejectsUnsafeURLs(t *testing.T) {
 
 	cases := map[string]string{
 		"external host": "https://other.example.com/uploads/support/a.jpg",
+		"chat upload":   "https://api.example.com/uploads/a.jpg",
 		"query":         "https://api.example.com/uploads/support/a.jpg?x=1",
 		"nested":        "https://api.example.com/uploads/support/nested/a.jpg",
 		"non jpg":       "https://api.example.com/uploads/support/a.png",

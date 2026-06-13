@@ -274,7 +274,7 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusBadRequest, "user_id required")
 		return
 	}
-	normalized, imageURLs, validationError := normalizeSupportMessagePayload(body.Body, body.Images)
+	normalized, imageURLs, validationError := normalizeAdminSupportMessagePayload(body.Body, body.Images)
 	if validationError != "" {
 		s.recordAdminAuditLog(r, "support_admin_secret", "internal.support.messages.create", "support_messages", "", userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
@@ -345,6 +345,17 @@ func normalizeSupportMessagePayload(raw string, images []string) (string, []stri
 	}
 	if body == "" && len(imageURLs) == 0 {
 		return "", nil, "body or images required"
+	}
+	return body, imageURLs, ""
+}
+
+func normalizeAdminSupportMessagePayload(raw string, images []string) (string, []string, string) {
+	body, imageURLs, validationError := normalizeSupportMessagePayload(raw, images)
+	if validationError != "" {
+		return "", nil, validationError
+	}
+	if giftCardTextLooksSensitive(body) {
+		return "", nil, "body_contains_sensitive_value"
 	}
 	return body, imageURLs, ""
 }
@@ -1234,7 +1245,7 @@ func (s *Server) validateSupportImageURLs(r *http.Request, images []string) stri
 			return "invalid image url"
 		}
 		name := strings.TrimPrefix(parsed.Path, "/uploads/")
-		if name == parsed.Path || !isServableUploadObjectName(name) {
+		if name == parsed.Path || !strings.HasPrefix(name, uploadPurposeSupport+"/") || !isServableUploadObjectName(name) {
 			return "invalid image url"
 		}
 	}

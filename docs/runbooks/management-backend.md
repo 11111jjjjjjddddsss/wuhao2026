@@ -15,12 +15,15 @@
 - 管理后台前端目录：`admin`。本地开发：`cd admin && npm install && npm run dev -- --host 127.0.0.1 --port 5174`。生产构建：`npm run build`。
 - 生产部署脚本：[deploy-ecs-admin.ps1](D:/wuhao/scripts/deploy-ecs-admin.ps1)。脚本会构建 `admin/dist`、同步 `admin` A 记录、上传静态包、配置 Nginx、签发 / 复用 Let's Encrypt HTTPS 证书，并验证首页和未登录 API 状态。
 - 生产入口：`https://admin.nongjiqiancha.cn/`。HTTP 80 只用于 ACME challenge 和 301 跳转；HTTPS 下 `/admin-api/` 由 Nginx 反代到当前 active Go slot。
+- 登录后只读烟测：[check-admin-authenticated-smoke.ps1](D:/wuhao/scripts/check-admin-authenticated-smoke.ps1)。该脚本不会把后台密码写入仓库或输出到日志；运行前在当前 PowerShell 临时设置 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`，然后执行 `.\scripts\check-admin-authenticated-smoke.ps1 -RequireOwner`。它会登录后台、访问总览 / 监控 / 洞察 / 用户 / 会员 / 订单 / 礼品卡 / 帮助反馈 / App 日志 / 审计 / 今日农情 / 检查更新 / 注销申请等只读 API，最后退出；这比只看未登录 `/auth/me=401` 更能证明后台登录后核心页面可用。
 - 管理后台 API：`/admin-api/v1/*`，由 `server-go` 提供，不单独起第二套后端。
 - 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。
 - 后台账号：服务启动时可用 `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` 初始化；密码会以 PBKDF2-SHA256 hash 存入 `admin_users`，明文不得写入仓库、文档或前端。
 - 后台角色：首版支持 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`；服务端校验权限，不能靠前端隐藏按钮。前端侧栏和监控快捷入口会按同一角色矩阵隐藏无权页面，减少误点和 403，但这只是体验收敛，不是安全边界。
-- 后台审计：登录、登出、查询用户、客服回复、日志查询、今日农情、检查更新、礼品卡生成 / 查询 / 作废 / 用户兑换等会写审计记录。
-- 后台写操作体验：今日农情补跑、检查更新停更、礼品卡作废、帮助反馈状态更新和客服回复等入口会显示按钮忙碌态、阻止重复点击，并在失败时弹出明确错误；长账号ID、完整卡码和错误字段会自动换行，避免窄屏或宽表撑破页面。
+- 后台审计：登录、登出、查询用户、客服回复、日志查询、审计日志查询、今日农情、检查更新、检查更新校验失败、礼品卡生成 / 查询 / 作废 / 用户兑换等会写审计记录。
+- 后台写操作体验：今日农情补跑、检查更新发布 / 停更、礼品卡作废、帮助反馈状态更新和客服回复等入口会显示按钮忙碌态、阻止重复点击，并在失败时弹出明确错误；检查更新发布 / 停更和客服回复有二次确认；长账号ID、完整卡码和错误字段会自动换行，避免窄屏或宽表撑破页面。
+- 后台敏感资产可见性：owner 默认拥有完整手机号和礼品卡完整卡码查看 / 复制权限；`support`、`finance_ops` 可查看完整手机号用于回访，`finance_ops` 可查看礼品卡完整卡码用于发卡 / 追溯。其他只读 / 审计角色只看脱敏信息；礼品卡完整码在后端列表 / 用户详情查询阶段也只对 owner / finance_ops 读取并解密，非授权角色不解密完整卡码。前端同口径展示保护只是体验兜底，真正权限仍以后端为准。
+- 后台展示安全：App 日志详情会在前端再次脱敏敏感字段；客服图片只展示后台同源、无 query / hash、单层 `/uploads/support/*.jpg` 图片；今日农情来源只允许安全 HTTPS 链接，避免后台页面被日志或异常数据带偏。
 - Android 没有后台入口，也没有调用任何 `/internal/*` 或 `/admin-api/*` 接口。
 
 当前已落地的后台页面 / API：
@@ -32,9 +35,9 @@
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；页面展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；`owner`、`support`、`finance_ops` 可查看和复制加密保存的完整手机号，用于回访，其他只读巡检角色只看脱敏号。
 - 会员额度：除用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录外，现已补 `GET /admin-api/v1/entitlements/summary` 全局盘子，页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额和有升级补偿人数，不再只有“按账号ID查单人权益”。
 - 订单：`GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录；页面只做只读核查和粗略统计，不提供补发、退款、对账或手动改权益。
-- 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总、直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；旧卡若没有加密字段，只能显示掩码 / 尾号。
+- 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总，owner / finance_ops 可直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；后台非授权角色查询礼品卡列表或用户详情时不读取 / 不解密完整卡码；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
-- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。用户侧发送消息和系统自动回复走同一条 MySQL 命名锁 + 事务路径，避免同一用户并发连发时重复插入自动回复。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；备注、回复和审计里仍禁止写手机号全文。
+- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。用户侧发送消息和系统自动回复走同一条 MySQL 命名锁 + 事务路径，避免同一用户并发连发时重复插入自动回复。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；客服回复前端二次确认，后端回复正文会拒绝手机号、礼品卡完整码、token、密钥等敏感全文；回复图片附件只能使用同源 support 图片校验，状态备注也会拒绝敏感全文，审计里仍不写正文。
 - 注销申请：`GET /admin-api/v1/account-deletion-requests`、`POST /admin-api/v1/account-deletion-requests/status`；用户侧 `POST /api/account/deletion-requests` 创建申请后会退出当前设备，后台可按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态。这里的已处理只表示线下核验和处理流程已收口，不代表系统已经自动物理删除或匿名化全部账号数据；会员、订单、礼品卡、反馈、日志和法定留存范围仍需按合规规则处理。
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，可按账号ID、精确事件名、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号、等级和时间范围筛选；精确 `event` 优先于前缀筛选，不展示聊天正文、图片 URL、手机号、token、APK URL 或 SHA-256 原文。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
@@ -79,8 +82,8 @@
 - 审计：所有后台登录、查询敏感用户、回复反馈、改版本、补权益、礼品卡生成 / 作废、今日农情补跑 / 停用都写服务端审计。
 - 权限：第一版也要有最小角色，而不是所有人一个超级密码。建议 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`。
 - 安全：后台入口必须 HTTPS、SameSite Cookie、接口限流、登录失败限制、密码哈希、服务端授权校验和审计；不要把“前端隐藏按钮”当权限。
-- 账号初始化：后台初始账号只能通过一次性环境变量、Cloud Assistant 脚本或本机安全脚本写入数据库 hash；账号名和明文密码不能写进仓库、文档、前端代码或部署脚本。初始化成功后应禁用 bootstrap，并要求首次登录改密码。
-- 生产初始化状态：2026-06-07 已通过一次性 bootstrap 创建 owner 账号，随后已从 `/etc/nongjiqiancha/server.env` 删除 `ADMIN_BOOTSTRAP_*` 并重启 active slot；后续若忘记密码，应通过临时 bootstrap 或受控运维脚本重置，仍不得在仓库或文档中记录明文密码。
+- 账号初始化：后台初始账号只能通过一次性环境变量、Cloud Assistant 脚本或本机安全脚本写入数据库 hash；账号名和明文密码不能写进仓库、文档、前端代码或部署脚本。初始化成功后必须禁用 bootstrap；当前还没有自助改密 / 强制首次改密页面，后续多账号运营前要补改密、重置和账号禁用流程。
+- 生产初始化状态：2026-06-07 已通过一次性 bootstrap 创建 owner 账号，随后已从 `/etc/nongjiqiancha/server.env` 删除 `ADMIN_BOOTSTRAP_*` 并重启 active slot；`scripts/check-ecs-readiness.ps1` 会把残留 `ADMIN_BOOTSTRAP_*` 视为生产 readiness 失败。后续若忘记密码，应通过临时 bootstrap 或受控运维脚本重置，仍不得在仓库或文档中记录明文密码。
 
 ### 第一版页面建议
 
