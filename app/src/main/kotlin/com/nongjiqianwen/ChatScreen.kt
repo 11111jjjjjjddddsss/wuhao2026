@@ -7411,8 +7411,11 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号、删除历史对话、退出设备", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("是否删除所有历史对话", "取消 / 确定二次确认卡片", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
+                    UiCopyPreviewItem("注销账号确认", "提交注销申请并退出当前账号", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
-                    UiCopyPreviewItem("检查更新", "版本更新弹窗，默认说明 / 稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
+                    UiCopyPreviewItem("检查更新", "普通更新弹窗，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
+                    UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
+                    UiCopyPreviewItem("更新权限提示", "安装未知应用授权提示浮层", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("服务协议目录", "用户协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
                     UiCopyPreviewItem("用户协议", "本地内置用户协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
@@ -7438,7 +7441,10 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "今日农情",
                 items = listOf(
-                    UiCopyPreviewItem("今日农情", "3条短资讯卡片，仅展示内容", UiCopyPreviewKind.TodayAgriCard)
+                    UiCopyPreviewItem("今日农情", "主聊天里的 3 条种植侧资讯卡片", UiCopyPreviewKind.TodayAgriCard),
+                    UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
+                    UiCopyPreviewItem("农情历史页", "设置页里近30天农情简报", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
+                    UiCopyPreviewItem("农情同步失败", "历史页加载失败和重试按钮", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
             ),
             UiCopyPreviewGroup(
@@ -7693,6 +7699,7 @@ private enum class UiCopyPreviewKind {
     HamburgerMembershipPage,
     HamburgerAccountPage,
     HamburgerDeleteHistoryConfirm,
+    HamburgerAccountDeletionConfirm,
     HamburgerSupportPage,
     HamburgerSupportEmpty,
     HamburgerSupportLoading,
@@ -7700,6 +7707,8 @@ private enum class UiCopyPreviewKind {
     HamburgerSupportImageInput,
     HamburgerSupportLongInput,
     HamburgerAppUpdateDialog,
+    HamburgerAppUpdateDownloading,
+    AppUpdateInstallPermissionHint,
     HamburgerGiftCardPage,
     HamburgerLegalHubPage,
     HamburgerServiceAgreementPage,
@@ -7710,6 +7719,9 @@ private enum class UiCopyPreviewKind {
     HamburgerRiskNoticePage,
     HamburgerGiftCardSuccess,
     TodayAgriCard,
+    TodayAgriLongSummaryCard,
+    HamburgerTodayAgriHistoryPage,
+    HamburgerTodayAgriHistoryFailed,
     AssistantMarkdownSample,
     AssistantTableSample,
     UserLinkBubbleSample,
@@ -8081,6 +8093,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerDeleteHistoryConfirm -> {
                     HamburgerDeleteHistoryConfirmPreview()
                 }
+                UiCopyPreviewKind.HamburgerAccountDeletionConfirm -> {
+                    HamburgerAccountDeletionConfirmPreview()
+                }
                 UiCopyPreviewKind.HamburgerSupportPage -> {
                     HamburgerSupportFeedbackPagePreview()
                 }
@@ -8101,6 +8116,12 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.HamburgerAppUpdateDialog -> {
                     HamburgerAppUpdateDialogPreview()
+                }
+                UiCopyPreviewKind.HamburgerAppUpdateDownloading -> {
+                    HamburgerAppUpdateDialogPreview(downloading = true)
+                }
+                UiCopyPreviewKind.AppUpdateInstallPermissionHint -> {
+                    UiCopyPreviewHint("允许安装未知应用后，返回本页再点立即更新")
                 }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
@@ -8133,6 +8154,17 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     TodayAgriNewsCard(
                         card = uiCopyPreviewTodayAgriCard()
                     )
+                }
+                UiCopyPreviewKind.TodayAgriLongSummaryCard -> {
+                    TodayAgriNewsCard(
+                        card = uiCopyPreviewTodayAgriLongSummaryCard()
+                    )
+                }
+                UiCopyPreviewKind.HamburgerTodayAgriHistoryPage -> {
+                    HamburgerTodayAgriHistoryPagePreview()
+                }
+                UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed -> {
+                    HamburgerTodayAgriHistoryPagePreview(loadFailed = true)
                 }
                 UiCopyPreviewKind.AssistantMarkdownSample -> {
                     ChatStreamingRenderer(
@@ -8247,7 +8279,13 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     listOf("UI文案样式预览", "点一级标题展开或收起，点二级条目查看正式组件或调试近似样式。点空白关闭，仅 debug 包显示。")
                 )
                 UiCopyPreviewKind.DebugPanelControls -> UiCopyPreviewPlainText(
-                    listOf("右上角 X 关闭", "适配与回退 4项 展开", "帮助与反馈 6项 展开", "会员中心 20项 展开", "查看", "预览中", "样式预览")
+                    listOf(
+                        "右上角 X 关闭",
+                        "一级标题可展开 / 收起",
+                        "检查更新按普通更新展示，含下载中和权限提示",
+                        "今日农情含主卡、长摘要、历史页和失败态",
+                        "查看 / 预览中 / 样式预览"
+                    )
                 )
             }
         }

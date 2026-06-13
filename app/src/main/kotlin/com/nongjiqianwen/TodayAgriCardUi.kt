@@ -122,23 +122,46 @@ fun TodayAgriNewsCard(
 
 fun uiCopyPreviewTodayAgriCard(): SessionApi.TodayAgriCard =
     SessionApi.TodayAgriCard(
-        dateCn = "20260511",
+        dateCn = "20260613",
         title = "今日农情",
         items = listOf(
             SessionApi.TodayAgriCardItem(
-                title = "华北麦区防干热风",
-                summary = "华北多地小麦进入灌浆关键期，气象部门提醒关注高温干风，适时浇水稳粒重。",
+                title = "华北麦区关注高温风",
+                summary = "华北部分麦区进入收获和晾晒衔接期，天气变化会影响籽粒含水和收储节奏。建议结合当地预报安排抢收、摊晾和临时遮盖，避免成熟后长时间滞留田间。",
                 source = "中国天气网"
             ),
             SessionApi.TodayAgriCardItem(
-                title = "早稻病虫进入防控期",
-                summary = "南方早稻陆续分蘖拔节，植保系统提示加强纹枯病和稻飞虱巡查，抓住窗口防治。",
+                title = "早稻病虫进入巡查期",
+                summary = "南方早稻陆续进入田管关键阶段，连续阴雨或高湿环境容易加重病虫发生。田间应重点看叶片、茎基部和田边低洼处，发现异常后再按当地植保建议处理。",
                 source = "全国农技推广网"
             ),
             SessionApi.TodayAgriCardItem(
-                title = "蔬菜价格稳中有降",
-                summary = "批发市场监测显示多类蔬菜供应增加，部分叶菜价格回落，种植户可关注本地走货节奏。",
+                title = "蔬菜供应进入换茬期",
+                summary = "多地露地蔬菜和设施蔬菜处在换茬衔接阶段，市场供应节奏会随天气和采收量波动。种植主体可关注本地批发走货、运输半径和短期降雨影响，合理安排采摘。",
                 source = "农业农村部"
+            )
+        )
+    )
+
+fun uiCopyPreviewTodayAgriLongSummaryCard(): SessionApi.TodayAgriCard =
+    SessionApi.TodayAgriCard(
+        dateCn = "20260613",
+        title = "今日农情",
+        items = listOf(
+            SessionApi.TodayAgriCardItem(
+                title = "东北玉米苗情进入巡田期",
+                summary = "东北部分玉米产区进入苗期管理阶段，近期温度和降水差异会影响出苗整齐度、低洼地块积水和苗弱苗黄情况。建议按地块实际苗情巡田，重点查看缺苗断垄、土壤墒情和草害变化，需要补救时先结合当地农技意见判断窗口期。",
+                source = "中国农业信息网"
+            ),
+            SessionApi.TodayAgriCardItem(
+                title = "江淮水稻田管关注降雨",
+                summary = "江淮及周边稻区在降雨增多时，要关注秧苗缓苗、田间水层和肥料流失情况。低洼田块应避免长时间深水，雨后及时看苗色、根系和叶片变化；若出现明显弱苗，应先排查积水、肥害和病虫因素，再做针对性处理。",
+                source = "全国农技推广网"
+            ),
+            SessionApi.TodayAgriCardItem(
+                title = "夏季果园注意高温日灼",
+                summary = "夏季果园进入高温强光阶段后，果面日灼、叶片失水和局部落果风险会上升。管理上可结合树势、负载量和水肥条件，适当保持土壤墒情，避免中午高温时段大幅操作；套袋、修剪和喷施措施应按当地品种和园况执行。",
+                source = "中国气象局"
             )
         )
     )

@@ -813,7 +813,7 @@ async function appUpdatePage(): Promise<string> {
     apiFetch<{ events: AdminAppUpdateEvent[] }>("/admin-api/v1/app-update/android/events?limit=20"),
   ]);
   return `
-    ${pageHead("检查更新", "没有系统通知推送；App 启动会静默检查，用户也可手动检查。本页支持发布、强更和停更。", "app-update")}
+    ${pageHead("检查更新", "没有系统通知推送；App 启动会静默检查，用户也可手动检查。本页支持普通发布和停更。", "app-update")}
     <div class="grid two">
       <section class="card">
         <div class="card-head">
@@ -825,7 +825,7 @@ async function appUpdatePage(): Promise<string> {
       <section class="card">
         <div class="card-head"><div class="card-title">发布操作</div></div>
         <div class="card-body">
-          ${canManageAppUpdate() ? appUpdateEditForm(config) : notice("只读配置", "当前角色只能看更新配置和物料状态，不开放发布、强更或停更。", "info")}
+          ${canManageAppUpdate() ? appUpdateEditForm(config) : notice("只读配置", "当前角色只能看更新配置和物料状态，不开放发布或停更。", "info")}
         </div>
       </section>
     </div>
@@ -1337,7 +1337,7 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
   const releaseNotes = formValue(form, "release_notes");
   const fileSizeBytes = Number(formValue(form, "file_size_bytes") || "0");
   const enabled = form.querySelector<HTMLInputElement>("input[name='enabled']")?.checked === true;
-  const forceUpdate = form.querySelector<HTMLInputElement>("input[name='force_update']")?.checked === true;
+  const forceUpdate = false;
   if ((latestVersionCode || latestVersionName || apkURL || apkSHA256 || releaseNotes || fileSizeBytes || forceUpdate) && (!Number.isInteger(latestVersionCode) || latestVersionCode < 1)) {
     window.alert("versionCode 必须是大于 0 的整数。");
     return;
@@ -1359,7 +1359,7 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     return;
   }
   const confirmText = enabled
-    ? `确认对外${forceUpdate ? "强制" : "启用"}检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\n\n保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。${forceUpdate ? "\n\n强制更新会阻断继续使用，请确认已完成真机覆盖安装验证。" : ""}`
+    ? `确认对外启用普通检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\n\n保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。更新说明留空时默认显示“修复已知问题，优化使用体验。”`
     : "确认保存为停更状态？停更后，App 启动静默检查和用户手动检查都不会拿到新包。";
   if (!window.confirm(confirmText)) {
     return;
@@ -2515,7 +2515,6 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
       <dt>APK URL</dt><dd>${escapeHTML(config.apk_url || "未配置")}</dd>
       <dt>SHA-256</dt><dd>${escapeHTML(config.apk_sha256 || "未配置")}</dd>
       <dt>文件大小</dt><dd>${formatBytes(config.file_size_bytes)}</dd>
-      <dt>强制更新</dt><dd>${config.force_update ? statusPill("true", "warn") : statusPill("false", "ok")}</dd>
       <dt>配置合法</dt><dd>${config.config_valid ? statusPill("合法", "ok") : statusPill("异常", "warn")}</dd>
       <dt>正式下载物料</dt><dd>${config.download_artifacts_complete ? statusPill("已齐", "ok") : statusPill("未齐", "warn")}</dd>
       <dt>APK URL 状态</dt><dd>${config.has_apk_url ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
@@ -2531,7 +2530,7 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
   return `
     <form id="app-update-form" class="stack">
       ${notice("怎么发新包", "填 versionCode、HTTPS APK、SHA-256 和文件大小；勾上“对外启用更新”后保存，旧版 App 启动后会静默检查，用户也可手动检查。取消勾选并保存，就是停更。", "info")}
-      ${notice("不是系统推送", "当前没有通知权限和推送服务；普通更新每个版本最多自动提醒一次，强制更新会阻断继续使用，保存前请确认物料和版本号。", "warn")}
+      ${notice("不是系统推送", "当前没有通知权限和推送服务；默认只做普通更新，每个版本最多自动提醒一次。更新说明可以留空，App 会显示默认文案。", "warn")}
       <label class="field">
         <span>versionCode</span>
         <input class="input" name="latest_version_code" type="number" min="0" step="1" value="${escapeAttr(String(config.latest_version_code || ""))}" placeholder="例如 10023" />
@@ -2554,10 +2553,9 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
       </label>
       <label class="field">
         <span>更新说明</span>
-        <textarea class="textarea" name="release_notes" placeholder="例如：优化产品体验">${escapeHTML(config.release_notes || "")}</textarea>
+        <textarea class="textarea" name="release_notes" placeholder="留空默认：修复已知问题，优化使用体验。">${escapeHTML(config.release_notes || "")}</textarea>
       </label>
       <label class="checkline"><input type="checkbox" name="enabled" ${config.enabled ? "checked" : ""} /> 对外启用更新</label>
-      <label class="checkline"><input type="checkbox" name="force_update" ${config.force_update ? "checked" : ""} /> 强制更新</label>
       <div class="row-actions">
         <button class="button primary" type="submit">${config.enabled ? "保存并更新发布" : "保存配置 / 启用发布"}</button>
         <button
@@ -2600,7 +2598,7 @@ function appUpdateEventsTable(rows: AdminAppUpdateEvent[]): string {
                 <td>${formatTime(row.created_at)}</td>
                 <td>${statusPill(appUpdateActionLabel(row.action), appUpdateActionLevel(row.action))}</td>
                 <td>${escapeHTML(version)}</td>
-                <td>${row.enabled ? statusPill("启用", row.force_update ? "warn" : "ok") : statusPill("停更", "warn")}${row.force_update ? " " + statusPill("强更", "warn") : ""}</td>
+                <td>${row.enabled ? statusPill("启用", "ok") : statusPill("停更", "warn")}</td>
                 <td>${statusPill(row.config_valid ? "配置合法" : "配置异常", row.config_valid ? "ok" : "warn")} ${statusPill(row.artifacts_complete ? "物料已齐" : "物料未齐", row.artifacts_complete ? "ok" : "warn")}<div class="small muted">${escapeHTML(artifactText)}</div></td>
                 <td>${escapeHTML(row.actor || "未记录")}</td>
                 <td class="wrap">${escapeHTML(row.release_notes || "")}</td>
@@ -2616,7 +2614,6 @@ function appUpdateEventsTable(rows: AdminAppUpdateEvent[]): string {
 function appUpdateActionLabel(action: string): string {
   switch (action) {
     case "force_publish":
-      return "强更发布";
     case "publish":
       return "发布";
     case "disable":
@@ -3088,7 +3085,7 @@ function queueCard(title: string, value: string | number, body: string, level: "
 
 function updateStatusLine(update: AdminMonitoring["queues"]["app_update"]): string {
   const version = update.latest_version_code ? `v${update.latest_version_code}${update.latest_version_name ? ` / ${update.latest_version_name}` : ""}` : "未配置版本";
-  return `${version}；发布 ${update.enabled ? "已启用" : "已停更"}；配置 ${update.config_valid ? "合法" : "异常"}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}；强制更新 ${update.force_update ? "开启" : "关闭"}`;
+  return `${version}；发布 ${update.enabled ? "已启用" : "已停更"}；配置 ${update.config_valid ? "合法" : "异常"}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}`;
 }
 
 function dailyAgriStatusText(status: string): string {

@@ -40,6 +40,23 @@ func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoUsesDefaultReleaseNotes(t *testing.T) {
+	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	})
+	if !info.HasUpdate {
+		t.Fatalf("expected update, got %#v", info)
+	}
+	if info.ReleaseNotes != defaultAndroidUpdateReleaseNotes {
+		t.Fatalf("release notes = %q, want %q", info.ReleaseNotes, defaultAndroidUpdateReleaseNotes)
+	}
+}
+
 func TestBuildAndroidUpdateInfoRejectsNonHTTPSAPKURL(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
 		Enabled:           true,

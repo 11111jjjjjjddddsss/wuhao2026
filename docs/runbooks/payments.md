@@ -35,6 +35,48 @@
 - App 备案：已提交阿里云初审，但仓库尚未记录通过 / 补正结论；如果支付平台要求 App 备案号，需要先等备案通过后回填。
 - 商品 / 服务描述建议按“农业 AI 问诊会员服务、问诊次数权益、加油包次数权益”准备，不写成农资交易、处方药、金融投资、包治包赔或线下代收款。
 
+## 2026-06-13 官方校准结论
+
+本节按微信支付和支付宝官方文档重新校准，后续接入代码必须服从这些边界。
+
+微信 App 支付：
+
+- 申请 / 配置侧需要准备微信开放平台移动应用 AppID、微信支付商户号 `mchid`、商户 API 证书、商户 API 证书序列号、APIv3 密钥、微信支付公钥或平台证书，以及 Android 包名 / 正式签名信息。
+- 微信官方文档说明，APIv3 请求、应答、回调和 App 调起支付都涉及签名 / 验签；回调报文还会用 APIv3 密钥加密，服务端必须验签并解密后再处理。
+- 后端负责创建商户订单和预支付单，Android 只拿后端返回的 `appId / partnerId / prepayId / packageValue / nonceStr / timeStamp / sign` 等参数调起 SDK。
+- 微信支付回调建议先预留 `https://api.nongjiqiancha.cn/api/payments/wechat/notify`，该接口不依赖 App 登录态，但必须验签、解密、校验订单金额 / 商品 / 账号ID，并幂等发权益。
+- APIv3 密钥设置后平台不支持查看，只能重设；商户 API 证书下载后也必须妥善保管，不能进 APK、仓库、日志、聊天或后台页面。
+
+支付宝 App 支付：
+
+- 申请 / 配置侧需要准备支付宝开放平台应用、APP 支付产品、AppID、RSA2 应用私钥 / 应用公钥或证书模式材料、支付宝公钥 / 支付宝证书，以及 Android SDK 接入权限。
+- 支付宝官方 App 支付链路是商家 App 先请求商家服务端，由服务端调用 `alipay.trade.app.pay` 生成可信 `orderStr`，Android 只把 `orderStr` 交给支付宝 SDK。
+- 支付宝 Android SDK 当前官方文档建议通过 Maven 依赖接入，旧 AAR 打包方式不作为新接入默认方案。
+- Android 同步返回只能当“支付流程结束 / 需要刷新订单状态”的 UI 信号，不作为发放会员权益的依据；真实支付结果必须以后端收到并验签通过的异步通知或主动查单结果为准。
+- 支付宝回调建议先预留 `https://api.nongjiqiancha.cn/api/payments/alipay/notify`，服务端验签、校验 `out_trade_no / trade_no / total_amount / app_id / seller_id / trade_status` 后，再幂等发权益；处理成功后按平台要求返回 `success`。
+
+共同边界：
+
+- Android 永远不保存微信商户私钥、APIv3 密钥、支付宝应用私钥、支付宝公钥证书私钥或任何支付渠道密钥。
+- 会员、加油包和升级补偿只能由服务端正式订单状态 + 验签后的回调 / 查单结果驱动；客户端“支付成功”只能触发刷新，不允许直接发权益。
+- 首版不接自动续费。自动续费以后需要单独的签约、解约、续扣失败、协议文案和后台状态，不和普通会员购买混做。
+- 支付渠道接入前不要把个人收款码、H5 临时代收、客服私下收款或线下转账混进正式购买链路。
+
+## 申请页面填写建议
+
+给用户去平台申请时参考，实际页面字段以平台为准：
+
+- 主体：北京农技千问科技有限公司。
+- 应用 / App 名称：农技千查。
+- Android 包名：`com.nongjiqiancha`。
+- Android 正式签名：从本机 `%USERPROFILE%\.nongjiqiancha\android-release-public-info.txt` 读取 MD5 / SHA1 / SHA256 / 公钥信息；只填公钥 / 指纹，不上传私钥和签名密码。
+- 官网：`https://nongjiqiancha.cn/`。
+- 回调 / API 域名：`https://api.nongjiqiancha.cn/`。
+- 管理后台域名：`https://admin.nongjiqiancha.cn/`，一般不作为用户支付回调域名填写。
+- ICP / 公安备案：网站 ICP `京ICP备2026031728号-1`，网站公安联网备案 `京公网安备11010602202723号`；App 备案仍需按平台要求补齐。
+- 服务类目建议选择软件服务、工具服务、AI 咨询、农业技术服务等相近类目；避免写成农资销售、处方药、病害绝对诊断、金融投资、公益募捐、虚拟币或包治包赔。
+- 商品名建议：`农技千查 Plus 会员`、`农技千查 Pro 会员`、`农技千查问诊加油包`。商品说明写“农业 AI 问诊参考、问答次数权益、图文问诊辅助分析”，不要承诺诊断准确率或收益。
+
 ## 支付渠道选择
 
 首版建议按“先接一个主渠道，跑通创建订单 -> 调起支付 -> 异步回调 -> 发权益 -> 后台查账”的顺序推进；微信和支付宝都要接时，也应复用同一套服务端正式订单表和权益发放函数。
@@ -140,6 +182,9 @@
 ## 官方文档入口
 
 - [微信支付 APIv3 签名和验签](https://pay.wechatpay.cn/doc/v3/merchant/4012365342)：微信支付请求、应答、回调和调起支付都涉及签名 / 验签。
+- [微信支付开发必要参数说明](https://pay.wechatpay.cn/doc/v3/merchant/4013070756)：普通商户模式开发前需要准备 `mchid`、`appid`、商户 API 证书、证书序列号、微信支付公钥 / 平台证书和 APIv3 密钥等。
 - [微信支付 App 下单接口](https://pay.wechatpay.cn/doc/v3/merchant/4012525136)：服务端先创建预支付交易单，`notify_url` 要用公网可访问的 HTTPS 地址。
 - [支付宝 APP 支付快速接入](https://opendocs.alipay.com/open/204/01dcc0)：App 端购买请求应先到商家服务端，服务端生成支付订单参数。
-- [支付宝 Android 集成流程](https://opendocs.alipay.com/open/00dn75)：Android 侧集成支付宝 SDK 调起支付；密钥和签名仍由服务端负责。
+- [支付宝 Android 集成流程](https://opendocs.alipay.com/open/204/105296/)：Android 侧集成支付宝 SDK 调起支付；密钥和签名仍由服务端负责。
+- [支付宝同步通知说明](https://opendocs.alipay.com/open/204/105302)：同步结果可只作为支付结束通知，实际支付成功应以后端异步通知为准。
+- [支付宝异步通知说明](https://opendocs.alipay.com/open/204/105301)：支付宝按 `notify_url` 通过 POST 发送支付结果，服务端验签处理成功后再返回成功响应。

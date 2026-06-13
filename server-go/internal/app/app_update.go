@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const defaultAndroidUpdateReleaseNotes = "修复已知问题，优化使用体验。"
+
 type AppUpdateInfo struct {
 	Platform           string `json:"platform"`
 	CurrentVersionCode int    `json:"current_version_code"`
@@ -134,6 +136,8 @@ func buildAndroidUpdateInfo(currentVersionCode int, currentVersionName string, c
 		apkChecksumSHA256 = ""
 		releaseNotes = ""
 		fileSizeBytes = 0
+	} else if strings.TrimSpace(releaseNotes) == "" {
+		releaseNotes = defaultAndroidUpdateReleaseNotes
 	}
 	return AppUpdateInfo{
 		Platform:           "android",

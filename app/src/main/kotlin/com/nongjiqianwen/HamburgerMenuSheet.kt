@@ -785,13 +785,15 @@ private fun HamburgerAppUpdateCard(
 }
 
 @Composable
-internal fun HamburgerAppUpdateDialogPreview() {
+internal fun HamburgerAppUpdateDialogPreview(
+    downloading: Boolean = false
+) {
     HamburgerAppUpdateCard(
         versionText = "版本 1.0.1 (2)",
         sizeText = "38.5MB",
         notes = "修复已知问题，优化使用体验。",
         forceUpdate = false,
-        downloading = false,
+        downloading = downloading,
         onDismiss = {},
         onInstall = {},
         modifier = Modifier.fillMaxWidth()
@@ -1998,6 +2000,30 @@ internal fun HamburgerAccountManagementPagePreview() {
             onClearChatHistory = {},
             onAuthSessionCleared = {},
             modifier = Modifier.padding(14.dp)
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerTodayAgriHistoryPagePreview(loadFailed: Boolean = false) {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        HamburgerTodayAgriHistoryContent(
+            cards = if (loadFailed) emptyList() else listOf(
+                uiCopyPreviewTodayAgriCard(),
+                uiCopyPreviewTodayAgriLongSummaryCard().copy(dateCn = "20260612")
+            ),
+            loading = false,
+            loadFailed = loadFailed,
+            onRetry = {},
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(min = 520.dp, max = 650.dp)
+                .verticalScroll(rememberScrollState())
         )
     }
 }

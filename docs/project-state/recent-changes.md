@@ -5,11 +5,15 @@
 
 ## 2026-06-13
 
-- 按多代理上线巡检结论收口一批低风险但容易“坑体验”的点：Android 帮助与反馈图片上传前重新复用主聊天压缩链，先压成 `<=1MiB` JPEG 再走 `/upload + purpose=support`，避免用户随手选的大图在客服反馈里直接被后端 1MiB 限制打失败；一键登录 VPN / 系统代理 warning 文案改成“可能失败，失败后验证码登录”，不再误写成已经切走；管理后台登录新增“用户名 hash + IP hash”默认 `10/10min` 专用限流，保护后台口令入口但不影响 App 用户登录、聊天或验证码；旧迁移 `004/005` 的 `expire_at` nullable DDL 改为 `information_schema` 条件执行，降低启动重跑旧 SQL 的风险；检查更新后台文案同步说明 App 启动会静默检查、用户也可手动检查，强更会阻断继续使用。以上都不新增主聊天并发硬卡、不改会员资产归属、不恢复记忆文档或今日农情后端内容过滤。
+- 接支付宝 / 微信支付前先按官方文档校准支付 runbook：微信侧明确需要移动应用 AppID、商户号 `mchid`、商户 API 证书 / 序列号、APIv3 密钥、微信支付公钥或平台证书，APIv3 请求、应答、回调和 App 调起都要签名 / 验签，回调需解密后处理；支付宝侧明确服务端调用 `alipay.trade.app.pay` 生成 `orderStr`，Android 只调 SDK，同步返回只作刷新信号，真实发权益以后端验签后的异步通知或查单为准。申请材料同步固化到 [payments.md](D:/wuhao/docs/runbooks/payments.md)：主体、包名、正式签名、公网 HTTPS 域名、备案、商品描述、回调地址和密钥放置边界都已列清；当前仍不接真实渠道、不生成假支付、不把客户端“支付成功”当权益真相。
 
-- 本轮后端和后台已部署到生产：`scripts/deploy-ecs-server.ps1` 远端 `go test ./...`、编译、非当前 slot 健康检查、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 active upstream 为 `3001`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录后台鉴权 401。部署后 `check-ecs-readiness.ps1`、`check-public-blackbox.ps1` 和 `check-resource-capacity.ps1 -SkipAuthUsage -Strict` 均为 ready；新后台发布历史接口未登录返回 401，仍受后台鉴权保护。Android 端改动已经本地构建验证，但用户手机必须重新安装新 debug / release 包后才会生效，不会因为后端部署自动推送 APK。
+- Android debug-only 预览面板补齐近期上线前 UI 状态：汉堡菜单预览新增账号注销确认、普通检查更新下载中 / 安装未知应用权限提示、今日农情长摘要样本、今日农情历史页和同步失败态；今日农情预览样本更新为 3 条种植侧资讯，摘要接近正式展示长度，不包含养殖 / 水产 / 禽蛋肉奶价格类内容。检查更新默认口径同步改为普通更新：后台发布页不再露出强制更新勾选，更新说明可留空，后端和 App 统一展示“修复已知问题，优化使用体验。”；底层兼容字段不作为默认发版操作使用。
 
-- 管理后台继续补检查更新上线闭环：新增数据库表 `app_release_events`，后台每次 Android 检查更新保存 / 强更 / 停更会和 `app_release_configs` 在同一事务内写入发布历史；新增 `GET /admin-api/v1/app-update/android/events` 和后台“发布历史”表，展示动作、版本、物料齐全度、操作人、时间和更新说明。该改动不改变 App 端 `/api/app/update` 判断逻辑，不增加用户限制，也不上传 APK；APK 上传、完整回滚入口和旧包真机覆盖安装仍是发版验收事项。
+- 按多代理上线巡检结论收口一批低风险但容易“坑体验”的点：Android 帮助与反馈图片上传前重新复用主聊天压缩链，先压成 `<=1MiB` JPEG 再走 `/upload + purpose=support`，避免用户随手选的大图在客服反馈里直接被后端 1MiB 限制打失败；一键登录 VPN / 系统代理 warning 文案改成“可能失败，失败后验证码登录”，不再误写成已经切走；管理后台登录新增“用户名 hash + IP hash”默认 `10/10min` 专用限流，保护后台口令入口但不影响 App 用户登录、聊天或验证码；旧迁移 `004/005` 的 `expire_at` nullable DDL 改为 `information_schema` 条件执行，降低启动重跑旧 SQL 的风险；检查更新后台文案同步说明 App 启动会静默检查、用户也可手动检查，当前默认按普通更新处理。以上都不新增主聊天并发硬卡、不改会员资产归属、不恢复记忆文档或今日农情后端内容过滤。
+
+- 本轮后端和后台已部署到生产：`scripts/deploy-ecs-server.ps1` 远端 `go test ./...`、编译、非当前 slot 健康检查、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 active upstream 为 `3000`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200，未登录后台鉴权 401。部署后 `check-ecs-readiness.ps1`、`check-public-blackbox.ps1` 和 `check-resource-capacity.ps1 -SkipAuthUsage -Strict` 均为 ready；新后台发布历史接口未登录返回 401，仍受后台鉴权保护。Android 端改动已经本地构建验证，但用户手机必须重新安装新 debug / release 包后才会生效，不会因为后端部署自动推送 APK。
+
+- 管理后台继续补检查更新上线闭环：新增数据库表 `app_release_events`，后台每次 Android 检查更新保存 / 停更会和 `app_release_configs` 在同一事务内写入发布历史；新增 `GET /admin-api/v1/app-update/android/events` 和后台“发布历史”表，展示动作、版本、物料齐全度、操作人、时间和更新说明。该改动不改变 App 端 `/api/app/update` 判断逻辑，不增加用户限制，也不上传 APK；APK 上传、完整回滚入口和旧包真机覆盖安装仍是发版验收事项。
 
 - 继续补上线前公网入口假绿护栏：新增只读脚本 [check-public-blackbox.ps1](D:/wuhao/scripts/check-public-blackbox.ps1)，不登录、不带后台密码、不读密钥，直接从公网请求 `api.nongjiqiancha.cn`、`nongjiqiancha.cn`、`www.nongjiqiancha.cn` 和 `admin.nongjiqiancha.cn`。脚本检查 API healthz 200 且包含 `auth_strict=true / bailian=ok / dypns=ok / dypns_fusion=ok / dypns_sms=ok / sms=ok / redis=ok / upload_storage=oss` 等关键标记，官网 / www / 后台首页 HTTPS 200，后台未登录 `/admin-api/v1/auth/me` 401，以及 API / 官网 / www / 后台 HTTP 入口 301 / 302 / 307 / 308 跳 HTTPS。首次公网运行 `warnings=0 / errors=0 / status=ready`；这补的是外部用户视角的可达性人工巡检，后续仍要把黑盒探测接成自动定时通知，不能替代登录后 owner smoke 或真机 App 回归。
 
