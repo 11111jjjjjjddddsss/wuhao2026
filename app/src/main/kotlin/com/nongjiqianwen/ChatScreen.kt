@@ -29,6 +29,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -144,10 +145,12 @@ import androidx.compose.ui.platform.TextToolbarStatus
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -199,9 +202,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.util.LinkedHashMap
 import java.util.concurrent.atomic.AtomicInteger
-import kotlin.math.roundToInt
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.coroutines.resume
 
 private enum class ChatRole { USER, ASSISTANT }
@@ -2129,43 +2132,21 @@ private fun MenuBarsIcon(
 }
 
 @Composable
-private fun MembershipCenterAddIcon(
+private fun MembershipCenterLeafIcon(
     size: Dp,
     modifier: Modifier = Modifier
 ) {
-    Canvas(
+    Box(
         modifier = modifier
             .size(size)
-            .semantics { contentDescription = "会员中心" }
+            .semantics { contentDescription = "会员中心" },
+        contentAlignment = Alignment.Center
     ) {
-        val w = this.size.width
-        val h = this.size.height
-        val stroke = this.size.minDimension * 0.078f
-        val plusStroke = stroke * 0.88f
-        val corner = this.size.minDimension * 0.15f
-        drawRoundRect(
-            color = Color(0xFF111111),
-            topLeft = Offset(w * 0.19f, h * 0.19f),
-            size = androidx.compose.ui.geometry.Size(w * 0.62f, h * 0.62f),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
-            style = androidx.compose.ui.graphics.drawscope.Stroke(
-                width = stroke,
-                cap = StrokeCap.Round
-            )
-        )
-        drawLine(
-            color = Color(0xFF111111),
-            start = Offset(w * 0.35f, h * 0.50f),
-            end = Offset(w * 0.65f, h * 0.50f),
-            strokeWidth = plusStroke,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = Color(0xFF111111),
-            start = Offset(w * 0.50f, h * 0.35f),
-            end = Offset(w * 0.50f, h * 0.65f),
-            strokeWidth = plusStroke,
-            cap = StrokeCap.Round
+        Image(
+            painter = painterResource(R.drawable.ic_membership_leaf_outline),
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier = Modifier.fillMaxSize()
         )
     }
 }
@@ -7252,7 +7233,7 @@ fun ChatScreen() {
                         },
                         modifier = Modifier.size(topButtonTouchSize)
                     ) {
-                        MembershipCenterAddIcon(
+                        MembershipCenterLeafIcon(
                             size = membershipIconSize
                         )
                     }
