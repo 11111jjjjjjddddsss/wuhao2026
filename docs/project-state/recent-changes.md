@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 按用户反馈“最主要是看不到小球跳动”，只调整 Android 主聊天 waiting 小球和流式吐字节奏，不改滚动链、工作线、今日农情卡片、后端输出或三份已定稿提示词。远端首个 chunk 太快返回时，waiting 小球最短展示从约 1.05 秒拉到约 1.5 秒，覆盖现有 720ms 往返呼吸动画的一轮完整跳动；streaming reveal 从最多 2 个 token 一拍收为 1 个 token 一拍，中文单字和标点 / 换行停顿略放慢，让小球和正文都有正常聊天产品的可见节奏，但不做慢速朗读感。
+
 - 按用户反馈“监控后台有些不一定能看懂”，继续把管理后台监控页往业务负责人可读方向收口：不改后端接口、权限或数据聚合，只在监控页顶部新增“处理顺序”区，明确先看颜色、先处理事项和真机回归入口；页面副标题、KPI 和卡片标题从“服务异常 / App报错 / 登录失败 / 关键队列 / 服务状态”等偏工程词，调整为“核心服务问题 / App异常 / 登录问题 / 运营队列 / 核心服务状态”等更直观口径，正式上架检查也改成“还能继续 / 需要确认 / 先别上架”的人工决策表达。`npm run build` 和 `scripts/check-admin-surface.mjs` 已通过。
 
 - 继续补上线前 App 质量排障入口：新增只读脚本 [query-ecs-app-crashes.ps1](D:/wuhao/scripts/query-ecs-app-crashes.ps1)，通过 Cloud Assistant 在 ECS 内部读取生产 MySQL 里的 `client_app_logs`，专门查询 `app.crash` / `auth.app_crash` 闪退补报。脚本输出只保留崩溃签名聚合、包类型、版本号、系统版本、设备型号、脱敏用户类型、栈顶类 / 方法 / 行号和最多三条安全栈顶帧，不输出完整账号ID、手机号、token、图片 URL、聊天 / 反馈正文、完整 attrs、完整堆栈或模型 Key；[app-client-logs.md](D:/wuhao/docs/runbooks/app-client-logs.md) 同步补充使用方式和隐私边界。后续真机反馈“App 关闭 / 闪退”时优先跑该脚本，再结合后台 App 日志或 logcat 深挖。

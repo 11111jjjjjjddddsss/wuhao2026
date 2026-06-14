@@ -692,14 +692,14 @@ private fun hasRendererStructuralMarkdownPrefix(text: String, startIndex: Int = 
 private fun resolveRendererTypewriterDelay(token: String, nextHasStructuralMarkdownPrefix: Boolean): Long {
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
     val baseDelay = when {
-        lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 64L else 48L
-        lastChar.isRendererStrongPausePunctuation() -> 28L
-        lastChar.isRendererWeakPausePunctuation() -> 16L
-        token.length >= 7 -> 8L
-        token.length >= 5 -> 10L
-        token.length >= 3 -> 12L
-        token.length == 2 -> 13L
-        else -> if (lastChar.isRendererCjkUnifiedIdeograph()) 14L else 12L
+        lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 72L else 56L
+        lastChar.isRendererStrongPausePunctuation() -> 36L
+        lastChar.isRendererWeakPausePunctuation() -> 24L
+        token.length >= 7 -> 12L
+        token.length >= 5 -> 14L
+        token.length >= 3 -> 16L
+        token.length == 2 -> 18L
+        else -> if (lastChar.isRendererCjkUnifiedIdeograph()) 22L else 16L
     }
     return scaleRendererStreamingDelay(baseDelay)
 }

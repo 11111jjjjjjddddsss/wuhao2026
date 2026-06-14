@@ -444,15 +444,15 @@ private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 2200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
-internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
-internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
-internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 2
+internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 16L
+internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 36L
+internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
 internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
 internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
-private const val REMOTE_STREAM_MIN_BALL_MS = 1050L
+private const val REMOTE_STREAM_MIN_BALL_MS = 1500L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4

@@ -116,7 +116,7 @@
 - waiting 小球、streaming 正文、settled 完成态共用同一条 assistant 消息 item，不再切第二滚动主人
 - `ChatStreamingRenderer.kt` 当前 active streaming 和 settled Markdown 都走 soft-wrap block renderer，并复用 inline Markdown cache 保留加粗 / 链接 / code；旧 committed 物理行预切 / TextMeasurer 渲染链已移除，避免 streaming -> settled 收口时换渲染模型导致行高 / 行宽微动
 - active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排
-- streaming reveal 当前对中文通常 1 到 2 个字一拍，英文 / 数字仍按词块吐出，减少“几个中文字一坨蹦出来”的体感；仍不恢复新字尾部灰色高亮动画，也不把吐字频率推到每个汉字都单独重组
+- streaming reveal 当前按更接近正常聊天产品的节奏处理：远端首个 chunk 太快返回时，waiting 小球至少展示约 1.5 秒，保证现有 720ms 往返呼吸动画能被用户看见；中文通常 1 个字一拍，单字约 22ms，英文 / 数字仍按词块吐出，标点和换行有更明显停顿。该改动只调小球和吐字节奏，不改变正向 `LazyColumn` 滚动主链、工作线、今日农情列表项或失败 / 重试链路；仍不恢复新字尾部灰色高亮动画，也不把正文改成慢速朗读
 - 标准 Markdown 表格当前不做真表格控件，renderer 会把表格行降级成普通项目行文本，保证模型偶发输出表格时至少可读、不撑乱聊天布局；代码块内的 `|` 不做表格降级。emoji / 表情若偶发输出，继续按普通文本由 Compose `Text` 承接
 - streaming 期间不提前显示免责声明文字；如果内容已满足免责声明触发条件，只预留同等几何高度，settled 后才显示真实文案，避免尾部收口当拍突然增高
 - 完成态收口继续保留两阶段 finalize：
