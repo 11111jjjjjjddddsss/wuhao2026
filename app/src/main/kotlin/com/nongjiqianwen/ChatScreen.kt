@@ -473,6 +473,7 @@ private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW = 56.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
+private val TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING = 10.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
@@ -5954,6 +5955,8 @@ fun ChatScreen() {
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
         val topBarReservedHeight = topInset + topButtonTouchSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
+        val todayAgriCardOnlyTopExtraPaddingPx =
+            with(density) { TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING.roundToPx() }
         suspend fun uploadComposerImagesForSend(
             images: List<ComposerImageAttachment>
         ): Pair<List<String>?, String?> = withContext(Dispatchers.IO) {
@@ -6636,6 +6639,17 @@ fun ChatScreen() {
                     .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
                     ?.let { lockedPaddingPx -> lockedPaddingPx }
                     ?: listBottomPaddingPx
+            val cardOnlyTopPaddingPx =
+                if (
+                    messages.isEmpty() &&
+                    hasTodayAgriCard &&
+                    !isStreaming &&
+                    !hasStreamingItem
+                ) {
+                    todayAgriCardOnlyTopExtraPaddingPx
+                } else {
+                    0
+                }
             val forwardListBottomPaddingPx =
                 (effectiveBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
             SideEffect {
@@ -6673,7 +6687,7 @@ fun ChatScreen() {
                             is ChatTimelineItem.TodayAgriCard -> "today_agri_card"
                         }
                     },
-                    topPaddingPx = chatListTopPaddingPx,
+                    topPaddingPx = chatListTopPaddingPx + cardOnlyTopPaddingPx,
                     bottomPaddingPx = forwardListBottomPaddingPx,
                     verticalArrangement = if (shouldUseTopArrangementForConversation()) {
                         Arrangement.Top
@@ -6739,7 +6753,7 @@ fun ChatScreen() {
                         is ChatTimelineItem.TodayAgriCard ->
                             TodayAgriNewsCard(
                                 card = msg.card,
-                                horizontalPadding = listHorizontalPadding,
+                                horizontalPadding = (listHorizontalPadding - 4.dp).coerceAtLeast(8.dp),
                                 maxCardWidth = chromeMaxWidth
                             )
                     }

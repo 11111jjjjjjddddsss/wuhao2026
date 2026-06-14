@@ -40,7 +40,7 @@ fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
 @Composable
 fun TodayAgriNewsCard(
     card: SessionApi.TodayAgriCard,
-    horizontalPadding: Dp = 20.dp,
+    horizontalPadding: Dp = 12.dp,
     maxCardWidth: Dp = 560.dp,
     modifier: Modifier = Modifier
 ) {
@@ -62,7 +62,7 @@ fun TodayAgriNewsCard(
                 .fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 13.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -175,13 +175,13 @@ private fun TodayAgriNewsItem(
     val source = item.source.orEmpty().trim()
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(11.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top
     ) {
         Surface(
             color = Color(0xFFF1F2F4),
             shape = CircleShape,
-            modifier = Modifier.size(24.dp)
+            modifier = Modifier.size(22.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(

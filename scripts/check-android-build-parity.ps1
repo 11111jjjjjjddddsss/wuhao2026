@@ -36,6 +36,13 @@ function Require-NoMatch {
     }
 }
 
+function Read-SourceFile {
+    param(
+        [string]$Path
+    )
+    return Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+}
+
 function Require-Manifest-Activity {
     param(
         [System.Collections.Generic.List[string]]$Failures,
@@ -83,25 +90,25 @@ foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRule
 }
 
 if ($failures.Count -eq 0) {
-    $build = Get-Content -LiteralPath $buildFile -Raw
-    $manifest = Get-Content -LiteralPath $manifestFile -Raw
-    $networkSecurity = Get-Content -LiteralPath $networkSecurityFile -Raw
-    $backupRules = Get-Content -LiteralPath $backupRulesFile -Raw
-    $dataExtractionRules = Get-Content -LiteralPath $dataExtractionRulesFile -Raw
-    $idManager = Get-Content -LiteralPath $idManagerFile -Raw
-    $sessionApi = Get-Content -LiteralPath $sessionApiFile -Raw
-    $appUpdateInstaller = Get-Content -LiteralPath $appUpdateInstallerFile -Raw
-    $mainActivity = Get-Content -LiteralPath $mainActivityFile -Raw
-    $privacyConsent = Get-Content -LiteralPath $privacyConsentFile -Raw
-    $pendingWorker = Get-Content -LiteralPath $pendingWorkerFile -Raw
-    $todayAgriCardUi = Get-Content -LiteralPath $todayAgriCardUiFile -Raw
-    $userMessageImageUi = Get-Content -LiteralPath $userMessageImageUiFile -Raw
-    $chatImagePreview = Get-Content -LiteralPath $chatImagePreviewFile -Raw
-    $chatComposerCoordinator = Get-Content -LiteralPath $chatComposerCoordinatorFile -Raw
-    $chatComposerPanel = Get-Content -LiteralPath $chatComposerPanelFile -Raw
-    $loginScreen = Get-Content -LiteralPath $loginScreenFile -Raw
-    $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
-    $hamburgerMenuSheet = Get-Content -LiteralPath $hamburgerMenuSheetFile -Raw
+    $build = Read-SourceFile $buildFile
+    $manifest = Read-SourceFile $manifestFile
+    $networkSecurity = Read-SourceFile $networkSecurityFile
+    $backupRules = Read-SourceFile $backupRulesFile
+    $dataExtractionRules = Read-SourceFile $dataExtractionRulesFile
+    $idManager = Read-SourceFile $idManagerFile
+    $sessionApi = Read-SourceFile $sessionApiFile
+    $appUpdateInstaller = Read-SourceFile $appUpdateInstallerFile
+    $mainActivity = Read-SourceFile $mainActivityFile
+    $privacyConsent = Read-SourceFile $privacyConsentFile
+    $pendingWorker = Read-SourceFile $pendingWorkerFile
+    $todayAgriCardUi = Read-SourceFile $todayAgriCardUiFile
+    $userMessageImageUi = Read-SourceFile $userMessageImageUiFile
+    $chatImagePreview = Read-SourceFile $chatImagePreviewFile
+    $chatComposerCoordinator = Read-SourceFile $chatComposerCoordinatorFile
+    $chatComposerPanel = Read-SourceFile $chatComposerPanelFile
+    $loginScreen = Read-SourceFile $loginScreenFile
+    $chatScreen = Read-SourceFile $chatScreenFile
+    $hamburgerMenuSheet = Read-SourceFile $hamburgerMenuSheetFile
 
     Require-Match $failures $build 'val\s+defaultUploadBaseUrl\s*=\s*"https://api\.nongjiqiancha\.cn"' `
         "Android default UPLOAD_BASE_URL must remain https://api.nongjiqiancha.cn."
@@ -262,17 +269,33 @@ if ($failures.Count -eq 0) {
         "Chat startup must log when initial bottom calibration completes."
     Require-Match $failures $chatScreen 'ui\.chat_startup_bottom_snap_pending' `
         "Chat startup must log a warning when bottom calibration remains pending after retries."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerMenuMainPage(?s:.*?)HamburgerMenuIcon\.Logout(?s:.*?)title\s*=\s*"退出登录"(?s:.*?)destructive\s*=\s*true' `
+    $settingsLabelMembership = [regex]::Escape("$([char]0x4f1a)$([char]0x5458)$([char]0x4e2d)$([char]0x5fc3)")
+    $settingsLabelAccount = [regex]::Escape("$([char]0x8d26)$([char]0x53f7)$([char]0x7ba1)$([char]0x7406)")
+    $settingsLabelSupport = [regex]::Escape("$([char]0x5e2e)$([char]0x52a9)$([char]0x4e0e)$([char]0x53cd)$([char]0x9988)")
+    $settingsLabelTodayAgri = [regex]::Escape("$([char]0x4eca)$([char]0x65e5)$([char]0x519c)$([char]0x60c5)")
+    $settingsLabelUpdate = [regex]::Escape("$([char]0x68c0)$([char]0x67e5)$([char]0x66f4)$([char]0x65b0)")
+    $settingsLabelGiftCard = [regex]::Escape("$([char]0x793c)$([char]0x54c1)$([char]0x5361)")
+    $settingsLabelLegal = [regex]::Escape("$([char]0x670d)$([char]0x52a1)$([char]0x534f)$([char]0x8bae)")
+    $settingsLabelLogout = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x767b)$([char]0x5f55)")
+    $accountLabelPhone = [regex]::Escape("$([char]0x624b)$([char]0x673a)$([char]0x53f7)")
+    $accountLabelClearing = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e2d)")
+    $accountLabelClearCache = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e34)$([char]0x65f6)$([char]0x7f13)$([char]0x5b58)")
+    $accountLabelDeleteHistory = [regex]::Escape("$([char]0x5220)$([char]0x9664)$([char]0x5386)$([char]0x53f2)$([char]0x5bf9)$([char]0x8bdd)")
+    $accountLabelLoggingOut = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x4e2d)")
+    $accountLabelSubmitting = [regex]::Escape("$([char]0x63d0)$([char]0x4ea4)$([char]0x4e2d)")
+    $accountLabelDeleteAccount = [regex]::Escape("$([char]0x6ce8)$([char]0x9500)$([char]0x8d26)$([char]0x53f7)")
+
+    Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)HamburgerMenuIcon\.Logout(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"(?s:.*?)destructive\s*=\s*true') `
         "Settings main page must keep the default logout row in code, not depend on cached UI state."
     Require-Match $failures $hamburgerMenuSheet 'ui\.settings_main_opened' `
         "Settings main page must keep a safe client log so clean-state UI rollback reports are traceable."
     Require-Match $failures $hamburgerMenuSheet 'ui\.account_management_opened' `
         "Account management page must keep a safe client log so clean-state UI rollback reports are traceable."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"会员中心"(?s:.*?)title\s*=\s*"账号管理"(?s:.*?)title\s*=\s*"帮助与反馈"(?s:.*?)title\s*=\s*"今日农情"(?s:.*?)title\s*=\s*"检查更新"(?s:.*?)title\s*=\s*"礼品卡"(?s:.*?)title\s*=\s*"服务协议"(?s:.*?)title\s*=\s*"退出登录"' `
+    Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
         "Settings main page defaults must include every production row after app data is cleared."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"退出中"\s*else\s*"退出登录"' `
+    Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"') `
         "Account management page must keep its logout row in the default code path."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"手机号"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"清理中"\s*else\s*"清理临时缓存"(?s:.*?)title\s*=\s*"删除历史对话"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"退出中"\s*else\s*"退出登录"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"提交中"\s*else\s*"注销账号"' `
+    Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
         "Account management defaults must include phone, cache cleanup, history deletion, logout, and account deletion rows after app data is cleared."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsCard\b"

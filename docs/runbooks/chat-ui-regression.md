@@ -21,6 +21,7 @@
 
 - 消息列表是单一正向 `LazyColumn` 主人，`messages` oldest -> newest，视觉底部最新消息是 `lastIndex`
 - 清数据 / 删除历史后的首次真实业务内容未触到工作线前，运行时是 `InitialWorklinePhase.TopUnreached`：同一个 `LazyColumn` 临时 `Arrangement.Top`，真实消息、图片 pending / 失败、assistant placeholder、失败 footer 和小球从顶部自然向下排；首屏文档流底边触到 96dp 工作线后，如果用户没在触碰 / 拖动 / 浏览，先进入极短 `TopAnchoring` 并继续保持 Top 布局，等列表可正向滚动且内容超过工作线约 56dp 时，同一执行点切回默认 `Arrangement.Bottom` 并复用现有强制底部锚点接一次
+- 今日农情卡片是 UI-only `ChatTimelineItem.TodayAgriCard`，不是 `ChatMessage`，但必须作为同一个 `LazyColumn` 里的正常视觉列表项上下滑动。首屏只有今日农情卡片时允许额外 top padding 避免顶部遮挡；后续用户发送消息时，新消息自然追加在卡片后面并把它往上顶。不允许把它改成 overlay、floating card、sticky 尾卡、关闭动画或第二套列表主人
 - 工作线 gap 是 `96.dp`，小球、streaming 正文、开机历史态、完成态尾部都围绕这条工作线；工作线以下空白必须完整露出来
 - AutoFollow / 回到底部使用 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`
 - streaming 内容提交后由 `SideEffect` 在同帧 apply changes 后、layout 前请求底部锚定，压“下一行从工作线下方冒头闪”
@@ -154,12 +155,14 @@ a | b | c
 
 步骤：
 - 清数据后启动
+- 清数据后只有今日农情卡片、还没有真实业务消息
 - 切后台 / 杀进程后重进
 - user 发送失败、assistant 中断失败、首 token 前失败
 - 账号下后端归档超过 30 轮时进入聊天页，再执行“删除所有历史对话”
 
 预期：
 - 无账号 / 手机号时，清数据后应是 clean-state，不从本地备份回灌旧 UI
+- 今日农情卡片应位于顶部安全区下方，顶边不被标题栏遮住；卡片正文不应因为双层 padding 和编号列过宽而显得窄。发送第一条真实消息后，农情卡片仍在同一列表中自然上移，不隐藏、不关闭、不脱离滚动链
 - 有稳定账号后，后端返回最近 30 轮业务记录属于账号级恢复，不是 UI 回退
 - 失败 footer 与正文一起恢复，不只剩正文或只剩用户消息
 - 归档超过 30 轮时顶部应以普通用户口径提示更早轮次已保留、后续对话会尽量接上，不暴露记忆、后端归档等内部机制；删除历史成功后该提示消失，不应误导用户还有旧记录留在当前对话
