@@ -1503,16 +1503,6 @@ private fun recoverStreamingDraftAsInterruptedSnapshot(
     )
 }
 
-private fun shouldApplyHydratedSnapshot(
-    currentMessages: List<ChatMessage>,
-    currentFailedUserMessageStates: Map<String, String>,
-    currentFailedAssistantMessageStates: Map<String, FailedAssistantMessageState>,
-    hydratedSnapshot: LocalChatWindowSnapshot
-): Boolean =
-    shouldReplaceHydratedMessages(currentMessages, hydratedSnapshot.messages) ||
-        currentFailedUserMessageStates != hydratedSnapshot.failedUserMessageStates ||
-        currentFailedAssistantMessageStates != hydratedSnapshot.failedAssistantMessageStates
-
 private fun appendCompletedAssistantMessage(
     source: List<ChatMessage>,
     messageId: String,
@@ -2384,8 +2374,12 @@ fun ChatScreen() {
     var programmaticScroll by scrollRuntime.programmaticScroll
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var programmaticBottomAnchorGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
-    var postInitialSnapCorrectionDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var initialBottomSnapDone by remember(uiRuntimeResetKey) {
+        mutableStateOf(initialLocalMessages.isNotEmpty())
+    }
+    var postInitialSnapCorrectionDone by remember(uiRuntimeResetKey) {
+        mutableStateOf(initialLocalMessages.isNotEmpty())
+    }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
@@ -4517,23 +4511,32 @@ fun ChatScreen() {
                     prewarmAssistantMarkdown(prewarmMessages)
                 }
             }
-            val shouldApplyHydratedSnapshot = shouldApplyHydratedSnapshot(
+            val shouldReplaceHydratedMessageList = shouldReplaceHydratedMessages(
                 currentMessages = messages,
-                currentFailedUserMessageStates = failedUserMessageStates,
-                currentFailedAssistantMessageStates = failedAssistantMessageStates,
-                hydratedSnapshot = hydratedSnapshot
+                remoteMessages = hydratedSnapshot.messages
             )
+            val shouldUpdateFailedUserStates =
+                failedUserMessageStates != hydratedSnapshot.failedUserMessageStates
+            val shouldUpdateFailedAssistantStates =
+                failedAssistantMessageStates != hydratedSnapshot.failedAssistantMessageStates
+            val shouldApplyHydratedSnapshot =
+                shouldReplaceHydratedMessageList ||
+                    shouldUpdateFailedUserStates ||
+                    shouldUpdateFailedAssistantStates
             if (BuildConfig.DEBUG) {
                 Log.d(
                     CHAT_STARTUP_DIAG_TAG,
                     buildString {
                         append("remoteMessages=").append(remoteMessages.size)
                         append(", hydratedMessages=").append(hydratedSnapshot.messages.size)
-                        append(", applied=").append(
+                        append(", apply=").append(
                             !hasStartedConversation &&
                                 !isStreaming &&
                                 shouldApplyHydratedSnapshot
                         )
+                        append(", replaceMessages=").append(shouldReplaceHydratedMessageList)
+                        append(", updateUserTail=").append(shouldUpdateFailedUserStates)
+                        append(", updateAssistantTail=").append(shouldUpdateFailedAssistantStates)
                         append(", hasStarted=").append(hasStartedConversation)
                         append(", isStreaming=").append(isStreaming)
                     }
@@ -4549,19 +4552,25 @@ fun ChatScreen() {
                 shouldApplyHydratedSnapshot
             ) {
                 val messageListWasVisible = shouldRevealMessageList
-                replaceMessages(hydratedSnapshot.messages)
-                if (hydratedSnapshot.messages.isNotEmpty()) {
-                    initialWorklinePhase = restoredInitialWorklinePhase(
-                        hasMessages = true,
-                        hasStreamingDraft = false,
-                        initialWorklineOwned = hydratedSnapshot.initialWorklineOwned
-                    )
+                if (shouldReplaceHydratedMessageList) {
+                    replaceMessages(hydratedSnapshot.messages)
+                    if (hydratedSnapshot.messages.isNotEmpty()) {
+                        initialWorklinePhase = restoredInitialWorklinePhase(
+                            hasMessages = true,
+                            hasStreamingDraft = false,
+                            initialWorklineOwned = hydratedSnapshot.initialWorklineOwned
+                        )
+                    }
                 }
-                failedUserMessageStates.clear()
-                failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
-                failedAssistantMessageStates.clear()
-                failedAssistantMessageStates.putAll(hydratedSnapshot.failedAssistantMessageStates)
-                if (!messageListWasVisible) {
+                if (shouldUpdateFailedUserStates) {
+                    failedUserMessageStates.clear()
+                    failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
+                }
+                if (shouldUpdateFailedAssistantStates) {
+                    failedAssistantMessageStates.clear()
+                    failedAssistantMessageStates.putAll(hydratedSnapshot.failedAssistantMessageStates)
+                }
+                if (shouldReplaceHydratedMessageList && !messageListWasVisible) {
                     initialBottomSnapDone = false
                 }
                 persistTick++
@@ -7596,9 +7605,9 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
                     UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
-                    UiCopyPreviewItem("账号管理", "手机号、删除历史对话、退出设备", UiCopyPreviewKind.HamburgerAccountPage),
-                    UiCopyPreviewItem("是否删除所有历史对话", "取消 / 确定二次确认卡片", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
-                    UiCopyPreviewItem("注销账号确认", "提交注销申请并退出当前账号", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
+                    UiCopyPreviewItem("账号管理", "手机号、缓存、历史、退出、注销", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("删除历史对话确认", "二次确认，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
+                    UiCopyPreviewItem("注销账号确认", "提交申请并退出登录", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "普通更新弹窗，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),

@@ -3590,14 +3590,14 @@ private fun HamburgerDeleteHistoryConfirmCard(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "是否删除所有历史对话",
+                text = "删除历史对话？",
                 color = Color(0xFF111111),
                 fontSize = 20.sp,
                 lineHeight = 27.sp,
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "会清空聊天记录和记忆摘要。会员、加油包、礼品卡和帮助与反馈不会删除。此操作不可恢复。",
+                text = "将清空聊天记录和记忆摘要，不影响会员、加油包、礼品卡和反馈。操作不可恢复。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -3847,7 +3847,7 @@ private fun HamburgerAccountDeletionConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "提交申请后会立即退出当前账号。客服会按规定核验并处理账号和相关数据；会员、订单、礼品卡和反馈记录需按规则处理。",
+                text = "提交后会退出当前账号。后台会核验并按规则处理账号、会员、订单、礼品卡和反馈。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
