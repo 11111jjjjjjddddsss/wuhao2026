@@ -10,7 +10,7 @@
 - Android 在关键失败点自动调用 `POST /api/app/logs`
 - 登录后日志走现有用户鉴权，写入 `client_app_logs` 表，并同步打一条结构化服务日志
 - 登录前认证失败日志走 `POST /api/app/logs/preauth`，只允许 `auth.` 前缀事件，统一写成 `user_id=preauth`，用于排查短信验证码登录还没拿到账号 token 前的失败
-- Android 现在有最小闪退补报：进程崩溃时只在本机 SharedPreferences 保存异常类型、顶层代码位置、登录阶段和时间戳等安全摘要；下次启动后自动上报。未登录 / 登录页阶段崩溃走 `auth.app_crash` 预登录日志，已登录后的普通运行崩溃走 `app.crash`。待补报记录不会在第一次上传前就删除，最多保留 3 次上报尝试，attrs 会带 `report_attempt`
+- Android 现在有最小闪退补报：进程崩溃时只在本机 SharedPreferences 保存异常类型、顶层代码位置、登录阶段和时间戳等安全摘要；下次启动后自动上报。未登录 / 登录页阶段崩溃走 `auth.app_crash` 预登录日志，已登录后的普通运行崩溃走 `app.crash`。待补报记录不会在第一次上传前就删除，最多保留 3 次上报尝试，attrs 会带 `report_attempt`。2026-06-14 起，崩溃补报的 `exception / cause / top_class / top_method / top_line / stack_top / stack_next / stack_third` 作为安全诊断字段保留，Android 和后端都会把它们限制为类名、方法名和行号形态；URL、手机号、token、正文和图片信息仍会被丢弃
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流；App 自动日志是非关键排障链路，Redis 限流操作异常时 fail open，避免日志系统影响用户主体验
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
 - 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。两个查询入口都支持按精确 `event`、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号和等级过滤，精确事件名优先于前缀筛选
@@ -62,7 +62,7 @@ Android 只上报结构化错误信息：
 - 设备型号
 - 事件名、等级、短消息
 - 少量错误分类字段，例如 `reason`、`http_status`、`image_count`、`text_length`
-- 闪退补报只保存异常类名、顶层类 / 方法 / 行号、线程名、登录阶段、崩溃时间和安全的上报尝试次数，不保存完整堆栈正文
+- 闪退补报只保存异常类名、顶层类 / 方法 / 行号、最多前三个安全栈顶帧、线程名、登录阶段、崩溃时间和安全的上报尝试次数，不保存完整堆栈正文
 
 禁止上报：
 - 聊天正文

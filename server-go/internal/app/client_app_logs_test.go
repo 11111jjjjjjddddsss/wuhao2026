@@ -88,6 +88,44 @@ func TestNormalizeClientAppLogPayloadDropsSensitiveAttrs(t *testing.T) {
 	}
 }
 
+func TestNormalizeClientAppLogPayloadKeepsCrashDiagnostics(t *testing.T) {
+	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
+		Level:   "error",
+		Event:   "app.crash",
+		Message: "app.crash",
+		Attrs: map[string]any{
+			"exception":   "java.lang.IllegalStateException",
+			"top_class":   "com.nongjiqianwen.AuthTokenStore",
+			"top_method":  "checkValue",
+			"top_line":    "450",
+			"stack_top":   "androidx.compose.ui.unit.Constraints#checkValue:450",
+			"stack_next":  "https://api.example.com/should-drop",
+			"stack_third": "com.example.Screen$render:42",
+		},
+	}, 123)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	attrs, ok := input.AttrsJSON.(string)
+	if !ok {
+		t.Fatalf("attrs json = %#v, want string", input.AttrsJSON)
+	}
+	for _, allowed := range []string{
+		"java.lang.IllegalStateException",
+		"com.nongjiqianwen.AuthTokenStore",
+		"checkValue",
+		"androidx.compose.ui.unit.Constraints#checkValue:450",
+		"com.example.Screen$render:42",
+	} {
+		if !strings.Contains(attrs, allowed) {
+			t.Fatalf("attrs = %q, want crash diagnostic %q", attrs, allowed)
+		}
+	}
+	if strings.Contains(attrs, "https://api.example.com") || strings.Contains(attrs, "stack_next") {
+		t.Fatalf("attrs leaked unsafe crash diagnostic: %s", attrs)
+	}
+}
+
 func TestNormalizeClientAppLogPayloadSanitizesSensitiveMessage(t *testing.T) {
 	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
 		Level:   "error",

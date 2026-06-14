@@ -616,12 +616,52 @@ object SessionApi {
             .mapNotNull { (key, value) ->
                 val normalizedKey = normalizeClientLogIdentifier(key, maxLength = 64)
                 if (normalizedKey.isEmpty()) return@mapNotNull null
+                if (isCrashDiagnosticClientLogAttrKey(normalizedKey)) {
+                    val sanitizedCrashValue = sanitizeCrashDiagnosticClientLogValue(value) ?: return@mapNotNull null
+                    return@mapNotNull normalizedKey to sanitizedCrashValue
+                }
                 if (isSensitiveClientLogAttrKey(normalizedKey)) return@mapNotNull null
                 val sanitizedValue = sanitizeClientLogValue(value) ?: return@mapNotNull null
                 normalizedKey to sanitizedValue
             }
             .take(20)
             .toMap()
+    }
+
+    private fun isCrashDiagnosticClientLogAttrKey(key: String): Boolean =
+        key == "exception" ||
+            key == "cause" ||
+            key == "top_class" ||
+            key == "top_method" ||
+            key == "top_line" ||
+            key == "stack_top" ||
+            key == "stack_next" ||
+            key == "stack_third"
+
+    private fun sanitizeCrashDiagnosticClientLogValue(value: Any?): String? {
+        val raw = value?.toString()?.trim()?.take(160).orEmpty()
+        if (raw.isEmpty()) return null
+        val safe = buildString(raw.length) {
+            raw.forEach { char ->
+                if (char.isLetterOrDigit() ||
+                    char == '.' ||
+                    char == '_' ||
+                    char == '$' ||
+                    char == '#' ||
+                    char == ':' ||
+                    char == '-' ||
+                    char == ' '
+                ) {
+                    append(char)
+                }
+            }
+        }.trim()
+        return safe.takeUnless {
+            it.isEmpty() ||
+                it.contains("http://", ignoreCase = true) ||
+                it.contains("https://", ignoreCase = true) ||
+                it.length < raw.length / 2
+        }
     }
 
     private fun isSensitiveClientLogAttrKey(key: String): Boolean {

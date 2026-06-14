@@ -407,6 +407,15 @@ func normalizeClientLogAttrs(raw map[string]any) (any, string) {
 		if normalizedKey == "" {
 			continue
 		}
+		if isCrashDiagnosticClientLogAttrKey(normalizedKey) {
+			normalizedValue, ok := normalizeCrashDiagnosticClientLogAttrValue(value)
+			if !ok {
+				continue
+			}
+			normalized[normalizedKey] = normalizedValue
+			count++
+			continue
+		}
 		if isSensitiveClientLogAttrKey(normalizedKey) {
 			continue
 		}
@@ -428,6 +437,41 @@ func normalizeClientLogAttrs(raw map[string]any) (any, string) {
 		return nil, "attrs too large"
 	}
 	return string(data), ""
+}
+
+func isCrashDiagnosticClientLogAttrKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "exception", "cause", "top_class", "top_method", "top_line", "stack_top", "stack_next", "stack_third":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeCrashDiagnosticClientLogAttrValue(value any) (any, bool) {
+	text := truncateRunes(strings.TrimSpace(fmt.Sprint(value)), 160)
+	if text == "" || strings.Contains(strings.ToLower(text), "http://") || strings.Contains(strings.ToLower(text), "https://") {
+		return nil, false
+	}
+	var builder strings.Builder
+	for _, r := range text {
+		if unicode.IsLetter(r) ||
+			unicode.IsDigit(r) ||
+			r == '.' ||
+			r == '_' ||
+			r == '$' ||
+			r == '#' ||
+			r == ':' ||
+			r == '-' ||
+			r == ' ' {
+			builder.WriteRune(r)
+		}
+	}
+	cleaned := strings.TrimSpace(builder.String())
+	if cleaned == "" || len([]rune(cleaned)) < len([]rune(text))/2 {
+		return nil, false
+	}
+	return cleaned, true
 }
 
 func isSensitiveClientLogAttrKey(key string) bool {
