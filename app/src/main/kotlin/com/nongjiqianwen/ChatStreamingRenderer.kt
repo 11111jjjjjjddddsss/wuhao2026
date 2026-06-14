@@ -745,6 +745,10 @@ private fun nextStreamingTypewriterStep(buffer: String, startIndex: Int = 0): St
     )
 }
 
+private fun isRendererInvisibleStreamingMarkerToken(token: String): Boolean {
+    return token == "**" || token == "*" || token == "`"
+}
+
 private fun splitRendererStreamingLogicalLines(content: String): StreamingLogicalLines {
     val normalized = content.replace("\r\n", "\n")
     if (normalized.isEmpty()) return StreamingLogicalLines(emptyList(), null)
@@ -804,13 +808,25 @@ private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
     while (cursor < buffer.length && tokenCount < STREAM_REVEAL_MAX_TOKENS_PER_BATCH) {
         val step = nextStreamingTypewriterStep(buffer, cursor)
         if (step.text.isEmpty() || step.consumedChars <= 0) break
+        if (
+            text.isEmpty() &&
+            isRendererInvisibleStreamingMarkerToken(step.text) &&
+            cursor + step.consumedChars >= buffer.length
+        ) {
+            return StreamingRevealBatch(
+                text = "",
+                delayMs = step.delayMs.coerceAtLeast(STREAM_TYPEWRITER_IDLE_POLL_MS)
+            )
+        }
         text.append(step.text)
         cursor += step.consumedChars
         consumedDelay += step.delayMs
-        tokenCount++
+        if (!isRendererInvisibleStreamingMarkerToken(step.text)) {
+            tokenCount++
+        }
         val tail = step.text.lastOrNull()
         val hitPause = tail == '\n' || tail?.isRendererStrongPausePunctuation() == true
-        if (hitPause || consumedDelay >= STREAM_REVEAL_FRAME_BUDGET_MS) {
+        if (tokenCount > 0 && (hitPause || consumedDelay >= STREAM_REVEAL_FRAME_BUDGET_MS)) {
             break
         }
     }
@@ -1060,16 +1076,26 @@ private fun RendererAssistantStreamingContentImpl(
                 )
                 RendererAssistantStreamingUnifiedBlockHost(
                     model = model,
-                    inlineMode = if (activeModel != null && index == unifiedModels.lastIndex) {
-                        RendererInlineMode.Streaming
-                    } else {
-                        RendererInlineMode.Settled
-                    },
+                    inlineMode = rendererInlineModeForStreamingBlock(
+                        index = index,
+                        lastIndex = unifiedModels.lastIndex
+                    ),
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
         }
+    }
+}
+
+internal fun rendererInlineModeForStreamingBlock(
+    index: Int,
+    lastIndex: Int
+): RendererInlineMode {
+    return if (index == lastIndex) {
+        RendererInlineMode.Streaming
+    } else {
+        RendererInlineMode.Settled
     }
 }
 

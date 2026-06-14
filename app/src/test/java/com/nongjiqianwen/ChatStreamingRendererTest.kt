@@ -169,6 +169,65 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun streamingTailBlockKeepsStreamingInlineModeAfterNewline() {
+        assertEquals(
+            RendererInlineMode.Streaming,
+            rendererInlineModeForStreamingBlock(index = 1, lastIndex = 1)
+        )
+    }
+
+    @Test
+    fun earlierStreamingBlocksUseSettledInlineMode() {
+        assertEquals(
+            RendererInlineMode.Settled,
+            rendererInlineModeForStreamingBlock(index = 0, lastIndex = 1)
+        )
+    }
+
+    @Test
+    fun pendingBoldMarkerDoesNotReplaceWaitingBallBeforeVisibleText() {
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "**",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals("", advanced?.content)
+        assertEquals("**", advanced?.revealBuffer)
+    }
+
+    @Test
+    fun pendingBoldMarkerRevealsWithFirstVisibleText() {
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "**控",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+        requireNotNull(advanced)
+        val rendered = buildRendererInlineAnnotatedString(
+            text = advanced.content,
+            mode = RendererInlineMode.Streaming
+        )
+
+        assertEquals("**控", advanced.content)
+        assertEquals("", advanced.revealBuffer)
+        assertEquals("控", rendered.text)
+        assertTrue(rendered.hasSpanFor("控") { it.fontWeight == FontWeight.SemiBold })
+    }
+
+    @Test
     fun chineseRevealStillConsumesOneVisibleCharacterPerStep() {
         val queued = queueStreamingChunk(
             currentMessageId = null,
