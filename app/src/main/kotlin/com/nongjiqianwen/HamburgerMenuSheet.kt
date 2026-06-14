@@ -429,7 +429,9 @@ internal fun HamburgerMenuSheet(
     LaunchedEffect(visible, supportRefreshTick) {
         if (!visible) return@LaunchedEffect
         SessionApi.getSupportSummary { summary ->
-            supportSummary = summary
+            if (summary != null) {
+                supportSummary = summary
+            }
         }
     }
     LaunchedEffect(userId) {
@@ -538,6 +540,7 @@ internal fun HamburgerMenuSheet(
                                 userId = userId,
                                 entitlement = membershipEntitlement,
                                 loadState = membershipLoadState,
+                                onRetryLoad = onRequestMembershipRefresh,
                                 onPaymentUnavailable = {
                                     performButtonHaptic()
                                     onMembershipPaymentUnavailable()
@@ -907,12 +910,14 @@ private fun HamburgerMembershipCenterPage(
     userId: String,
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
+    onRetryLoad: () -> Unit,
     onPaymentUnavailable: () -> Unit
 ) {
     HamburgerMembershipCenterContent(
         userId = userId,
         entitlement = entitlement,
         loadState = loadState,
+        onRetryLoad = onRetryLoad,
         onPaymentUnavailable = onPaymentUnavailable,
         modifier = Modifier
             .fillMaxSize()
@@ -1003,6 +1008,7 @@ private fun HamburgerMembershipCenterContent(
     userId: String,
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
+    onRetryLoad: () -> Unit,
     onPaymentUnavailable: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1015,7 +1021,8 @@ private fun HamburgerMembershipCenterContent(
             entitlement = entitlement,
             loadState = loadState,
             paymentNoticeResetKey = userId,
-            onPaymentUnavailable = onPaymentUnavailable
+            onPaymentUnavailable = onPaymentUnavailable,
+            onRetryLoad = onRetryLoad
         )
     }
 }
@@ -1790,6 +1797,7 @@ internal fun HamburgerMembershipCenterPagePreview(userId: String) {
                     giftCardRedeemedAt = System.currentTimeMillis() - 6L * 24L * 60L * 60L * 1000L
                 ),
                 loadState = MembershipLoadState.Loaded,
+                onRetryLoad = {},
                 onPaymentUnavailable = {}
             )
         }
@@ -2194,10 +2202,13 @@ private fun HamburgerTodayAgriHistoryPage(
         SessionApi.getRecentTodayAgriCards { loaded ->
             loading = false
             if (loaded == null) {
-                loadFailed = true
+                if (cards.isEmpty()) {
+                    loadFailed = true
+                }
                 onPendingAction("农情同步失败")
                 return@getRecentTodayAgriCards
             }
+            loadFailed = false
             cards = loaded
         }
     }
@@ -2709,9 +2720,14 @@ private fun HamburgerSupportFeedbackPage(
         SessionApi.getSupportMessages { loaded ->
             loading = false
             if (loaded == null) {
-                loadFailed = true
+                if (messages.isEmpty()) {
+                    loadFailed = true
+                } else {
+                    onPendingAction("消息同步失败")
+                }
                 return@getSupportMessages
             }
+            loadFailed = false
             messages = mergeSupportMessagesById(messages, loaded)
             val lastSeenMessageId = loaded
                 .asSequence()
@@ -2923,7 +2939,11 @@ private fun HamburgerSupportFeedbackContent(
         }
         if (shouldAutoScroll) {
             delay(80)
-            listState.animateScrollToItem(messages.lastIndex)
+            if (oldCount == 0) {
+                listState.scrollToItem(messages.lastIndex)
+            } else {
+                listState.animateScrollToItem(messages.lastIndex)
+            }
         }
     }
 
@@ -3468,7 +3488,7 @@ internal fun HamburgerSupportFeedbackPagePreview(
         SessionApi.SupportMessage(
             id = 3,
             senderType = "admin",
-            body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。也可以看 https://api.nongjiqiancha.cn/help。",
+            body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。",
             createdAt = now - 18L * 60L * 1000L
         )
     )
