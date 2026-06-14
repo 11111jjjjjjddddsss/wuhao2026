@@ -76,8 +76,10 @@ function Invoke-GateStep {
 }
 
 function Test-AdminSmokeEnv {
-    return -not [string]::IsNullOrWhiteSpace($env:NONGJI_ADMIN_USERNAME) -and `
-        -not [string]::IsNullOrWhiteSpace($env:NONGJI_ADMIN_PASSWORD)
+    $username = if ($env:NONGJI_ADMIN_USERNAME) { $env:NONGJI_ADMIN_USERNAME } else { $env:ADMIN_SMOKE_USERNAME }
+    $password = if ($env:NONGJI_ADMIN_PASSWORD) { $env:NONGJI_ADMIN_PASSWORD } else { $env:ADMIN_SMOKE_PASSWORD }
+    return -not [string]::IsNullOrWhiteSpace($username) -and `
+        -not [string]::IsNullOrWhiteSpace($password)
 }
 
 Write-Host "== launch readiness gate =="
@@ -196,7 +198,7 @@ if (-not $SkipCloud) {
     } else {
         $optional = -not $RequireAdminSmoke
         Invoke-GateStep -Name "admin authenticated smoke" -Optional:$optional -ScriptBlock {
-            throw "NONGJI_ADMIN_USERNAME / NONGJI_ADMIN_PASSWORD are not set in the current PowerShell session"
+            throw "admin smoke credentials are not set in the current PowerShell session; set NONGJI_ADMIN_USERNAME/NONGJI_ADMIN_PASSWORD or ADMIN_SMOKE_USERNAME/ADMIN_SMOKE_PASSWORD"
         }
     }
 }

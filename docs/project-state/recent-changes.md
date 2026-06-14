@@ -5,6 +5,10 @@
 
 ## 2026-06-15
 
+- 继续按上线门禁实时输出校正项目记忆：本轮 `check-launch-readiness.ps1 -AllowAttentionExitZero` 复查显示 ECS readiness、公网黑盒、SLS 告警、资源容量、后端数据边界、Android parity 和后台 surface 均为 ready，线上 Nginx active upstream 与后台 `/admin-api/` upstream 当前同为 `3001`；总门禁唯一 attention 仍是本机 PowerShell 未设置后台 owner 明文账号密码，登录后后台 smoke 按安全规则跳过。同步修正 `AGENTS.md` 和 `current-status.md` 里残留的 `3000` 当前 slot 口径，避免后续窗口按旧 active slot 做运维判断。
+
+- 对齐上线总门禁和后台登录后 smoke 的凭据变量口径：`check-admin-authenticated-smoke.ps1` 原本支持 `NONGJI_ADMIN_USERNAME/PASSWORD` 和 `ADMIN_SMOKE_USERNAME/PASSWORD` 两组环境变量，但 `check-launch-readiness.ps1` 只识别前者，可能导致单独 smoke 可跑而总门禁误报缺凭据。本次让总门禁同样接受 `ADMIN_SMOKE_*` 兼容别名，并同步更新 go-live 与后台 runbook；不保存、不打印后台密码，也不改生产后台接口或鉴权逻辑。
+
 - 继续按“业务负责人能看懂监控面板”的方向补 App 质量排障：后台 `/admin-api/v1/monitoring` 的 `auth_logs` 增加 `latest_crash_at`，只从 `client_app_logs.created_at` 聚合最近 24 小时 `app.crash / auth.app_crash` 的最新时间，不读取崩溃 attrs、正文、图片 URL、手机号、token 或完整堆栈；监控页“登录排障”“登录问题”“App质量”卡片会直接显示“最近闪退：时间”或“24h 无新闪退”，方便区分旧包历史闪退噪声和新包当前状态。该改动只增强后台只读监控可读性，不改 Android 运行逻辑、崩溃上报内容、提示词或后端业务链路。
 
 - 修复 GitHub Android CI 最近两次红灯：失败提交不是 Android 编译或业务代码问题，而是 CI 干净 runner 在执行 `scripts/check-android-build-parity.ps1` 前只生成 manifest，没有显式生成 debug / release `BuildConfig.java`，导致 parity 脚本找不到生成产物。本次把 `.github/workflows/ci.yml` 的预生成步骤扩展为同时执行 `:app:generateDebugBuildConfig` 和 `:app:generateReleaseBuildConfig`，让 GitHub Actions 与本机验证前置条件一致；不改变 App 运行逻辑、滚动链、提示词、后端接口或正式 / 测试包口径。

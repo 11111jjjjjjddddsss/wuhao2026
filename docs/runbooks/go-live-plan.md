@@ -79,7 +79,7 @@
 .\scripts\check-launch-readiness.ps1
 ```
 
-默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、后端账号资产归属巡检；如果当前 PowerShell 没有临时设置 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。
+默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、后端账号资产归属巡检；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。
 
 发版前完整慢检：
 
