@@ -2374,12 +2374,9 @@ fun ChatScreen() {
     var programmaticScroll by scrollRuntime.programmaticScroll
     var streamingContentBottomPx by scrollRuntime.streamingContentBottomPx
     var programmaticBottomAnchorGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var initialBottomSnapDone by remember(uiRuntimeResetKey) {
-        mutableStateOf(initialLocalMessages.isNotEmpty())
-    }
-    var postInitialSnapCorrectionDone by remember(uiRuntimeResetKey) {
-        mutableStateOf(initialLocalMessages.isNotEmpty())
-    }
+    val hasStartupLocalMessages = initialLocalMessages.isNotEmpty()
+    var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var postInitialSnapCorrectionDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
@@ -3035,6 +3032,7 @@ fun ChatScreen() {
         historyHydrationComplete,
         shouldHydrateRemoteHistory,
         initialBottomSnapDone,
+        hasStartupLocalMessages,
         messages.size,
         hasTodayAgriCard,
         isStreaming,
@@ -3050,6 +3048,7 @@ fun ChatScreen() {
                     !hasStreamingItem
             val waitingForStaticTimelineBottomSnap =
                 startupHydrationBarrierSatisfied &&
+                    !hasStartupLocalMessages &&
                     !initialBottomSnapDone &&
                     !hasStartedConversation &&
                     !isStreaming &&

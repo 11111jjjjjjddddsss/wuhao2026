@@ -72,10 +72,11 @@ $chatComposerCoordinatorFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nong
 $chatComposerPanelFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt"
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
+$hamburgerMenuSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -100,6 +101,7 @@ if ($failures.Count -eq 0) {
     $chatComposerPanel = Get-Content -LiteralPath $chatComposerPanelFile -Raw
     $loginScreen = Get-Content -LiteralPath $loginScreenFile -Raw
     $chatScreen = Get-Content -LiteralPath $chatScreenFile -Raw
+    $hamburgerMenuSheet = Get-Content -LiteralPath $hamburgerMenuSheetFile -Raw
 
     Require-Match $failures $build 'val\s+defaultUploadBaseUrl\s*=\s*"https://api\.nongjiqiancha\.cn"' `
         "Android default UPLOAD_BASE_URL must remain https://api.nongjiqiancha.cn."
@@ -246,6 +248,22 @@ if ($failures.Count -eq 0) {
         "Chat screen must not prompt for location permission immediately on entry; request it in-context when sending."
     Require-Match $failures $chatScreen 'suspend\s+fun\s+refreshClientRegionForSend\s*\(\s*\)(?s:.*?)locationPermissionLauncher\.launch' `
         "Chat send path must be the place that first requests optional location permission."
+    Require-Match $failures $chatScreen 'val\s+hasStartupLocalMessages\s*=\s*initialLocalMessages\.isNotEmpty\s*\(\s*\)' `
+        "Chat startup must explicitly distinguish existing local messages from completed bottom calibration."
+    Require-Match $failures $chatScreen 'var\s+initialBottomSnapDone\s+by\s+remember\s*\(\s*uiRuntimeResetKey\s*\)\s*\{\s*mutableStateOf\s*\(\s*false\s*\)' `
+        "Chat startup bottom calibration must always start pending, even when local messages exist."
+    Require-NoMatch $failures $chatScreen 'initialBottomSnapDone\s+by\s+remember\s*\([^)]*\)\s*\{\s*mutableStateOf\s*\(\s*initialLocalMessages\.isNotEmpty\s*\(\s*\)' `
+        "Chat startup must not treat local cached messages as if bottom snapping had already completed."
+    Require-Match $failures $chatScreen 'waitingForStaticTimelineBottomSnap(?s:.*?)!hasStartupLocalMessages(?s:.*?)!initialBottomSnapDone' `
+        "Chat startup may keep cached local messages visible, but only after separating that from the bottom-snap guard."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerMenuMainPage(?s:.*?)HamburgerMenuIcon\.Logout(?s:.*?)title\s*=\s*"退出登录"(?s:.*?)destructive\s*=\s*true' `
+        "Settings main page must keep the default logout row in code, not depend on cached UI state."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"会员中心"(?s:.*?)title\s*=\s*"账号管理"(?s:.*?)title\s*=\s*"帮助与反馈"(?s:.*?)title\s*=\s*"今日农情"(?s:.*?)title\s*=\s*"检查更新"(?s:.*?)title\s*=\s*"礼品卡"(?s:.*?)title\s*=\s*"服务协议"(?s:.*?)title\s*=\s*"退出登录"' `
+        "Settings main page defaults must include every production row after app data is cleared."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"退出中"\s*else\s*"退出登录"' `
+        "Account management page must keep its logout row in the default code path."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"手机号"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"清理中"\s*else\s*"清理临时缓存"(?s:.*?)title\s*=\s*"删除历史对话"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"退出中"\s*else\s*"退出登录"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"提交中"\s*else\s*"注销账号"' `
+        "Account management defaults must include phone, cache cleanup, history deletion, logout, and account deletion rows after app data is cleared."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsCard\b"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
