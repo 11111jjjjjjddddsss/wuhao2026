@@ -594,21 +594,82 @@ private fun ensureStreamingMessageId(
         ?: fallbackIdProvider()
 }
 
-private fun Char.isRendererCjkUnifiedIdeograph(): Boolean {
-    val code = code
-    return code in 0x4E00..0x9FFF ||
-        code in 0x3400..0x4DBF ||
-        code in 0x20000..0x2A6DF ||
-        code in 0x2A700..0x2B73F ||
-        code in 0x2B740..0x2B81F ||
-        code in 0x2B820..0x2CEAF
+private fun Int.isRendererCjkUnifiedIdeographCodePoint(): Boolean {
+    return this in 0x4E00..0x9FFF ||
+        this in 0x3400..0x4DBF ||
+        this in 0x20000..0x2A6DF ||
+        this in 0x2A700..0x2B73F ||
+        this in 0x2B740..0x2B81F ||
+        this in 0x2B820..0x2CEAF
 }
+
+private fun Char.isRendererCjkUnifiedIdeograph(): Boolean = code.isRendererCjkUnifiedIdeographCodePoint()
 
 private fun Char.isRendererStrongPausePunctuation(): Boolean = this in setOf('。', '！', '？', '!', '?', ';', '；', ':', '：')
 
 private fun Char.isRendererWeakPausePunctuation(): Boolean = this in setOf('，', ',', '、', '·')
 
 private fun Char.isRendererStructuralMarkdownChar(): Boolean = this == '#' || this == '-' || this == '*' || this == '>' || this == '`'
+
+private fun String.rendererCodePointAtOrNull(index: Int): Int? {
+    if (index !in indices) return null
+    val first = this[index]
+    return if (
+        Character.isHighSurrogate(first) &&
+        index + 1 < length &&
+        Character.isLowSurrogate(this[index + 1])
+    ) {
+        Character.toCodePoint(first, this[index + 1])
+    } else {
+        first.code
+    }
+}
+
+private fun String.rendererCodePointCharCountAt(index: Int): Int {
+    val codePoint = rendererCodePointAtOrNull(index) ?: return 0
+    return Character.charCount(codePoint)
+}
+
+private fun Int.isRendererVariationSelectorCodePoint(): Boolean =
+    this == 0xFE0E ||
+        this == 0xFE0F ||
+        this in 0xE0100..0xE01EF
+
+private fun Int.isRendererCombiningMarkCodePoint(): Boolean {
+    val type = Character.getType(this)
+    return type == Character.NON_SPACING_MARK.toInt() ||
+        type == Character.COMBINING_SPACING_MARK.toInt() ||
+        type == Character.ENCLOSING_MARK.toInt()
+}
+
+private fun String.takeRendererCodePointCluster(startIndex: Int): String {
+    if (startIndex !in indices) return ""
+    var cursor = startIndex + rendererCodePointCharCountAt(startIndex).coerceAtLeast(1)
+
+    fun consumeMarksAndVariants() {
+        while (cursor < length) {
+            val codePoint = rendererCodePointAtOrNull(cursor) ?: break
+            if (
+                codePoint.isRendererVariationSelectorCodePoint() ||
+                codePoint.isRendererCombiningMarkCodePoint()
+            ) {
+                cursor += rendererCodePointCharCountAt(cursor).coerceAtLeast(1)
+            } else {
+                break
+            }
+        }
+    }
+
+    consumeMarksAndVariants()
+    while (cursor < length && rendererCodePointAtOrNull(cursor) == 0x200D) {
+        val joinerLength = rendererCodePointCharCountAt(cursor).coerceAtLeast(1)
+        val nextStart = cursor + joinerLength
+        if (nextStart >= length) break
+        cursor = nextStart + rendererCodePointCharCountAt(nextStart).coerceAtLeast(1)
+        consumeMarksAndVariants()
+    }
+    return substring(startIndex, cursor)
+}
 
 private fun takeRendererMarkdownPrefixToken(buffer: String, startIndex: Int = 0): String? {
     if (startIndex !in 0 until buffer.length) return null
@@ -641,6 +702,8 @@ private fun takeRendererMarkdownPrefixToken(buffer: String, startIndex: Int = 0)
 private fun takeRendererTypewriterToken(buffer: String, startIndex: Int = 0): String {
     if (startIndex !in 0 until buffer.length) return ""
     val first = buffer[startIndex]
+    val firstCodePoint = buffer.rendererCodePointAtOrNull(startIndex)
+    val firstCluster = buffer.takeRendererCodePointCluster(startIndex)
     val markdownPrefix = takeRendererMarkdownPrefixToken(buffer, startIndex)
     if (markdownPrefix != null) return markdownPrefix
     if (first == '\n') return "\n"
@@ -651,8 +714,8 @@ private fun takeRendererTypewriterToken(buffer: String, startIndex: Int = 0): St
         }
         return if (cursor > startIndex) buffer.substring(startIndex, cursor) else first.toString()
     }
-    if (first.isRendererCjkUnifiedIdeograph()) {
-        return first.toString()
+    if (firstCodePoint?.isRendererCjkUnifiedIdeographCodePoint() == true) {
+        return firstCluster
     }
     if (first.isWhitespace()) {
         var cursor = startIndex
@@ -663,25 +726,36 @@ private fun takeRendererTypewriterToken(buffer: String, startIndex: Int = 0): St
     }
 
     val token = StringBuilder()
-    for (index in startIndex until buffer.length) {
+    var index = startIndex
+    while (index < buffer.length) {
         val ch = buffer[index]
+        val codePoint = buffer.rendererCodePointAtOrNull(index) ?: break
+        val cluster = buffer.takeRendererCodePointCluster(index)
         if (token.isEmpty()) {
-            token.append(ch)
+            token.append(cluster)
             if (ch.isRendererWeakPausePunctuation() || ch.isRendererStrongPausePunctuation()) {
                 break
             }
+            if (Character.charCount(codePoint) > 1 || cluster.length > Character.charCount(codePoint)) {
+                break
+            }
+            index += cluster.length
             continue
         }
         if (
             ch.isWhitespace() ||
-            ch.isRendererCjkUnifiedIdeograph() ||
+            codePoint.isRendererCjkUnifiedIdeographCodePoint() ||
             ch.isRendererStructuralMarkdownChar() ||
             ch.isRendererWeakPausePunctuation() ||
             ch.isRendererStrongPausePunctuation()
         ) {
             break
         }
-        token.append(ch)
+        if (Character.charCount(codePoint) > 1 || cluster.length > Character.charCount(codePoint)) {
+            break
+        }
+        token.append(cluster)
+        index += cluster.length
     }
     return token.toString()
 }
@@ -715,15 +789,17 @@ private fun hasRendererStructuralMarkdownPrefix(text: String, startIndex: Int = 
 
 private fun resolveRendererTypewriterDelay(token: String, nextHasStructuralMarkdownPrefix: Boolean): Long {
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
+    val lastCodePoint = token.codePointBefore(token.length)
     val baseDelay = when {
         lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 92L else 72L
         lastChar.isRendererStrongPausePunctuation() -> 52L
         lastChar.isRendererWeakPausePunctuation() -> 34L
+        lastCodePoint.isRendererCjkUnifiedIdeographCodePoint() -> 30L
         token.length >= 7 -> 28L
         token.length >= 5 -> 26L
         token.length >= 3 -> 24L
         token.length == 2 -> 26L
-        else -> if (lastChar.isRendererCjkUnifiedIdeograph()) 30L else 24L
+        else -> 24L
     }
     return scaleRendererStreamingDelay(baseDelay)
 }

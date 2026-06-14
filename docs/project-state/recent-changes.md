@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续从“流式渲染各种符号不能显得廉价”的角度补 Android 主聊天 typewriter 边界：`ChatStreamingRenderer.kt` 的吐字 token 现在按 Unicode code point 和简单组合簇处理扩展汉字、emoji、变体选择符、组合 mark 和 ZWJ 组合 emoji，避免把 UTF-16 代理对或一个可见 emoji 拆成半个半个显示，减少流式过程中出现方块 / 半符号闪一下的风险。同步补 `ChatStreamingRendererTest` 覆盖扩展汉字、普通 emoji 和 ZWJ 组合 emoji；该改动不换渲染引擎、不改成整段完成后再显示、不恢复 overlay / 反向列表 / raw delta / scrollBy / 小分割 item，不改三份提示词、今日农情列表项身份或后端输出过滤。
+
 - 继续从“正式包物料能不能被证明”角度补上线护栏：新增只读脚本 `scripts/check-android-release-artifact.ps1`，直接读取最终 `app-release.apk`，用 Android SDK `aapt` 校验包名、`versionCode`、`versionName`、release 不可调试和权限白名单，用 `apksigner verify --print-certs` 校验证书 SHA-256 与本机备案 / 上架公钥信息一致，并输出 `apk_size_bytes`、`apk_sha256` 供后台检查更新页填写。`build_apk.bat` 打包后会自动跑该校验；`check-launch-readiness.ps1 -IncludeBuilds / -ReleaseGate` 也会在 Android debug + release 构建后增加 `android release artifact` 步骤。该改动只增强正式 APK 物料校验，不改 Android 运行逻辑、后端接口、三份提示词、模型过滤或聊天滚动主链。
 
 - 继续按“总负责人看门禁不被假绿带偏”的方向补上线脚本：`scripts/check-sms-usage.ps1` 在阿里云短信统计为空时会输出 `sms_usage_status=attention`，不再把空统计末尾写成单纯 ready，避免误读成短信套餐余额或验证码链路已无风险；`scripts/check-launch-readiness.ps1` 新增 `-ReleaseGate`，正式上架前会强制启用构建和后台登录后 owner smoke，并拒绝 `-AllowAttentionExitZero` 与任何 `-Skip*` 跳过项。同步更新 go-live runbook 和当前状态文档；本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型过滤或聊天滚动主链。

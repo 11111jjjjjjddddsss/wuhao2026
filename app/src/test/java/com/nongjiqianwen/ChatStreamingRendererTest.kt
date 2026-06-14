@@ -255,6 +255,90 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun supplementaryCjkRevealDoesNotSplitSurrogatePair() {
+        val extensionBCharacter = "\uD840\uDC00"
+        val queued = queueStreamingChunk(
+            currentMessageId = null,
+            currentRevealBuffer = "",
+            piece = "${extensionBCharacter}田",
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" }
+        )
+
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = queued?.messageId,
+            currentContent = "",
+            currentRevealBuffer = queued?.revealBuffer.orEmpty(),
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals(extensionBCharacter, advanced?.content)
+        assertEquals("田", advanced?.revealBuffer)
+    }
+
+    @Test
+    fun emojiRevealDoesNotSplitSurrogatePair() {
+        val seedling = "\uD83C\uDF31"
+        val queued = queueStreamingChunk(
+            currentMessageId = null,
+            currentRevealBuffer = "",
+            piece = "${seedling}增产",
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" }
+        )
+
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = queued?.messageId,
+            currentContent = "",
+            currentRevealBuffer = queued?.revealBuffer.orEmpty(),
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals(seedling, advanced?.content)
+        assertEquals("增产", advanced?.revealBuffer)
+    }
+
+    @Test
+    fun zwjEmojiRevealDoesNotSplitVisibleCluster() {
+        val farmer = "\uD83D\uDC68\u200D\uD83C\uDF3E"
+        val queued = queueStreamingChunk(
+            currentMessageId = null,
+            currentRevealBuffer = "",
+            piece = "${farmer}正在查看",
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" }
+        )
+
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = queued?.messageId,
+            currentContent = "",
+            currentRevealBuffer = queued?.revealBuffer.orEmpty(),
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals(farmer, advanced?.content)
+        assertEquals("正在查看", advanced?.revealBuffer)
+    }
+
+    @Test
     fun chineseRevealDrainsOneVisibleCharacterAtATime() {
         val queued = queueStreamingChunk(
             currentMessageId = null,
