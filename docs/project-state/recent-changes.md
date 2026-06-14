@@ -5,6 +5,8 @@
 
 ## 2026-06-14
 
+- 提交 `570b46df` 已部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot health、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 Nginx active upstream 为 `3000`，后台 upstream 同为 `3000`，HTTPS healthz 200，未登录后台鉴权 401，`auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss` 均正常；公网黑盒 `check-public-blackbox.ps1` 复查 API、官网、www、后台、协议页、公安图标和 HTTP->HTTPS 跳转均为 ready。总门禁 `check-launch-readiness.ps1 -AllowAttentionExitZero` 复查 9 项，项目记忆、后台 surface、Android parity、ECS readiness、公网黑盒、SLS 告警、资源容量和后端数据边界均 ready，唯一 attention 仍是本机没有后台 owner 明文密码，登录后后台 smoke 按安全规则跳过。Android 端 UI 改动仍需用户重新安装新包才会生效。
+
 - 继续按用户 / 总负责人视角做上线前巡检并收口一批低风险坑点：Android 主聊天“回到底部”按钮重新接回短暂显示状态，自动隐藏窗口从 1.2 秒延长到 2.2 秒，避免常驻压住内容但用户滚动后仍能重新唤出；今日农情卡片若原锚点消息因 30 轮窗口裁剪丢失，会插在“更早若干轮已保留”提示之后，不再跑到历史提示前面。设置页首页移除重复“退出登录”入口，只保留账号管理页“退出设备”二次确认，减少用户误以为两个入口语义不同；检查更新自动弹窗在用户点“稍后”时也记录已提示版本，手动检查仍可每次弹出，避免同一版本反复骚扰。登录页协议文字略放大到 12sp，仍必须用户手动勾选后才允许发送验证码 / 登录。后端账号旧 ID 迁移现在会把 `migrated / already_same_target / conflict_skipped` 等状态写进脱敏登录日志，冲突仍保护资产不合并但不再被误记为统一 accepted；礼品卡失败兑换流水写入和事务提交失败不再静默吞掉，避免后台追溯缺记录。回滚脚本和 runbook 同步加护栏：执行回滚必须显式传 `-BackupName ... -Apply`，只传 `-Apply` 会直接失败。
 
 - 上线前巡检继续补 App 闪退排障质量：总门禁复查显示项目记忆、后台 surface、Android parity、ECS readiness、公网黑盒、SLS 告警、资源水位和后端数据边界均 ready，唯一 attention 仍是本机没有后台 owner 明文密码，无法自动跑登录后后台 smoke；生产 App 自动日志显示用户早上测试包崩溃已补报到 `auth.app_crash` / `app.crash`，但旧摘要里类名字段不完整。Android 和后端现已把 `exception / cause / top_class / top_method / top_line / stack_top / stack_next / stack_third` 作为安全崩溃诊断字段保留，并限制为类名、方法名和行号形态，URL、手机号、token、正文和图片信息仍丢弃；下次真机闪退时后台应能直接看到更完整的栈顶线索。
