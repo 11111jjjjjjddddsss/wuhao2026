@@ -172,6 +172,7 @@ Android 构建链：
 
 规则：
 - 主对话锚点和记忆文档提示词职责不同，不允许混写
+- 主对话锚点属于高敏生产提示词；除非用户明确要求“修改主对话锚点 / 改 system_anchor.txt / 按这版落地”，否则 Codex 只能审查、说明问题、提出草案并先发给用户确认，不得擅自修改 [server-go/assets/system_anchor.txt](D:/wuhao/server-go/assets/system_anchor.txt)
 - 锚点规则改动时，必须同次同步更新真源文件和 [AGENTS.md](D:/wuhao/AGENTS.md)
 - 主对话锚点缺失或为空，属于主链配置问题，应 fail-fast
 - 记忆文档摘要失败不拖垮主对话，但必须保留 `pending_retry_b`，后续轮次完成后继续补账
