@@ -170,6 +170,15 @@ if (-not $SkipCloud) {
             "-RequireSlsDashboard"
         )
     }
+    Invoke-GateStep -Name "sms usage" -ScriptBlock {
+        Invoke-Native -FilePath "powershell.exe" -Arguments @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check-sms-usage.ps1"
+        )
+    }
     if (-not $SkipDataBoundary) {
         Invoke-GateStep -Name "backend data boundaries" -ScriptBlock {
             Invoke-Native -FilePath "powershell.exe" -Arguments @(

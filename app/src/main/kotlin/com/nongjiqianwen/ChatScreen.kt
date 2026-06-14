@@ -207,7 +207,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.coroutines.resume
 
-private enum class ChatRole { USER, ASSISTANT }
+internal enum class ChatRole { USER, ASSISTANT }
 
 private enum class InitialWorklinePhase {
     WaitingForFirstSend,
@@ -217,7 +217,7 @@ private enum class InitialWorklinePhase {
 }
 
 @Immutable
-private data class ChatMessage(
+internal data class ChatMessage(
     val id: String,
     val role: ChatRole,
     val content: String,
@@ -225,7 +225,7 @@ private data class ChatMessage(
     val imageUrls: List<String>? = null
 )
 @Immutable
-private sealed interface ChatTimelineItem {
+internal sealed interface ChatTimelineItem {
     val stableKey: String
 
     @Immutable
@@ -284,7 +284,7 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
         imageUris.orEmpty().isNotEmpty() &&
         imageUrls.orEmpty().isEmpty()
 
-private fun buildChatTimelineItems(
+internal fun buildChatTimelineItems(
     messages: List<ChatMessage>,
     todayAgriCard: SessionApi.TodayAgriCard?,
     todayAgriCardAnchorMessageId: String?,
@@ -438,7 +438,7 @@ private const val CHAT_COMPOSER_DRAFT_KEY_PREFIX = "composer_draft_"
 private const val CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX = "composer_draft_gen_"
 private const val TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX = "today_agri_card_anchor_day_"
 private const val TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX = "today_agri_card_anchor_message_"
-private const val TODAY_AGRI_CARD_ANCHOR_START = "__today_agri_card_timeline_start__"
+internal const val TODAY_AGRI_CARD_ANCHOR_START = "__today_agri_card_timeline_start__"
 private const val TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS = 5_000L
 private const val TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS = 15 * 60 * 1000L
 private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE

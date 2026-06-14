@@ -440,7 +440,6 @@ object SessionApi {
 
     fun resetUiRuntimeForCleanState() {
         runtimeGeneration.incrementAndGet()
-        mainHandler.removeCallbacksAndMessages(null)
         currentStreamCall.getAndSet(null)?.cancel()
     }
 

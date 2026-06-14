@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“上线前总负责人巡检”补自动化护栏和 Android 边界单测：`check-launch-readiness.ps1` 新增独立 `sms usage` 步骤，短信用量不再藏在资源巡检里；`check-backend-data-boundaries.ps1` 除了非 `acct_...` 资产归属，还会检查 `acct_...` 孤儿记录和 `app_accounts.phone_ciphertext` 缺失，线上本轮复查均为 0。Android 侧收窄 `SessionApi.resetUiRuntimeForCleanState()`，不再清空该 API 共享 handler 的全部回调，只递增 generation 并取消当前 SSE；今日农情时间线插入逻辑新增单测覆盖卡片-only、锚在真实消息后、锚点被裁剪后三种情况，继续锁住它是正向 `LazyColumn` 内普通视觉项。同步修正项目文档里位置通过 `/api/chat/stream` JSON body 传递、支付宝 App 支付正式链路需应用上线并开通 APP 支付产品、总门禁单独暴露短信统计等口径；本轮不修改三份提示词、不增加后端内容过滤、不改滚动主链。
+
 - 继续按用户视频里“加粗处一伸一缩 / 后段一口气吐出 / 生成中轻微上下掉”的反馈收口 Android 主聊天流式渲染边界：`ChatStreamingRenderer.kt` 在 streaming 模式下如果当前帧刚好停在待续的 `**`、`*` 或反引号，不再把这些结构符号短暂当正文露出，等后续正文到达后继续按加粗 / 斜体 / 行内代码样式显示；settled 完成态仍保持严格规则，未闭合 Markdown 保留原符号，避免误吞用户可见内容。同步补 `ChatStreamingRendererTest` 覆盖待续符号、闭合加粗稳定显示和 DONE 后中文 reveal buffer 逐字 drain，补 `ChatScrollCoordinatorTest` 覆盖程序贴底不误判用户浏览、真实拖动抢占程序滚动；不改正向 `LazyColumn` 滚动主链、不改三份提示词、不增加后端输出过滤。
 
 - 继续按“业务负责人看得懂巡检输出”的方向补只读门禁：`scripts/check-backend-data-boundaries.ps1` 的最近 24 小时 App warn / error Top 事件保留原始 `latest_created_at` 毫秒值，同时新增北京时间字段 `latest_created_at_cn=YYYY-MM-DD HH:mm:ss+08:00`，避免总门禁和后端数据边界巡检里只出现一串毫秒时间戳，难以判断闪退 / 登录失败是不是旧包噪声。该改动只影响只读巡检输出和 runbook，不查询日志 attrs、正文、手机号、URL、token 或模型 Key。

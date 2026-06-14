@@ -1,6 +1,6 @@
 # 支付与会员订单 Runbook
 
-最后更新：2026-06-13
+最后更新：2026-06-15
 
 ## 目的
 
@@ -50,6 +50,7 @@
 支付宝 App 支付：
 
 - 申请 / 配置侧需要准备支付宝开放平台应用、APP 支付产品、AppID、RSA2 应用私钥 / 应用公钥或证书模式材料、支付宝公钥 / 支付宝证书，以及 Android SDK 接入权限。
+- 生产环境正式调用前，支付宝开放平台应用需要完成创建、配置、审核上线，并开通 APP 支付产品；应用未上线、未开通 APP 支付或 AppID 配置不对时，生产链路可能报“APPID 应用未上线 / 未开通 App 支付”等错误。未上线或审核中的阶段只允许按支付宝沙箱环境做联调，不作为真实扣费入口。
 - 支付宝官方 App 支付链路是商家 App 先请求商家服务端，由服务端调用 `alipay.trade.app.pay` 生成可信 `orderStr`，Android 只把 `orderStr` 交给支付宝 SDK。
 - 支付宝 Android SDK 当前官方文档建议通过 Maven 依赖接入，旧 AAR 打包方式不作为新接入默认方案。
 - Android 同步返回只能当“支付流程结束 / 需要刷新订单状态”的 UI 信号，不作为发放会员权益的依据；真实支付结果必须以后端收到并验签通过的异步通知或主动查单结果为准。
@@ -184,7 +185,9 @@
 - [微信支付 APIv3 签名和验签](https://pay.wechatpay.cn/doc/v3/merchant/4012365342)：微信支付请求、应答、回调和调起支付都涉及签名 / 验签。
 - [微信支付开发必要参数说明](https://pay.wechatpay.cn/doc/v3/merchant/4013070756)：普通商户模式开发前需要准备 `mchid`、`appid`、商户 API 证书、证书序列号、微信支付公钥 / 平台证书和 APIv3 密钥等。
 - [微信支付 App 下单接口](https://pay.wechatpay.cn/doc/v3/merchant/4012525136)：服务端先创建预支付交易单，`notify_url` 要用公网可访问的 HTTPS 地址。
+- [支付宝 APP 支付接入准备](https://opendocs.alipay.com/open/204/105297/)：正式调用前需要完成创建应用、配置应用、上线应用和开通产品。
 - [支付宝 APP 支付快速接入](https://opendocs.alipay.com/open/204/01dcc0)：App 端购买请求应先到商家服务端，服务端生成支付订单参数。
+- [支付宝 App 支付沙箱联调](https://opendocs.alipay.com/support/01rftu)：应用未上线或产品未开通阶段可用沙箱测试，生产仍以正式环境审核和开通结果为准。
 - [支付宝 Android 集成流程](https://opendocs.alipay.com/open/204/105296/)：Android 侧集成支付宝 SDK 调起支付；密钥和签名仍由服务端负责。
 - [支付宝同步通知说明](https://opendocs.alipay.com/open/204/105302)：同步结果可只作为支付结束通知，实际支付成功应以后端异步通知为准。
 - [支付宝异步通知说明](https://opendocs.alipay.com/open/204/105301)：支付宝按 `notify_url` 通过 POST 发送支付结果，服务端验签处理成功后再返回成功响应。

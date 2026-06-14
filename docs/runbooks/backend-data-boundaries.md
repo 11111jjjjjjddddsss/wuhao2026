@@ -1,6 +1,6 @@
 # 后端数据边界与归属巡检
 
-最后更新：2026-06-13
+最后更新：2026-06-15
 
 ## 目的
 
@@ -43,10 +43,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-backe
 - 通过 Cloud Assistant 在 ECS 内读取 `/etc/nongjiqiancha/server.env` 的 `MYSQL_URL`
 - 支持 `mysql://...` 和 Go `user:pass@tcp(...)/db` 两种 DSN 形态
 - 使用临时 `--defaults-extra-file` 调用 mysql client，避免把数据库密码放进命令行参数或输出
-- 只输出表计数、活跃 session / 活跃会员 / App 24h 错误计数、今日农情状态计数和 `acct_...` 归属异常计数
+- 只输出表计数、活跃 session / 活跃会员 / App 24h 错误计数、今日农情状态计数、`acct_...` 归属异常计数、`acct_...` 孤儿记录和缺加密手机号账号计数
 - 额外输出最近 24 小时 App warn / error Top 事件，只展示 `event / level / build_type / app_version_code / count / latest_created_at / latest_created_at_cn`，其中 `latest_created_at_cn` 是北京时间可读时间；不输出日志 attrs、message、IP、手机号、URL、正文或 token
 - 不查询手机号明文、聊天正文、反馈正文、图片 URL、礼品卡完整码、token 或模型 Key
-- 只要会员、订单、礼品卡、聊天、反馈、日志、注销等需要账号归属的表出现非 `acct_...`，脚本失败
+- 只要会员、订单、礼品卡、聊天、反馈、日志、注销等需要账号归属的表出现非 `acct_...`，或 `acct_...` 业务记录找不到对应 `app_accounts`，或 `app_accounts.phone_ciphertext` 缺失，脚本失败
+
+## 2026-06-15 线上只读结果
+
+- `app_accounts=1 / auth_sessions=11 / auth_sessions_active=5 / user_entitlement=1 / orders=0 / gift_cards=0 / session_ab=1 / session_round_archive=12`
+- `client_app_logs=285`，其中 24h error 14、auth warn/error 6，属于当前登录联调和排障日志，不是用户资产
+- 24h App warn / error Top 事件主要仍是旧包阶段闪退与认证排障：`app.crash` 最新停在 2026-06-14 17:47，`auth.app_crash` 最新停在 2026-06-14 08:58；用户 2026-06-14 21:31 安装的新 debug 包之后，本轮未见更晚闪退补报
+- `daily_agri_cards=7`，ready 6、failed 1
+- `admin_users=1 / admin_sessions_active=1 / admin_audit_logs=452`
+- 所有账号归属检查均为 0：会员、额度、订单、聊天、帮助反馈、App 日志、礼品卡兑换、注销申请等没有非 `acct_...` 资产归属
+- 所有账号完整性检查均为 0：`acct_...` 业务记录均能关联到 `app_accounts`，`app_accounts_missing_phone_ciphertext=0`
 
 ## 2026-06-14 线上只读结果
 

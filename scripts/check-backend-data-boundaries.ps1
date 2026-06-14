@@ -282,6 +282,27 @@ try:
         ("non_acct_account_deletion_requests", "SELECT COUNT(*) FROM account_deletion_requests WHERE user_id NOT REGEXP '^acct_'"),
     ]
 
+    account_integrity_checks = [
+        ("app_accounts_missing_phone_ciphertext", "SELECT COUNT(*) FROM app_accounts WHERE phone_ciphertext IS NULL OR phone_ciphertext = ''"),
+        ("orphan_acct_auth_sessions", "SELECT COUNT(*) FROM auth_sessions t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_user_entitlement", "SELECT COUNT(*) FROM user_entitlement t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_daily_usage", "SELECT COUNT(*) FROM daily_usage t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_quota_ledger", "SELECT COUNT(*) FROM quota_ledger t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_topup_packs", "SELECT COUNT(*) FROM topup_packs t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_upgrade_credits", "SELECT COUNT(*) FROM upgrade_credits t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_orders", "SELECT COUNT(*) FROM orders t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_session_ab", "SELECT COUNT(*) FROM session_ab t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_session_round_ledger", "SELECT COUNT(*) FROM session_round_ledger t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_session_round_archive", "SELECT COUNT(*) FROM session_round_archive t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_chat_stream_inflight", "SELECT COUNT(*) FROM chat_stream_inflight t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_support_conversations", "SELECT COUNT(*) FROM support_conversations t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_support_messages", "SELECT COUNT(*) FROM support_messages t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_client_app_logs", "SELECT COUNT(*) FROM client_app_logs t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_gift_cards_redeemed_user", "SELECT COUNT(*) FROM gift_cards t LEFT JOIN app_accounts a ON a.user_id = t.redeemed_user_id WHERE t.redeemed_user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_gift_card_attempts_user", "SELECT COUNT(*) FROM gift_card_redemption_attempts t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+        ("orphan_acct_account_deletion_requests", "SELECT COUNT(*) FROM account_deletion_requests t LEFT JOIN app_accounts a ON a.user_id = t.user_id WHERE t.user_id REGEXP '^acct_' AND a.user_id IS NULL"),
+    ]
+
     print("== backend data counts ==")
     for label, sql in count_queries:
         print(f"{label}={query_scalar(sql)}")
@@ -332,11 +353,22 @@ try:
             bad.append((label, value))
 
     print()
-    if bad:
-        print(f"ownership_errors={len(bad)}")
+    print("== acct account integrity checks ==")
+    integrity_bad = []
+    for label, sql in account_integrity_checks:
+        value = int(query_scalar(sql) or "0")
+        print(f"{label}={value}")
+        if value != 0:
+            integrity_bad.append((label, value))
+
+    print()
+    all_bad = bad + integrity_bad
+    if all_bad:
+        print(f"ownership_errors={len(bad)} account_integrity_errors={len(integrity_bad)}")
         print("status=failed")
         sys.exit(30)
     print("ownership_errors=0")
+    print("account_integrity_errors=0")
     print("status=ok")
 finally:
     try:
