@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 按用户追问“渲染是不是很垃圾 / 小球和正文节奏还是不舒服”继续收口 Android 主聊天流式观感：不换渲染引擎，不改成整段完成后再显示，仍保持边生成边渲染；远端首个 chunk 太快返回时，waiting 小球最短展示从 1.5 秒轻微拉到 1.8 秒，让 720ms 呼吸动画至少有更完整的可见节奏；中文单字、普通 token、标点和换行的 reveal delay 整体放慢，避免长回复后段像一口气吐出；`onAdvance` 不再在写入新内容前抢先做一次程序化底部锚定，改为依赖现有 `SideEffect` 在新内容提交后的下一次 remeasure 请求底部锚定，降低生成中“先掉一点、再被拉回”的体感。同步补 renderer 单测锁住中文可读节奏和强标点停顿；不恢复 overlay、反向列表、小分割、raw delta 或 scrollBy 追滚，不改三份提示词、后端输出过滤、今日农情列表项身份或 96dp 工作线。
+
 - 继续按“总负责人看上线门禁不误判”的方向补 `check-launch-readiness.ps1`：默认新增 `manual go-live checklist`，把 App 备案、App 公安备案、AccessKey 轮换、最终 APK 真机完整回归、SLS 首封告警邮件、普通短信套餐包余额和最终 release 物料一致性作为人工确认项直接打印；未通过临时环境变量显式确认时计入 attention。纯技术日常巡检可用 `-SkipManualGoLiveChecklist`，正式上线门禁不要跳过。该改动只增强上线判断输出，不改 Android / 后端运行逻辑，不改三份提示词、模型过滤或聊天滚动主链。
 
 - 继续按“上线门禁要能给业务负责人看懂”的方向收口短信和位置口径：`scripts/check-sms-usage.ps1` 现在会校验阿里云短信统计接口返回状态，默认不按短信签名过滤，统计为空时默认短暂重试一次，并输出发送总量、成功、失败、无回执和空统计说明；空统计只作为趋势信号，不再被误读成套餐包余额或验证码链路一定无流量。同步修正项目记忆和 IP 定位 runbook 里残留的旧 `X-User-Region` 主链口径：当前 Android 通过 `/api/chat/stream` JSON body 传 `region / region_source / region_reliability`，旧 header 只是后端兼容兜底；`AGENTS.md` 也同步线上账号边界只读计数。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型输出过滤或聊天滚动主链。

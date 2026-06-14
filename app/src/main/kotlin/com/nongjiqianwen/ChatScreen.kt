@@ -456,7 +456,7 @@ internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
 internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
-private const val REMOTE_STREAM_MIN_BALL_MS = 1500L
+private const val REMOTE_STREAM_MIN_BALL_MS = 1800L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
@@ -4944,15 +4944,6 @@ fun ChatScreen() {
             assistantIdProvider = ::assistantMessageIdForSourceUser,
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
-                val shouldPreAnchorBottom =
-                    !shouldSuppressAutomaticBottomAnchor() &&
-                        scrollMode == ScrollMode.AutoFollow &&
-                        !scrollRuntime.userInteracting.value &&
-                        !chatListUserDragging &&
-                        latestMessageIndexOrMinusOne() >= 0
-                if (shouldPreAnchorBottom) {
-                    requestProgrammaticForwardListBottomAnchor()
-                }
                 streamingMessageId = advance.messageId
                 streamingRevealBuffer = advance.revealBuffer
                 streamingFreshStart = advance.freshStart

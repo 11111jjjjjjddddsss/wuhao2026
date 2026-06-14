@@ -231,6 +231,52 @@ class ChatStreamingRendererTest {
         assertEquals(listOf("控", "控水", "控水排", "控水排湿"), steps)
         assertEquals("控水排湿", content)
     }
+
+    @Test
+    fun chineseRevealKeepsReadablePacing() {
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "控",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals("控", advanced?.content)
+        assertTrue((advanced?.delayMs ?: 0L) >= 30L)
+    }
+
+    @Test
+    fun strongPunctuationPausesLongerThanPlainChineseReveal() {
+        val plain = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "控",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+        val punctuation = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "。",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertTrue((punctuation?.delayMs ?: 0L) > (plain?.delayMs ?: Long.MAX_VALUE))
+    }
 }
 
 private fun AnnotatedString.hasSpanFor(
