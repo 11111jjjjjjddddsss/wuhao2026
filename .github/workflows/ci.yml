@@ -104,10 +104,12 @@ jobs:
         run: |
           python3 scripts/check_project_memory.py --base "$BASE_SHA" --head "$HEAD_SHA"
 
-      - name: Generate Android manifests for parity checks
+      - name: Generate Android manifests and BuildConfig for parity checks
         run: |
           chmod +x ./gradlew
           ./gradlew \
+            :app:generateDebugBuildConfig \
+            :app:generateReleaseBuildConfig \
             :app:processDebugManifest \
             :app:processReleaseManifest \
             :app:processDebugManifestForPackage \

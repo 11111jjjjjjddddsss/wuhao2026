@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 修复 GitHub Android CI 最近两次红灯：失败提交不是 Android 编译或业务代码问题，而是 CI 干净 runner 在执行 `scripts/check-android-build-parity.ps1` 前只生成 manifest，没有显式生成 debug / release `BuildConfig.java`，导致 parity 脚本找不到生成产物。本次把 `.github/workflows/ci.yml` 的预生成步骤扩展为同时执行 `:app:generateDebugBuildConfig` 和 `:app:generateReleaseBuildConfig`，让 GitHub Actions 与本机验证前置条件一致；不改变 App 运行逻辑、滚动链、提示词、后端接口或正式 / 测试包口径。
+
 - 按用户视频反馈和仓库记忆深查主聊天 streaming 渲染 / 滚动：继续保留单一正向 `LazyColumn`、`SideEffect` 同帧底部锚定、96dp 工作线和两阶段 finalize，不恢复 overlay、反向列表、小分割或 raw delta。`ChatScrollCoordinator.kt` 收窄 streaming 期间 `isScrollInProgress` 的归因，只有真实拖动或已经进入 `UserBrowsing` 的惯性 / 浏览才暂停 AutoFollow，避免同帧锚定 / 内部 remeasure 被误判成用户浏览后出现“生成中先往下掉、再上去”的体感；`ChatStreamingRenderer.kt` 新增 streaming-aware inline Markdown 子集，加粗、斜体、行内代码、Markdown 链接和裸 URL 在生成中尽量实时渲染，标准表格继续降级成手机可读项目行，后端 DONE 后本地 reveal buffer 继续按打字节奏 drain 完再 finalize，不再把尾段一口气全吐出来。同步新增 renderer / scroll coordinator 单元测试和聊天 UI 回归 runbook 口径；本次不改三份提示词、不加后端内容过滤、不改变今日农情正常列表项身份。
 
 - 按“测试包除了预览面板其他都要和正式包一样”的上线口径，补强 Android parity 门禁：`scripts/check-android-build-parity.ps1` 不再只扫源码模式，还会读取 Gradle 实际生成的 debug / release `BuildConfig.java` 和 packaged manifest，确认实际产物同包名 `com.nongjiqiancha`、同生产 HTTPS 后端、同 `USE_BACKEND_AB=true`、release 不带 `android:debuggable=true`、debug / release 权限集合一致；debug 只允许保留 Android Studio 诊断所需的 debuggable 属性。该改动只加强自动检查，不改 App 运行代码、滚动链、提示词或后端接口。
