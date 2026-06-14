@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按用户视频里“加粗处一伸一缩 / 后段一口气吐出 / 生成中轻微上下掉”的反馈收口 Android 主聊天流式渲染边界：`ChatStreamingRenderer.kt` 在 streaming 模式下如果当前帧刚好停在待续的 `**`、`*` 或反引号，不再把这些结构符号短暂当正文露出，等后续正文到达后继续按加粗 / 斜体 / 行内代码样式显示；settled 完成态仍保持严格规则，未闭合 Markdown 保留原符号，避免误吞用户可见内容。同步补 `ChatStreamingRendererTest` 覆盖待续符号、闭合加粗稳定显示和 DONE 后中文 reveal buffer 逐字 drain，补 `ChatScrollCoordinatorTest` 覆盖程序贴底不误判用户浏览、真实拖动抢占程序滚动；不改正向 `LazyColumn` 滚动主链、不改三份提示词、不增加后端输出过滤。
+
 - 继续按“业务负责人看得懂巡检输出”的方向补只读门禁：`scripts/check-backend-data-boundaries.ps1` 的最近 24 小时 App warn / error Top 事件保留原始 `latest_created_at` 毫秒值，同时新增北京时间字段 `latest_created_at_cn=YYYY-MM-DD HH:mm:ss+08:00`，避免总门禁和后端数据边界巡检里只出现一串毫秒时间戳，难以判断闪退 / 登录失败是不是旧包噪声。该改动只影响只读巡检输出和 runbook，不查询日志 attrs、正文、手机号、URL、token 或模型 Key。
 
 - 继续按上线门禁实时输出校正项目记忆：本轮 `check-launch-readiness.ps1 -AllowAttentionExitZero` 复查显示 ECS readiness、公网黑盒、SLS 告警、资源容量、后端数据边界、Android parity 和后台 surface 均为 ready，线上 Nginx active upstream 与后台 `/admin-api/` upstream 当前同为 `3001`；总门禁唯一 attention 仍是本机 PowerShell 未设置后台 owner 明文账号密码，登录后后台 smoke 按安全规则跳过。同步修正 `AGENTS.md` 和 `current-status.md` 里残留的 `3000` 当前 slot 口径，避免后续窗口按旧 active slot 做运维判断。

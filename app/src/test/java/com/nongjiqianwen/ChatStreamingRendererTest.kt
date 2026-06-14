@@ -21,6 +21,16 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun streamingPendingBoldMarkerDoesNotFlashRawMarkers() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "建议**",
+            mode = RendererInlineMode.Streaming
+        )
+
+        assertEquals("建议", rendered.text)
+    }
+
+    @Test
     fun settledUnclosedBoldKeepsRawMarkers() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "建议**控水",
@@ -42,6 +52,27 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun streamingClosedBoldKeepsStableTextAndStyle() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "建议**控水**后观察",
+            mode = RendererInlineMode.Streaming
+        )
+
+        assertEquals("建议控水后观察", rendered.text)
+        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.SemiBold })
+    }
+
+    @Test
+    fun settledTrailingBoldMarkerKeepsRawMarkers() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "建议**",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("建议**", rendered.text)
+    }
+
+    @Test
     fun literalStarAndAsciiOperatorRunsSurvive() {
         val input = "按 2 * 3 配比，A**B 保留。"
         val rendered = buildRendererInlineAnnotatedString(
@@ -53,6 +84,26 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun streamingPendingItalicMarkerDoesNotFlashRawMarker() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "建议 *",
+            mode = RendererInlineMode.Streaming
+        )
+
+        assertEquals("建议 ", rendered.text)
+    }
+
+    @Test
+    fun settledTrailingItalicMarkerKeepsRawMarker() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "建议 *",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("建议 *", rendered.text)
+    }
+
+    @Test
     fun streamingInlineCodeStartsImmediatelyWithoutRawBacktick() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "查看`标签",
@@ -61,6 +112,16 @@ class ChatStreamingRendererTest {
 
         assertEquals("查看标签", rendered.text)
         assertTrue(rendered.hasSpanFor("标签") { it.fontFamily == FontFamily.Monospace })
+    }
+
+    @Test
+    fun streamingPendingInlineCodeMarkerDoesNotFlashRawBacktick() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "查看`",
+            mode = RendererInlineMode.Streaming
+        )
+
+        assertEquals("查看", rendered.text)
     }
 
     @Test
@@ -132,6 +193,43 @@ class ChatStreamingRendererTest {
 
         assertEquals("控", advanced?.content)
         assertEquals("水排湿", advanced?.revealBuffer)
+    }
+
+    @Test
+    fun chineseRevealDrainsOneVisibleCharacterAtATime() {
+        val queued = queueStreamingChunk(
+            currentMessageId = null,
+            currentRevealBuffer = "",
+            piece = "控水排湿",
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" }
+        )
+        var content = ""
+        var buffer = queued?.revealBuffer.orEmpty()
+        val steps = mutableListOf<String>()
+
+        while (buffer.isNotEmpty()) {
+            val advanced = consumeStreamingRevealBatch(
+                currentMessageId = queued?.messageId,
+                currentContent = content,
+                currentRevealBuffer = buffer,
+                currentFreshTick = steps.size,
+                lastFreshRevealMs = 0L,
+                anchoredUserMessageId = "user_1",
+                assistantIdProvider = { "assistant_$it" },
+                fallbackIdProvider = { "assistant_fallback" },
+                nowMs = 100L + steps.size
+            )
+
+            requireNotNull(advanced)
+            content = advanced.content
+            buffer = advanced.revealBuffer
+            steps += content
+        }
+
+        assertEquals(listOf("控", "控水", "控水排", "控水排湿"), steps)
+        assertEquals("控水排湿", content)
     }
 }
 

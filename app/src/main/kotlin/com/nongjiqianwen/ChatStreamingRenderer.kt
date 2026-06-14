@@ -1272,6 +1272,13 @@ private fun isRendererBoldOpeningDelimiter(text: String, index: Int): Boolean {
     return next != null && !next.isWhitespace()
 }
 
+private fun isRendererStreamingPendingBoldOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("**", index)) return false
+    if (isRendererAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val next = text.getOrNull(index + 2)
+    return next == null || !next.isWhitespace()
+}
+
 private fun isRendererBoldClosingDelimiter(text: String, index: Int): Boolean {
     if (!text.startsWith("**", index)) return false
     if (isRendererAsciiInlineOperatorRun(text, index, length = 2)) return false
@@ -1293,6 +1300,14 @@ private fun isRendererItalicOpeningDelimiter(text: String, index: Int): Boolean 
     val previous = text.getOrNull(index - 1)
     val next = text.getOrNull(index + 1)
     if (next == null || next.isWhitespace()) return false
+    return previous == null || previous.isRendererMarkdownDelimiterBoundary()
+}
+
+private fun isRendererStreamingPendingItalicOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!isRendererSingleAsterisk(text, index)) return false
+    val previous = text.getOrNull(index - 1)
+    val next = text.getOrNull(index + 1)
+    if (next?.isWhitespace() == true) return false
     return previous == null || previous.isRendererMarkdownDelimiterBoundary()
 }
 
@@ -1322,11 +1337,12 @@ private fun isRendererBoldDelimiter(
     return if (isBold) {
         isRendererBoldClosingDelimiter(text, index)
     } else {
-        isRendererBoldOpeningDelimiter(text, index) &&
-            (
-                mode == RendererInlineMode.Streaming ||
-                    findRendererBoldClosingDelimiter(text, index + 2) != null
-                )
+        if (mode == RendererInlineMode.Streaming) {
+            isRendererStreamingPendingBoldOpeningDelimiter(text, index)
+        } else {
+            isRendererBoldOpeningDelimiter(text, index) &&
+                findRendererBoldClosingDelimiter(text, index + 2) != null
+        }
     }
 }
 
@@ -1339,11 +1355,12 @@ private fun isRendererItalicDelimiter(
     return if (isItalic) {
         isRendererItalicClosingDelimiter(text, index)
     } else {
-        isRendererItalicOpeningDelimiter(text, index) &&
-            (
-                mode == RendererInlineMode.Streaming ||
-                    findRendererItalicClosingDelimiter(text, index + 1) != null
-                )
+        if (mode == RendererInlineMode.Streaming) {
+            isRendererStreamingPendingItalicOpeningDelimiter(text, index)
+        } else {
+            isRendererItalicOpeningDelimiter(text, index) &&
+                findRendererItalicClosingDelimiter(text, index + 1) != null
+        }
     }
 }
 
@@ -1358,12 +1375,13 @@ private fun isRendererCodeDelimiter(
         true
     } else {
         val next = text.getOrNull(index + 1)
-        next != null &&
-            !next.isWhitespace() &&
-            (
-                mode == RendererInlineMode.Streaming ||
-                    text.indexOf('`', index + 1) >= 0
-                )
+        if (mode == RendererInlineMode.Streaming) {
+            next == null || !next.isWhitespace()
+        } else {
+            next != null &&
+                !next.isWhitespace() &&
+                text.indexOf('`', index + 1) >= 0
+        }
     }
 }
 
