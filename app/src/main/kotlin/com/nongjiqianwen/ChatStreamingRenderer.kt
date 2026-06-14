@@ -192,6 +192,7 @@ private val rendererQuoteRegex = Regex("^>\\s+.*$")
 private val rendererMarkdownLinkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
 private val rendererBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 private const val RENDERER_INLINE_MARKDOWN_CACHE_LIMIT = 160
+private const val RENDERER_MAX_INLINE_WORD_TOKEN_CHARS = 8
 
 private val rendererSettledInlineMarkdownCache =
     object : LinkedHashMap<String, AnnotatedString>(RENDERER_INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
@@ -605,7 +606,8 @@ private fun Int.isRendererCjkUnifiedIdeographCodePoint(): Boolean {
 
 private fun Char.isRendererCjkUnifiedIdeograph(): Boolean = code.isRendererCjkUnifiedIdeographCodePoint()
 
-private fun Char.isRendererStrongPausePunctuation(): Boolean = this in setOf('。', '！', '？', '!', '?', ';', '；', ':', '：')
+private fun Char.isRendererStrongPausePunctuation(): Boolean =
+    this in setOf('。', '！', '？', '!', '?', ';', '；', ':', '：', '…', '—')
 
 private fun Char.isRendererWeakPausePunctuation(): Boolean = this in setOf('，', ',', '、', '·')
 
@@ -635,6 +637,10 @@ private fun Int.isRendererVariationSelectorCodePoint(): Boolean =
         this == 0xFE0F ||
         this in 0xE0100..0xE01EF
 
+private fun Int.isRendererEmojiModifierCodePoint(): Boolean = this in 0x1F3FB..0x1F3FF
+
+private fun Int.isRendererRegionalIndicatorCodePoint(): Boolean = this in 0x1F1E6..0x1F1FF
+
 private fun Int.isRendererCombiningMarkCodePoint(): Boolean {
     val type = Character.getType(this)
     return type == Character.NON_SPACING_MARK.toInt() ||
@@ -651,6 +657,7 @@ private fun String.takeRendererCodePointCluster(startIndex: Int): String {
             val codePoint = rendererCodePointAtOrNull(cursor) ?: break
             if (
                 codePoint.isRendererVariationSelectorCodePoint() ||
+                codePoint.isRendererEmojiModifierCodePoint() ||
                 codePoint.isRendererCombiningMarkCodePoint()
             ) {
                 cursor += rendererCodePointCharCountAt(cursor).coerceAtLeast(1)
@@ -660,7 +667,15 @@ private fun String.takeRendererCodePointCluster(startIndex: Int): String {
         }
     }
 
+    val firstCodePoint = rendererCodePointAtOrNull(startIndex)
     consumeMarksAndVariants()
+    if (
+        firstCodePoint?.isRendererRegionalIndicatorCodePoint() == true &&
+        cursor < length &&
+        rendererCodePointAtOrNull(cursor)?.isRendererRegionalIndicatorCodePoint() == true
+    ) {
+        cursor += rendererCodePointCharCountAt(cursor).coerceAtLeast(1)
+    }
     while (cursor < length && rendererCodePointAtOrNull(cursor) == 0x200D) {
         val joinerLength = rendererCodePointCharCountAt(cursor).coerceAtLeast(1)
         val nextStart = cursor + joinerLength
@@ -756,6 +771,9 @@ private fun takeRendererTypewriterToken(buffer: String, startIndex: Int = 0): St
         }
         token.append(cluster)
         index += cluster.length
+        if (token.length >= RENDERER_MAX_INLINE_WORD_TOKEN_CHARS) {
+            break
+        }
     }
     return token.toString()
 }
@@ -1154,7 +1172,8 @@ private fun RendererAssistantStreamingContentImpl(
                     model = model,
                     inlineMode = rendererInlineModeForStreamingBlock(
                         index = index,
-                        lastIndex = unifiedModels.lastIndex
+                        lastIndex = unifiedModels.lastIndex,
+                        model = model
                     ),
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = Modifier.fillMaxWidth()
@@ -1166,13 +1185,85 @@ private fun RendererAssistantStreamingContentImpl(
 
 internal fun rendererInlineModeForStreamingBlock(
     index: Int,
-    lastIndex: Int
+    lastIndex: Int,
+    model: StreamingLineModel? = null
 ): RendererInlineMode {
     return if (index == lastIndex) {
+        RendererInlineMode.Streaming
+    } else if (model?.streamingInlineText()?.hasRendererUnclosedStreamingInlineDelimiter() == true) {
         RendererInlineMode.Streaming
     } else {
         RendererInlineMode.Settled
     }
+}
+
+private fun StreamingLineModel.streamingInlineText(): String? {
+    return when (this) {
+        StreamingLineModel.Blank -> null
+        is StreamingLineModel.Heading -> text
+        is StreamingLineModel.Bullet -> text
+        is StreamingLineModel.Numbered -> text
+        is StreamingLineModel.Quote -> text
+        is StreamingLineModel.Paragraph -> text
+    }
+}
+
+private fun String.hasRendererUnclosedStreamingInlineDelimiter(): Boolean {
+    return hasRendererUnclosedBoldDelimiter() ||
+        hasRendererUnclosedItalicDelimiter() ||
+        hasRendererUnclosedCodeDelimiter()
+}
+
+private fun String.hasRendererUnclosedBoldDelimiter(): Boolean {
+    var cursor = 0
+    while (cursor < length) {
+        val index = indexOf("**", cursor)
+        if (index < 0) return false
+        if (isRendererStreamingPendingBoldOpeningDelimiter(this, index)) {
+            val closing = findRendererBoldClosingDelimiter(this, index + 2)
+            if (closing == null) return true
+            cursor = closing + 2
+        } else {
+            cursor = index + 2
+        }
+    }
+    return false
+}
+
+private fun String.hasRendererUnclosedItalicDelimiter(): Boolean {
+    var cursor = 0
+    while (cursor < length) {
+        val index = indexOf('*', cursor)
+        if (index < 0) return false
+        if (startsWith("**", startIndex = index)) {
+            cursor = index + 2
+            continue
+        }
+        if (isRendererStreamingPendingItalicOpeningDelimiter(this, index)) {
+            val closing = findRendererItalicClosingDelimiter(this, index + 1)
+            if (closing == null) return true
+            cursor = closing + 1
+        } else {
+            cursor = index + 1
+        }
+    }
+    return false
+}
+
+private fun String.hasRendererUnclosedCodeDelimiter(): Boolean {
+    var cursor = 0
+    while (cursor < length) {
+        val index = indexOf('`', cursor)
+        if (index < 0) return false
+        if (isRendererCodeDelimiter(this, index, isCode = false, mode = RendererInlineMode.Streaming)) {
+            val closing = indexOf('`', index + 1)
+            if (closing < 0) return true
+            cursor = closing + 1
+        } else {
+            cursor = index + 1
+        }
+    }
+    return false
 }
 
 @Composable

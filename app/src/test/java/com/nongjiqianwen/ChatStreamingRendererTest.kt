@@ -185,6 +185,39 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun committedStreamingBlockWithUnclosedBoldKeepsStreamingInlineMode() {
+        val blockState = splitStreamingBlockState("建议**控水\n\n继续观察")
+        val firstModel = classifyStreamingLine(blockState.completedBlocks.first())
+        val mode = rendererInlineModeForStreamingBlock(
+            index = 0,
+            lastIndex = 1,
+            model = firstModel
+        )
+        require(firstModel is StreamingLineModel.Paragraph)
+        val rendered = buildRendererInlineAnnotatedString(
+            text = firstModel.text,
+            mode = mode
+        )
+
+        assertEquals(RendererInlineMode.Streaming, mode)
+        assertEquals("建议控水", rendered.text)
+        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.SemiBold })
+    }
+
+    @Test
+    fun committedStreamingBlockWithClosedBoldCanUseSettledInlineMode() {
+        val blockState = splitStreamingBlockState("建议**控水**\n\n继续观察")
+        val firstModel = classifyStreamingLine(blockState.completedBlocks.first())
+        val mode = rendererInlineModeForStreamingBlock(
+            index = 0,
+            lastIndex = 1,
+            model = firstModel
+        )
+
+        assertEquals(RendererInlineMode.Settled, mode)
+    }
+
+    @Test
     fun pendingBoldMarkerDoesNotReplaceWaitingBallBeforeVisibleText() {
         val advanced = consumeStreamingRevealBatch(
             currentMessageId = null,
@@ -339,6 +372,80 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun emojiWithSkinToneAndZwjDoesNotSplitVisibleCluster() {
+        val farmer = "\uD83D\uDC68\uD83C\uDFFB\u200D\uD83C\uDF3E"
+        val queued = queueStreamingChunk(
+            currentMessageId = null,
+            currentRevealBuffer = "",
+            piece = "${farmer}正在查看",
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" }
+        )
+
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = queued?.messageId,
+            currentContent = "",
+            currentRevealBuffer = queued?.revealBuffer.orEmpty(),
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals(farmer, advanced?.content)
+        assertEquals("正在查看", advanced?.revealBuffer)
+    }
+
+    @Test
+    fun flagEmojiRevealDoesNotSplitRegionalIndicatorPair() {
+        val flag = "\uD83C\uDDE8\uD83C\uDDF3"
+        val queued = queueStreamingChunk(
+            currentMessageId = null,
+            currentRevealBuffer = "",
+            piece = "${flag}地区",
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" }
+        )
+
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = queued?.messageId,
+            currentContent = "",
+            currentRevealBuffer = queued?.revealBuffer.orEmpty(),
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals(flag, advanced?.content)
+        assertEquals("地区", advanced?.revealBuffer)
+    }
+
+    @Test
+    fun longLatinTokenRevealIsCappedToAvoidLargePopIn() {
+        val advanced = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "chlorantraniliprole",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertEquals("chlorant", advanced?.content)
+        assertEquals("raniliprole", advanced?.revealBuffer)
+    }
+
+    @Test
     fun chineseRevealDrainsOneVisibleCharacterAtATime() {
         val queued = queueStreamingChunk(
             currentMessageId = null,
@@ -419,6 +526,34 @@ class ChatStreamingRendererTest {
         )
 
         assertTrue((punctuation?.delayMs ?: 0L) > (plain?.delayMs ?: Long.MAX_VALUE))
+    }
+
+    @Test
+    fun ellipsisPausesLikeStrongPunctuation() {
+        val plain = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "控",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+        val ellipsis = consumeStreamingRevealBatch(
+            currentMessageId = null,
+            currentContent = "",
+            currentRevealBuffer = "…",
+            currentFreshTick = 0,
+            lastFreshRevealMs = 0L,
+            anchoredUserMessageId = "user_1",
+            assistantIdProvider = { "assistant_$it" },
+            fallbackIdProvider = { "assistant_fallback" },
+            nowMs = 100L
+        )
+
+        assertTrue((ellipsis?.delayMs ?: 0L) > (plain?.delayMs ?: Long.MAX_VALUE))
     }
 }
 
