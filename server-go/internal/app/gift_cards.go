@@ -761,8 +761,12 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 			return GiftCardRedeemResult{}, err
 		}
 		defer rollbackQuietly(tx)
-		_ = insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "invalid_code", maskedIP, region, nowMs)
-		_ = tx.Commit()
+		if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "invalid_code", maskedIP, region, nowMs); err != nil {
+			return GiftCardRedeemResult{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return GiftCardRedeemResult{}, err
+		}
 		return GiftCardRedeemResult{}, errGiftCardInvalidCode
 	}
 	codeHash := giftCardCodeHash(code)
@@ -778,20 +782,32 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 	card, err := getGiftCardForUpdate(ctx, tx, codeHash)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			_ = insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "not_found", maskedIP, region, nowMs)
-			_ = tx.Commit()
+			if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "not_found", maskedIP, region, nowMs); err != nil {
+				return GiftCardRedeemResult{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return GiftCardRedeemResult{}, err
+			}
 			return GiftCardRedeemResult{}, errGiftCardNotFound
 		}
 		return GiftCardRedeemResult{}, err
 	}
 	if card.Status != "active" {
-		_ = insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, card.Status, maskedIP, region, nowMs)
-		_ = tx.Commit()
+		if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, card.Status, maskedIP, region, nowMs); err != nil {
+			return GiftCardRedeemResult{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return GiftCardRedeemResult{}, err
+		}
 		return GiftCardRedeemResult{}, errGiftCardInactive
 	}
 	if card.ValidFrom > nowMs || (card.ValidUntil != nil && *card.ValidUntil <= nowMs) {
-		_ = insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "expired", maskedIP, region, nowMs)
-		_ = tx.Commit()
+		if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "expired", maskedIP, region, nowMs); err != nil {
+			return GiftCardRedeemResult{}, err
+		}
+		if err := tx.Commit(); err != nil {
+			return GiftCardRedeemResult{}, err
+		}
 		return GiftCardRedeemResult{}, errGiftCardExpired
 	}
 
@@ -800,8 +816,12 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 	appliedTier, expireAt, err := s.applyGiftCardTierTx(ctx, tx, userID, card.Tier, card.DurationDays, nowMs)
 	if err != nil {
 		if errors.Is(err, errGiftCardLowerTier) {
-			_ = insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "lower_tier", maskedIP, region, nowMs)
-			_ = tx.Commit()
+			if attemptErr := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "lower_tier", maskedIP, region, nowMs); attemptErr != nil {
+				return GiftCardRedeemResult{}, attemptErr
+			}
+			if commitErr := tx.Commit(); commitErr != nil {
+				return GiftCardRedeemResult{}, commitErr
+			}
 		}
 		return GiftCardRedeemResult{}, err
 	}

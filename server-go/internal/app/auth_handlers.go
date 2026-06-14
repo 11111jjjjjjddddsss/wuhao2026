@@ -591,10 +591,11 @@ func (s *Server) finishPhoneLogin(w http.ResponseWriter, r *http.Request, phone 
 	}
 	if acceptedLegacyUserID != "" {
 		s.logger.Info(
-			"auth legacy user migration accepted",
+			"auth legacy user migration handled",
 			"legacy_user_id_hash", sensitiveTokenHash(acceptedLegacyUserID),
 			"legacy_user_id_kind", legacyUserIDLogKind(acceptedLegacyUserID),
 			"target_user_id", result.UserID,
+			"migration_status", result.LegacyMigrationStatus,
 		)
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{

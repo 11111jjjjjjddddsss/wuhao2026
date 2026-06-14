@@ -313,7 +313,8 @@ private fun buildChatTimelineItems(
         if (todayAgriCardAnchorMessageId == null) {
             items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
         } else {
-            items.add(0, ChatTimelineItem.TodayAgriCard(validTodayAgriCard))
+            val fallbackIndex = if (items.firstOrNull() is ChatTimelineItem.HistoryNotice) 1 else 0
+            items.add(fallbackIndex, ChatTimelineItem.TodayAgriCard(validTodayAgriCard))
         }
     }
     return items
@@ -441,7 +442,7 @@ private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
 private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
-private const val JUMP_BUTTON_AUTO_HIDE_MS = 1200L
+private const val JUMP_BUTTON_AUTO_HIDE_MS = 2200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 8L
 internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 28L
@@ -3235,10 +3236,11 @@ fun ChatScreen() {
         }
     }
     val effectiveJumpButtonVisible by remember(
-        showJumpButton
+        showJumpButton,
+        jumpButtonPulseVisible
     ) {
         derivedStateOf {
-            showJumpButton
+            showJumpButton && jumpButtonPulseVisible
         }
     }
     BindJumpButtonPulseEffect(

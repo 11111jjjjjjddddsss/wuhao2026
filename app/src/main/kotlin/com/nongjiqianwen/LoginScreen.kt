@@ -342,8 +342,8 @@ private fun LoginScreen(
                             modifier = Modifier.weight(1f, fill = false),
                             style = androidx.compose.ui.text.TextStyle(
                                 color = Color(0xFF575D66),
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
                                 letterSpacing = 0.sp
                             ),
                             softWrap = true,

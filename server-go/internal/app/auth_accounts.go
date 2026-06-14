@@ -23,10 +23,11 @@ var (
 )
 
 type AccountLoginResult struct {
-	UserID    string `json:"user_id"`
-	PhoneMask string `json:"phone_mask"`
-	Token     string `json:"token"`
-	ExpiresAt int64  `json:"expires_at"`
+	UserID                string `json:"user_id"`
+	PhoneMask             string `json:"phone_mask"`
+	Token                 string `json:"token"`
+	ExpiresAt             int64  `json:"expires_at"`
+	LegacyMigrationStatus string `json:"-"`
 }
 
 func (s *Store) LoginWithVerifiedPhone(
@@ -67,7 +68,8 @@ func (s *Store) LoginWithVerifiedPhone(
 	if err != nil {
 		return AccountLoginResult{}, err
 	}
-	if err := s.mergeLegacyUserIntoAccountTx(ctx, tx, normalizeUserID(legacyUserID), userID, nowMs); err != nil {
+	legacyMigrationStatus, err := s.mergeLegacyUserIntoAccountTx(ctx, tx, normalizeUserID(legacyUserID), userID, nowMs)
+	if err != nil {
 		return AccountLoginResult{}, err
 	}
 
@@ -103,10 +105,11 @@ func (s *Store) LoginWithVerifiedPhone(
 		return AccountLoginResult{}, err
 	}
 	return AccountLoginResult{
-		UserID:    userID,
-		PhoneMask: phoneMask,
-		Token:     token,
-		ExpiresAt: expiresAt,
+		UserID:                userID,
+		PhoneMask:             phoneMask,
+		Token:                 token,
+		ExpiresAt:             expiresAt,
+		LegacyMigrationStatus: legacyMigrationStatus,
 	}, nil
 }
 
@@ -270,15 +273,16 @@ func accountPhoneCipherKey(secret string) [32]byte {
 	return sha256.Sum256([]byte("nongjiqiancha:account_phone:v1:" + strings.TrimSpace(secret)))
 }
 
-func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, oldUserID string, newUserID string, nowMs int64) error {
+func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, oldUserID string, newUserID string, nowMs int64) (string, error) {
 	oldUserID = normalizeUserID(oldUserID)
 	newUserID = normalizeUserID(newUserID)
 	if oldUserID == "" || newUserID == "" || oldUserID == newUserID {
-		return nil
+		return "skipped_same_or_empty", nil
 	}
 	if strings.HasPrefix(oldUserID, "acct_") {
-		return nil
+		return "skipped_account_id", nil
 	}
+	status := "migrated"
 	var existingMigrationTarget sql.NullString
 	err := tx.QueryRowContext(
 		ctx,
@@ -287,8 +291,9 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	).Scan(&existingMigrationTarget)
 	if err == nil {
 		if strings.TrimSpace(existingMigrationTarget.String) != newUserID {
-			return nil
+			return "conflict_skipped", nil
 		}
+		status = "already_same_target"
 	} else if err == sql.ErrNoRows {
 		if _, err := tx.ExecContext(
 			ctx,
@@ -298,26 +303,26 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 			newUserID,
 			nowMs,
 		); err != nil {
-			return err
+			return "", err
 		}
 	} else {
-		return err
+		return "", err
 	}
 
 	if _, err := tx.ExecContext(ctx, "UPDATE topup_packs SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE orders SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE support_messages SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if err := syncMergedSupportConversationTx(ctx, tx, oldUserID, newUserID, nowMs); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE client_app_logs SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(
 		ctx,
@@ -339,7 +344,7 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		nowMs,
 		oldUserID,
 	); err != nil {
-		return err
+		return "", err
 	}
 	var phoneMask string
 	_ = tx.QueryRowContext(ctx, "SELECT phone_mask FROM app_accounts WHERE user_id = ? LIMIT 1", newUserID).Scan(&phoneMask)
@@ -358,24 +363,24 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		nowMs,
 		oldUserID,
 	); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "UPDATE gift_card_redemption_attempts SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	// Inflight streams are transient. Do not migrate them across identities because
 	// the single-active-stream unique index can make login fail on stale leases.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM chat_stream_inflight WHERE user_id = ?", oldUserID); err != nil {
-		return err
+		return "", err
 	}
 
 	targetTier, targetExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, newUserID, nowMs)
 	if err != nil {
-		return err
+		return "", err
 	}
 	sourceTier, sourceExpireAt, err := effectiveEntitlementForUserTx(ctx, tx, oldUserID, nowMs)
 	if err != nil {
-		return err
+		return "", err
 	}
 	mergedTier, mergedExpireAt := mergeEffectiveEntitlements(targetTier, targetExpireAt, sourceTier, sourceExpireAt)
 	upgradeCompensation, err := s.legacyPlusUpgradeCompensationTx(
@@ -390,59 +395,59 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		nowMs,
 	)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	if _, err := tx.ExecContext(ctx, mergeDailyUsageSQL, newUserID, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM daily_usage WHERE user_id = ?", oldUserID); err != nil {
-		return err
+		return "", err
 	}
 
 	if err := copyRowsToNewUserID(ctx, tx, "quota_ledger", oldUserID, newUserID, "id"); err != nil {
-		return err
+		return "", err
 	}
 	if err := copyRowsToNewUserID(ctx, tx, "session_round_ledger", oldUserID, newUserID, "id"); err != nil {
-		return err
+		return "", err
 	}
 	if err := copyRowsToNewUserID(ctx, tx, "session_round_archive", oldUserID, newUserID, "id"); err != nil {
-		return err
+		return "", err
 	}
 
 	if _, err := tx.ExecContext(ctx, mergeUpgradeCreditsSQL, newUserID, nowMs, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM upgrade_credits WHERE user_id = ?", oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if upgradeCompensation > 0 {
 		if _, err := tx.ExecContext(ctx, insertUpgradeCreditCompensationSQL, newUserID, upgradeCompensation, nowMs); err != nil {
-			return err
+			return "", err
 		}
 	}
 
 	if _, err := tx.ExecContext(ctx, mergeSessionGenerationSQL, newUserID, nowMs, oldUserID); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM session_generation WHERE user_id = ?", oldUserID); err != nil {
-		return err
+		return "", err
 	}
 
 	var targetSession string
 	err = tx.QueryRowContext(ctx, "SELECT user_id FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE", newUserID).Scan(&targetSession)
 	if err == sql.ErrNoRows {
 		if _, err := tx.ExecContext(ctx, "UPDATE session_ab SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
-			return err
+			return "", err
 		}
 	} else if err != nil {
-		return err
+		return "", err
 	} else {
 		if _, err := tx.ExecContext(ctx, mergeSessionABSQL, oldUserID, nowMs, newUserID); err != nil {
-			return err
+			return "", err
 		}
 		if _, err := tx.ExecContext(ctx, "DELETE FROM session_ab WHERE user_id = ?", oldUserID); err != nil {
-			return err
+			return "", err
 		}
 	}
 
@@ -459,12 +464,12 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		nullableInt64Ptr(mergedExpireAt),
 		nowMs,
 	); err != nil {
-		return err
+		return "", err
 	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM user_entitlement WHERE user_id = ?", oldUserID); err != nil {
-		return err
+		return "", err
 	}
-	return nil
+	return status, nil
 }
 
 const mergeDailyUsageSQL = `INSERT INTO daily_usage(user_id, day_cn, used)

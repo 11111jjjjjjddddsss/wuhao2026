@@ -17,8 +17,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 执行回滚：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ecs-server.ps1 -Apply
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ecs-server.ps1 -BackupName nongji-server.bak-YYYYMMDDHHMMSS -Apply
 ```
+
+先运行不带参数的命令查看最新备份名，再把要回滚的 `BackupName` 填进执行命令；只传 `-Apply` 不会执行回滚。
 
 脚本会通过 Cloud Assistant 在 ECS 上执行，不打印真实密钥。回滚前会清理旧的 drain-stop 定时任务，选择当前非 active slot 启动备份二进制，通过 healthz 后再切 Nginx upstream，旧 slot 只在排空窗口后停止。
 

@@ -90,6 +90,10 @@ function Wait-RunCommand {
 
 . (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
 
+if ($Apply -and [string]::IsNullOrWhiteSpace($BackupName)) {
+    throw "Refusing to rollback with -Apply but without -BackupName. Run without -Apply to list backups, then rerun with -BackupName nongji-server.bak-YYYYMMDDHHMMSS -Apply."
+}
+
 if ([string]::IsNullOrWhiteSpace($BackupName)) {
     $remoteScript = @"
 set -euo pipefail

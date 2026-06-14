@@ -241,8 +241,6 @@ internal fun HamburgerMenuSheet(
     var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var updateDownloading by remember(userId) { mutableStateOf(false) }
     var pendingInstallPermissionUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
-    var mainLogoutDialogVisible by rememberSaveable(visible) { mutableStateOf(false) }
-    var mainLogoutSubmitting by remember { mutableStateOf(false) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -513,14 +511,6 @@ internal fun HamburgerMenuSheet(
                                     performButtonHaptic()
                                     checkAppUpdate(userTriggered = true)
                                 },
-                                onLogout = {
-                                    performButtonHaptic()
-                                    if (IdManager.getAuthPhoneMask() == null) {
-                                        showNotice("请先登录")
-                                    } else if (!mainLogoutSubmitting) {
-                                        mainLogoutDialogVisible = true
-                                    }
-                                },
                                 onPlaceholderClick = ::showNotice
                             )
                         }
@@ -653,39 +643,17 @@ internal fun HamburgerMenuSheet(
             }
         }
     }
-    if (mainLogoutDialogVisible) {
-        HamburgerLogoutConfirmDialog(
-            submitting = mainLogoutSubmitting,
-            onDismiss = {
-                if (!mainLogoutSubmitting) mainLogoutDialogVisible = false
-            },
-            onConfirm = {
-                if (mainLogoutSubmitting) return@HamburgerLogoutConfirmDialog
-                val accountScopeId = IdManager.getUserId()
-                mainLogoutSubmitting = true
-                SessionApi.logoutCurrentSession { ok ->
-                    mainLogoutSubmitting = false
-                    if (ok) {
-                        mainLogoutDialogVisible = false
-                        PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
-                        showNotice("已退出当前设备")
-                        supportAttachmentMenuVisible = false
-                        legalSubpage = false
-                        page = HamburgerMenuPage.Menu
-                        onDismiss()
-                    } else {
-                        showNotice("退出失败，请检查网络后重试")
-                    }
-                }
-            }
-        )
-    }
     updateDialogInfo?.let { info ->
         HamburgerAppUpdateDialog(
             update = info,
             downloading = updateDownloading,
             onDismiss = {
-                if (!updateDownloading) updateDialogInfo = null
+                if (!updateDownloading) {
+                    info.latestVersionCode
+                        ?.takeIf { it > 0 }
+                        ?.let { context.saveLastPromptedUpdateVersionCode(it) }
+                    updateDialogInfo = null
+                }
             },
             onInstall = {
                 performButtonHaptic()
@@ -1045,7 +1013,6 @@ private fun HamburgerMenuMainPage(
     onOpenTodayAgri: () -> Unit,
     onOpenLegalHub: () -> Unit,
     onCheckUpdate: () -> Unit,
-    onLogout: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     Column(
@@ -1124,16 +1091,6 @@ private fun HamburgerMenuMainPage(
                 title = "服务协议",
                 showChevron = false,
                 onClick = onOpenLegalHub
-            )
-        }
-
-        HamburgerMenuGroup {
-            HamburgerMenuRow(
-                icon = HamburgerMenuIcon.Logout,
-                title = "退出登录",
-                destructive = true,
-                showChevron = false,
-                onClick = onLogout
             )
         }
     }
@@ -1897,15 +1854,6 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
             title = "服务协议",
-            showChevron = false,
-            onClick = {}
-        )
-    }
-    HamburgerMenuGroup {
-        HamburgerMenuRow(
-            icon = HamburgerMenuIcon.Logout,
-            title = "退出登录",
-            destructive = true,
             showChevron = false,
             onClick = {}
         )
