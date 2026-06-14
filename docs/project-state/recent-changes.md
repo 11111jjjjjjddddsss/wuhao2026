@@ -5,6 +5,10 @@
 
 ## 2026-06-15
 
+- 继续按“后台排障不要靠记忆猜按钮”的方向补管理后台监控面板：登录排障卡新增“登录成功”直达 App 日志筛选，和已有登录前日志、请求网络失败、短信发送失败、短信登录失败、登录闪退、普通闪退、旧包融合记录一起覆盖短信登录真机回归的主要节点；`scripts/check-admin-surface.mjs` 也新增关键登录 / 检查更新排障筛选按钮契约检查，避免后续改页面时把这些入口删漏而 CI 不知道。该改动只影响后台前端和只读 surface 巡检，不改 Android 运行逻辑、后端业务接口、三份提示词、模型过滤或聊天滚动主链。
+
+- 继续按“总负责人扫一眼不能被假绿误导”的方向补上线门禁和监控首屏：`check-launch-readiness.ps1` 现在会捕获 `check-sms-usage.ps1` 输出的 `sms_usage_status=attention`，把短信统计为空这类趋势风险计入总门禁 attention，而不是只按脚本退出码显示 ready；监控面板首屏如果正式上架检查仍有 `blocked` 项，即使运行健康项正常，也会显示阻塞色和“上架阻塞”状态，避免标题写着“上架仍有阻塞”但视觉上像完全正常。该改动只影响只读门禁输出和后台监控展示，不修改云资源、短信发送、Android 运行逻辑、后端业务接口、三份提示词或聊天滚动主链。
+
 - 继续从“流式渲染各种符号不能显得廉价”的角度补 Android 主聊天 typewriter 边界：`ChatStreamingRenderer.kt` 的吐字 token 现在按 Unicode code point 和简单组合簇处理扩展汉字、emoji、变体选择符、组合 mark 和 ZWJ 组合 emoji，避免把 UTF-16 代理对或一个可见 emoji 拆成半个半个显示，减少流式过程中出现方块 / 半符号闪一下的风险。同步补 `ChatStreamingRendererTest` 覆盖扩展汉字、普通 emoji 和 ZWJ 组合 emoji；该改动不换渲染引擎、不改成整段完成后再显示、不恢复 overlay / 反向列表 / raw delta / scrollBy / 小分割 item，不改三份提示词、今日农情列表项身份或后端输出过滤。
 
 - 继续从“正式包物料能不能被证明”角度补上线护栏：新增只读脚本 `scripts/check-android-release-artifact.ps1`，直接读取最终 `app-release.apk`，用 Android SDK `aapt` 校验包名、`versionCode`、`versionName`、release 不可调试和权限白名单，用 `apksigner verify --print-certs` 校验证书 SHA-256 与本机备案 / 上架公钥信息一致，并输出 `apk_size_bytes`、`apk_sha256` 供后台检查更新页填写。`build_apk.bat` 打包后会自动跑该校验；`check-launch-readiness.ps1 -IncludeBuilds / -ReleaseGate` 也会在 Android debug + release 构建后增加 `android release artifact` 步骤。该改动只增强正式 APK 物料校验，不改 Android 运行逻辑、后端接口、三份提示词、模型过滤或聊天滚动主链。

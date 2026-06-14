@@ -2891,6 +2891,7 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           ${filterButton("请求网络失败", { event: "auth.login_network_failed", window: "24h" })}
           ${filterButton("短信发送失败", { event: "auth.sms_send_failed", window: "24h" })}
           ${filterButton("短信登录失败", { event: "auth.sms_login_failed", window: "24h" })}
+          ${filterButton("登录成功", { event: "auth.sms_login_success", window: "24h" })}
           ${filterButton("旧包融合记录", { eventPrefix: "auth.fusion_", window: "24h" })}
           ${filterButton("登录闪退", { event: "auth.app_crash", window: "24h" })}
           ${filterButton("普通闪退", { event: "app.crash", window: "24h" })}
@@ -3172,6 +3173,7 @@ function monitoringHero(report: AdminMonitoring): string {
   const readinessRows = report.launch_readiness || [];
   const readinessBlocked = readinessRows.filter((row) => row.status === "blocked").length;
   const readinessAttention = readinessRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
+  const heroLevel = worst === "bad" || readinessBlocked > 0 ? "bad" : worst === "warn" || readinessAttention > 0 ? "warn" : "ok";
   const title =
     worst === "bad"
       ? "需要马上处理"
@@ -3189,14 +3191,14 @@ function monitoringHero(report: AdminMonitoring): string {
         ? "当前没有明确服务中断，但有运营队列需要跟进。"
         : "关键健康项、App 报错、反馈和礼品卡队列暂时没有明显异常。";
   return `
-    <section class="monitor-hero ${worst}">
+    <section class="monitor-hero ${heroLevel}">
       <div>
         <div class="monitor-eyebrow">运营监控</div>
         <h2>${escapeHTML(title)}</h2>
         <p>${escapeHTML(body)}</p>
       </div>
       <div class="monitor-hero-meta">
-        <span>${statusPill(worst === "ok" ? "正常" : worst === "warn" ? "关注" : "处理", worst)}</span>
+        <span>${statusPill(heroLevel === "ok" ? "正常" : readinessBlocked > 0 ? "上架阻塞" : heroLevel === "warn" ? "关注" : "处理", heroLevel)}</span>
         <span class="small muted">更新时间 ${formatTime(report.now_ms)}</span>
       </div>
     </section>

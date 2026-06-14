@@ -42,6 +42,30 @@ function normalizeAdminPath(raw) {
   return queryIndex >= 0 ? raw.slice(0, queryIndex) : raw;
 }
 
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function expectAdminPattern(name, pattern) {
+  if (!pattern.test(adminMain)) {
+    fail.push(`${name}: missing expected admin UI contract`);
+  }
+}
+
+function expectAppLogEventFilter(event) {
+  expectAdminPattern(
+    `app log event filter ${event}`,
+    new RegExp(`filterButton\\("[^"]+",\\s*\\{\\s*event:\\s*"${escapeRegex(event)}"`),
+  );
+}
+
+function expectAppLogPrefixFilter(prefix) {
+  expectAdminPattern(
+    `app log prefix filter ${prefix}`,
+    new RegExp(`filterButton\\("[^"]+",\\s*\\{\\s*eventPrefix:\\s*"${escapeRegex(prefix)}"`),
+  );
+}
+
 const typeBlock = adminTypes.match(/export type AdminRouteKey =([\s\S]*?);/)?.[1] || "";
 const typedRoutes = unique(stringsFrom(/"([^"]+)"/g, typeBlock));
 
@@ -106,6 +130,31 @@ if (unregisteredAPI.length) {
 if (unknownRouteStrings.length) {
   fail.push(`frontend route string literals not in AdminRouteKey: [${unknownRouteStrings.join(", ")}]`);
 }
+
+expectAppLogPrefixFilter("auth.");
+expectAppLogPrefixFilter("auth.fusion_");
+expectAdminPattern("preauth app log filter", /filterButton\("[^"]+",\s*\{\s*userID:\s*"preauth"/);
+[
+  "auth.login_network_failed",
+  "auth.sms_send_failed",
+  "auth.sms_login_failed",
+  "auth.sms_login_success",
+  "auth.app_crash",
+  "app.crash",
+].forEach(expectAppLogEventFilter);
+
+expectAppLogPrefixFilter("app_update.");
+[
+  "app_update.check_started",
+  "app_update.available",
+  "app_update.no_update",
+  "app_update.check_failed",
+  "app_update.install_permission_required",
+  "app_update.download_started",
+  "app_update.download_failed",
+  "app_update.install_intent_failed",
+  "app_update.install_started",
+].forEach(expectAppLogEventFilter);
 
 if (fail.length) {
   console.error("[admin-surface] failed");

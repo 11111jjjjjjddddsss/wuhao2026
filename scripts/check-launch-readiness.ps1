@@ -60,6 +60,31 @@ function Invoke-Native {
     }
 }
 
+function Invoke-NativeCaptured {
+    param(
+        [string]$FilePath,
+        [string[]]$Arguments = @(),
+        [string]$WorkingDirectory = $repoRoot
+    )
+    Push-Location $WorkingDirectory
+    try {
+        $output = @(& $FilePath @Arguments *>&1)
+        $exitCode = $LASTEXITCODE
+        $lines = @()
+        foreach ($item in $output) {
+            $text = $item.ToString()
+            $lines += $text
+            Write-Host $text
+        }
+        if ($null -ne $exitCode -and $exitCode -ne 0) {
+            throw "$FilePath exited with code $exitCode"
+        }
+        return $lines
+    } finally {
+        Pop-Location
+    }
+}
+
 function Invoke-GateStep {
     param(
         [string]$Name,
@@ -85,6 +110,36 @@ function Invoke-GateStep {
             Add-GateResult -Name $Name -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
             Write-Host "step_status=failed seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
         }
+    }
+}
+
+function Invoke-SmsUsageGateStep {
+    Write-Host
+    Write-Host "== sms usage =="
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check-sms-usage.ps1"
+        )
+        $timer.Stop()
+        $hasAttention = @($lines | Where-Object { $_ -match "^sms_usage_status=attention\s*$" }).Count -gt 0
+        if ($hasAttention) {
+            $message = "sms usage returned attention; empty statistics are a trend warning and must remain visible in the launch gate"
+            Add-GateResult -Name "sms usage" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+            Write-Warning "step_status=skipped_or_attention seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
+            return
+        }
+        Add-GateResult -Name "sms usage" -Status "ready" -Seconds $timer.Elapsed.TotalSeconds
+        Write-Host "step_status=ready seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
+    } catch {
+        $timer.Stop()
+        $message = $_.Exception.Message
+        Add-GateResult -Name "sms usage" -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        Write-Host "step_status=failed seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
     }
 }
 
@@ -256,15 +311,7 @@ if (-not $SkipCloud) {
             "-RequireSlsDashboard"
         )
     }
-    Invoke-GateStep -Name "sms usage" -ScriptBlock {
-        Invoke-Native -FilePath "powershell.exe" -Arguments @(
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            "scripts/check-sms-usage.ps1"
-        )
-    }
+    Invoke-SmsUsageGateStep
     if (-not $SkipDataBoundary) {
         Invoke-GateStep -Name "backend data boundaries" -ScriptBlock {
             Invoke-Native -FilePath "powershell.exe" -Arguments @(
