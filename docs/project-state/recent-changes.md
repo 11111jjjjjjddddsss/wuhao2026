@@ -5,6 +5,8 @@
 
 ## 2026-06-14
 
+- 按用户“主钥匙套餐优先吃满，不要 token 阈值提前消耗副钥匙”的最新口径，把 DashScope / 百炼 Key 池当前生产策略从 `auto` 调整为 `fallback`：`DASHSCOPE_API_KEY_1` 继续作为主钥匙，`DASHSCOPE_API_KEY_2` 只在主钥匙开流前返回限流 / 额度 / 鉴权类失败时同次请求兜底，不再因为 10 秒请求数或 token 用量阈值主动轮询分流。代码里的自动轮询能力仍保留为后续高峰可选方案，但当前生产不启用；1 秒 Key 冷却继续保留，避免主钥匙刚被限流时后续请求反复先撞主钥匙再多一次失败往返。阿里云官方文档同步确认百炼模型限流按主账号维度合并所有 RAM 子账号、业务空间和 API Key 调用量；联网搜索另有 15 RPS 主账号级限制，超限通常跳过搜索链路而不是直接报错。SSE 已经开始吐字后仍不在同一条回复中途切 Key，避免半条回复和重复成本。已部署到 ECS，readiness 实测 active upstream 为 `3001`、后台 upstream 同为 `3001`、HTTPS healthz 200。
+
 - 提交 `570b46df` 已部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot health、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 Nginx active upstream 为 `3000`，后台 upstream 同为 `3000`，HTTPS healthz 200，未登录后台鉴权 401，`auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss` 均正常；公网黑盒 `check-public-blackbox.ps1` 复查 API、官网、www、后台、协议页、公安图标和 HTTP->HTTPS 跳转均为 ready。总门禁 `check-launch-readiness.ps1 -AllowAttentionExitZero` 复查 9 项，项目记忆、后台 surface、Android parity、ECS readiness、公网黑盒、SLS 告警、资源容量和后端数据边界均 ready，唯一 attention 仍是本机没有后台 owner 明文密码，登录后后台 smoke 按安全规则跳过。Android 端 UI 改动仍需用户重新安装新包才会生效。
 
 - 按用户反馈把额度耗尽尾部状态收回通用失败链路：Android 不再展示单独的“今日额度已用完 · 点击重试”消息尾部，也从 debug-only 文案预览面板移除该独立条目；额度耗尽仍保留 assistant 失败态用于第二天恢复后重试，但尾部文案复用“回复未完成 · 点击重试”，当天点重试仍先走本地额度提示“今日额度已用完，请明天再试”。“发送失败 · 点击重发”仍只用于用户消息发送 / 上传失败，不新增第三套黑色胶囊，减少和中部短提示、输入框、今日农情卡片同时出现时的重叠风险；如果用户不点旧尾部而是直接发新消息，旧失败 / 未完成尾部会随新发送自动收起，失败用户消息会按放弃旧发送处理，空 assistant 占位会移除，避免历史黑胶囊长期挂在主界面。debug-only 文案预览面板把额度、网络、服务忙、上一条处理中、输入过长、图片异常和反馈失败统一收进“主界面中部浮层”分组，输入区只预览输入框本体，消息尾部只预览两条重试链路。清数据 / 空首屏和滚动链本轮只做小范围收口：当前仍由 `ChatTimelineItem` 视觉时间线、`bottomAnchorIndexOrMinusOne()` 视觉尾部锚点、clear epoch / hydrate guard 和 `InitialWorklinePhase` 兜住，并补齐“只有今日农情、没有真实消息”时手点回到底部的 no-op 边角；不恢复 overlay、反向列表或 raw delta。

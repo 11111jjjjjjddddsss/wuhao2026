@@ -7,7 +7,7 @@
 - Android 客户端不保存、不注入、不直连模型 Key；所有模型调用都只从 `server-go` 后端发起。
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
-- 当前后端会对主对话 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 Key 池，按配置顺序做主备使用。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
+- 当前后端会对主对话 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 Key 池，按配置顺序做主备使用。生产当前使用 `DASHSCOPE_KEY_SELECTION_MODE=fallback`：主 Key 优先吃满，副 Key 只在主 Key 开流前失败时兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
 
 ## 环境变量
 
@@ -40,11 +40,11 @@ DASHSCOPE_API_KEYS
 
 ## 运行策略
 
-- 默认策略（`DASHSCOPE_KEY_SELECTION_MODE=auto`，留空也按 auto）下，平稳期仍优先使用第一把可用 Key；`DASHSCOPE_API_KEY_1` 健康且未冷却时，正常低流量请求不主动消耗 `DASHSCOPE_API_KEY_2`。
-- 自动高峰分流：auto 模式会按两个信号临时进入请求级轮询分流：默认 10 秒内达到 200 次模型请求，或 10 秒内已观测模型用量达到 600000 token。窗口内健康 Key 会按轮询顺序选择，默认持续 120 秒，窗口结束后自动回到主 Key 优先，不需要手动改环境变量或为了切模式重启后端。这些阈值不是用户限流，也不扣低主 Key 优先级，只是用来在真实高峰或接近主账号 RPM / TPM 压力前，让不同阿里云主账号 Key 提前分摊。token 阈值按主账号 500 万 TPM 折算约为 72% 的 10 秒窗口容量，给上游统计延迟和长回复留缓冲；请求数阈值只作为短请求洪峰兜底。
-- 自动故障分流：auto 模式下如果某把 Key 开流前已经触发限流 / 鉴权类 failover，后端也会自动进入一段轮询窗口，避免后续高峰继续压同一把 Key。
+- 当前生产策略：`DASHSCOPE_KEY_SELECTION_MODE=fallback`。平稳期始终优先使用第一把可用 Key；`DASHSCOPE_API_KEY_1` 健康且未冷却时，不因为请求数或 token 用量阈值主动消耗 `DASHSCOPE_API_KEY_2`。
+- 强制主备优先可显式设置 `DASHSCOPE_KEY_SELECTION_MODE=fallback`（当前生产口径），用于主账号有套餐、希望主 Key 尽量吃满、副 Key 只做失败兜底的场景。
+- 可选自动高峰分流：`auto` 模式会按两个信号临时进入请求级轮询分流：默认 10 秒内达到 200 次模型请求，或 10 秒内已观测模型用量达到 600000 token。窗口内健康 Key 会按轮询顺序选择，默认持续 120 秒，窗口结束后自动回到主 Key 优先。该模式后续只有在真实高峰长期打满主 Key、且用户接受副 Key 主动承担流量时再启用。
+- 可选自动故障分流：`auto` 模式下如果某把 Key 开流前已经触发限流 / 鉴权类 failover，后端也会自动进入一段轮询窗口，避免后续高峰继续压同一把 Key；当前 `fallback` 模式不主动开启这段轮询窗口，但同一次请求内的失败切副 Key 仍保留。
 - 强制平滑分流仍可显式设置 `DASHSCOPE_KEY_SELECTION_MODE=round_robin`（或 `rr`）。该模式在同一批请求间按轮询顺序选择健康 Key，仍保留每次请求内的限流 / 鉴权失败兜底切换。
-- 强制主备优先可显式设置 `DASHSCOPE_KEY_SELECTION_MODE=fallback`，用于只想省副账号费用、不做高峰自动分流的场景。
 - 如果某把 Key 在模型请求打开阶段返回 `401 / 403 / 429`，或返回带限流 / quota 语义的 `400`，后端会在响应交给业务层前换下一把 Key 再试。
 - 触发上述限流 / 鉴权类失败的 Key 会进入短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；后续请求会优先跳过冷却中的 Key。
 - 主对话只在 SSE 流真正开始前换 Key；一旦上游已经返回成功 SSE，后端不会在同一条回复生成过程中切换 Key，避免半条回复和重复成本。
@@ -60,8 +60,9 @@ DASHSCOPE_API_KEYS
 新增配置：
 
 ```text
-DASHSCOPE_KEY_SELECTION_MODE=auto
+DASHSCOPE_KEY_SELECTION_MODE=fallback
 # 取值：auto（默认）|fallback|round_robin|rr
+# fallback 是当前生产口径；下面 auto 阈值保留为可选高峰分流配置，fallback 模式下不生效。
 DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS=200
 DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD=600000
 DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS=10
@@ -71,7 +72,7 @@ DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=120
 ## 配置建议
 
 - 前期可以先配两把 Key：`DASHSCOPE_API_KEY_1` 作为主 Key，`DASHSCOPE_API_KEY_2` 作为副 Key。
-- 当前生产口径是“主 Key 套餐优先，副 Key 高峰 / 异常兜底”：低中流量默认走 `DASHSCOPE_API_KEY_1`；出现开流前限流 / 额度 / 鉴权类错误时立即尝试副 Key；短窗口内达到请求数或 token 压力阈值时才临时轮询 120 秒。
+- 当前生产口径是“主 Key 套餐优先，副 Key 失败兜底”：低中高流量都先走 `DASHSCOPE_API_KEY_1`；出现开流前限流 / 额度 / 鉴权类错误时立即尝试副 Key；不再因为短窗口请求数或 token 压力阈值提前轮询。等真实流量长期打满主 Key、且账单可接受副 Key 主动承担流量时，再评估切回 `auto` 或 `round_robin`。
 - 第三把 `DASHSCOPE_API_KEY_3` 先留空，后续真实并发上来后再补。
 - 如果两把 Key 来自同一个阿里云主账号，它们只提供故障兜底、轮换和短暂冷却切换，不增加真实 RPM / TPM。
 - 朋友账号 Key 适合作为短期兜底，不建议作为长期生产主力：账单、密钥轮换、数据处理责任和账号权限都不在自己名下，后续迁移成本会变高。
