@@ -5919,7 +5919,7 @@ fun ChatScreen() {
             (listHorizontalPadding - topChromeIconVisualInset).coerceAtLeast(4.dp)
         val topTitleFontSize = if (maxWidth < 360.dp) 16.sp else 17.sp
         val topTitleLineHeight = if (maxWidth < 360.dp) 20.sp else 21.sp
-        val membershipIconSize = if (maxWidth < 360.dp) 28.dp else 30.dp
+        val membershipIconSize = if (maxWidth < 360.dp) 32.dp else 34.dp
         val actionCircleSize = if (maxWidth < 360.dp) 34.dp else 36.dp
         val addButtonSize = actionCircleSize
         val addIconSize = if (maxWidth < 360.dp) 24.dp else 26.dp
