@@ -147,7 +147,7 @@ aliyun oss du oss://nongjiqiancha-prod --block-size MB
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sms-usage.ps1
 ```
 
-旧 DYPNS / 融合认证用量脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 只保留给历史包排障；新 Android 包不再消耗融合认证主链。短信套餐包余量和账单仍以阿里云费用中心 / 短信服务控制台为准，脚本用于看普通短信发送统计和失败趋势。
+脚本会校验阿里云短信统计接口状态，默认不按短信签名过滤，统计为空时默认短暂重试一次，并输出发送总量、成功、失败和无回执汇总；如果最终仍为空，只能说明所选日期范围统计没有返回明细或供应商统计存在延迟，不等于套餐包余额充足，也不等于线上一定没有验证码请求。若手动传 `-SignName` 导致空统计，应再用默认总量口径复查。旧 DYPNS / 融合认证用量脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 只保留给历史包排障；新 Android 包不再消耗融合认证主链。短信套餐包余量和账单仍以阿里云费用中心 / 短信服务控制台为准，脚本用于看普通短信发送统计和失败趋势。
 
 ## 提前提醒阈值
 

@@ -1,6 +1,6 @@
 # IP 粗定位 Runbook
 
-最后更新：2026-06-06
+最后更新：2026-06-15
 
 ## 当前口径
 
@@ -26,9 +26,10 @@ IP2REGION_XDB_PATH=/opt/nongjiqiancha/ip2region/ip2region_v4.xdb
 
 优先级：
 
-1. `X-User-Region` / `X-Region-Source` / `X-Region-Reliability` 请求头
-2. `IP2REGION_V4_XDB_PATH` 或 `IP2REGION_XDB_PATH` 指向的本地离线库
-3. `未知 / unreliable`
+1. `/api/chat/stream` JSON body 中的 `region / region_source / region_reliability`
+2. 历史兼容的 `X-User-Region` / `X-Region-Source` / `X-Region-Reliability` 请求头
+3. `IP2REGION_V4_XDB_PATH` 或 `IP2REGION_XDB_PATH` 指向的本地离线库
+4. `未知 / unreliable`
 
 ## 为什么不放 RDS
 

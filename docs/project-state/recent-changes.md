@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“上线门禁要能给业务负责人看懂”的方向收口短信和位置口径：`scripts/check-sms-usage.ps1` 现在会校验阿里云短信统计接口返回状态，默认不按短信签名过滤，统计为空时默认短暂重试一次，并输出发送总量、成功、失败、无回执和空统计说明；空统计只作为趋势信号，不再被误读成套餐包余额或验证码链路一定无流量。同步修正项目记忆和 IP 定位 runbook 里残留的旧 `X-User-Region` 主链口径：当前 Android 通过 `/api/chat/stream` JSON body 传 `region / region_source / region_reliability`，旧 header 只是后端兼容兜底；`AGENTS.md` 也同步线上账号边界只读计数。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型输出过滤或聊天滚动主链。
+
 - 继续按“上线前总负责人巡检”补自动化护栏和 Android 边界单测：`check-launch-readiness.ps1` 新增独立 `sms usage` 步骤，短信用量不再藏在资源巡检里；`check-backend-data-boundaries.ps1` 除了非 `acct_...` 资产归属，还会检查 `acct_...` 孤儿记录和 `app_accounts.phone_ciphertext` 缺失，线上本轮复查均为 0。Android 侧收窄 `SessionApi.resetUiRuntimeForCleanState()`，不再清空该 API 共享 handler 的全部回调，只递增 generation 并取消当前 SSE；今日农情时间线插入逻辑新增单测覆盖卡片-only、锚在真实消息后、锚点被裁剪后三种情况，继续锁住它是正向 `LazyColumn` 内普通视觉项。同步修正项目文档里位置通过 `/api/chat/stream` JSON body 传递、支付宝 App 支付正式链路需应用上线并开通 APP 支付产品、总门禁单独暴露短信统计等口径；本轮不修改三份提示词、不增加后端内容过滤、不改滚动主链。
 
 - 继续按用户视频里“加粗处一伸一缩 / 后段一口气吐出 / 生成中轻微上下掉”的反馈收口 Android 主聊天流式渲染边界：`ChatStreamingRenderer.kt` 在 streaming 模式下如果当前帧刚好停在待续的 `**`、`*` 或反引号，不再把这些结构符号短暂当正文露出，等后续正文到达后继续按加粗 / 斜体 / 行内代码样式显示；settled 完成态仍保持严格规则，未闭合 Markdown 保留原符号，避免误吞用户可见内容。同步补 `ChatStreamingRendererTest` 覆盖待续符号、闭合加粗稳定显示和 DONE 后中文 reveal buffer 逐字 drain，补 `ChatScrollCoordinatorTest` 覆盖程序贴底不误判用户浏览、真实拖动抢占程序滚动；不改正向 `LazyColumn` 滚动主链、不改三份提示词、不增加后端输出过滤。

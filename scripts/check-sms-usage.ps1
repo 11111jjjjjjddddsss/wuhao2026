@@ -2,11 +2,13 @@ param(
     [string]$StartDate = (Get-Date).AddDays(-6).ToString("yyyyMMdd"),
     [string]$EndDate = (Get-Date).ToString("yyyyMMdd"),
     [string]$RegionId = "cn-hangzhou",
-    [string]$SignName = "北京农技千问科技",
+    [string]$SignName = "",
     [int]$PageSize = 20,
     [int]$PageIndex = 1,
     [string]$PhoneNumber = "",
-    [string]$SendDate = (Get-Date).ToString("yyyyMMdd")
+    [string]$SendDate = (Get-Date).ToString("yyyyMMdd"),
+    [int]$EmptyRetryCount = 1,
+    [int]$RetryDelaySeconds = 2
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,6 +71,59 @@ function Invoke-AliyunJson {
     return $jsonText | ConvertFrom-Json
 }
 
+function Get-JsonPropertyValue {
+    param(
+        $Object,
+        [string]$Name
+    )
+    if ($null -eq $Object) {
+        return $null
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function Assert-AliyunOk {
+    param(
+        $Response,
+        [string]$Operation
+    )
+    $code = Get-JsonPropertyValue $Response "Code"
+    if ([string]::IsNullOrWhiteSpace([string]$code) -or $code -eq "OK") {
+        return
+    }
+    $message = Get-JsonPropertyValue $Response "Message"
+    if ([string]::IsNullOrWhiteSpace([string]$message)) {
+        $message = "no message"
+    }
+    throw "$Operation failed: Code=$code Message=$message"
+}
+
+function Get-TargetList {
+    param($Stats)
+    $data = Get-JsonPropertyValue $Stats "Data"
+    $targetList = Get-JsonPropertyValue $data "TargetList"
+    if ($null -eq $targetList) {
+        return @()
+    }
+    return @($targetList)
+}
+
+function Get-IntProperty {
+    param(
+        $Object,
+        [string]$Name
+    )
+    $value = Get-JsonPropertyValue $Object $Name
+    if ($null -eq $value -or [string]::IsNullOrWhiteSpace([string]$value)) {
+        return [int64]0
+    }
+    return [int64]$value
+}
+
 Write-Host "== domestic sms send statistics $StartDate-$EndDate =="
 $statsArgs = @(
     "aliyun", "dysmsapi", "query-send-statistics",
@@ -84,8 +139,49 @@ $statsArgs = @(
 if (-not [string]::IsNullOrWhiteSpace($SignName)) {
     $statsArgs += @("--sign-name", $SignName)
 }
-$stats = Invoke-AliyunJson $statsArgs
+
+$retryLimit = [Math]::Max(0, $EmptyRetryCount)
+$stats = $null
+$targetList = @()
+for ($attempt = 0; $attempt -le $retryLimit; $attempt++) {
+    $stats = Invoke-AliyunJson $statsArgs
+    Assert-AliyunOk $stats "SMS statistics query"
+    $targetList = @(Get-TargetList $stats)
+    if ($targetList.Count -gt 0 -or $attempt -ge $retryLimit) {
+        break
+    }
+    Write-Warning "SMS statistics returned no rows; retrying in $RetryDelaySeconds seconds. Empty rows can mean no sends in the selected range or provider-side statistics lag."
+    if ($RetryDelaySeconds -gt 0) {
+        Start-Sleep -Seconds $RetryDelaySeconds
+    }
+}
+
 $stats | ConvertTo-Json -Depth 10
+$data = Get-JsonPropertyValue $stats "Data"
+$totalSize = Get-IntProperty $data "TotalSize"
+$totalCount = [int64]0
+$successCount = [int64]0
+$failCount = [int64]0
+$noResponseCount = [int64]0
+foreach ($target in $targetList) {
+    $totalCount += Get-IntProperty $target "TotalCount"
+    $successCount += Get-IntProperty $target "RespondedSuccessCount"
+    $failCount += Get-IntProperty $target "RespondedFailCount"
+    $noResponseCount += Get-IntProperty $target "NoRespondedCount"
+}
+Write-Host "sms_stats_range=$StartDate-$EndDate"
+Write-Host "sms_stats_rows=$($targetList.Count)"
+Write-Host "sms_stats_total_size=$totalSize"
+Write-Host "sms_stats_total_count=$totalCount"
+Write-Host "sms_stats_success_count=$successCount"
+Write-Host "sms_stats_fail_count=$failCount"
+Write-Host "sms_stats_no_response_count=$noResponseCount"
+Write-Host "sms_stats_empty=$($targetList.Count -eq 0)"
+Write-Host "sms_stats_note=QuerySendStatistics is for send trend only; package balance and expiry still need Aliyun expense center or SMS console confirmation."
+if ($targetList.Count -eq 0) {
+    Write-Warning "SMS statistics are empty after retry; keep this as a trend signal, not as proof of package balance or SMS service inactivity."
+}
+Write-Host "sms_usage_status=ready"
 
 if (-not [string]::IsNullOrWhiteSpace($PhoneNumber)) {
     Write-Host
@@ -99,6 +195,6 @@ if (-not [string]::IsNullOrWhiteSpace($PhoneNumber)) {
         "--current-page", "1",
         "--page-size", "20"
     )
+    Assert-AliyunOk $details "SMS detail query"
     $details | ConvertTo-Json -Depth 10
 }
-
