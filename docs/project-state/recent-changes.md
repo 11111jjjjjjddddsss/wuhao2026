@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“业务负责人看得懂巡检输出”的方向补只读门禁：`scripts/check-backend-data-boundaries.ps1` 的最近 24 小时 App warn / error Top 事件保留原始 `latest_created_at` 毫秒值，同时新增北京时间字段 `latest_created_at_cn=YYYY-MM-DD HH:mm:ss+08:00`，避免总门禁和后端数据边界巡检里只出现一串毫秒时间戳，难以判断闪退 / 登录失败是不是旧包噪声。该改动只影响只读巡检输出和 runbook，不查询日志 attrs、正文、手机号、URL、token 或模型 Key。
+
 - 继续按上线门禁实时输出校正项目记忆：本轮 `check-launch-readiness.ps1 -AllowAttentionExitZero` 复查显示 ECS readiness、公网黑盒、SLS 告警、资源容量、后端数据边界、Android parity 和后台 surface 均为 ready，线上 Nginx active upstream 与后台 `/admin-api/` upstream 当前同为 `3001`；总门禁唯一 attention 仍是本机 PowerShell 未设置后台 owner 明文账号密码，登录后后台 smoke 按安全规则跳过。同步修正 `AGENTS.md` 和 `current-status.md` 里残留的 `3000` 当前 slot 口径，避免后续窗口按旧 active slot 做运维判断。
 
 - 对齐上线总门禁和后台登录后 smoke 的凭据变量口径：`check-admin-authenticated-smoke.ps1` 原本支持 `NONGJI_ADMIN_USERNAME/PASSWORD` 和 `ADMIN_SMOKE_USERNAME/PASSWORD` 两组环境变量，但 `check-launch-readiness.ps1` 只识别前者，可能导致单独 smoke 可跑而总门禁误报缺凭据。本次让总门禁同样接受 `ADMIN_SMOKE_*` 兼容别名，并同步更新 go-live 与后台 runbook；不保存、不打印后台密码，也不改生产后台接口或鉴权逻辑。

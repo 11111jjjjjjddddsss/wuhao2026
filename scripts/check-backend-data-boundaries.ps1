@@ -111,6 +111,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 from urllib.parse import unquote, urlparse
 
 def read_env_value(path, wanted):
@@ -204,6 +205,17 @@ try:
                 rows.append(line.split("\t"))
         return rows
 
+    cn_tz = timezone(timedelta(hours=8))
+
+    def format_cn_ms(value):
+        try:
+            millis = int(float(str(value).strip()))
+        except Exception:
+            return "unknown"
+        if millis <= 0:
+            return "unknown"
+        return datetime.fromtimestamp(millis / 1000, cn_tz).strftime("%Y-%m-%d %H:%M:%S+08:00")
+
     now_ms = "CAST(UNIX_TIMESTAMP(CURRENT_TIMESTAMP(3)) * 1000 AS UNSIGNED)"
     day_ms = 24 * 60 * 60 * 1000
 
@@ -295,15 +307,18 @@ try:
         print("none")
     for row in top_log_rows:
         event, level, build_type, app_version_code, event_count, latest_created_at = (row + [""] * 6)[:6]
+        latest_created_at_cn = format_cn_ms(latest_created_at)
         print(
             "event={event} level={level} build_type={build_type} "
-            "app_version_code={app_version_code} count={event_count} latest_created_at={latest_created_at}".format(
+            "app_version_code={app_version_code} count={event_count} "
+            "latest_created_at={latest_created_at} latest_created_at_cn={latest_created_at_cn}".format(
                 event=event,
                 level=level,
                 build_type=build_type,
                 app_version_code=app_version_code,
                 event_count=event_count,
                 latest_created_at=latest_created_at,
+                latest_created_at_cn=latest_created_at_cn,
             )
         )
 

@@ -44,7 +44,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-backe
 - 支持 `mysql://...` 和 Go `user:pass@tcp(...)/db` 两种 DSN 形态
 - 使用临时 `--defaults-extra-file` 调用 mysql client，避免把数据库密码放进命令行参数或输出
 - 只输出表计数、活跃 session / 活跃会员 / App 24h 错误计数、今日农情状态计数和 `acct_...` 归属异常计数
-- 额外输出最近 24 小时 App warn / error Top 事件，只展示 `event / level / build_type / app_version_code / count / latest_created_at`，不输出日志 attrs、message、IP、手机号、URL、正文或 token
+- 额外输出最近 24 小时 App warn / error Top 事件，只展示 `event / level / build_type / app_version_code / count / latest_created_at / latest_created_at_cn`，其中 `latest_created_at_cn` 是北京时间可读时间；不输出日志 attrs、message、IP、手机号、URL、正文或 token
 - 不查询手机号明文、聊天正文、反馈正文、图片 URL、礼品卡完整码、token 或模型 Key
 - 只要会员、订单、礼品卡、聊天、反馈、日志、注销等需要账号归属的表出现非 `acct_...`，脚本失败
 
