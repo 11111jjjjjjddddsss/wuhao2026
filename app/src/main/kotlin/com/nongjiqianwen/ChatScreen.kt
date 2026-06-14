@@ -2258,11 +2258,7 @@ fun ChatScreen() {
     val view = LocalView.current
     val hasRemoteHistorySource = BuildConfig.USE_BACKEND_AB && SessionApi.hasBackendConfigured()
     val initialLocalSnapshot = remember(chatScopeId, hasRemoteHistorySource) {
-        if (hasRemoteHistorySource) {
-            LocalChatWindowSnapshot()
-        } else {
-            context.loadLocalChatWindowSync(chatScopeId)
-        }
+        context.loadLocalChatWindowSync(chatScopeId)
     }
     val initialLocalMessages = remember(initialLocalSnapshot) { initialLocalSnapshot.messages }
     val initialComposerDraftText = remember(chatScopeId) {
@@ -3042,13 +3038,32 @@ fun ChatScreen() {
     }
     val shouldRevealMessageList by remember(
         startupHydrationBarrierSatisfied,
+        historyHydrationComplete,
+        shouldHydrateRemoteHistory,
+        initialBottomSnapDone,
         messages.size,
         hasTodayAgriCard,
+        isStreaming,
         hasStreamingItem,
         hasStartedConversation
     ) {
         derivedStateOf {
+            val waitingForRemoteStartupHydration =
+                shouldHydrateRemoteHistory &&
+                    !historyHydrationComplete &&
+                    !hasStartedConversation &&
+                    !isStreaming &&
+                    !hasStreamingItem
+            val waitingForStaticTimelineBottomSnap =
+                startupHydrationBarrierSatisfied &&
+                    !initialBottomSnapDone &&
+                    !hasStartedConversation &&
+                    !isStreaming &&
+                    !hasStreamingItem &&
+                    (messages.isNotEmpty() || hasTodayAgriCard)
             when {
+                waitingForRemoteStartupHydration -> false
+                waitingForStaticTimelineBottomSnap -> false
                 messages.isNotEmpty() -> true
                 hasTodayAgriCard -> true
                 hasStreamingItem -> true
@@ -3060,15 +3075,25 @@ fun ChatScreen() {
     }
     val showWelcomePlaceholder by remember(
         startupHydrationBarrierSatisfied,
+        historyHydrationComplete,
+        shouldHydrateRemoteHistory,
         messages.size,
         hasTodayAgriCard,
+        isStreaming,
         hasStreamingItem,
         hasStartedConversation
     ) {
         derivedStateOf {
+            val waitingForRemoteStartupHydration =
+                shouldHydrateRemoteHistory &&
+                    !historyHydrationComplete &&
+                    !hasStartedConversation &&
+                    !isStreaming &&
+                    !hasStreamingItem
             messages.isEmpty() &&
                 !hasTodayAgriCard &&
                 !hasStreamingItem &&
+                !waitingForRemoteStartupHydration &&
                 (startupHydrationBarrierSatisfied || !hasStartedConversation)
         }
     }

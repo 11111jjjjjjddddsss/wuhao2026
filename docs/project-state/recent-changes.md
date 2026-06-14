@@ -5,6 +5,8 @@
 
 ## 2026-06-14
 
+- 按真机反馈继续收口登录后主聊天首屏、设置页和加载闪烁：`ChatScreen.kt` 后端历史模式重新启用经过 `session_generation` 校验的本地聊天窗口作为首屏静态数据，远端 `/api/session/snapshot` 继续异步核对并以后端为主合并；消息列表会先不可见完成布局和底部锚定，再显示给用户，减少验证码登录成功后先看到文本再跳动的体感。设置页首页恢复独立“退出登录”浅灰卡片，仍走二次确认且只吊销当前设备 session，不删除历史对话、会员权益、礼品卡或反馈；账号管理页条目改为浅灰分组卡片，文字略收小。会员中心和帮助与反馈改成有旧数据先展示、后台刷新合并，避免每次进入先整页“读取中 / 正在同步”再闪一下。
+
 - 按用户“主钥匙套餐优先吃满，不要 token 阈值提前消耗副钥匙”的最新口径，把 DashScope / 百炼 Key 池当前生产策略从 `auto` 调整为 `fallback`：`DASHSCOPE_API_KEY_1` 继续作为主钥匙，`DASHSCOPE_API_KEY_2` 只在主钥匙开流前返回限流 / 额度 / 鉴权类失败时同次请求兜底，不再因为 10 秒请求数或 token 用量阈值主动轮询分流。代码里的自动轮询能力仍保留为后续高峰可选方案，但当前生产不启用；1 秒 Key 冷却继续保留，避免主钥匙刚被限流时后续请求反复先撞主钥匙再多一次失败往返。阿里云官方文档同步确认百炼模型限流按主账号维度合并所有 RAM 子账号、业务空间和 API Key 调用量；联网搜索另有 15 RPS 主账号级限制，超限通常跳过搜索链路而不是直接报错。SSE 已经开始吐字后仍不在同一条回复中途切 Key，避免半条回复和重复成本。已部署到 ECS，readiness 实测 active upstream 为 `3001`、后台 upstream 同为 `3001`、HTTPS healthz 200。
 
 - 提交 `570b46df` 已部署到 ECS 双端口 slot：远端 `go test ./...`、编译、新 slot health、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 Nginx active upstream 为 `3000`，后台 upstream 同为 `3000`，HTTPS healthz 200，未登录后台鉴权 401，`auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss` 均正常；公网黑盒 `check-public-blackbox.ps1` 复查 API、官网、www、后台、协议页、公安图标和 HTTP->HTTPS 跳转均为 ready。总门禁 `check-launch-readiness.ps1 -AllowAttentionExitZero` 复查 9 项，项目记忆、后台 surface、Android parity、ECS readiness、公网黑盒、SLS 告警、资源容量和后端数据边界均 ready，唯一 attention 仍是本机没有后台 owner 明文密码，登录后后台 smoke 按安全规则跳过。Android 端 UI 改动仍需用户重新安装新包才会生效。

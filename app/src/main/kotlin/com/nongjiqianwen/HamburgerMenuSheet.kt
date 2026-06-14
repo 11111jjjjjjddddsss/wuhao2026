@@ -235,8 +235,11 @@ internal fun HamburgerMenuSheet(
     var legalSubpage by remember(visible) { mutableStateOf(false) }
     var supportSummary by remember(visible) { mutableStateOf<SessionApi.SupportSummary?>(null) }
     var supportRefreshTick by remember(visible) { mutableStateOf(0) }
+    var cachedSupportMessages by remember(visible) { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
     var supportAttachmentMenuVisible by remember(visible) { mutableStateOf(false) }
     var supportAttachmentCloseRequest by remember(visible) { mutableStateOf(0) }
+    var mainLogoutDialogVisible by rememberSaveable(visible) { mutableStateOf(false) }
+    var mainLogoutSubmitting by remember(visible) { mutableStateOf(false) }
     var updateChecking by remember(userId) { mutableStateOf(false) }
     var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var updateDownloading by remember(userId) { mutableStateOf(false) }
@@ -410,6 +413,12 @@ internal fun HamburgerMenuSheet(
         legalSubpage = true
         page = target
     }
+    fun finishAfterAuthSessionCleared() {
+        supportAttachmentMenuVisible = false
+        legalSubpage = false
+        page = HamburgerMenuPage.Menu
+        onDismiss()
+    }
     LaunchedEffect(noticeText) {
         if (noticeText == null) return@LaunchedEffect
         delay(1500)
@@ -511,6 +520,14 @@ internal fun HamburgerMenuSheet(
                                     performButtonHaptic()
                                     checkAppUpdate(userTriggered = true)
                                 },
+                                onLogoutClick = {
+                                    performButtonHaptic()
+                                    if (IdManager.getAuthPhoneMask() == null) {
+                                        showNotice("请先登录")
+                                    } else {
+                                        mainLogoutDialogVisible = true
+                                    }
+                                },
                                 onPlaceholderClick = ::showNotice
                             )
                         }
@@ -529,12 +546,7 @@ internal fun HamburgerMenuSheet(
                             HamburgerAccountManagementPage(
                                 onPendingAction = ::showNotice,
                                 onClearChatHistory = onClearChatHistory,
-                                onAuthSessionCleared = {
-                                    supportAttachmentMenuVisible = false
-                                    legalSubpage = false
-                                    page = HamburgerMenuPage.Menu
-                                    onDismiss()
-                                }
+                                onAuthSessionCleared = ::finishAfterAuthSessionCleared
                             )
                         }
                         HamburgerMenuPage.Redeem -> {
@@ -546,9 +558,13 @@ internal fun HamburgerMenuSheet(
                         HamburgerMenuPage.Support -> {
                             HamburgerSupportFeedbackPage(
                                 attachmentCloseRequest = supportAttachmentCloseRequest,
+                                initialMessages = cachedSupportMessages,
                                 onPendingAction = ::showNotice,
                                 onConversationChanged = {
                                     supportRefreshTick += 1
+                                },
+                                onMessagesChanged = { messages ->
+                                    cachedSupportMessages = messages
                                 },
                                 onAttachmentMenuVisibilityChanged = { visible ->
                                     supportAttachmentMenuVisible = visible
@@ -642,6 +658,30 @@ internal fun HamburgerMenuSheet(
                 }
             }
         }
+    }
+    if (mainLogoutDialogVisible) {
+        HamburgerLogoutConfirmDialog(
+            submitting = mainLogoutSubmitting,
+            onDismiss = {
+                if (!mainLogoutSubmitting) mainLogoutDialogVisible = false
+            },
+            onConfirm = {
+                if (mainLogoutSubmitting) return@HamburgerLogoutConfirmDialog
+                val accountScopeId = IdManager.getUserId()
+                mainLogoutSubmitting = true
+                SessionApi.logoutCurrentSession { ok ->
+                    mainLogoutSubmitting = false
+                    if (ok) {
+                        mainLogoutDialogVisible = false
+                        PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
+                        showNotice("已退出当前设备")
+                        finishAfterAuthSessionCleared()
+                    } else {
+                        showNotice("退出失败，请检查网络后重试")
+                    }
+                }
+            }
+        )
     }
     updateDialogInfo?.let { info ->
         HamburgerAppUpdateDialog(
@@ -1013,6 +1053,7 @@ private fun HamburgerMenuMainPage(
     onOpenTodayAgri: () -> Unit,
     onOpenLegalHub: () -> Unit,
     onCheckUpdate: () -> Unit,
+    onLogoutClick: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
     Column(
@@ -1091,6 +1132,16 @@ private fun HamburgerMenuMainPage(
                 title = "服务协议",
                 showChevron = false,
                 onClick = onOpenLegalHub
+            )
+        }
+
+        HamburgerMenuGroup {
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Logout,
+                title = "退出登录",
+                destructive = true,
+                showChevron = false,
+                onClick = onLogoutClick
             )
         }
     }
@@ -1858,6 +1909,15 @@ private fun HamburgerMenuPreviewGroups() {
             onClick = {}
         )
     }
+    HamburgerMenuGroup {
+        HamburgerMenuRow(
+            icon = HamburgerMenuIcon.Logout,
+            title = "退出登录",
+            destructive = true,
+            showChevron = false,
+            onClick = {}
+        )
+    }
 }
 
 @Composable
@@ -2376,17 +2436,19 @@ private fun HamburgerTodayAgriHistoryItem(
 @Composable
 private fun HamburgerSupportFeedbackPage(
     attachmentCloseRequest: Int = 0,
+    initialMessages: List<SessionApi.SupportMessage> = emptyList(),
     onPendingAction: (String) -> Unit,
     onConversationChanged: () -> Unit,
+    onMessagesChanged: (List<SessionApi.SupportMessage>) -> Unit = {},
     onAttachmentMenuVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    var messages by remember { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
+    var messages by remember { mutableStateOf(initialMessages) }
     var inputValue by remember { mutableStateOf(TextFieldValue("")) }
-    var loading by remember { mutableStateOf(true) }
+    var loading by remember { mutableStateOf(initialMessages.isEmpty()) }
     var loadFailed by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var sendingHint by remember { mutableStateOf<String?>(null) }
@@ -2419,6 +2481,15 @@ private fun HamburgerSupportFeedbackPage(
         if (attachmentCloseRequest > 0) {
             attachmentMenuVisible = false
         }
+    }
+    LaunchedEffect(initialMessages) {
+        if (messages.isEmpty() && initialMessages.isNotEmpty()) {
+            messages = initialMessages
+            loading = false
+        }
+    }
+    LaunchedEffect(messages) {
+        onMessagesChanged(messages)
     }
 
     fun addSupportImageUris(uris: List<Uri>) {
@@ -2610,7 +2681,7 @@ private fun HamburgerSupportFeedbackPage(
         }
 
     LaunchedEffect(loadTick) {
-        loading = true
+        loading = messages.isEmpty()
         loadFailed = false
         SessionApi.getSupportMessages { loaded ->
             loading = false
@@ -2875,6 +2946,17 @@ private fun HamburgerSupportFeedbackContent(
                     .fillMaxSize()
             ) {
                 when {
+                    messages.isNotEmpty() -> {
+                        itemsIndexed(
+                            items = messages,
+                            key = { index, message ->
+                                message.id?.let { "message-$it" }
+                                    ?: "local-$index-${message.createdAt}-${message.senderType}"
+                            }
+                        ) { _, message ->
+                            HamburgerSupportMessageBubble(message = message)
+                        }
+                    }
                     loading -> {
                         item(key = "loading") {
                             HamburgerSupportStatusText(text = "正在同步消息...")
@@ -2912,17 +2994,6 @@ private fun HamburgerSupportFeedbackContent(
                     messages.isEmpty() -> {
                         item(key = "empty") {
                             HamburgerSupportEmptyState()
-                        }
-                    }
-                    else -> {
-                        itemsIndexed(
-                            items = messages,
-                            key = { index, message ->
-                                message.id?.let { "message-$it" }
-                                    ?: "local-$index-${message.createdAt}-${message.senderType}"
-                            }
-                        ) { _, message ->
-                            HamburgerSupportMessageBubble(message = message)
                         }
                     }
                 }
@@ -4132,8 +4203,8 @@ private fun HamburgerAccountGroup(
     content: @Composable ColumnScope.() -> Unit
 ) {
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(18.dp),
+        color = Color(0xFFF2F2F2),
+        shape = RoundedCornerShape(24.dp),
         modifier = modifier.fillMaxWidth()
     ) {
         Column(
@@ -4164,8 +4235,8 @@ private fun HamburgerAccountInfoRow(
         Text(
             text = title,
             color = Color(0xFF111111),
-            fontSize = 17.sp,
-            lineHeight = 23.sp,
+            fontSize = 16.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -4174,8 +4245,8 @@ private fun HamburgerAccountInfoRow(
         Text(
             text = value,
             color = Color(0xFF8A8E96),
-            fontSize = 16.sp,
-            lineHeight = 22.sp,
+            fontSize = 15.sp,
+            lineHeight = 21.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -4218,8 +4289,8 @@ private fun HamburgerAccountActionRow(
                 danger -> Color(0xFFD24646)
                 else -> Color(0xFF111111)
             },
-            fontSize = 17.sp,
-            lineHeight = 23.sp,
+            fontSize = 16.sp,
+            lineHeight = 22.sp,
             fontWeight = FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

@@ -229,6 +229,11 @@ internal fun MembershipCenterBody(
     onRetryLoad: () -> Unit = {}
 ) {
     var paymentNoticeVisible by remember(paymentNoticeResetKey) { mutableStateOf(false) }
+    val displayLoadState = if (entitlement != null) {
+        MembershipLoadState.Loaded
+    } else {
+        loadState
+    }
     LaunchedEffect(paymentNoticeVisible) {
         if (!paymentNoticeVisible) return@LaunchedEffect
         delay(1500)
@@ -236,17 +241,17 @@ internal fun MembershipCenterBody(
     }
     MembershipQuotaSummary(
         entitlement = entitlement,
-        loadState = loadState
+        loadState = displayLoadState
     )
     if (loadState == MembershipLoadState.Failed) {
         MembershipSyncRetryNotice(onRetryLoad = onRetryLoad)
     }
-    val loadedEntitlement = entitlement.takeIf { loadState == MembershipLoadState.Loaded }
+    val loadedEntitlement = entitlement.takeIf { displayLoadState == MembershipLoadState.Loaded }
     if (paymentNoticeVisible) {
         MembershipInlineNotice(text = "相关功能暂未开放，当前不会扣费")
     }
     MembershipPlanSection(
-        activeTier = entitlement.activeMembershipTier(loadState),
+        activeTier = entitlement.activeMembershipTier(displayLoadState),
         upgradeRemaining = loadedEntitlement?.upgradeRemaining ?: 0,
         topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
         onPaymentUnavailable = {
@@ -255,7 +260,7 @@ internal fun MembershipCenterBody(
         }
     )
     MembershipTopupCard(
-        activeTier = entitlement.activeMembershipTier(loadState),
+        activeTier = entitlement.activeMembershipTier(displayLoadState),
         topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
         onPaymentUnavailable = {
             paymentNoticeVisible = true
