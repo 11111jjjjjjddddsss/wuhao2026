@@ -181,7 +181,8 @@ Write-Host "sms_stats_note=QuerySendStatistics is for send trend only; package b
 if ($targetList.Count -eq 0) {
     Write-Warning "SMS statistics are empty after retry; keep this as a trend signal, not as proof of package balance or SMS service inactivity."
 }
-Write-Host "sms_usage_status=ready"
+$smsUsageStatus = if ($targetList.Count -eq 0) { "attention" } else { "ready" }
+Write-Host "sms_usage_status=$smsUsageStatus"
 
 if (-not [string]::IsNullOrWhiteSpace($PhoneNumber)) {
     Write-Host

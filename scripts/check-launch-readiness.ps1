@@ -7,6 +7,7 @@ param(
     [switch]$SkipDataBoundary,
     [switch]$SkipManualGoLiveChecklist,
     [switch]$RequireAdminSmoke,
+    [switch]$ReleaseGate,
     [switch]$AllowAttentionExitZero
 )
 
@@ -14,6 +15,17 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $results = New-Object System.Collections.Generic.List[object]
+
+if ($ReleaseGate) {
+    if ($AllowAttentionExitZero) {
+        throw "-ReleaseGate cannot be combined with -AllowAttentionExitZero; a release gate must keep attention items non-zero."
+    }
+    if ($SkipAndroid -or $SkipBackend -or $SkipAdmin -or $SkipCloud -or $SkipDataBoundary -or $SkipManualGoLiveChecklist) {
+        throw "-ReleaseGate cannot be combined with Skip* switches; use the daily gate when you need a partial report."
+    }
+    $IncludeBuilds = $true
+    $RequireAdminSmoke = $true
+}
 
 function Add-GateResult {
     param(
@@ -148,7 +160,7 @@ function Invoke-ManualGoLiveChecklist {
 }
 
 Write-Host "== launch readiness gate =="
-Write-Host "repo=$repoRoot include_builds=$IncludeBuilds skip_cloud=$SkipCloud"
+Write-Host "repo=$repoRoot release_gate=$ReleaseGate include_builds=$IncludeBuilds require_admin_smoke=$RequireAdminSmoke skip_cloud=$SkipCloud"
 
 Invoke-GateStep -Name "project memory guard" -ScriptBlock {
     Invoke-Native -FilePath "python" -Arguments @("scripts/check_project_memory.py")

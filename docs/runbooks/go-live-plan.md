@@ -103,6 +103,14 @@
 
 `-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建，再重新跑 parity。这个脚本不替代真机回归、App 备案 / App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
 
+真正准备打正式包 / 提交上架前，优先使用正式上线门禁：
+
+```powershell
+.\scripts\check-launch-readiness.ps1 -ReleaseGate
+```
+
+`-ReleaseGate` 会强制启用 `-IncludeBuilds` 和后台登录后 owner smoke，且不允许搭配 `-AllowAttentionExitZero` 或任何 `-Skip*` 跳过项；这条命令用于最后放行，不用于日常快速看报告。日常巡检可以继续用默认命令或 `-AllowAttentionExitZero` 看完整输出。
+
 ## P4：提交应用商店
 
 目标：先上最小可用版本，不把完整管理后台和支付做成上架前硬门槛。

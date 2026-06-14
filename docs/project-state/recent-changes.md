@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“总负责人看门禁不被假绿带偏”的方向补上线脚本：`scripts/check-sms-usage.ps1` 在阿里云短信统计为空时会输出 `sms_usage_status=attention`，不再把空统计末尾写成单纯 ready，避免误读成短信套餐余额或验证码链路已无风险；`scripts/check-launch-readiness.ps1` 新增 `-ReleaseGate`，正式上架前会强制启用构建和后台登录后 owner smoke，并拒绝 `-AllowAttentionExitZero` 与任何 `-Skip*` 跳过项。同步更新 go-live runbook 和当前状态文档；本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型过滤或聊天滚动主链。
+
 - 继续按真机视频里“加粗处一伸一缩 / 小球和正文衔接不自然”的体感做最小渲染收口：`ChatStreamingRenderer.kt` 在 streaming 期间始终让最新视觉尾块走 streaming inline 规则，避免刚换行或尾块提交后马上切到 settled 规则造成加粗 / 斜体 / 行内代码轻微伸缩；纯 `**`、`*`、反引号这类不可见 Markdown 标记不再单独替换 waiting 小球，等第一个可见字一起进入正文，减少“小球消失后一拍空白”。同步补 `ChatStreamingRendererTest` 覆盖尾块 inline 模式和 pending marker reveal。该改动不换渲染引擎、不改成整段完成后再显示、不恢复 overlay / 反向列表 / raw delta / scrollBy / 小分割 item，不改三份提示词、今日农情列表项身份或后端输出过滤。
 
 - 继续把云资源巡检输出改成业务负责人更容易理解的口径：按阿里云官方文档复核后，ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 都是包年包月，因此 `deletion_protection=false` 不是缺少保护。`check-resource-capacity.ps1` 现在会输出 `deletion_protection=not_applicable_prepaid` 和 `deletion_protection_applicable=False`，只有按量付费 / Serverless 且未开保护时才提示 warning；同步更新资源容量 runbook 和当前状态。该改动只优化巡检可读性，不修改云资源、不改后端 / Android 运行逻辑。
