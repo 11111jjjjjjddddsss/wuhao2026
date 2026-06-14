@@ -409,7 +409,7 @@ internal fun MembershipQuotaSummary(
 ) {
     val tier = entitlement.activeMembershipTier(loadState)
     val tierName = membershipSummaryTierName(tier, loadState)
-    val limit = membershipDailyLimit(tier)
+    val limit = membershipDailyLimitForTier(tier)
     val dailyRemaining = entitlement?.dailyRemaining
     val tierSubText = membershipSummaryTierSubText(
         tier = tier,
@@ -592,9 +592,9 @@ private fun MembershipPlanSection(
         )
         MembershipPlanCard(
             name = "Plus",
-            price = "¥19.9/月",
+            price = MEMBERSHIP_PLUS_PRICE_TEXT,
             active = activeTier == "plus",
-            highlights = listOf("每天25次问诊", "图文问题随时问", "记忆与上下文更强"),
+            highlights = listOf("每天${MEMBERSHIP_PLUS_DAILY_LIMIT}次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = when (activeTier) {
                 "unknown" -> "同步后开通"
                 "plus" -> "当前套餐"
@@ -606,10 +606,10 @@ private fun MembershipPlanSection(
         )
         MembershipPlanCard(
             name = "Pro",
-            price = "¥29.9/月",
+            price = MEMBERSHIP_PRO_PRICE_TEXT,
             badge = "推荐",
             active = activeTier == "pro",
-            highlights = listOf("每天40次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
+            highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = when (activeTier) {
                 "unknown" -> "同步后开通"
                 "plus" -> "暂未开放"
@@ -800,7 +800,7 @@ private fun MembershipTopupCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "额外80次",
+                        text = "额外${MEMBERSHIP_TOPUP_COUNT}次",
                         color = Color(0xFF747881),
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
@@ -809,7 +809,7 @@ private fun MembershipTopupCard(
                     )
                 }
                 Text(
-                    text = "¥6 / 80次",
+                    text = MEMBERSHIP_TOPUP_PRICE_TEXT,
                     color = Color(0xFF111111),
                     fontSize = 18.sp,
                     lineHeight = 23.sp,
@@ -917,12 +917,17 @@ private fun MembershipRulesSection() {
             ) {
                 MembershipRuleLine(
                     title = "Plus升级Pro",
-                    body = "升级 Pro 后，Plus 剩余权益会自动折成补偿次数。"
+                    body = "升级 Pro 后，Plus 剩余权益会自动折成补偿次数；礼品卡会员同样适用。"
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(
                     title = "扣次顺序",
                     body = "每日额度 → 升级补偿 → 加油包。"
+                )
+                HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
+                MembershipRuleLine(
+                    title = "每日次数",
+                    body = "每日额度不结转；会员到期后按基础额度计算。"
                 )
             }
         }
@@ -970,26 +975,11 @@ private fun SessionApi.EntitlementSnapshot?.activeMembershipTier(loadState: Memb
         normalizedTier()
     }
 
-private fun membershipTierName(tier: String): String =
-    when (tier) {
-        "plus" -> "Plus"
-        "pro" -> "Pro"
-        "unknown" -> "--"
-        else -> "Free"
-    }
-
-private fun membershipDailyLimit(tier: String): Int =
-    when (tier) {
-        "plus" -> 25
-        "pro" -> 40
-        else -> 6
-    }
-
 private fun membershipSummaryTierName(tier: String, loadState: MembershipLoadState): String =
     when (loadState) {
         MembershipLoadState.Loading -> "读取中"
         MembershipLoadState.Failed -> "同步失败"
-        else -> membershipTierName(tier)
+        else -> membershipTierDisplayName(tier)
     }
 
 private fun membershipSummaryTierSubText(

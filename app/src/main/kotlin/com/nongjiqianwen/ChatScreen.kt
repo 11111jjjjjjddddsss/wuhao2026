@@ -3609,6 +3609,12 @@ fun ChatScreen() {
         refreshMembershipEntitlement()
     }
 
+    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete) {
+        if (!historyHydrationComplete) return@LaunchedEffect
+        if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
+        refreshMembershipEntitlement()
+    }
+
     LaunchedEffect(membershipRefreshNonce, uiRuntimeResetKey) {
         if (membershipRefreshNonce <= 0) return@LaunchedEffect
         refreshMembershipEntitlement()

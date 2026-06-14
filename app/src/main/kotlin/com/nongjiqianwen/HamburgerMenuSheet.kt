@@ -117,6 +117,7 @@ import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 private const val HAMBURGER_PAGE_ENTER_MS = 180
 private const val HAMBURGER_PAGE_EXIT_MS = 150
@@ -233,9 +234,10 @@ internal fun HamburgerMenuSheet(
     var noticeText by remember(visible) { mutableStateOf<String?>(null) }
     var page by remember(visible) { mutableStateOf(HamburgerMenuPage.Menu) }
     var legalSubpage by remember(visible) { mutableStateOf(false) }
-    var supportSummary by remember(visible) { mutableStateOf<SessionApi.SupportSummary?>(null) }
-    var supportRefreshTick by remember(visible) { mutableStateOf(0) }
-    var cachedSupportMessages by remember(visible) { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
+    var supportSummary by remember(userId) { mutableStateOf<SessionApi.SupportSummary?>(null) }
+    var supportRefreshTick by remember(userId) { mutableStateOf(0) }
+    var cachedSupportMessages by remember(userId) { mutableStateOf<List<SessionApi.SupportMessage>>(emptyList()) }
+    var cachedTodayAgriHistoryCards by remember(userId) { mutableStateOf<List<SessionApi.TodayAgriCard>>(emptyList()) }
     var supportAttachmentMenuVisible by remember(visible) { mutableStateOf(false) }
     var supportAttachmentCloseRequest by remember(visible) { mutableStateOf(0) }
     var mainLogoutDialogVisible by rememberSaveable(visible) { mutableStateOf(false) }
@@ -573,7 +575,11 @@ internal fun HamburgerMenuSheet(
                         }
                         HamburgerMenuPage.TodayAgri -> {
                             HamburgerTodayAgriHistoryPage(
-                                onPendingAction = ::showNotice
+                                initialCards = cachedTodayAgriHistoryCards,
+                                onPendingAction = ::showNotice,
+                                onCardsChanged = { cards ->
+                                    cachedTodayAgriHistoryCards = cards
+                                }
                             )
                         }
                         HamburgerMenuPage.LegalHub -> {
@@ -2158,15 +2164,27 @@ internal fun HamburgerTodayAgriHistoryPagePreview(loadFailed: Boolean = false) {
 
 @Composable
 private fun HamburgerTodayAgriHistoryPage(
-    onPendingAction: (String) -> Unit
+    initialCards: List<SessionApi.TodayAgriCard> = emptyList(),
+    onPendingAction: (String) -> Unit,
+    onCardsChanged: (List<SessionApi.TodayAgriCard>) -> Unit = {}
 ) {
-    var cards by remember { mutableStateOf<List<SessionApi.TodayAgriCard>>(emptyList()) }
-    var loading by remember { mutableStateOf(true) }
+    var cards by remember { mutableStateOf(initialCards) }
+    var loading by remember { mutableStateOf(initialCards.isEmpty()) }
     var loadFailed by remember { mutableStateOf(false) }
     var loadTick by remember { mutableStateOf(0) }
 
+    LaunchedEffect(initialCards) {
+        if (cards.isEmpty() && initialCards.isNotEmpty()) {
+            cards = initialCards
+            loading = false
+        }
+    }
+    LaunchedEffect(cards) {
+        onCardsChanged(cards)
+    }
+
     LaunchedEffect(loadTick) {
-        loading = true
+        loading = cards.isEmpty()
         loadFailed = false
         SessionApi.getRecentTodayAgriCards { loaded ->
             loading = false
@@ -2242,6 +2260,11 @@ private fun HamburgerTodayAgriHistoryContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 when {
+                    cards.isNotEmpty() -> {
+                        cards.forEach { card ->
+                            HamburgerTodayAgriHistoryCard(card = card)
+                        }
+                    }
                     loading -> {
                         HamburgerSupportStatusText(text = "正在同步农情...")
                     }
@@ -2271,11 +2294,6 @@ private fun HamburgerTodayAgriHistoryContent(
                     }
                     cards.isEmpty() -> {
                         HamburgerTodayAgriEmptyState()
-                    }
-                    else -> {
-                        cards.forEach { card ->
-                            HamburgerTodayAgriHistoryCard(card = card)
-                        }
                     }
                 }
             }
@@ -3881,14 +3899,12 @@ private fun giftCardRedeemSuccessText(result: SessionApi.GiftCardRedeemResult): 
         "plus" -> "Plus"
         else -> "会员"
     }
-    val dailyCount = when (tierRaw) {
-        "pro" -> 40
-        "plus" -> 25
-        else -> null
-    }
+    val dailyCount = membershipPaidDailyLimitForTier(tierRaw)
     val days = result.durationDays?.takeIf { it > 0 }?.let { "${it}天" } ?: "权益"
     val expire = result.membershipExpireAt?.takeIf { it > 0L }?.let { millis ->
-        SimpleDateFormat("yyyy年MM月dd日 HH:mm", Locale.CHINA).format(Date(millis))
+        SimpleDateFormat("yyyy年MM月dd日 HH:mm", Locale.CHINA).apply {
+            timeZone = TimeZone.getTimeZone("Asia/Shanghai")
+        }.format(Date(millis))
     }
     val quota = dailyCount?.let { "，每日 ${it} 次" }.orEmpty()
     return if (expire.isNullOrBlank()) {
