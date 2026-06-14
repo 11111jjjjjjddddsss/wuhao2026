@@ -618,6 +618,12 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 		!strings.Contains(userContent, "这是今日农情唯一硬数量要求") ||
 		!strings.Contains(userContent, "items 必须正好 3 个对象") ||
 		!strings.Contains(userContent, "优先近 7 天公开来源") ||
+		!strings.Contains(userContent, "选题以种植方面的新闻为主") ||
+		!strings.Contains(userContent, "不限制具体作物") ||
+		!strings.Contains(userContent, "更优先选择对生产有实际参考价值的内容") ||
+		!strings.Contains(userContent, "栽培管理、植保病虫、种子种苗、农资农机、技术推广、苗情墒情、产地流通 / 价格、政策补贴等真实进展") ||
+		!strings.Contains(userContent, "天气、气象、防灾或抢收可以作为其中一个角度") ||
+		!strings.Contains(userContent, "对农事安排、防灾减损或田间管理有什么影响") ||
 		!strings.Contains(userContent, "只取种植侧") ||
 		!strings.Contains(userContent, "养殖、水产、畜牧") ||
 		!strings.Contains(userContent, "标题短而具体") ||
