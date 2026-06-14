@@ -191,6 +191,15 @@ if (-not $SkipAndroid) {
         Invoke-GateStep -Name "android debug and release build" -ScriptBlock {
             Invoke-Native -FilePath (Join-Path $repoRoot "gradlew.bat") -Arguments @(":app:assembleDebug", ":app:assembleRelease")
         }
+        Invoke-GateStep -Name "android release artifact" -ScriptBlock {
+            Invoke-Native -FilePath "powershell.exe" -Arguments @(
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                "scripts/check-android-release-artifact.ps1"
+            )
+        }
     }
     Invoke-GateStep -Name "android build parity" -ScriptBlock {
         Invoke-Native -FilePath "powershell.exe" -Arguments @(

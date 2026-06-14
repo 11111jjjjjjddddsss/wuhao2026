@@ -156,6 +156,7 @@
 - 补充：2026-06-13 Android 8+ 跳转“安装未知应用”设置后，用户返回 App 且权限已允许时会自动继续下载 / 安装流程，不再要求回到检查更新弹窗再点一次“立即更新”；不同 ROM 的授权页和系统安装页仍需旧包真机覆盖安装验证。
 - 风险：普通 Android App 不能静默安装 APK；Android 8+ 需要用户给本 App “安装未知应用”授权，不同国产 ROM 的授权页和安装页可能存在差异。APK 下载地址、签名证书、`versionCode` 递增、https 证书、包名一致性、哈希配置和安装权限都需要真实环境验证。若后续发布 APK 签名证书变化，系统会拒绝覆盖安装；如果用户已经安装坏包，只能再发更高 `versionCode` 修复包，不能低版本回滚覆盖。后台排障日志能定位阶段，但不能替代旧包真机覆盖安装回归。
 - 后续动作：正式发第一版 APK 更新前，按 `docs/runbooks/app-update.md` 用旧包真机验证“检查更新 -> 发现新版本 -> 授权安装未知应用 -> 下载 -> 校验 -> 系统安装页 -> 覆盖安装成功”；发布流程里固定签名证书、`versionCode` 递增规则、文件大小和 SHA-256 记录
+- 补充：2026-06-15 已新增 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用于直接校验最终 `app-release.apk` 本体的包名、版本、不可调试、权限白名单、固定 release 证书指纹，并输出 `apk_size_bytes` / `apk_sha256` 供后台检查更新填写；`build_apk.bat` 和 `check-launch-readiness.ps1 -IncludeBuilds / -ReleaseGate` 已接入该校验。但这仍不能证明 APK URL 已上传可下载，也不能证明用户在真机上完成未知来源授权、系统安装页确认和覆盖安装成功；这些仍需旧包真机回归闭环。
 
 ## R16 礼品卡批量发放和精细风控仍未完成
 

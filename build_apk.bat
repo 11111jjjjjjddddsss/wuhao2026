@@ -19,8 +19,16 @@ for /f "delims=" %%i in ('dir /s /b app-release.apk 2^>nul') do (
 if defined APK_PATH (
     echo APK 输出路径=%APK_PATH%
     dir "%APK_PATH%"
+    echo 正在校验 release APK 物料...
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\check-android-release-artifact.ps1" -ApkPath "%APK_PATH%"
+    if errorlevel 1 (
+        echo APK 校验失败
+        exit /b 1
+    )
     echo APK_EXISTS=1
 ) else (
     echo APK_EXISTS=0
+    echo 未找到 release APK
+    exit /b 1
 )
 pause

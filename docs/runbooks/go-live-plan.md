@@ -101,7 +101,7 @@
 .\scripts\check-launch-readiness.ps1 -IncludeBuilds
 ```
 
-`-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建，再重新跑 parity。这个脚本不替代真机回归、App 备案 / App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
+`-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建、最终 release APK 物料校验，再重新跑 parity。release APK 物料校验由 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1) 读取最终 APK 本体，核对包名、版本、权限、不可调试、固定 release 证书指纹，并输出 `apk_size_bytes` 和 `apk_sha256`。这个脚本不替代真机回归、App 备案 / App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
 
 真正准备打正式包 / 提交上架前，优先使用正式上线门禁：
 
@@ -109,7 +109,7 @@
 .\scripts\check-launch-readiness.ps1 -ReleaseGate
 ```
 
-`-ReleaseGate` 会强制启用 `-IncludeBuilds` 和后台登录后 owner smoke，且不允许搭配 `-AllowAttentionExitZero` 或任何 `-Skip*` 跳过项；这条命令用于最后放行，不用于日常快速看报告。日常巡检可以继续用默认命令或 `-AllowAttentionExitZero` 看完整输出。
+`-ReleaseGate` 会强制启用 `-IncludeBuilds`、最终 release APK 物料校验和后台登录后 owner smoke，且不允许搭配 `-AllowAttentionExitZero` 或任何 `-Skip*` 跳过项；这条命令用于最后放行，不用于日常快速看报告。日常巡检可以继续用默认命令或 `-AllowAttentionExitZero` 看完整输出。
 
 ## P4：提交应用商店
 
