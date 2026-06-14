@@ -372,6 +372,14 @@ func TestAdminMonitoringLaunchReadinessStatusContract(t *testing.T) {
 	if accountDeletion.Status != "attention" {
 		t.Fatalf("account deletion launch item status = %q, want attention", accountDeletion.Status)
 	}
+	payment := findAdminMonitoringLaunchItem(items, "支付接入")
+	if payment == nil {
+		t.Fatalf("missing payment launch item: %#v", items)
+	}
+	if payment.Status != "attention" || payment.Manual {
+		t.Fatalf("payment before purchase launch should be attention and not a manual go-live item, got %#v", payment)
+	}
+	assertContainsAll(t, payment.Body, "购买入口保持关闭", "不阻塞免费版", "开放真实收费前")
 }
 
 func TestAdminMonitoringLaunchReadinessRequiresCompleteAppUpdateArtifacts(t *testing.T) {
@@ -423,6 +431,58 @@ func TestAdminMonitoringLaunchReadinessKeepsAppUpdateAttentionUntilDeviceInstall
 	}
 	if updateItem.Status != "attention" || !strings.Contains(updateItem.Body, "覆盖安装") || !strings.Contains(updateItem.Body, "正式验收") {
 		t.Fatalf("complete app update artifacts should still require device install validation, got %#v", updateItem)
+	}
+}
+
+func TestAdminMonitoringLaunchReadinessManualItemsAreExplicit(t *testing.T) {
+	report := AdminMonitoring{
+		Health: AdminHealthStatus{
+			API:               "ok",
+			Bailian:           "ok",
+			Dypns:             "ok",
+			DypnsFusion:       "ok",
+			DypnsSMS:          "ok",
+			SMS:               "ok",
+			Redis:             "ok",
+			UploadStorage:     "oss",
+			AuthStrict:        true,
+			DevOrderEndpoints: false,
+		},
+		Queues: AdminMonitoringQueues{
+			AppUpdate:          AdminMonitoringAppUpdate{Enabled: true, ConfigValid: true, DownloadArtifactsComplete: true},
+			GiftCardBatchCount: 1,
+			GiftCardTotal:      1,
+			GiftCardActive:     1,
+		},
+	}
+	items := buildAdminMonitoringLaunchReadiness(report)
+	manualTitles := []string{
+		"App 备案",
+		"App 公安备案",
+		"AccessKey 轮换",
+		"最终真机回归",
+		"短信套餐余额",
+		"最终 release 物料",
+		"日志告警",
+	}
+	for _, title := range manualTitles {
+		item := findAdminMonitoringLaunchItem(items, title)
+		if item == nil {
+			t.Fatalf("missing manual launch item %q in %#v", title, items)
+		}
+		if !item.Manual {
+			t.Fatalf("launch item %q should be marked manual: %#v", title, item)
+		}
+		if item.Status != "attention" {
+			t.Fatalf("manual launch item %q status = %q, want attention", title, item.Status)
+		}
+	}
+	serviceHealth := findAdminMonitoringLaunchItem(items, "后端生产健康")
+	if serviceHealth == nil {
+		t.Fatalf("missing service health launch item: %#v", items)
+	}
+	if serviceHealth.Manual {
+		t.Fatalf("service health should not be shown as a manual confirmation item: %#v", serviceHealth)
 	}
 }
 

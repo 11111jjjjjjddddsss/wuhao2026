@@ -271,6 +271,7 @@ type AdminMonitoringLaunchItem struct {
 	Body   string `json:"body"`
 	Route  string `json:"route,omitempty"`
 	Owner  string `json:"owner,omitempty"`
+	Manual bool   `json:"manual,omitempty"`
 }
 
 type AdminRegionMetric struct {
@@ -2199,16 +2200,55 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	})
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "支付接入",
-		Status: "blocked",
-		Body:   "微信 / 支付宝支付申请和真实回调未完成；真实收费前阻塞，不阻塞免费版和礼品卡内测，礼品卡先支撑正式权益发放。",
+		Status: "attention",
+		Body:   "微信 / 支付宝支付申请和真实回调未完成；购买入口保持关闭、开发期订单端点关闭时，不阻塞免费版、礼品卡内测或不含内购的正式上架。开放真实收费前必须完成申请、验签、回调、对账和权益发放闭环。",
 		Route:  "orders",
 		Owner:  "外部申请 / 后端",
 	})
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "备案与上架材料",
-		Status: "blocked",
-		Body:   "App 备案、App 公安备案、应用商店物料和上线前 AccessKey 轮换仍是正式上架阻塞项。",
-		Owner:  "法务 / 运营",
+		Title:  "App 备案",
+		Status: "attention",
+		Body:   "App 备案结果和备案号需要人工确认；未确认前不要把正式上架材料标成完成。",
+		Owner:  "运营",
+		Manual: true,
+	})
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "App 公安备案",
+		Status: "attention",
+		Body:   "App 公安备案需要按最终 App 信息处理；未确认前不要公开发布为已完成。",
+		Owner:  "运营 / 法务",
+		Manual: true,
+	})
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "AccessKey 轮换",
+		Status: "attention",
+		Body:   "上线前必须确认已暴露或主账号 AccessKey 已轮换，生产改用最小权限凭证；后台和日志不得展示真实密钥。",
+		Owner:  "运维",
+		Manual: true,
+	})
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "最终真机回归",
+		Status: "attention",
+		Body:   "最终 APK 需要人工确认清数据、短信登录、主聊天、图片问诊、今日农情、设置、会员、帮助反馈和检查更新都跑通。",
+		Route:  "app-logs",
+		Owner:  "Android / 产品",
+		Manual: true,
+	})
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "短信套餐余额",
+		Status: "attention",
+		Body:   "短信发送统计只能证明近期调用趋势；套餐包余额、到期和账单预警仍需在阿里云控制台人工确认。",
+		Route:  "health",
+		Owner:  "运营 / 运维",
+		Manual: true,
+	})
+	items = append(items, AdminMonitoringLaunchItem{
+		Title:  "最终 release 物料",
+		Status: "attention",
+		Body:   "最终 release APK、包名、签名、versionCode、应用商店截图和文字材料需要人工确认一致；检查更新物料齐全也不等于已完成覆盖安装验收。",
+		Route:  "app-update",
+		Owner:  "发布",
+		Manual: true,
 	})
 	slsStatus := "attention"
 	if queues.AppErrors >= 10 || queues.AuthFailures >= 10 || queues.CrashReports > 0 || queues.AuditFailures > 0 {
@@ -2220,6 +2260,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Body:   "Go / Nginx 日志和 App 自动日志已接入；SLS 邮件行动策略、最小仪表盘和资源水位云监控邮件以最近严格巡检脚本为准，本页不实时读取云上规则；剩余重点是确认首封告警邮件真实送达。",
 		Route:  "app-logs",
 		Owner:  "运维",
+		Manual: slsStatus == "attention",
 	})
 	supportStatus := "ready"
 	supportBody := "后台已支持待回复 / 已回复 / 已关闭队列、搜索、回复、关闭和重开；正式运营后再补坐席分配、标签、站外通知和保存 / 删除规则。"

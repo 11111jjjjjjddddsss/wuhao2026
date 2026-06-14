@@ -3267,7 +3267,7 @@ function operatorGuideStep(index: string, title: string, body: string, actions: 
 }
 
 function monitoringManualCheckStrip(report: AdminMonitoring): string {
-  const rows = (report.launch_readiness || []).filter((row) => row.status !== "ready");
+  const rows = (report.launch_readiness || []).filter((row) => row.manual && row.status !== "ready");
   if (!rows.length) return "";
   const visibleRows = rows.slice(0, 4);
   const remaining = rows.length - visibleRows.length;

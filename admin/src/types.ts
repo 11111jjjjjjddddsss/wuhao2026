@@ -257,6 +257,7 @@ export interface AdminMonitoringLaunchItem {
   body: string;
   route?: AdminRouteKey;
   owner?: string;
+  manual?: boolean;
 }
 
 export interface AdminRegionMetric {
