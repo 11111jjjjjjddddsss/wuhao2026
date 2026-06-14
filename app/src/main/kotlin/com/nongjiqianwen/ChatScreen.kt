@@ -245,7 +245,10 @@ private sealed interface ChatTimelineItem {
     }
 }
 @Immutable
-private data class FailedAssistantMessageState(val sourceUserMessageId: String)
+private data class FailedAssistantMessageState(
+    val sourceUserMessageId: String,
+    val reason: String? = null
+)
 @Immutable
 private data class LocalChatWindowSnapshot(
     val messages: List<ChatMessage> = emptyList(),
@@ -510,6 +513,8 @@ private const val ASSISTANT_RETRY_STATUS_TEXT = "回复未完成"
 private const val ASSISTANT_RETRY_ACTION_TEXT = "重试"
 private const val ASSISTANT_RETRYING_STATUS_TEXT = "正在重试..."
 private const val ASSISTANT_RETRY_PREVIEW_TEXT = "回复未完成 · 点击重试"
+private const val QUOTA_RETRY_STATUS_TEXT = "今日额度已用完"
+private const val QUOTA_RETRY_PREVIEW_TEXT = "今日额度已用完 · 点击重试"
 private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
 private const val USER_RETRYING_STATUS_TEXT = "正在重发..."
@@ -4018,7 +4023,6 @@ fun ChatScreen() {
 
     fun shouldShowInterruptedAssistantRetry(reason: String): Boolean =
         reason !in setOf(
-            "quota",
             "rate_limit",
             "stale_session",
             "stream_in_progress"
@@ -4057,7 +4061,8 @@ fun ChatScreen() {
         }
         if (showAssistantRetry) {
             failedAssistantMessageStates[assistantMessageId] = FailedAssistantMessageState(
-                sourceUserMessageId = sourceUserMessageId
+                sourceUserMessageId = sourceUserMessageId,
+                reason = reason
             )
         } else {
             failedAssistantMessageStates.remove(assistantMessageId)
@@ -5077,7 +5082,8 @@ fun ChatScreen() {
             }
             if (showAssistantRetry) {
                 failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
-                    sourceUserMessageId = sourceUserMessageId
+                    sourceUserMessageId = sourceUserMessageId,
+                    reason = reason
                 )
             } else {
                 failedAssistantMessageStates.remove(finalId)
@@ -6356,13 +6362,22 @@ fun ChatScreen() {
                             }
                             if (failedAssistantState != null) {
                                 val assistantRetrying = retryingAssistantMessageIds[msg.id] == true
+                                val failedByQuota = failedAssistantState.reason == "quota"
                                 MessageStatusFooter(
                                     statusText = if (assistantRetrying) {
                                         ASSISTANT_RETRYING_STATUS_TEXT
+                                    } else if (failedByQuota) {
+                                        QUOTA_RETRY_STATUS_TEXT
                                     } else {
                                         ASSISTANT_RETRY_STATUS_TEXT
                                     },
-                                    actionText = ASSISTANT_RETRY_ACTION_TEXT.takeIf { !assistantRetrying },
+                                    actionText = if (assistantRetrying) {
+                                        null
+                                    } else if (failedByQuota) {
+                                        ASSISTANT_RETRY_ACTION_TEXT
+                                    } else {
+                                        ASSISTANT_RETRY_ACTION_TEXT
+                                    },
                                     alignEnd = false,
                                     enabled = !assistantRetrying &&
                                         !isStreaming &&
@@ -7440,7 +7455,9 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("首次登录页", "无独立同意页，登录页对号承接隐私同意", UiCopyPreviewKind.LoginInitial),
                     UiCopyPreviewItem("未勾选拦截", "不请求后端、不拉 SDK、不申请电话权限", UiCopyPreviewKind.LoginAgreementBlocked),
-                    UiCopyPreviewItem("短信登录", "手机号 + 6位验证码 + 协议勾选", UiCopyPreviewKind.LoginSmsFallback)
+                    UiCopyPreviewItem("短信登录", "手机号 + 6位验证码 + 协议勾选", UiCopyPreviewKind.LoginSmsFallback),
+                    UiCopyPreviewItem("换手机号后发送", "倒计时只锁刚发成功的手机号，换号可立即发送", UiCopyPreviewKind.LoginPhoneChanged),
+                    UiCopyPreviewItem("登录协议弹窗", "服务协议 / 隐私政策在登录页内打开", UiCopyPreviewKind.LoginLegalDialog)
                 )
             ),
             UiCopyPreviewGroup(
@@ -7590,6 +7607,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
                     UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
+                    UiCopyPreviewItem(QUOTA_RETRY_PREVIEW_TEXT, "今日额度用完后尾部", UiCopyPreviewKind.QuotaRetry),
                     UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 尾部补上传图片时", UiCopyPreviewKind.AssistantRetrying),
                     UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
                     UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户尾部补上传图片时", UiCopyPreviewKind.UserRetrying)
@@ -7775,6 +7793,8 @@ private enum class UiCopyPreviewKind {
     LoginInitial,
     LoginAgreementBlocked,
     LoginSmsFallback,
+    LoginPhoneChanged,
+    LoginLegalDialog,
     CleanStateFirstLaunch,
     CleanStateFirstSend,
     CleanStateChecklist,
@@ -7839,6 +7859,7 @@ private enum class UiCopyPreviewKind {
     SupportAttachmentSheet,
     Disclaimer,
     AssistantRetry,
+    QuotaRetry,
     AssistantRetrying,
     UserRetry,
     UserRetrying,
@@ -8020,9 +8041,18 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.LoginSmsFallback -> {
                     UiCopyPreviewLoginPage(
                         agreed = true,
-                        message = "验证码已发送"
+                        message = "验证码已发送",
+                        sendButtonText = "60s"
                     )
                 }
+                UiCopyPreviewKind.LoginPhoneChanged -> {
+                    UiCopyPreviewLoginPage(
+                        agreed = true,
+                        message = "已更换手机号，可重新发送验证码",
+                        sendButtonText = "发送"
+                    )
+                }
+                UiCopyPreviewKind.LoginLegalDialog -> UiCopyPreviewLoginLegalDialog()
                 UiCopyPreviewKind.CleanStateFirstLaunch -> {
                     UiCopyPreviewCleanStateFirstLaunch()
                 }
@@ -8355,6 +8385,14 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         onActionClick = {}
                     )
                 }
+                UiCopyPreviewKind.QuotaRetry -> {
+                    MessageStatusFooter(
+                        statusText = QUOTA_RETRY_STATUS_TEXT,
+                        actionText = ASSISTANT_RETRY_ACTION_TEXT,
+                        alignEnd = false,
+                        onActionClick = {}
+                    )
+                }
                 UiCopyPreviewKind.AssistantRetrying -> {
                     MessageStatusFooter(
                         statusText = ASSISTANT_RETRYING_STATUS_TEXT,
@@ -8439,7 +8477,8 @@ private fun UiCopyPreviewNarrowFrame(
 @Composable
 private fun UiCopyPreviewLoginPage(
     agreed: Boolean,
-    message: String?
+    message: String?,
+    sendButtonText: String = "发送"
 ) {
     Surface(
         color = Color.White,
@@ -8473,7 +8512,7 @@ private fun UiCopyPreviewLoginPage(
                     modifier = Modifier.weight(1f)
                 )
                 UiCopyPreviewLoginButton(
-                    text = "发送",
+                    text = sendButtonText,
                     primary = false,
                     modifier = Modifier.width(88.dp)
                 )
@@ -8527,6 +8566,68 @@ private fun UiCopyPreviewLoginPage(
 }
 
 @Composable
+private fun UiCopyPreviewLoginLegalDialog() {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 8.dp)
+            ) {
+                Text(
+                    text = "服务协议",
+                    color = Color(0xFF111111),
+                    fontSize = 17.sp,
+                    lineHeight = 23.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.sp,
+                    modifier = Modifier.weight(1f)
+                )
+                Text(
+                    text = "关闭",
+                    color = Color(0xFF111111),
+                    fontSize = 14.sp,
+                    letterSpacing = 0.sp,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
+            HorizontalDivider(color = Color(0xFFE8EAEE))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 220.dp)
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "用户协议",
+                    color = Color(0xFF111111),
+                    fontSize = 18.sp,
+                    lineHeight = 24.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    letterSpacing = 0.sp
+                )
+                Text(
+                    text = "登录页内打开协议时，正文区域有固定高度；服务协议本身滚动，隐私政策外层滚动，避免嵌套滚动导致闪退。",
+                    color = Color(0xFF4E5661),
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    letterSpacing = 0.sp
+                )
+                UiCopyPreviewGuardRow("服务协议", "有限高度 LazyColumn")
+                UiCopyPreviewGuardRow("隐私政策", "有限高度滚动正文")
+            }
+        }
+    }
+}
+
+@Composable
 private fun UiCopyPreviewLoginButton(
     text: String,
     primary: Boolean,
@@ -8562,7 +8663,7 @@ private fun UiCopyPreviewLoginField(
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFD3D7DE)),
+        border = BorderStroke(0.8.dp, Color(0xFF777B82)),
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)

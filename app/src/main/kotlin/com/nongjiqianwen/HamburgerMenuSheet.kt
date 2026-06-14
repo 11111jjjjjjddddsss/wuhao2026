@@ -4352,8 +4352,8 @@ private fun HamburgerMenuRow(
             Text(
                 text = title,
                 color = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-                fontSize = 19.sp,
-                lineHeight = 25.sp,
+                fontSize = 18.sp,
+                lineHeight = 24.sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

@@ -34,6 +34,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -107,12 +108,25 @@ private fun LoginScreen(
     var phone by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     val context = LocalContext.current
-    var agreed by remember { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
+    var agreed by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableIntStateOf(0) }
+    var countdownPhone by remember { mutableStateOf<String?>(null) }
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
     val agreementText = remember { buildLoginAgreementText() }
+    val activeCountdown = if (phone == countdownPhone) countdown else 0
+    val loginTextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color(0xFF111111),
+        unfocusedTextColor = Color(0xFF111111),
+        cursorColor = Color(0xFF111111),
+        focusedBorderColor = Color(0xFF111111),
+        unfocusedBorderColor = Color(0xFF777B82),
+        focusedLabelColor = Color(0xFF111111),
+        unfocusedLabelColor = Color(0xFF575D66),
+        focusedPlaceholderColor = Color(0xFF575D66),
+        unfocusedPlaceholderColor = Color(0xFF575D66)
+    )
 
     fun acceptAgreementIfNeeded() {
         if (!PrivacyConsentStore.isAccepted(context)) {
@@ -136,16 +150,19 @@ private fun LoginScreen(
             message = "请输入正确的手机号"
             return
         }
+        val submittedPhone = phone
         AppCrashReporter.setAuthStage("auth.sms_send")
         busy = true
         message = null
-        SessionApi.sendSmsCode(phone) { ok, error ->
+        SessionApi.sendSmsCode(submittedPhone) { ok, error ->
             AppCrashReporter.clearAuthStage("auth.sms_send")
             busy = false
             if (ok) {
+                countdownPhone = submittedPhone
                 countdown = 60
-                message = "验证码已发送"
+                message = if (phone == submittedPhone) "验证码已发送" else null
             } else {
+                countdownPhone = null
                 countdown = 0
                 message = error ?: "验证码发送失败，请稍后再试"
             }
@@ -177,6 +194,8 @@ private fun LoginScreen(
         if (countdown > 0) {
             delay(1000)
             countdown -= 1
+        } else {
+            countdownPhone = null
         }
     }
 
@@ -209,7 +228,8 @@ private fun LoginScreen(
                     horizontalArrangement = Arrangement.Center,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    LoginBrandLogo(Modifier.width(50.dp))
+                    LoginBrandLogo(Modifier.size(50.dp))
+                    Spacer(Modifier.width(12.dp))
                     Text(
                         text = "农技千查",
                         color = Color(0xFF111111),
@@ -220,19 +240,27 @@ private fun LoginScreen(
                         letterSpacing = 0.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier = Modifier.widthIn(max = 240.dp)
                     )
-                    Spacer(Modifier.width(50.dp))
                 }
                 Spacer(Modifier.height(32.dp))
 
                 Spacer(Modifier.height(18.dp))
                 OutlinedTextField(
                     value = phone,
-                    onValueChange = { phone = it.filter(Char::isDigit).take(11) },
+                    onValueChange = {
+                        val nextPhone = it.filter(Char::isDigit).take(11)
+                        if (nextPhone != phone) {
+                            phone = nextPhone
+                            if (nextPhone != countdownPhone && message == "验证码已发送") {
+                                message = null
+                            }
+                        }
+                    },
                     singleLine = true,
                     label = { Text("手机号") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    colors = loginTextFieldColors,
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -254,20 +282,21 @@ private fun LoginScreen(
                         keyboardActions = KeyboardActions(
                             onDone = { loginWithSms() }
                         ),
+                        colors = loginTextFieldColors,
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = 56.dp)
                     )
                     OutlinedButton(
                         onClick = ::sendSmsCode,
-                        enabled = !busy && countdown == 0,
+                        enabled = !busy && activeCountdown == 0,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
                             .height(56.dp)
                             .widthIn(min = 96.dp)
                     ) {
                         Text(
-                            text = if (countdown > 0) "${countdown}s" else "发送",
+                            text = if (activeCountdown > 0) "${activeCountdown}s" else "发送",
                             color = Color(0xFF111111),
                             letterSpacing = 0.sp
                         )
@@ -362,7 +391,7 @@ private fun LoginScreen(
 private fun LoginBrandLogo(modifier: Modifier = Modifier) {
     Box(
         modifier = modifier,
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
@@ -487,18 +516,27 @@ private fun LoginLegalDialog(
                     }
                 }
                 HorizontalDivider(color = Color(0xFFE8EAEE))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    when (page) {
-                        LoginLegalPage.ServiceAgreement -> {
+                when (page) {
+                    LoginLegalPage.ServiceAgreement -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 540.dp)
+                        ) {
                             HamburgerServiceAgreementContent(
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 18.dp, vertical = 14.dp)
                             )
                         }
-                        LoginLegalPage.PrivacyPolicy -> {
+                    }
+                    LoginLegalPage.PrivacyPolicy -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(max = 540.dp)
+                                .verticalScroll(rememberScrollState())
+                        ) {
                             HamburgerPrivacyPolicyContent(
                                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
                             )
