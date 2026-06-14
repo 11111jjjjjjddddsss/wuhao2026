@@ -102,7 +102,21 @@ jobs:
           BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: |
-          python3 scripts/check_project_memory.py --base "$BASE_SHA" --head "$HEAD_SHA"
+          set -euo pipefail
+          base="$BASE_SHA"
+          head="$HEAD_SHA"
+          if [ -z "$base" ] || ! git cat-file -e "${base}^{commit}" 2>/dev/null || ! git merge-base --is-ancestor "$base" "$head" 2>/dev/null; then
+            fallback="$(git rev-parse "${head}^" 2>/dev/null || true)"
+            if [ -n "$fallback" ]; then
+              echo "BASE_SHA '$base' is unavailable or not an ancestor of HEAD; using $fallback."
+              base="$fallback"
+            else
+              echo "BASE_SHA '$base' is unavailable and HEAD has no parent; running working-tree memory check."
+              python3 scripts/check_project_memory.py
+              exit 0
+            fi
+          fi
+          python3 scripts/check_project_memory.py --base "$base" --head "$head"
 
       - name: Generate Android manifests and BuildConfig for parity checks
         run: |
