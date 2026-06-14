@@ -2506,25 +2506,16 @@ fun ChatScreen() {
                 messages.any { it.id == messageId }
         }
     }
-    val waitingForTodayAgriCardAnchor by remember(
-        shouldShowTodayAgriCard,
-        currentTodayAgriCardHasSavedAnchor
-    ) {
-        derivedStateOf {
-            shouldShowTodayAgriCard && !currentTodayAgriCardHasSavedAnchor
-        }
-    }
     val chatListItems by remember(
         todayAgriCard,
         shouldShowTodayAgriCard,
         todayAgriCardAnchorForRender,
-        waitingForTodayAgriCardAnchor,
         hiddenRemoteRoundCount,
         messages
     ) {
         derivedStateOf {
             val visibleTodayAgriCard = todayAgriCard.takeIf {
-                shouldShowTodayAgriCard && !waitingForTodayAgriCardAnchor
+                shouldShowTodayAgriCard
             }
             buildChatTimelineItems(
                 messages = messages,

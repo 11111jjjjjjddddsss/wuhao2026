@@ -1344,13 +1344,13 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "六、禁止行为、责任和协议更新",
-                body = "请不要上传违法、侵权、虚假、有害、无关、侵犯隐私或商业秘密的内容；不要冒充官方、专家、平台人员或他人，不传播虚假农情，不诱导错误用药用肥或违规经营；不要攻击接口、爬虫抓取、刷量、绕过额度、逆向工程、批量撞库礼品卡、转售账号权益或恶意消耗服务资源。我们可能根据产品、法律法规或运营需要更新本协议，重要变化会以 App 内页面、弹窗或其他合理方式提示；您不同意的，可以停止使用相关服务。如有问题可通过邮箱 465989879@qq.com 联系我们。"
+                body = "请不要上传违法、侵权、虚假、有害、无关、侵犯隐私或商业秘密的内容；不要冒充官方、专家、平台人员或他人，不传播虚假农情，不诱导错误用药用肥或违规经营；不要攻击接口、爬虫抓取、刷量、绕过额度、逆向工程、批量撞库礼品卡、转售账号权益或恶意消耗服务资源。我们可能根据产品、法律法规或运营需要更新本协议，重要变化会以 App 内页面、弹窗或其他合理方式提示；您不同意的，可以停止使用相关服务。如有问题可通过邮箱 nongjiqiancha@foxmail.com 联系我们。"
             )
         )
     }
     HamburgerLegalTextPage(
         title = "服务协议",
-        meta = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
+        meta = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com",
         sections = sections,
         modifier = modifier,
     )
@@ -1416,7 +1416,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年6月1日\n生效日期：2026年6月1日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：465989879@qq.com",
+            text = "更新日期：2026年6月1日\n生效日期：2026年6月1日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1467,7 +1467,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十二、您的权利",
-            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 465989879@qq.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。当前“删除所有历史对话”只删除问诊聊天历史和相关记忆，不等于完整账号注销。"
+            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。当前“删除所有历史对话”只删除问诊聊天历史和相关记忆，不等于完整账号注销。"
         )
         HamburgerAgreementSection(
             title = "十三、未成年人和敏感信息",
