@@ -448,6 +448,7 @@ private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 2200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 16L
+private const val STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS = 24L
 internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 36L
 internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
@@ -5043,8 +5044,11 @@ fun ChatScreen() {
             remoteRecoveryJob = null
             remoteRecoverySourceUserMessageId = null
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
-            streamRevealJob?.cancel()
-            streamRevealJob = null
+            if (streamingRevealBuffer.isNotEmpty()) {
+                ensureStreamingRevealJob()
+                mainHandler.postDelayed({ finishStreaming() }, STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS)
+                return@post
+            }
             flushStreamingRevealBuffer(
                 currentMessageId = streamingMessageId,
                 currentContent = streamingMessageContent,

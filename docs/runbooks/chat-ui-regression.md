@@ -1,6 +1,6 @@
 # Chat UI 回归与接手 Runbook
 
-最后更新：2026-06-14
+最后更新：2026-06-15
 
 ## 目的
 
@@ -25,12 +25,13 @@
 - 工作线 gap 是 `96.dp`，小球、streaming 正文、开机历史态、完成态尾部都围绕这条工作线；工作线以下空白必须完整露出来
 - AutoFollow / 回到底部使用 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`
 - streaming 内容提交后由 `SideEffect` 在同帧 apply changes 后、layout 前请求底部锚定，压“下一行从工作线下方冒头闪”
+- streaming 期间只有真实拖动或已经进入 `UserBrowsing` 的惯性 / 浏览才让权；同帧底部锚定、内部 remeasure 或程序滚动不能仅凭 `isScrollInProgress=true` 被误判成用户浏览，否则会出现生成中短暂停 AutoFollow 的“先往下掉、再上去”体感
 - 用户进入 `UserBrowsing` 后让权；用户手动回到正向列表物理底部（`canScrollForward == false`、手指抬起、滚动停止）后先锚底再恢复 `AutoFollow`
 - composer 是页面底部兄弟层，自己吃 `imePadding()`；列表不吃 IME 动画帧，不允许键盘抬升消息工作线
 - active / settled 渲染共用 unified soft-wrap renderer；不再用小分割 item、物理行预切、fresh suffix 灰色高亮动画
 - 流式运行态里的正文 / reveal buffer / message id / isStreaming 是运行时状态，不进入 Activity saved-state；切后台 / 重建恢复依赖已有流式草稿、远端快照和 pending 恢复链，避免大字符串进 saved-state 或出现“状态保存了但内容丢了”的半恢复状态
 - 主聊天只渲染最近 30 个用户轮次以保护长期使用性能；`/api/session/snapshot` 的 `round_total` 大于 `a_rounds_for_ui` 展示数时，列表顶部显示历史窗口轻提示，清空历史或 clean-state 后该提示必须消失
-- 标准 Markdown 表格降级成普通项目行文本；emoji 偶发输出时按普通文本渲染
+- 当前 `ChatStreamingRenderer.kt` 是移动聊天轻量 Markdown 子集渲染器，不是 Markwon / CommonMark / GFM 全量引擎。支持段落、标题、列表、引用、加粗、斜体、行内代码、Markdown 链接、裸 URL、emoji / 普通 Unicode；标准 Markdown 表格降级成普通项目行文本，代码块内的 `|` 不做表格降级。复杂嵌套列表、GFM 表格网格、代码高亮、数学公式、Mermaid、图片 Markdown 和任意 HTML 不作为当前主聊天承诺能力
 - 清除 App 数据 / 缓存属于常规用户路径，不再按极端场景处理。清数据后本地登录态、DataStore、私有数据库和缓存可以消失，但固定 UI 默认样式、设置页入口、账号管理条目、登录页和主聊天基础布局必须全部来自当前 APK 代码；手机号账号、会员、额度、礼品卡、反馈、聊天历史和今日农情等业务数据应在重新登录后从后端恢复。本地缓存只用于加速首屏和减少闪烁，不能成为新 UI 是否存在、默认菜单是否出现、启动是否贴底的唯一来源。
 - `scripts/check-android-build-parity.ps1` 需要同时挡住 clean-state 相关回退：启动贴底不能把本地消息存在误判为已完成；设置页默认入口必须包含会员中心、账号管理、帮助与反馈、今日农情、检查更新、礼品卡、服务协议和退出登录；账号管理默认条目必须包含手机号、清理临时缓存、删除历史对话、退出登录和注销账号。
 - App 自动日志会记录清数据 / 登录后可查的安全诊断事件：`ui.chat_startup_state`、`ui.chat_startup_bottom_snap_done`、`ui.chat_startup_bottom_snap_pending`、`ui.settings_main_opened`、`ui.account_management_opened`。这些事件只允许带布尔状态、数量和阶段，不允许带聊天正文、完整手机号、图片 URL、token、密钥或用户输入内容；排查 UI 回退时先查这些事件，再对照截图和真机 logcat。
@@ -99,6 +100,8 @@
 预期：
 - 中文吐字不应 3 到 4 个字一坨一坨跳出；长回复也不应因为吐字过细出现明显掉帧
 - 工作线下方不应再冒出下一行黑点 / 黑字
+- `**加粗**`、`*斜体*`、行内代码和链接应在 streaming 中尽量实时渲染，不应先长期显示 raw `**` 再在闭合符号到达时整行重排；模型如果输出未闭合或明显不合法 Markdown，完成态可以保留原符号
+- 后端 DONE 到达后，客户端仍应按打字节奏排空本地 reveal buffer，不应把剩余大段文字一口气全吐出来
 - 分割线只跟随一级 / 二级标题规则，不随机丢
 - streaming 期间免责声明只占位不显示，settled 后显示且尾部不跳
 

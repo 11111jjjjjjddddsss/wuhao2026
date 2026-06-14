@@ -104,6 +104,7 @@
 - 正向列表传给 `LazyColumn` 的 bottom padding 会扣掉 `CHAT_MESSAGE_ITEM_VERTICAL_PADDING`，只补偿消息 item 外层 padding，不改变工作线本身
 - 每次 reveal 提交前，AutoFollow 会先请求一次最新消息底部锚点；提交新的 `streamingMessageContent` 后，`ChatScreen.kt` 顶层通过 `SideEffect` 在同帧 apply changes 后、layout 前再次请求最新消息底部锚点，专门压正向列表下一行先从工作线下方冒头的一帧
 - 大白话口径：以前是“新字 / 新行先长出来，列表下一拍才把它拉回工作线”，所以用户能看见下面冒一下；现在是“新字 / 新行要长出来的同一拍，先把列表底部钉在工作线”，画到屏幕时已经归位，所以冒头闪被压住
+- 2026-06-15 按用户视频反馈复核后，继续保留这条同帧锚定基线；`ChatScrollCoordinator.kt` 同步收窄 streaming 期间 `LazyColumn` 滚动状态的归因：只有真实拖动或已经进入 `UserBrowsing` 的惯性 / 浏览才会暂停 AutoFollow，普通同帧底部锚定、内部 remeasure 或程序滚动不再仅凭 `isScrollInProgress=true` 被当成用户浏览，减少生成中“先往下掉一点、再上去”的偶发体感
 - 高频 reveal 底部锚点请求带 generation 守护，一帧后只允许最新请求关闭 `programmaticScroll`，避免旧取消任务把新程序滚动提前关掉后被误判成用户浏览
 - 启动显示门不再把本地已有消息 / 首次欢迎空态硬等到 hydrate barrier 后才显示；有本地消息、已有 streaming item 或尚未开始过对话时，列表/欢迎壳可以先显示，减少开机白屏时间。历史消息贴底仍走正向列表最新消息 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET` 主链
 - 静态 / 开机 / 完成态到底必须同时满足文本底边命中 96dp 工作线以及 `chatListState.canScrollForward == false`，避免“文本看似贴线，但工作线以下空白还没完整露出、还能继续往上扒”的状态被误判为到底
@@ -116,7 +117,8 @@
 ## 渲染与收口
 
 - waiting 小球、streaming 正文、settled 完成态共用同一条 assistant 消息 item，不再切第二滚动主人
-- `ChatStreamingRenderer.kt` 当前 active streaming 和 settled Markdown 都走 soft-wrap block renderer，并复用 inline Markdown cache 保留加粗 / 链接 / code；旧 committed 物理行预切 / TextMeasurer 渲染链已移除，避免 streaming -> settled 收口时换渲染模型导致行高 / 行宽微动
+- `ChatStreamingRenderer.kt` 当前 active streaming 和 settled Markdown 都走同一套 soft-wrap block renderer；它是面向移动聊天的轻量 Markdown 子集渲染器，不是 Markwon / CommonMark / GFM 全量引擎。当前支持段落、标题、列表、引用、加粗、斜体、行内代码、Markdown 链接、裸 URL、emoji / 普通 Unicode 文本，标准表格降级为手机可读的项目行；不承诺完整代码块高亮、复杂嵌套列表、GFM 表格网格、数学公式、Mermaid、图片 Markdown 或任意 HTML。旧 committed 物理行预切 / TextMeasurer 渲染链已移除，避免 streaming -> settled 收口时换渲染模型导致行高 / 行宽微动
+- 2026-06-15 按用户视频里“加粗处一伸一缩、末尾一口气吐出”的问题继续收口：renderer 新增 streaming-aware inline 模式，活跃 streaming 段遇到 `**...`、`*...`、`` `... `` 这类未闭合标记时会先按目标样式显示正文、隐藏结构符号，完成态仍要求闭合标记才吃掉符号；已完成块走 settled 模式和缓存。这样保持“边生成边渲染”，同时降低 `**` 闭合瞬间整行重排。DONE 收口不再取消 reveal job 并把剩余 buffer 一口气 flush，而是继续按当前打字节奏把 buffer drain 完再进入两阶段 finalize，避免后半段文字突然整段出现
 - active Markdown 仍实时吐字，但 `# ` / `- ` / `1. ` / `> ` 这类结构前缀必须等后面已有非空正文才结构化，避免只有符号的半成品先变标题 / 列表再重排
 - streaming reveal 当前按更接近正常聊天产品的节奏处理：远端首个 chunk 太快返回时，waiting 小球至少展示约 1.5 秒，保证现有 720ms 往返呼吸动画能被用户看见；中文通常 1 个字一拍，单字约 22ms，英文 / 数字仍按词块吐出，标点和换行有更明显停顿。该改动只调小球和吐字节奏，不改变正向 `LazyColumn` 滚动主链、工作线、今日农情列表项或失败 / 重试链路；仍不恢复新字尾部灰色高亮动画，也不把正文改成慢速朗读
 - 标准 Markdown 表格当前不做真表格控件，renderer 会把表格行降级成普通项目行文本，保证模型偶发输出表格时至少可读、不撑乱聊天布局；代码块内的 `|` 不做表格降级。emoji / 表情若偶发输出，继续按普通文本由 Compose `Text` 承接

@@ -165,9 +165,13 @@ internal fun handleChatListScrollStateChanged(
 
         scrollInProgress -> {
             if (isStreaming || hasStreamingItem) {
-                userInteractingState.value = true
-                if (scrollModeState.value != ScrollMode.UserBrowsing) {
-                    scrollModeState.value = ScrollMode.UserBrowsing
+                val userOwnedScroll =
+                    userInteractingState.value || scrollModeState.value == ScrollMode.UserBrowsing
+                if (userOwnedScroll) {
+                    userInteractingState.value = true
+                    if (scrollModeState.value != ScrollMode.UserBrowsing) {
+                        scrollModeState.value = ScrollMode.UserBrowsing
+                    }
                 }
                 return
             }

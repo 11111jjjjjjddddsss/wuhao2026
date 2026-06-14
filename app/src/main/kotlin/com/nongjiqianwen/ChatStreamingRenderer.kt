@@ -42,9 +42,18 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -180,6 +189,21 @@ private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
 private val rendererBulletRegex = Regex("^[*-]\\s+.*$")
 private val rendererNumberedRegex = Regex("^\\d+\\.\\s+.*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
+private val rendererMarkdownLinkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
+private val rendererBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
+private const val RENDERER_INLINE_MARKDOWN_CACHE_LIMIT = 160
+
+private val rendererSettledInlineMarkdownCache =
+    object : LinkedHashMap<String, AnnotatedString>(RENDERER_INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AnnotatedString>?): Boolean {
+            return size > RENDERER_INLINE_MARKDOWN_CACHE_LIMIT
+        }
+    }
+
+internal enum class RendererInlineMode {
+    Streaming,
+    Settled
+}
 
 private fun splitRendererMarkdownTableCells(line: String): List<String> {
     val trimmed = line.trim().removePrefix("|").removeSuffix("|")
@@ -1036,6 +1060,11 @@ private fun RendererAssistantStreamingContentImpl(
                 )
                 RendererAssistantStreamingUnifiedBlockHost(
                     model = model,
+                    inlineMode = if (activeModel != null && index == unifiedModels.lastIndex) {
+                        RendererInlineMode.Streaming
+                    } else {
+                        RendererInlineMode.Settled
+                    },
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1047,6 +1076,7 @@ private fun RendererAssistantStreamingContentImpl(
 @Composable
 private fun RendererAssistantStreamingUnifiedBlockHost(
     model: StreamingLineModel,
+    inlineMode: RendererInlineMode,
     showLeadingSectionDivider: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -1056,6 +1086,7 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
         }
         RendererAssistantStreamingActiveBlockImpl(
             model = model,
+            inlineMode = inlineMode,
             showLeadingSectionDivider = false,
             modifier = Modifier.fillMaxWidth()
         )
@@ -1067,13 +1098,16 @@ private fun RendererStreamingActiveTextImpl(
     text: String,
     style: TextStyle,
     minLineHeight: Dp,
+    inlineMode: RendererInlineMode,
     modifier: Modifier = Modifier
 ) {
     if (text.isEmpty()) {
         Spacer(modifier = modifier.height(minLineHeight))
         return
     }
-    val renderedText = remember(text) { getCachedAnnotatedString(text) }
+    val renderedText = remember(text, inlineMode) {
+        buildRendererInlineAnnotatedString(text = text, mode = inlineMode)
+    }
     Text(
         text = renderedText,
         modifier = modifier.heightIn(min = minLineHeight),
@@ -1081,6 +1115,297 @@ private fun RendererStreamingActiveTextImpl(
         textAlign = TextAlign.Start,
         softWrap = true
     )
+}
+
+internal fun buildRendererInlineAnnotatedString(
+    text: String,
+    mode: RendererInlineMode
+): AnnotatedString {
+    if (mode == RendererInlineMode.Settled) {
+        synchronized(rendererSettledInlineMarkdownCache) {
+            rendererSettledInlineMarkdownCache[text]?.let { return it }
+        }
+    }
+    return buildAnnotatedString {
+        var index = 0
+        var bold = false
+        var italic = false
+        var code = false
+
+        fun currentTextStyle(): SpanStyle {
+            return SpanStyle(
+                fontWeight = if (bold) FontWeight.SemiBold else null,
+                fontStyle = if (italic) FontStyle.Italic else null,
+                fontFamily = if (code) FontFamily.Monospace else null,
+                background = if (code) Color(0xFFF2F3F5) else Color.Unspecified
+            )
+        }
+
+        fun currentLinkStyle(): SpanStyle {
+            return currentTextStyle().copy(
+                color = Color(0xFF111111),
+                textDecoration = TextDecoration.Underline
+            )
+        }
+
+        fun appendStyled(chunk: String) {
+            if (chunk.isEmpty()) return
+            withStyle(currentTextStyle()) {
+                append(chunk)
+            }
+        }
+
+        fun appendLinked(displayText: String, url: String) {
+            if (displayText.isEmpty()) return
+            withLink(LinkAnnotation.Url(normalizeRendererLinkTarget(url))) {
+                withStyle(currentLinkStyle()) {
+                    append(displayText)
+                }
+            }
+        }
+
+        while (index < text.length) {
+            if (!code) {
+                val markdownLink = rendererMarkdownLinkRegex.find(text, index)
+                    ?.takeIf { it.range.first == index }
+                if (markdownLink != null) {
+                    appendLinked(
+                        displayText = markdownLink.groupValues[1],
+                        url = markdownLink.groupValues[2]
+                    )
+                    index = markdownLink.range.last + 1
+                    continue
+                }
+                val bareUrl = rendererBareUrlRegex.find(text, index)
+                    ?.takeIf { it.range.first == index }
+                if (bareUrl != null) {
+                    val displayText = trimRendererBareUrlDisplayText(bareUrl.value)
+                    if (displayText.isNotEmpty()) {
+                        appendLinked(displayText = displayText, url = displayText)
+                        index += displayText.length
+                        continue
+                    }
+                }
+            }
+            when {
+                !code && isRendererBoldDelimiter(text, index, bold, mode) -> {
+                    bold = !bold
+                    index += 2
+                }
+                isRendererCodeDelimiter(text, index, code, mode) -> {
+                    code = !code
+                    index += 1
+                }
+                !code && isRendererItalicDelimiter(text, index, italic, mode) -> {
+                    italic = !italic
+                    index += 1
+                }
+                else -> {
+                    val nextSpecial = findNextStreamingInlineDelimiterIndex(
+                        text = text,
+                        startIndex = index,
+                        bold = bold,
+                        italic = italic,
+                        code = code,
+                        mode = mode
+                    )
+                    appendStyled(text.substring(index, nextSpecial))
+                    index = nextSpecial
+                }
+            }
+        }
+    }.also { built ->
+        if (mode == RendererInlineMode.Settled) {
+            synchronized(rendererSettledInlineMarkdownCache) {
+                rendererSettledInlineMarkdownCache[text] = built
+            }
+        }
+    }
+}
+
+private fun normalizeRendererLinkTarget(raw: String): String {
+    val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
+    if (trimmed.isBlank()) return raw.trim()
+    return if (
+        trimmed.startsWith("http://", ignoreCase = true) ||
+        trimmed.startsWith("https://", ignoreCase = true)
+    ) {
+        trimmed
+    } else {
+        "https://$trimmed"
+    }
+}
+
+private fun trimRendererBareUrlDisplayText(raw: String): String {
+    val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
+    return raw.trimEnd { it in trailingPunctuation }
+}
+
+private fun Char.isRendererAsciiLetterOrDigit(): Boolean {
+    return this in '0'..'9' ||
+        this in 'a'..'z' ||
+        this in 'A'..'Z'
+}
+
+private fun Char.isRendererMarkdownDelimiterBoundary(): Boolean {
+    return isWhitespace() ||
+        this in ".,;:!?，。；：！？、（）()[]{}<>《》“”\"'"
+}
+
+private fun isRendererAsciiInlineOperatorRun(text: String, index: Int, length: Int): Boolean {
+    val previous = text.getOrNull(index - 1)
+    val next = text.getOrNull(index + length)
+    return previous?.isRendererAsciiLetterOrDigit() == true &&
+        next?.isRendererAsciiLetterOrDigit() == true
+}
+
+private fun isRendererSingleAsterisk(text: String, index: Int): Boolean {
+    return text.getOrNull(index) == '*' &&
+        text.getOrNull(index - 1) != '*' &&
+        text.getOrNull(index + 1) != '*'
+}
+
+private fun isRendererBoldOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("**", index)) return false
+    if (isRendererAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val next = text.getOrNull(index + 2)
+    return next != null && !next.isWhitespace()
+}
+
+private fun isRendererBoldClosingDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("**", index)) return false
+    if (isRendererAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val previous = text.getOrNull(index - 1)
+    return previous != null && !previous.isWhitespace()
+}
+
+private fun findRendererBoldClosingDelimiter(text: String, startIndex: Int): Int? {
+    var cursor = text.indexOf("**", startIndex)
+    while (cursor >= 0) {
+        if (isRendererBoldClosingDelimiter(text, cursor)) return cursor
+        cursor = text.indexOf("**", cursor + 2)
+    }
+    return null
+}
+
+private fun isRendererItalicOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!isRendererSingleAsterisk(text, index)) return false
+    val previous = text.getOrNull(index - 1)
+    val next = text.getOrNull(index + 1)
+    if (next == null || next.isWhitespace()) return false
+    return previous == null || previous.isRendererMarkdownDelimiterBoundary()
+}
+
+private fun isRendererItalicClosingDelimiter(text: String, index: Int): Boolean {
+    if (!isRendererSingleAsterisk(text, index)) return false
+    val previous = text.getOrNull(index - 1)
+    val next = text.getOrNull(index + 1)
+    if (previous == null || previous.isWhitespace()) return false
+    return next == null || next.isRendererMarkdownDelimiterBoundary()
+}
+
+private fun findRendererItalicClosingDelimiter(text: String, startIndex: Int): Int? {
+    var cursor = text.indexOf('*', startIndex)
+    while (cursor >= 0) {
+        if (isRendererItalicClosingDelimiter(text, cursor)) return cursor
+        cursor = text.indexOf('*', cursor + 1)
+    }
+    return null
+}
+
+private fun isRendererBoldDelimiter(
+    text: String,
+    index: Int,
+    isBold: Boolean,
+    mode: RendererInlineMode
+): Boolean {
+    return if (isBold) {
+        isRendererBoldClosingDelimiter(text, index)
+    } else {
+        isRendererBoldOpeningDelimiter(text, index) &&
+            (
+                mode == RendererInlineMode.Streaming ||
+                    findRendererBoldClosingDelimiter(text, index + 2) != null
+                )
+    }
+}
+
+private fun isRendererItalicDelimiter(
+    text: String,
+    index: Int,
+    isItalic: Boolean,
+    mode: RendererInlineMode
+): Boolean {
+    return if (isItalic) {
+        isRendererItalicClosingDelimiter(text, index)
+    } else {
+        isRendererItalicOpeningDelimiter(text, index) &&
+            (
+                mode == RendererInlineMode.Streaming ||
+                    findRendererItalicClosingDelimiter(text, index + 1) != null
+                )
+    }
+}
+
+private fun isRendererCodeDelimiter(
+    text: String,
+    index: Int,
+    isCode: Boolean,
+    mode: RendererInlineMode
+): Boolean {
+    if (text.getOrNull(index) != '`') return false
+    return if (isCode) {
+        true
+    } else {
+        val next = text.getOrNull(index + 1)
+        next != null &&
+            !next.isWhitespace() &&
+            (
+                mode == RendererInlineMode.Streaming ||
+                    text.indexOf('`', index + 1) >= 0
+                )
+    }
+}
+
+private fun findNextStreamingInlineDelimiterIndex(
+    text: String,
+    startIndex: Int,
+    bold: Boolean,
+    italic: Boolean,
+    code: Boolean,
+    mode: RendererInlineMode
+): Int {
+    var next = text.length
+    if (!code) {
+        val markdownLinkIndex = rendererMarkdownLinkRegex.find(text, startIndex)
+            ?.range
+            ?.first
+            ?.takeIf { it >= startIndex }
+        if (markdownLinkIndex != null) next = minOf(next, markdownLinkIndex)
+        val bareUrlIndex = rendererBareUrlRegex.find(text, startIndex)
+            ?.range
+            ?.first
+            ?.takeIf { it >= startIndex }
+        if (bareUrlIndex != null) next = minOf(next, bareUrlIndex)
+    }
+    var codeIndex = text.indexOf('`', startIndex)
+    while (codeIndex >= 0 && !isRendererCodeDelimiter(text, codeIndex, isCode = code, mode = mode)) {
+        codeIndex = text.indexOf('`', codeIndex + 1)
+    }
+    if (codeIndex >= 0) next = minOf(next, codeIndex)
+    if (!code) {
+        var boldIndex = text.indexOf("**", startIndex)
+        while (boldIndex >= 0 && !isRendererBoldDelimiter(text, boldIndex, isBold = bold, mode = mode)) {
+            boldIndex = text.indexOf("**", boldIndex + 2)
+        }
+        if (boldIndex >= 0) next = minOf(next, boldIndex)
+        var italicIndex = text.indexOf('*', startIndex)
+        while (italicIndex >= 0 && !isRendererItalicDelimiter(text, italicIndex, isItalic = italic, mode = mode)) {
+            italicIndex = text.indexOf('*', italicIndex + 1)
+        }
+        if (italicIndex >= 0) next = minOf(next, italicIndex)
+    }
+    return next
 }
 
 @Composable
@@ -1097,6 +1422,7 @@ private fun RendererMarkdownSectionDividerImpl() {
 @Composable
 private fun RendererAssistantStreamingActiveBlockImpl(
     model: StreamingLineModel,
+    inlineMode: RendererInlineMode,
     showLeadingSectionDivider: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -1114,7 +1440,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                         text = model.text,
                         modifier = Modifier.fillMaxWidth(),
                         style = headingStyle,
-                        minLineHeight = with(density) { headingStyle.lineHeight.toDp() }
+                        minLineHeight = with(density) { headingStyle.lineHeight.toDp() },
+                        inlineMode = inlineMode
                     )
                 }
             }
@@ -1132,7 +1459,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                             .weight(1f)
                             .heightIn(min = paragraphLineHeight),
                         style = bodyStyle,
-                        minLineHeight = paragraphLineHeight
+                        minLineHeight = paragraphLineHeight,
+                        inlineMode = inlineMode
                     )
                 }
             }
@@ -1150,7 +1478,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                             .weight(1f)
                             .heightIn(min = paragraphLineHeight),
                         style = bodyStyle,
-                        minLineHeight = paragraphLineHeight
+                        minLineHeight = paragraphLineHeight,
+                        inlineMode = inlineMode
                     )
                 }
             }
@@ -1160,7 +1489,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     text = model.text,
                     modifier = Modifier.fillMaxWidth(),
                     style = quoteStyle,
-                    minLineHeight = paragraphLineHeight
+                    minLineHeight = paragraphLineHeight,
+                    inlineMode = inlineMode
                 )
             }
             is StreamingLineModel.Paragraph -> {
@@ -1168,7 +1498,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     text = model.text,
                     modifier = Modifier.fillMaxWidth(),
                     style = paragraphStyle,
-                    minLineHeight = paragraphLineHeight
+                    minLineHeight = paragraphLineHeight,
+                    inlineMode = inlineMode
                 )
             }
         }
@@ -1204,6 +1535,7 @@ private fun RendererAssistantMarkdownContentImpl(
                 )
                 RendererAssistantStreamingActiveBlockImpl(
                     model = model,
+                    inlineMode = RendererInlineMode.Settled,
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = blockModifier
                 )
