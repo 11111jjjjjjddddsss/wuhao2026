@@ -280,7 +280,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clientIP := GetClientIP(r)
-	region := ParseRegionFromHeaders(r.Header)
+	region := ParseRegionValues(body.Region, body.RegionSource, body.RegionReliability)
+	if region == nil {
+		region = ParseRegionFromHeaders(r.Header)
+	}
 	if region == nil {
 		resolved := ResolveRegionByIP(clientIP)
 		region = &resolved

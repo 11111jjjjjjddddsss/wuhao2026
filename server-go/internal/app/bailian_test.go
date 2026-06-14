@@ -623,7 +623,8 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 		!strings.Contains(userContent, "标题短而具体") ||
 		!strings.Contains(userContent, "摘要目标 90-130 个中文字符左右") ||
 		!strings.Contains(userContent, "一般别低于 80 个中文字符") ||
-		!strings.Contains(userContent, "写 2-3 句正常新闻短讯") ||
+		!strings.Contains(userContent, "写 2-3 句完整短讯") ||
+		!strings.Contains(userContent, "信息量要够") ||
 		!strings.Contains(userContent, "source_name 写机构、媒体或站点短名") ||
 		!strings.Contains(userContent, "是否避开养殖水产、广告软文、传言、旧闻和编造数字") {
 		t.Fatalf("daily agri prompt should carry freshness/diversity guidance without prompt_intervene: %q", userContent)

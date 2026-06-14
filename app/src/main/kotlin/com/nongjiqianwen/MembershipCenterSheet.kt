@@ -268,9 +268,9 @@ internal fun MembershipCenterBody(
 @Composable
 private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
     Surface(
-        color = Color(0xFFFFF7E8),
+        color = Color(0xFFF5F6F8),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFF0D8A8)),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -280,7 +280,7 @@ private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
         ) {
             Text(
                 text = "权益同步失败，请检查网络后重试",
-                color = Color(0xFF7A5620),
+                color = Color(0xFF4E5661),
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -289,7 +289,7 @@ private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
             Surface(
                 color = Color.White,
                 shape = RoundedCornerShape(999.dp),
-                border = BorderStroke(0.8.dp, Color(0xFFE6C98F)),
+                border = BorderStroke(0.8.dp, Color(0xFFD9DDE3)),
                 modifier = Modifier
                     .height(34.dp)
                     .clickable(
@@ -319,14 +319,14 @@ private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
 @Composable
 private fun MembershipInlineNotice(text: String) {
     Surface(
-        color = Color(0xFFF7FAF1),
+        color = Color(0xFFF5F6F8),
         shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFDDE8CB)),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
             text = text,
-            color = Color(0xFF5C6F42),
+            color = Color(0xFF4E5661),
             fontSize = 13.sp,
             lineHeight = 18.sp,
             fontWeight = FontWeight.SemiBold,
@@ -476,13 +476,13 @@ internal fun MembershipQuotaSummary(
             }
             if (giftCardSummaryText != null) {
                 Surface(
-                    color = Color(0xFFF2F8EE),
+                    color = Color(0xFFF2F3F5),
                     shape = RoundedCornerShape(999.dp),
-                    border = BorderStroke(0.8.dp, Color(0xFFD3E5C8))
+                    border = BorderStroke(0.8.dp, Color(0xFFE2E4E8))
                 ) {
                     Text(
                         text = giftCardSummaryText,
-                        color = Color(0xFF476235),
+                        color = Color(0xFF4F535A),
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -620,14 +620,14 @@ private fun MembershipPlanSection(
 @Composable
 private fun MembershipUnavailableNotice() {
     Surface(
-        color = Color(0xFFF7FAF1),
+        color = Color(0xFFF5F6F8),
         shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFDDE8CB)),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
             text = "会员购买暂未开放；当前页面只展示套餐规则，不会发起扣费或变更权益。",
-            color = Color(0xFF5C6F42),
+            color = Color(0xFF4E5661),
             fontSize = 13.sp,
             lineHeight = 19.sp,
             fontWeight = FontWeight.SemiBold,

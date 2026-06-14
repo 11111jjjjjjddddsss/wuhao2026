@@ -30,6 +30,8 @@ object SessionApi {
     private const val TAG = "SessionApi"
     private const val SNAPSHOT_NETWORK_RETRY_MAX = 2
     private const val STREAM_NETWORK_RETRY_MAX = 0
+    private const val STREAM_ACTIVE_RETRY_MAX = 6
+    private const val STREAM_ACTIVE_RETRY_BASE_DELAY_MS = 550L
     private const val CLIENT_LOG_THROTTLE_MS = 60_000L
     private const val APP_UPDATE_MAX_APK_DOWNLOAD_BYTES = 200L * 1024L * 1024L
     private val gson = Gson()
@@ -75,6 +77,34 @@ object SessionApi {
     ) {
         val shouldRetry: Boolean
             get() = status == StreamCompletionStatus.RetryableFailure
+    }
+
+    private fun buildStreamRequestJson(options: StreamOptions): String {
+        val streamBody = mutableMapOf<String, Any>(
+            "client_msg_id" to options.clientMsgId,
+            "text" to options.text,
+            "images" to options.images
+        )
+        (options.sessionGeneration ?: currentSessionGenerationOrNull())?.let {
+            streamBody["session_generation"] = it
+        }
+        putTrimmedStreamField(streamBody, "region", options.region, maxLength = 96)
+        putTrimmedStreamField(streamBody, "region_source", options.regionSource, maxLength = 32)
+        putTrimmedStreamField(streamBody, "region_reliability", options.regionReliability, maxLength = 32)
+        return gson.toJson(streamBody)
+    }
+
+    private fun putTrimmedStreamField(
+        target: MutableMap<String, Any>,
+        key: String,
+        value: String?,
+        maxLength: Int
+    ) {
+        val trimmed = value?.trim()
+            ?.take(maxLength)
+            ?.takeIf { it.isNotBlank() && it != "未知" }
+            ?: return
+        target[key] = trimmed
     }
 
     data class EntitlementSnapshot(
@@ -1672,7 +1702,7 @@ object SessionApi {
         }
         fun deliverInterrupted(reason: String) {
             if (!isRuntimeStale()) {
-                if (reason !in setOf("canceled", "quota", "replay", "stream_in_progress", "stale_session")) {
+                if (reason !in setOf("canceled", "quota", "replay", "stale_session")) {
                     reportClientLog(
                         level = "warn",
                         event = "chat.stream_interrupted",
@@ -1692,13 +1722,7 @@ object SessionApi {
             deliverInterrupted("server")
             return
         }
-        val streamBody = mutableMapOf<String, Any>(
-            "client_msg_id" to options.clientMsgId,
-            "text" to options.text,
-            "images" to options.images
-        )
-        (options.sessionGeneration ?: currentSessionGenerationOrNull())?.let { streamBody["session_generation"] = it }
-        val body = gson.toJson(streamBody)
+        val body = buildStreamRequestJson(options)
         fun buildRequest(token: String?): Request {
             val builder = applyIdentityHeaders(
                 Request.Builder()
@@ -1708,19 +1732,28 @@ object SessionApi {
                     .post(body.toRequestBody("application/json".toMediaType()))
             )
             if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
-            if (!options.region.isNullOrBlank()) builder.addHeader("X-User-Region", options.region)
-            if (!options.regionSource.isNullOrBlank()) builder.addHeader("X-Region-Source", options.regionSource)
-            if (!options.regionReliability.isNullOrBlank()) builder.addHeader("X-Region-Reliability", options.regionReliability)
             return builder.build()
         }
 
         var deliveredAnyChunk = false
 
-        fun start(hasRetried: Boolean, networkRetry: Int) {
+        fun start(hasRetried: Boolean, networkRetry: Int, activeStreamRetry: Int) {
             if (isRuntimeStale()) return
             ensureAuthToken { token ->
                 if (isRuntimeStale()) return@ensureAuthToken
-                val request = buildRequest(token)
+                val request = try {
+                    buildRequest(token)
+                } catch (e: IllegalArgumentException) {
+                    Log.e(TAG, "build stream request", e)
+                    reportClientLog(
+                        level = "error",
+                        event = "chat.stream_request_build_failed",
+                        message = "Chat stream request build failed",
+                        attrs = mapOf("exception" to e.javaClass.simpleName)
+                    )
+                    deliverInterrupted("bad_request")
+                    return@ensureAuthToken
+                }
                 val call = streamClient.newCall(request)
                 currentStreamCall.set(call)
                 call.enqueue(object : Callback {
@@ -1731,7 +1764,11 @@ object SessionApi {
                             val retryDelayMs = 350L * (networkRetry + 1)
                             mainHandler.postDelayed({
                                 if (isRuntimeStale()) return@postDelayed
-                                start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                start(
+                                    hasRetried = hasRetried,
+                                    networkRetry = networkRetry + 1,
+                                    activeStreamRetry = activeStreamRetry
+                                )
                             }, retryDelayMs)
                             return
                         }
@@ -1745,7 +1782,11 @@ object SessionApi {
                                 if (isRuntimeStale()) return@use
                                 if (res.code == 401) {
                                     if (!hasRetried) {
-                                        start(hasRetried = true, networkRetry = networkRetry)
+                                        start(
+                                            hasRetried = true,
+                                            networkRetry = networkRetry,
+                                            activeStreamRetry = activeStreamRetry
+                                        )
                                     } else {
                                         notifyAuthInvalid()
                                         deliverInterrupted("auth")
@@ -1757,7 +1798,11 @@ object SessionApi {
                                         val retryDelayMs = 350L * (networkRetry + 1)
                                         mainHandler.postDelayed({
                                             if (isRuntimeStale()) return@postDelayed
-                                            start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                            start(
+                                                hasRetried = hasRetried,
+                                                networkRetry = networkRetry + 1,
+                                                activeStreamRetry = activeStreamRetry
+                                            )
                                         }, retryDelayMs)
                                         return
                                     }
@@ -1767,6 +1812,24 @@ object SessionApi {
                                             ?.takeIf { it.isJsonPrimitive }
                                             ?.asString
                                     }.getOrNull()
+                                    if (
+                                        res.code == 409 &&
+                                        errorCode != "STALE_SESSION_GENERATION" &&
+                                        !deliveredAnyChunk &&
+                                        activeStreamRetry < STREAM_ACTIVE_RETRY_MAX
+                                    ) {
+                                        val retryDelayMs =
+                                            STREAM_ACTIVE_RETRY_BASE_DELAY_MS * (activeStreamRetry + 1)
+                                        mainHandler.postDelayed({
+                                            if (isRuntimeStale()) return@postDelayed
+                                            start(
+                                                hasRetried = hasRetried,
+                                                networkRetry = networkRetry,
+                                                activeStreamRetry = activeStreamRetry + 1
+                                            )
+                                        }, retryDelayMs)
+                                        return
+                                    }
                                     val reason = when {
                                         res.code == 409 && errorCode == "STALE_SESSION_GENERATION" -> "stale_session"
                                         res.code == 409 -> "stream_in_progress"
@@ -1852,7 +1915,11 @@ object SessionApi {
                                         val retryDelayMs = 350L * (networkRetry + 1)
                                         mainHandler.postDelayed({
                                             if (isRuntimeStale()) return@postDelayed
-                                            start(hasRetried = hasRetried, networkRetry = networkRetry + 1)
+                                            start(
+                                                hasRetried = hasRetried,
+                                                networkRetry = networkRetry + 1,
+                                                activeStreamRetry = activeStreamRetry
+                                            )
                                         }, retryDelayMs)
                                         return
                                     }
@@ -1867,7 +1934,7 @@ object SessionApi {
             }
         }
 
-        start(hasRetried = false, networkRetry = 0)
+        start(hasRetried = false, networkRetry = 0, activeStreamRetry = 0)
     }
 
     fun streamChatToCompletion(
@@ -1878,13 +1945,7 @@ object SessionApi {
         if (base.isEmpty()) {
             return StreamCompletionResult(StreamCompletionStatus.ServerFailure, "server")
         }
-        val streamBody = mutableMapOf<String, Any>(
-            "client_msg_id" to options.clientMsgId,
-            "text" to options.text,
-            "images" to options.images
-        )
-        (options.sessionGeneration ?: currentSessionGenerationOrNull())?.let { streamBody["session_generation"] = it }
-        val body = gson.toJson(streamBody)
+        val body = buildStreamRequestJson(options)
         fun buildRequest(token: String?): Request {
             val builder = applyIdentityHeaders(
                 Request.Builder()
@@ -1894,14 +1955,16 @@ object SessionApi {
                     .post(body.toRequestBody("application/json".toMediaType()))
             )
             if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
-            if (!options.region.isNullOrBlank()) builder.addHeader("X-User-Region", options.region)
-            if (!options.regionSource.isNullOrBlank()) builder.addHeader("X-Region-Source", options.regionSource)
-            if (!options.regionReliability.isNullOrBlank()) builder.addHeader("X-Region-Reliability", options.regionReliability)
             return builder.build()
         }
 
         fun runRequest(hasRetriedAuth: Boolean, networkRetry: Int): StreamCompletionResult {
-            val request = buildRequest(authTokenSync())
+            val request = try {
+                buildRequest(authTokenSync())
+            } catch (e: IllegalArgumentException) {
+                Log.e(TAG, "build background stream request", e)
+                return StreamCompletionResult(StreamCompletionStatus.BadRequest, "request_build_failed")
+            }
             val call = streamClient.newCall(request)
             return try {
                 if (!shouldContinue()) {

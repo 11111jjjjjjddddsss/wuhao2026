@@ -72,7 +72,7 @@ fun TodayAgriNewsCard(
                         modifier = Modifier
                             .size(width = 3.dp, height = 18.dp)
                             .clip(RoundedCornerShape(999.dp))
-                            .background(Color(0xFF2F6B3A))
+                            .background(Color(0xFF111111))
                     )
                     Text(
                         text = "今日农情",
@@ -102,7 +102,7 @@ fun TodayAgriNewsCard(
                 items.forEachIndexed { index, item ->
                     if (index > 0) {
                         HorizontalDivider(
-                            color = Color(0xFFE8ECE5),
+                            color = Color(0xFFE4E6EA),
                             thickness = 0.7.dp,
                             modifier = Modifier.padding(vertical = 10.dp)
                         )
@@ -179,14 +179,14 @@ private fun TodayAgriNewsItem(
         verticalAlignment = Alignment.Top
     ) {
         Surface(
-            color = Color(0xFFEAF1E6),
+            color = Color(0xFFF1F2F4),
             shape = CircleShape,
             modifier = Modifier.size(24.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = (index + 1).toString(),
-                    color = Color(0xFF315D34),
+                    color = Color(0xFF111111),
                     fontSize = 12.sp,
                     lineHeight = 14.sp,
                     fontWeight = FontWeight.SemiBold

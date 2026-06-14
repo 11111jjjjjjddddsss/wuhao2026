@@ -335,9 +335,9 @@ private fun LoginScreen(
                 message?.let {
                     val positive = it.contains("已发送") || it.startsWith("正在")
                     val noticeShape = RoundedCornerShape(10.dp)
-                    val noticeTextColor = if (positive) Color(0xFF3E6B2F) else Color(0xFF4E5661)
-                    val noticeBackground = if (positive) Color(0xFFF3F8F1) else Color(0xFFF1F3F5)
-                    val noticeBorder = if (positive) Color(0xFFD8E8D1) else Color(0xFFD9DEE5)
+                    val noticeTextColor = Color(0xFF4E5661)
+                    val noticeBackground = Color(0xFFF1F3F5)
+                    val noticeBorder = Color(0xFFD9DEE5)
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text = it,

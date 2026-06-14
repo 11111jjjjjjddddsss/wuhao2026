@@ -28,7 +28,15 @@ var ip2RegionState = struct {
 }{}
 
 func ParseRegionFromHeaders(header http.Header) *RegionContext {
-	regionRaw := strings.TrimSpace(header.Get("X-User-Region"))
+	return ParseRegionValues(
+		header.Get("X-User-Region"),
+		header.Get("X-Region-Source"),
+		header.Get("X-Region-Reliability"),
+	)
+}
+
+func ParseRegionValues(regionValue, sourceValue, reliabilityValue string) *RegionContext {
+	regionRaw := strings.TrimSpace(regionValue)
 	if regionRaw == "" {
 		return nil
 	}
@@ -38,7 +46,7 @@ func ParseRegionFromHeaders(header http.Header) *RegionContext {
 	}
 
 	source := RegionSourceNone
-	switch RegionSource(strings.ToLower(strings.TrimSpace(header.Get("X-Region-Source")))) {
+	switch RegionSource(strings.ToLower(strings.TrimSpace(sourceValue))) {
 	case RegionSourceGPS:
 		source = RegionSourceGPS
 	case RegionSourceIP:
@@ -48,7 +56,7 @@ func ParseRegionFromHeaders(header http.Header) *RegionContext {
 	}
 
 	reliability := RegionUnreliable
-	if RegionReliability(strings.ToLower(strings.TrimSpace(header.Get("X-Region-Reliability")))) == RegionReliable {
+	if RegionReliability(strings.ToLower(strings.TrimSpace(reliabilityValue))) == RegionReliable {
 		reliability = RegionReliable
 	}
 	if source == RegionSourceGPS && reliability != RegionReliable {

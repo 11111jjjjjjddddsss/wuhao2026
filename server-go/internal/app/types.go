@@ -14,6 +14,9 @@ type ChatStreamRequest struct {
 	Text              string   `json:"text"`
 	Images            []string `json:"images,omitempty"`
 	SessionGeneration *int     `json:"session_generation,omitempty"`
+	Region            string   `json:"region,omitempty"`
+	RegionSource      string   `json:"region_source,omitempty"`
+	RegionReliability string   `json:"region_reliability,omitempty"`
 }
 
 type BailianMessage struct {

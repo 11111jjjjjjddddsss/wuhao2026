@@ -331,8 +331,8 @@ private fun ChatHistoryWindowNotice(
         Surface(
             modifier = Modifier.widthIn(max = maxCardWidth),
             shape = RoundedCornerShape(14.dp),
-            color = Color(0xFFF4F7F4),
-            border = BorderStroke(1.dp, Color(0xFFDDE6DD))
+            color = Color(0xFFF7F8FA),
+            border = BorderStroke(1.dp, Color(0xFFE1E4E8))
         ) {
             Text(
                 text = "仅显示最近 30 轮；更早 ${hiddenRoundCount} 轮已保留，后续对话会尽量接上",
@@ -341,7 +341,7 @@ private fun ChatHistoryWindowNotice(
                     fontSize = 12.sp,
                     lineHeight = 17.sp
                 ),
-                color = Color(0xFF667064),
+                color = Color(0xFF686C74),
                 textAlign = TextAlign.Center
             )
         }
@@ -448,7 +448,7 @@ internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
 internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
-private const val REMOTE_STREAM_MIN_BALL_MS = 500L
+private const val REMOTE_STREAM_MIN_BALL_MS = 1050L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
@@ -503,6 +503,7 @@ private const val NETWORK_UNAVAILABLE_HINT_TEXT = "当前网络不可用"
 private const val RATE_LIMIT_HINT_TEXT = "当前请求较多，请稍后重试"
 private const val SERVICE_UNAVAILABLE_HINT_TEXT = "服务暂不可用，请稍后再试"
 private const val INTERRUPTED_NETWORK_HINT_TEXT = "网络波动，回复未完成"
+private const val ACTIVE_STREAM_HINT_TEXT = "上一条还在处理，请稍后重试"
 private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请重试"
 internal const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
 private const val ASSISTANT_RETRY_STATUS_TEXT = "回复未完成"
@@ -821,7 +822,7 @@ private fun chatLinkSpanStyle(
         isItalic = isItalic,
         isCode = isCode
     ).copy(
-        color = Color(0xFF1463D9),
+        color = Color(0xFF111111),
         textDecoration = TextDecoration.Underline
     )
 }
@@ -2773,6 +2774,15 @@ fun ChatScreen() {
     fun latestMessageIndexOrMinusOne(): Int {
         return latestMessageIndex()
     }
+    fun latestVisualTailIndexOrMinusOne(): Int =
+        chatListItems.lastIndex
+
+    fun bottomAnchorIndexOrMinusOne(): Int =
+        if (isStreaming || hasStreamingItem) {
+            latestMessageIndexOrMinusOne()
+        } else {
+            latestVisualTailIndexOrMinusOne()
+        }
     fun isInitialWorklineTopUnreached(): Boolean =
         initialWorklinePhase == InitialWorklinePhase.TopUnreached
 
@@ -2814,7 +2824,7 @@ fun ChatScreen() {
 
     fun requestForwardListBottomAnchor(force: Boolean = false) {
         if (!force && shouldSuppressAutomaticBottomAnchor()) return
-        val targetIndex = latestMessageIndexOrMinusOne()
+        val targetIndex = bottomAnchorIndexOrMinusOne()
         if (targetIndex >= 0) {
             chatListState.requestScrollToItem(
                 index = targetIndex,
@@ -3141,15 +3151,19 @@ fun ChatScreen() {
     val keyboardVisibleForJumpButton = WindowInsets.isImeVisible
     val forwardListAwayFromJumpButtonBottom by remember(
         chatListState,
-        jumpButtonBottomSafetyZonePx
+        jumpButtonBottomSafetyZonePx,
+        chatListItems.size,
+        hasStreamingItem,
+        isStreaming
     ) {
         derivedStateOf {
             if (!chatListState.canScrollForward) {
                 false
             } else {
                 val targetBottomPx = currentUnifiedBottomTargetPx()
+                val targetIndex = bottomAnchorIndexOrMinusOne()
                 val latestItem = chatListState.layoutInfo.visibleItemsInfo
-                    .firstOrNull { it.index == latestMessageIndexOrMinusOne() }
+                    .firstOrNull { it.index == targetIndex }
                 val distanceFromBottomPx = latestItem
                     ?.let { (it.offset + it.size - targetBottomPx).coerceAtLeast(0) }
                     ?: Int.MAX_VALUE
@@ -3163,10 +3177,10 @@ fun ChatScreen() {
         !programmaticScroll && (chatListUserDragging || recyclerScrollInProgress)
     val userAwayFromBottomForJumpButton by remember(
         forwardListAwayFromJumpButtonBottom,
-        messages.size
+        chatListItems.size
     ) {
         derivedStateOf {
-            messages.isNotEmpty() && forwardListAwayFromJumpButtonBottom
+            chatListItems.isNotEmpty() && forwardListAwayFromJumpButtonBottom
         }
     }
     LaunchedEffect(
@@ -3216,11 +3230,10 @@ fun ChatScreen() {
         }
     }
     val effectiveJumpButtonVisible by remember(
-        jumpButtonPulseVisible,
         showJumpButton
     ) {
         derivedStateOf {
-            jumpButtonPulseVisible && showJumpButton
+            showJumpButton
         }
     }
     BindJumpButtonPulseEffect(
@@ -3986,12 +3999,30 @@ fun ChatScreen() {
             "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
             "rate_limit" -> RATE_LIMIT_HINT_TEXT
             "backend_not_configured", "model_unavailable" -> SERVICE_UNAVAILABLE_HINT_TEXT
+            "stream_in_progress" -> ACTIVE_STREAM_HINT_TEXT
             "stale_session" -> ""
             else -> INTERRUPTED_FALLBACK_HINT_TEXT
         }
 
     fun canAttemptRemoteAssistantRecovery(reason: String): Boolean =
-        hasRemoteHistorySource && reason !in setOf("quota", "rate_limit", "auth", "model_unavailable", "stale_session")
+        hasRemoteHistorySource &&
+            reason !in setOf(
+                "quota",
+                "rate_limit",
+                "auth",
+                "bad_request",
+                "model_unavailable",
+                "stale_session",
+                "stream_in_progress"
+            )
+
+    fun shouldShowInterruptedAssistantRetry(reason: String): Boolean =
+        reason !in setOf(
+            "quota",
+            "rate_limit",
+            "stale_session",
+            "stream_in_progress"
+        )
 
     fun finalizeInterruptedAssistant(
         sourceUserMessageId: String,
@@ -4003,13 +4034,14 @@ fun ChatScreen() {
         if (reason == "quota") {
             quotaExhaustedDayKey = currentQuotaDayKey()
         }
+        val showAssistantRetry = shouldShowInterruptedAssistantRetry(reason)
         if (finalContent.isNotBlank()) {
             applyCompletedAssistantMessageInPlace(
                 target = messages,
                 messageId = assistantMessageId,
                 content = finalContent
             )
-        } else {
+        } else if (showAssistantRetry) {
             upsertAssistantMessagePlaceholder(
                 messageId = assistantMessageId,
                 sourceUserMessageId = sourceUserMessageId
@@ -4017,10 +4049,19 @@ fun ChatScreen() {
             if (showHint) {
                 showComposerStatusHint(interruptedHintText(reason))
             }
+        } else {
+            removeMessageById(assistantMessageId)
+            if (showHint) {
+                showComposerStatusHint(interruptedHintText(reason))
+            }
         }
-        failedAssistantMessageStates[assistantMessageId] = FailedAssistantMessageState(
-            sourceUserMessageId = sourceUserMessageId
-        )
+        if (showAssistantRetry) {
+            failedAssistantMessageStates[assistantMessageId] = FailedAssistantMessageState(
+                sourceUserMessageId = sourceUserMessageId
+            )
+        } else {
+            failedAssistantMessageStates.remove(assistantMessageId)
+        }
         persistTick++
     }
 
@@ -4629,7 +4670,7 @@ fun ChatScreen() {
     }
 
     fun requestProgrammaticForwardListBottomAnchor(force: Boolean = false) {
-        if (latestMessageIndexOrMinusOne() < 0) return
+        if (bottomAnchorIndexOrMinusOne() < 0) return
         if (!force && shouldSuppressAutomaticBottomAnchor()) return
         programmaticBottomAnchorGeneration += 1
         val requestGeneration = programmaticBottomAnchorGeneration
@@ -5017,30 +5058,30 @@ fun ChatScreen() {
                 persistTick++
                 return@post
             }
+            val showAssistantRetry = shouldShowInterruptedAssistantRetry(reason)
             if (finalContent.isNotBlank()) {
                 applyCompletedAssistantMessageInPlace(
                     target = messages,
                     messageId = finalId,
                     content = finalContent
                 )
-            } else {
+            } else if (showAssistantRetry) {
                 upsertAssistantMessagePlaceholder(
                     messageId = finalId,
                     sourceUserMessageId = sourceUserMessageId
                 )
-                showComposerStatusHint(
-                    when (reason) {
-                        "network" -> INTERRUPTED_NETWORK_HINT_TEXT
-                        "quota" -> QUOTA_EXHAUSTED_HINT_TEXT
-                        "rate_limit" -> RATE_LIMIT_HINT_TEXT
-                        "backend_not_configured", "model_unavailable" -> SERVICE_UNAVAILABLE_HINT_TEXT
-                        else -> INTERRUPTED_FALLBACK_HINT_TEXT
-                    }
-                )
+                showComposerStatusHint(interruptedHintText(reason))
+            } else {
+                removeMessageById(finalId)
+                showComposerStatusHint(interruptedHintText(reason))
             }
-            failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
-                sourceUserMessageId = sourceUserMessageId
-            )
+            if (showAssistantRetry) {
+                failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
+                    sourceUserMessageId = sourceUserMessageId
+                )
+            } else {
+                failedAssistantMessageStates.remove(finalId)
+            }
             persistTick++
         }
     }
@@ -5446,7 +5487,7 @@ fun ChatScreen() {
     }
     suspend fun scrollForwardListToBottom(force: Boolean = false) {
         if (!force && shouldSuppressAutomaticBottomAnchor()) return
-        val targetIndex = latestMessageIndexOrMinusOne()
+        val targetIndex = bottomAnchorIndexOrMinusOne()
         if (targetIndex < 0) return
         beginProgrammaticChatListScroll()
         try {
@@ -5484,7 +5525,7 @@ fun ChatScreen() {
         if (shouldSuppressAutomaticBottomAnchor()) return@scrollToBottom
         com.nongjiqianwen.scrollChatListToBottom(
             listState = chatListState,
-            targetBottomIndex = latestMessageIndexOrMinusOne(),
+            targetBottomIndex = bottomAnchorIndexOrMinusOne(),
             targetBottomScrollOffset = FORWARD_LIST_BOTTOM_SCROLL_OFFSET,
             animated = animated,
             beginProgrammaticScroll = ::beginProgrammaticChatListScroll,
@@ -6147,11 +6188,18 @@ fun ChatScreen() {
         val inputChromeBorder = Color(0xFFB9C0C8).copy(alpha = 0.88f)
         val inputFieldSurface = Color.White
         val inputFieldBorder = Color(0xFFD7DCE2).copy(alpha = 0.98f)
-        val composerOverlayHintText = resolveComposerOverlayHintText(
+        val globalStatusHintText = resolveComposerOverlayHintText(
             composerStatusHintVisible = composerStatusHintVisible,
             composerStatusHintText = composerStatusHintText,
             inputLimitHintVisible = inputLimitHintVisible
         )
+        val globalStatusHintVisible = globalStatusHintText != null &&
+            !attachmentMenuVisible &&
+            !membershipCenterVisible &&
+            !hamburgerMenuVisible &&
+            !uiCopyPreviewVisible &&
+            inputSelectionToolbarState == null &&
+            activeMessageSelectionState == null
         val inputTextToolbar = remember(uiRuntimeResetKey) {
             buildInputSelectionTextToolbar()
         }
@@ -6589,7 +6637,7 @@ fun ChatScreen() {
                 inputChromeBorder = inputChromeBorder,
                 inputFieldSurface = inputFieldSurface,
                 inputFieldBorder = inputFieldBorder,
-                overlayHintText = composerOverlayHintText,
+                overlayHintText = null,
                 quotaExhausted = isQuotaExhaustedToday(),
                 selectedImages = selectedComposerImages,
                 hostModifier = hostModifier
@@ -6814,6 +6862,14 @@ fun ChatScreen() {
                 renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)
                 renderWelcomePlaceholder(listBottomPaddingPx)
                 renderComposerBar(Modifier.align(Alignment.BottomCenter))
+                GlobalStatusHint(
+                    visible = globalStatusHintVisible,
+                    text = globalStatusHintText.orEmpty(),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 24.dp)
+                        .zIndex(56f)
+                )
 
                 ComposerAttachmentBottomSheet(
                     visible = attachmentMenuVisible,
@@ -7108,6 +7164,36 @@ fun ChatScreen() {
         }
     }
 }
+}
+
+@Composable
+private fun GlobalStatusHint(
+    visible: Boolean,
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible && text.isNotBlank(),
+        modifier = modifier
+    ) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xEE111111),
+            contentColor = Color.White,
+            border = BorderStroke(0.8.dp, Color.Black),
+            shadowElevation = 3.dp,
+            modifier = Modifier.widthIn(max = 320.dp)
+        ) {
+            Text(
+                text = text,
+                color = Color.White,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+            )
+        }
+    }
 }
 
 @Composable
@@ -8415,7 +8501,7 @@ private fun UiCopyPreviewLoginPage(
                 val positive = it.contains("已发送") || it.startsWith("正在")
                 Text(
                     text = it,
-                    color = if (positive) Color(0xFF3E6B2F) else Color(0xFF4E5661),
+                    color = Color(0xFF4E5661),
                     fontSize = 13.sp,
                     lineHeight = 18.sp,
                     textAlign = TextAlign.Center,
@@ -8423,7 +8509,7 @@ private fun UiCopyPreviewLoginPage(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            if (positive) Color(0xFFF3F8F1) else Color(0xFFF1F3F5),
+                            Color(0xFFF1F3F5),
                             RoundedCornerShape(10.dp)
                         )
                         .padding(horizontal = 12.dp, vertical = 9.dp)
@@ -8716,9 +8802,9 @@ private fun UiCopyPreviewCleanStateFirstSend() {
             horizontalArrangement = Arrangement.End
         ) {
             Surface(
-                color = Color(0xFFE9F4FF),
+                color = Color(0xFFF5F6F8),
                 shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, Color(0xFFDCEEFF)),
+                border = BorderStroke(1.dp, Color(0xFFE4E6EA)),
                 shadowElevation = 1.dp,
                 modifier = Modifier.widthIn(max = 260.dp)
             ) {

@@ -83,6 +83,16 @@ func TestParseRegionFromHeadersKeepsValidGPSRegion(t *testing.T) {
 	}
 }
 
+func TestParseRegionValuesKeepsJSONBodyRegion(t *testing.T) {
+	got := ParseRegionValues("河南省 郑州市 管城回族区", "gps", "reliable")
+	if got == nil {
+		t.Fatal("expected region context")
+	}
+	if got.Region != "河南省 郑州市 管城回族区" || got.Source != RegionSourceGPS || got.Reliability != RegionReliable {
+		t.Fatalf("unexpected context: %+v", got)
+	}
+}
+
 func TestIP2RegionPathEnvFallback(t *testing.T) {
 	t.Setenv(ip2RegionV4PathEnv, "")
 	t.Setenv(ip2RegionLegacyV4PathEnv, "legacy.xdb")

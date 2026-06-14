@@ -9,6 +9,7 @@ object AppCrashReporter {
     private const val PREFS_NAME = "app_crash_reports"
     private const val KEY_PENDING = "pending_crash"
     private const val KEY_PENDING_ATTEMPTS = "pending_crash_attempts"
+    private const val CRASH_REPORT_VERSION = "2"
     private const val MAX_PENDING_REPORT_ATTEMPTS = 3
     private val installed = AtomicBoolean(false)
     private val handlingCrash = AtomicBoolean(false)
@@ -66,6 +67,7 @@ object AppCrashReporter {
         val savedEvent = values["event"].orEmpty().ifBlank { "app.crash" }
         val event = if (savedEvent == "app.crash" && !IdManager.isLoggedIn()) "auth.app_crash" else savedEvent
         val attrs = mapOf(
+            "crash_report_version" to values["crash_report_version"].orEmpty(),
             "stage" to values["stage"].orEmpty().ifBlank { if (event.startsWith("auth.")) "prelogin" else "" },
             "exception" to values["exception"].orEmpty(),
             "cause" to values["cause"].orEmpty(),
@@ -73,6 +75,9 @@ object AppCrashReporter {
             "top_class" to values["top_class"].orEmpty(),
             "top_method" to values["top_method"].orEmpty(),
             "top_line" to values["top_line"].orEmpty(),
+            "stack_top" to values["stack_top"].orEmpty(),
+            "stack_next" to values["stack_next"].orEmpty(),
+            "stack_third" to values["stack_third"].orEmpty(),
             "crashed_at_ms" to values["crashed_at_ms"].orEmpty(),
             "report_attempt" to attempts.toString()
         ).filterValues { it.isNotBlank() }
@@ -103,6 +108,7 @@ object AppCrashReporter {
         val top = throwable.stackTrace.firstOrNull()
         val payload = listOf(
             "event" to if (isAuthCrash) "auth.app_crash" else "app.crash",
+            "crash_report_version" to CRASH_REPORT_VERSION,
             "stage" to stage,
             "exception" to throwable.javaClass.name.take(160),
             "cause" to (throwable.cause?.javaClass?.name ?: "").take(160),
@@ -110,6 +116,9 @@ object AppCrashReporter {
             "top_class" to (top?.className ?: "").take(160),
             "top_method" to (top?.methodName ?: "").take(96),
             "top_line" to (top?.lineNumber?.takeIf { it > 0 }?.toString() ?: ""),
+            "stack_top" to formatStackElement(throwable.stackTrace.getOrNull(0)),
+            "stack_next" to formatStackElement(throwable.stackTrace.getOrNull(1)),
+            "stack_third" to formatStackElement(throwable.stackTrace.getOrNull(2)),
             "crashed_at_ms" to System.currentTimeMillis().toString()
         ).joinToString("\n") { (key, value) ->
             "$key=${value.replace('\n', ' ').replace('\r', ' ')}"
@@ -119,5 +128,17 @@ object AppCrashReporter {
             .putString(KEY_PENDING, payload)
             .putInt(KEY_PENDING_ATTEMPTS, 0)
             .commit()
+    }
+
+    private fun formatStackElement(element: StackTraceElement?): String {
+        if (element == null) return ""
+        val className = element.className.takeLast(96)
+        val methodName = element.methodName.take(48)
+        val line = element.lineNumber.takeIf { it > 0 }?.toString().orEmpty()
+        return if (line.isNotEmpty()) {
+            "$className#$methodName:$line"
+        } else {
+            "$className#$methodName"
+        }.take(160)
     }
 }

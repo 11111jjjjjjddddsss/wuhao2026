@@ -241,6 +241,8 @@ internal fun HamburgerMenuSheet(
     var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var updateDownloading by remember(userId) { mutableStateOf(false) }
     var pendingInstallPermissionUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
+    var mainLogoutDialogVisible by rememberSaveable(visible) { mutableStateOf(false) }
+    var mainLogoutSubmitting by remember { mutableStateOf(false) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -442,7 +444,7 @@ internal fun HamburgerMenuSheet(
         modifier = modifier.fillMaxSize()
     ) {
         Surface(
-            color = Color(0xFFF8F9FA),
+            color = Color.White,
             modifier = Modifier.fillMaxSize()
         ) {
             Box(modifier = Modifier.fillMaxSize()) {
@@ -510,6 +512,14 @@ internal fun HamburgerMenuSheet(
                                 onCheckUpdate = {
                                     performButtonHaptic()
                                     checkAppUpdate(userTriggered = true)
+                                },
+                                onLogout = {
+                                    performButtonHaptic()
+                                    if (IdManager.getAuthPhoneMask() == null) {
+                                        showNotice("请先登录")
+                                    } else if (!mainLogoutSubmitting) {
+                                        mainLogoutDialogVisible = true
+                                    }
                                 },
                                 onPlaceholderClick = ::showNotice
                             )
@@ -642,6 +652,33 @@ internal fun HamburgerMenuSheet(
                 }
             }
         }
+    }
+    if (mainLogoutDialogVisible) {
+        HamburgerLogoutConfirmDialog(
+            submitting = mainLogoutSubmitting,
+            onDismiss = {
+                if (!mainLogoutSubmitting) mainLogoutDialogVisible = false
+            },
+            onConfirm = {
+                if (mainLogoutSubmitting) return@HamburgerLogoutConfirmDialog
+                val accountScopeId = IdManager.getUserId()
+                mainLogoutSubmitting = true
+                SessionApi.logoutCurrentSession { ok ->
+                    mainLogoutSubmitting = false
+                    if (ok) {
+                        mainLogoutDialogVisible = false
+                        PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
+                        showNotice("已退出当前设备")
+                        supportAttachmentMenuVisible = false
+                        legalSubpage = false
+                        page = HamburgerMenuPage.Menu
+                        onDismiss()
+                    } else {
+                        showNotice("退出失败，请检查网络后重试")
+                    }
+                }
+            }
+        )
     }
     updateDialogInfo?.let { info ->
         HamburgerAppUpdateDialog(
@@ -1008,9 +1045,9 @@ private fun HamburgerMenuMainPage(
     onOpenTodayAgri: () -> Unit,
     onOpenLegalHub: () -> Unit,
     onCheckUpdate: () -> Unit,
+    onLogout: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
-    val phoneMask = IdManager.getAuthPhoneMask()
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -1018,13 +1055,13 @@ private fun HamburgerMenuMainPage(
             .statusBarsPadding()
             .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(start = 14.dp, end = 14.dp, top = 18.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(13.dp)
+            .padding(start = 18.dp, end = 18.dp, top = 12.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 53.dp),
+                .heightIn(min = 48.dp),
             contentAlignment = Alignment.TopCenter
         ) {
             Text(
@@ -1040,12 +1077,14 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Membership,
                 title = "会员中心",
+                showChevron = false,
                 onClick = onOpenMembership
             )
-            HamburgerMenuDivider(startIndent = 52.dp)
+            HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
+                showChevron = false,
                 onClick = onOpenAccount
             )
         }
@@ -1055,41 +1094,46 @@ private fun HamburgerMenuMainPage(
                 icon = HamburgerMenuIcon.Feedback,
                 title = "帮助与反馈",
                 showBadge = supportUnread,
+                showChevron = false,
                 onClick = onOpenSupport
             )
-            HamburgerMenuDivider(startIndent = 52.dp)
+            HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.TodayAgri,
                 title = "今日农情",
+                showChevron = false,
                 onClick = onOpenTodayAgri
             )
-            HamburgerMenuDivider(startIndent = 52.dp)
+            HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Update,
                 title = "检查更新",
+                showChevron = false,
                 onClick = onCheckUpdate
             )
-            HamburgerMenuDivider(startIndent = 52.dp)
+            HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
+                showChevron = false,
                 onClick = onOpenRedeem
             )
-            HamburgerMenuDivider(startIndent = 52.dp)
+            HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "服务协议",
+                showChevron = false,
                 onClick = onOpenLegalHub
             )
         }
 
         HamburgerMenuGroup {
             HamburgerMenuRow(
-                icon = HamburgerMenuIcon.Account,
-                title = "当前账号",
-                destructive = false,
+                icon = HamburgerMenuIcon.Logout,
+                title = "退出登录",
+                destructive = true,
                 showChevron = false,
-                onClick = { onPlaceholderClick(if (phoneMask != null) "当前设备已保持登录" else "请先登录") }
+                onClick = onLogout
             )
         }
     }
@@ -1708,9 +1752,8 @@ internal fun HamburgerRiskNoticePagePreview() {
 @Composable
 internal fun HamburgerMembershipCenterPagePreview(userId: String) {
     Surface(
-        color = Color(0xFFF8F9FA),
+        color = Color.White,
         shape = RoundedCornerShape(18.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
         modifier = Modifier.fillMaxWidth()
     ) {
         Box(
@@ -1795,8 +1838,8 @@ internal fun HamburgerMenuShellPreview(userId: String) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 14.dp, end = 14.dp, top = 84.dp, bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(13.dp)
+                    .padding(start = 18.dp, end = 18.dp, top = 84.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 HamburgerMenuPreviewGroups()
             }
@@ -1810,12 +1853,14 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Membership,
             title = "会员中心",
+            showChevron = false,
             onClick = {}
         )
-        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Account,
             title = "账号管理",
+            showChevron = false,
             onClick = {}
         )
     }
@@ -1824,38 +1869,43 @@ private fun HamburgerMenuPreviewGroups() {
             icon = HamburgerMenuIcon.Feedback,
             title = "帮助与反馈",
             showBadge = true,
+            showChevron = false,
             onClick = {}
         )
-        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.TodayAgri,
             title = "今日农情",
+            showChevron = false,
             onClick = {}
         )
-        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Update,
             title = "检查更新",
+            showChevron = false,
             onClick = {}
         )
-        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Redeem,
             title = "礼品卡",
+            showChevron = false,
             onClick = {}
         )
-        HamburgerMenuDivider(startIndent = 52.dp)
+        HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
             title = "服务协议",
+            showChevron = false,
             onClick = {}
         )
     }
     HamburgerMenuGroup {
         HamburgerMenuRow(
-            icon = HamburgerMenuIcon.Account,
-            title = "当前账号",
-            destructive = false,
+            icon = HamburgerMenuIcon.Logout,
+            title = "退出登录",
+            destructive = true,
             showChevron = false,
             onClick = {}
         )
@@ -2171,7 +2221,7 @@ private fun HamburgerTodayAgriHistoryContent(
         }
 
         Surface(
-            color = Color(0xFFF5F6F3),
+            color = Color(0xFFF5F6F8),
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -2237,11 +2287,11 @@ private fun HamburgerTodayAgriEmptyState() {
         Surface(
             color = Color.White,
             shape = CircleShape,
-            border = BorderStroke(0.8.dp, Color(0xFFE2E5DF))
+            border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
         ) {
             HamburgerMenuGlyph(
                 icon = HamburgerMenuIcon.TodayAgri,
-                tint = Color(0xFF5C6F42),
+                tint = Color(0xFF111111),
                 modifier = Modifier
                     .size(42.dp)
                     .padding(9.dp)
@@ -2283,7 +2333,7 @@ private fun HamburgerTodayAgriHistoryCard(card: SessionApi.TodayAgriCard) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    color = Color(0xFF244B2D),
+                    color = Color(0xFF111111),
                     shape = RoundedCornerShape(999.dp)
                 ) {
                     Text(
@@ -2328,14 +2378,14 @@ private fun HamburgerTodayAgriHistoryItem(
         verticalAlignment = Alignment.Top
     ) {
         Surface(
-            color = Color(0xFFE7EFE0),
+            color = Color(0xFFF1F2F4),
             shape = CircleShape,
             modifier = Modifier.size(22.dp)
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = (index + 1).toString(),
-                    color = Color(0xFF3F5C2D),
+                    color = Color(0xFF111111),
                     fontSize = 11.sp,
                     lineHeight = 13.sp,
                     fontWeight = FontWeight.SemiBold
@@ -2862,7 +2912,7 @@ private fun HamburgerSupportFeedbackContent(
         }
 
         Surface(
-            color = Color(0xFFF5F6F3),
+            color = Color(0xFFF5F6F8),
             shape = RoundedCornerShape(18.dp),
             modifier = Modifier
                 .fillMaxWidth()
@@ -2934,7 +2984,7 @@ private fun HamburgerSupportFeedbackContent(
         if (sendingHint != null) {
             Text(
                 text = sendingHint,
-                color = Color(0xFF5C6F42),
+                color = Color(0xFF4E5661),
                 fontSize = 12.sp,
                 lineHeight = 16.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -3028,7 +3078,7 @@ private fun HamburgerSupportEmptyState() {
         Surface(
             color = Color.White,
             shape = CircleShape,
-            border = BorderStroke(0.8.dp, Color(0xFFE2E5DF))
+            border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
         ) {
             Canvas(
                 modifier = Modifier
@@ -3042,28 +3092,28 @@ private fun HamburgerSupportEmptyState() {
                 )
                 val bubbleSize = Size(width = size.width * 0.86f, height = size.height * 0.64f)
                 drawRoundRect(
-                    color = Color(0xFF5C6F42),
+                    color = Color(0xFF111111),
                     topLeft = Offset(x = size.width * 0.04f, y = size.height * 0.08f),
                     size = bubbleSize,
                     cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
                     style = stroke
                 )
                 drawLine(
-                    color = Color(0xFF5C6F42),
+                    color = Color(0xFF111111),
                     start = Offset(x = size.width * 0.28f, y = size.height * 0.72f),
                     end = Offset(x = size.width * 0.18f, y = size.height * 0.94f),
                     strokeWidth = 2.dp.toPx(),
                     cap = StrokeCap.Round
                 )
                 drawLine(
-                    color = Color(0xFF5C6F42),
+                    color = Color(0xFF111111),
                     start = Offset(x = size.width * 0.46f, y = size.height * 0.34f),
                     end = Offset(x = size.width * 0.72f, y = size.height * 0.34f),
                     strokeWidth = 2.dp.toPx(),
                     cap = StrokeCap.Round
                 )
                 drawLine(
-                    color = Color(0xFF5C6F42),
+                    color = Color(0xFF111111),
                     start = Offset(x = size.width * 0.28f, y = size.height * 0.52f),
                     end = Offset(x = size.width * 0.68f, y = size.height * 0.52f),
                     strokeWidth = 2.dp.toPx(),
@@ -3112,10 +3162,10 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
     val imageUrls = message.imageUrls.orEmpty()
     val bodyColor = when {
         isUser -> Color.White
-        isSystem -> Color(0xFF2F3B22)
+        isSystem -> Color(0xFF3F444B)
         else -> Color(0xFF111111)
     }
-    val linkColor = if (isUser) Color.White else Color(0xFF1463D9)
+    val linkColor = if (isUser) Color.White else Color(0xFF111111)
     val renderedBody = remember(body, linkColor) { buildSupportLinkedText(body, linkColor) }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -3140,7 +3190,7 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                     isSystem -> "系统提示"
                     else -> "客服"
                 },
-                color = if (isSystem) Color(0xFF6F7D5A) else Color(0xFF8A8E96),
+                color = if (isSystem) Color(0xFF6D7178) else Color(0xFF8A8E96),
                 fontSize = 11.sp,
                 fontWeight = if (isSystem) FontWeight.Medium else FontWeight.Normal,
                 lineHeight = 14.sp
@@ -3149,7 +3199,7 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                 Surface(
                     color = when {
                         isUser -> Color(0xFF111111)
-                        isSystem -> Color(0xFFF8FAF2)
+                        isSystem -> Color(0xFFF5F6F8)
                         else -> Color.White
                     },
                     shape = RoundedCornerShape(
@@ -3160,7 +3210,7 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                     ),
                     border = when {
                         isUser -> null
-                        isSystem -> BorderStroke(0.8.dp, Color(0xFFDDE6CD))
+                        isSystem -> BorderStroke(0.8.dp, Color(0xFFE4E6EA))
                         else -> BorderStroke(0.7.dp, Color(0xFFE1E4E8))
                     }
                 ) {
@@ -3933,7 +3983,7 @@ private fun HamburgerRedeemCodeContent(
                 ) {
                     Text(
                         text = "输入卡码兑换会员权益",
-                        color = Color(0xFF315E3F),
+                        color = Color(0xFF111111),
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -4244,9 +4294,8 @@ private fun HamburgerAccountActionRow(
 @Composable
 private fun HamburgerMenuGroup(content: @Composable ColumnScope.() -> Unit) {
     Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(17.dp),
-        border = BorderStroke(0.6.dp, Color(0xFFEDEFF2)),
+        color = Color(0xFFF2F2F2),
+        shape = RoundedCornerShape(24.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -4259,8 +4308,8 @@ private fun HamburgerMenuGroup(content: @Composable ColumnScope.() -> Unit) {
 @Composable
 private fun HamburgerMenuDivider(startIndent: Dp = 0.dp) {
     HorizontalDivider(
-        thickness = 1.dp,
-        color = Color(0xFFF1F2F4),
+        thickness = 4.dp,
+        color = Color.White,
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = startIndent)
@@ -4280,31 +4329,31 @@ private fun HamburgerMenuRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = 57.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick
             )
-            .padding(horizontal = 17.dp, vertical = 10.dp),
+            .padding(horizontal = 18.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         HamburgerMenuGlyph(
             icon = icon,
             tint = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(24.dp)
         )
         Column(
             modifier = Modifier
-                .padding(start = 13.dp)
+                .padding(start = 16.dp)
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = title,
                 color = if (destructive) Color(0xFFD24646) else Color(0xFF111111),
-                fontSize = 17.sp,
-                lineHeight = 22.sp,
+                fontSize = 19.sp,
+                lineHeight = 25.sp,
                 fontWeight = FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -4323,8 +4372,8 @@ private fun HamburgerMenuRow(
             HamburgerChevronIcon(
                 tint = Color(0xFFB7BBC2),
                 modifier = Modifier
-                    .padding(start = 10.dp)
-                    .size(16.dp)
+                    .padding(start = 12.dp)
+                    .size(18.dp)
             )
         }
     }
@@ -4620,24 +4669,32 @@ private fun HamburgerMenuGlyph(
                 drawLine(tint, Offset(w * 0.32f, h * 0.45f), Offset(w * 0.68f, h * 0.45f), strokeWidth, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.TodayAgri -> {
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(w * 0.16f, h * 0.18f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.68f, h * 0.64f),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.07f, h * 0.07f),
-                    style = stroke
+                val bookStroke = Stroke(
+                    width = strokeWidth * 0.95f,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round
                 )
-                drawLine(tint, Offset(w * 0.28f, h * 0.32f), Offset(w * 0.72f, h * 0.32f), strokeWidth, cap = StrokeCap.Round)
-                drawRoundRect(
-                    color = tint,
-                    topLeft = Offset(w * 0.27f, h * 0.45f),
-                    size = androidx.compose.ui.geometry.Size(w * 0.17f, h * 0.18f),
-                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.03f, h * 0.03f),
-                    style = stroke
-                )
-                drawLine(tint, Offset(w * 0.51f, h * 0.47f), Offset(w * 0.72f, h * 0.47f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.51f, h * 0.59f), Offset(w * 0.68f, h * 0.59f), strokeWidth, cap = StrokeCap.Round)
-                drawLine(tint, Offset(w * 0.28f, h * 0.73f), Offset(w * 0.72f, h * 0.73f), strokeWidth, cap = StrokeCap.Round)
+                val leftPage = Path().apply {
+                    moveTo(w * 0.17f, h * 0.20f)
+                    cubicTo(w * 0.28f, h * 0.15f, w * 0.40f, h * 0.18f, w * 0.50f, h * 0.28f)
+                    lineTo(w * 0.50f, h * 0.83f)
+                    cubicTo(w * 0.39f, h * 0.75f, w * 0.28f, h * 0.74f, w * 0.17f, h * 0.80f)
+                    close()
+                }
+                val rightPage = Path().apply {
+                    moveTo(w * 0.83f, h * 0.20f)
+                    cubicTo(w * 0.72f, h * 0.15f, w * 0.60f, h * 0.18f, w * 0.50f, h * 0.28f)
+                    lineTo(w * 0.50f, h * 0.83f)
+                    cubicTo(w * 0.61f, h * 0.75f, w * 0.72f, h * 0.74f, w * 0.83f, h * 0.80f)
+                    close()
+                }
+                drawPath(leftPage, tint, style = bookStroke)
+                drawPath(rightPage, tint, style = bookStroke)
+                drawLine(tint, Offset(w * 0.50f, h * 0.28f), Offset(w * 0.50f, h * 0.83f), strokeWidth * 0.85f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.28f, h * 0.39f), Offset(w * 0.41f, h * 0.42f), strokeWidth * 0.75f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.59f, h * 0.42f), Offset(w * 0.72f, h * 0.39f), strokeWidth * 0.75f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.28f, h * 0.56f), Offset(w * 0.41f, h * 0.59f), strokeWidth * 0.75f, cap = StrokeCap.Round)
+                drawLine(tint, Offset(w * 0.59f, h * 0.59f), Offset(w * 0.72f, h * 0.56f), strokeWidth * 0.75f, cap = StrokeCap.Round)
             }
             HamburgerMenuIcon.Logout -> {
                 drawLine(tint, Offset(w * 0.18f, h * 0.18f), Offset(w * 0.18f, h * 0.82f), strokeWidth, cap = StrokeCap.Round)
