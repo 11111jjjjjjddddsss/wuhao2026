@@ -256,8 +256,18 @@ if ($failures.Count -eq 0) {
         "Chat startup must not treat local cached messages as if bottom snapping had already completed."
     Require-Match $failures $chatScreen 'waitingForStaticTimelineBottomSnap(?s:.*?)!hasStartupLocalMessages(?s:.*?)!initialBottomSnapDone' `
         "Chat startup may keep cached local messages visible, but only after separating that from the bottom-snap guard."
+    Require-Match $failures $chatScreen 'ui\.chat_startup_state' `
+        "Chat startup must keep a safe client log for diagnosing clean-state, hydration and reveal behavior."
+    Require-Match $failures $chatScreen 'ui\.chat_startup_bottom_snap_done' `
+        "Chat startup must log when initial bottom calibration completes."
+    Require-Match $failures $chatScreen 'ui\.chat_startup_bottom_snap_pending' `
+        "Chat startup must log a warning when bottom calibration remains pending after retries."
     Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerMenuMainPage(?s:.*?)HamburgerMenuIcon\.Logout(?s:.*?)title\s*=\s*"退出登录"(?s:.*?)destructive\s*=\s*true' `
         "Settings main page must keep the default logout row in code, not depend on cached UI state."
+    Require-Match $failures $hamburgerMenuSheet 'ui\.settings_main_opened' `
+        "Settings main page must keep a safe client log so clean-state UI rollback reports are traceable."
+    Require-Match $failures $hamburgerMenuSheet 'ui\.account_management_opened' `
+        "Account management page must keep a safe client log so clean-state UI rollback reports are traceable."
     Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"会员中心"(?s:.*?)title\s*=\s*"账号管理"(?s:.*?)title\s*=\s*"帮助与反馈"(?s:.*?)title\s*=\s*"今日农情"(?s:.*?)title\s*=\s*"检查更新"(?s:.*?)title\s*=\s*"礼品卡"(?s:.*?)title\s*=\s*"服务协议"(?s:.*?)title\s*=\s*"退出登录"' `
         "Settings main page defaults must include every production row after app data is cleared."
     Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"退出中"\s*else\s*"退出登录"' `

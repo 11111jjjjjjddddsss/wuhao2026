@@ -246,6 +246,8 @@ internal fun HamburgerMenuSheet(
     var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var updateDownloading by remember(userId) { mutableStateOf(false) }
     var pendingInstallPermissionUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
+    var settingsMainOpenLogged by remember(visible, userId) { mutableStateOf(false) }
+    var accountManagementOpenLogged by remember(visible, userId) { mutableStateOf(false) }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -425,6 +427,37 @@ internal fun HamburgerMenuSheet(
         if (noticeText == null) return@LaunchedEffect
         delay(1500)
         noticeText = null
+    }
+    LaunchedEffect(visible, page, supportSummary?.unreadCount) {
+        if (!visible || page != HamburgerMenuPage.Menu || settingsMainOpenLogged) {
+            return@LaunchedEffect
+        }
+        settingsMainOpenLogged = true
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "ui.settings_main_opened",
+            message = "Settings main opened",
+            attrs = mapOf(
+                "logged_in" to (IdManager.getAuthPhoneMask() != null),
+                "menu_row_count" to 8,
+                "has_support_unread" to ((supportSummary?.unreadCount ?: 0) > 0)
+            )
+        )
+    }
+    LaunchedEffect(visible, page) {
+        if (!visible || page != HamburgerMenuPage.Account || accountManagementOpenLogged) {
+            return@LaunchedEffect
+        }
+        accountManagementOpenLogged = true
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "ui.account_management_opened",
+            message = "Account management opened",
+            attrs = mapOf(
+                "logged_in" to (IdManager.getAuthPhoneMask() != null),
+                "account_row_count" to 5
+            )
+        )
     }
     LaunchedEffect(visible, supportRefreshTick) {
         if (!visible) return@LaunchedEffect

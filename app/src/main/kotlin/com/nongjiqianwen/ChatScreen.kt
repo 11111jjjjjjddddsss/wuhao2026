@@ -2377,6 +2377,9 @@ fun ChatScreen() {
     val hasStartupLocalMessages = initialLocalMessages.isNotEmpty()
     var initialBottomSnapDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var postInitialSnapCorrectionDone by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var startupUiStateLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var startupBottomSnapDoneLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var startupBottomSnapPendingLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
@@ -3089,6 +3092,69 @@ fun ChatScreen() {
                 !waitingForRemoteStartupHydration &&
                 (startupHydrationBarrierSatisfied || !hasStartedConversation)
         }
+    }
+    LaunchedEffect(
+        startupHydrationBarrierSatisfied,
+        startupLayoutReady,
+        startupBottomReserveReady,
+        shouldRevealMessageList,
+        showWelcomePlaceholder,
+        historyHydrationComplete,
+        messages.size,
+        hasTodayAgriCard,
+        initialBottomSnapDone,
+        chatListState.canScrollForward
+    ) {
+        if (startupUiStateLogged) return@LaunchedEffect
+        if (!startupHydrationBarrierSatisfied) return@LaunchedEffect
+        if (!startupLayoutReady && (messages.isNotEmpty() || hasTodayAgriCard)) {
+            return@LaunchedEffect
+        }
+        startupUiStateLogged = true
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "ui.chat_startup_state",
+            message = "Chat startup state",
+            attrs = mapOf(
+                "has_local_items" to hasStartupLocalMessages,
+                "local_item_count" to initialLocalMessages.size,
+                "visible_item_count" to messages.size,
+                "has_today_agri_card" to hasTodayAgriCard,
+                "remote_history_enabled" to shouldHydrateRemoteHistory,
+                "history_hydrated" to historyHydrationComplete,
+                "layout_ready" to startupLayoutReady,
+                "reserve_ready" to startupBottomReserveReady,
+                "list_revealed" to shouldRevealMessageList,
+                "show_welcome" to showWelcomePlaceholder,
+                "bottom_snap_done" to initialBottomSnapDone,
+                "workline_phase" to initialWorklinePhase.name.lowercase(),
+                "can_scroll_forward" to chatListState.canScrollForward
+            )
+        )
+    }
+    LaunchedEffect(
+        initialBottomSnapDone,
+        startupBottomReserveReady,
+        messages.size,
+        hasTodayAgriCard,
+        chatListState.canScrollForward
+    ) {
+        if (!initialBottomSnapDone || startupBottomSnapDoneLogged) return@LaunchedEffect
+        startupBottomSnapDoneLogged = true
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "ui.chat_startup_bottom_snap_done",
+            message = "Chat startup bottom snap done",
+            attrs = mapOf(
+                "has_local_items" to hasStartupLocalMessages,
+                "visible_item_count" to messages.size,
+                "has_today_agri_card" to hasTodayAgriCard,
+                "reserve_ready" to startupBottomReserveReady,
+                "can_scroll_forward" to chatListState.canScrollForward,
+                "bottom_overflow_px" to currentBottomOverflowPx(),
+                "workline_phase" to initialWorklinePhase.name.lowercase()
+            )
+        )
     }
     val focusManager = LocalFocusManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -5657,6 +5723,23 @@ fun ChatScreen() {
                 initialBottomSnapDone = true
                 return@LaunchedEffect
             }
+        }
+        if (!startupBottomSnapPendingLogged) {
+            startupBottomSnapPendingLogged = true
+            SessionApi.reportClientLog(
+                level = "warn",
+                event = "ui.chat_startup_bottom_snap_pending",
+                message = "Chat startup bottom snap still pending",
+                attrs = mapOf(
+                    "has_local_items" to hasStartupLocalMessages,
+                    "visible_item_count" to messages.size,
+                    "has_today_agri_card" to hasTodayAgriCard,
+                    "reserve_ready" to startupBottomReserveReady,
+                    "can_scroll_forward" to chatListState.canScrollForward,
+                    "bottom_overflow_px" to currentBottomOverflowPx(),
+                    "workline_phase" to initialWorklinePhase.name.lowercase()
+                )
+            )
         }
     }
 
