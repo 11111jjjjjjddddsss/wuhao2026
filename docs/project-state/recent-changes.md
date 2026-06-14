@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续把云资源巡检输出改成业务负责人更容易理解的口径：按阿里云官方文档复核后，ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 都是包年包月，因此 `deletion_protection=false` 不是缺少保护。`check-resource-capacity.ps1` 现在会输出 `deletion_protection=not_applicable_prepaid` 和 `deletion_protection_applicable=False`，只有按量付费 / Serverless 且未开保护时才提示 warning；同步更新资源容量 runbook 和当前状态。该改动只优化巡检可读性，不修改云资源、不改后端 / Android 运行逻辑。
+
 - 继续按“测试包和正式包权限口径一致、上架材料能解释清楚”的方向收口 Android 权限合规：`scripts/check-android-build-parity.ps1` 在确认 debug / release packaged manifest 权限集合一致之外，新增最终权限白名单校验，并锁住 AndroidX 合并的 `com.nongjiqiancha.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` 必须为签名级应用私有广播保护权限。App 内隐私政策 / 应用权限页补充“后台待发送和应用私有广播保护”用途说明，debug-only 文案预览去掉容易误解为电话权限的“手机号认证”字样；同步更新隐私合规 runbook。该改动不新增运行时权限、不改登录、聊天滚动、三份提示词、模型输出过滤或后端接口。
 
 - 已将提交 `5982361d` 部署到 ECS 和管理后台：`scripts/deploy-ecs-server.ps1` 远端 `go test ./...`、编译、新 slot health、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 Nginx active upstream 为 `3000`，后台 upstream 同为 `3000`，HTTPS healthz 200，未登录后台鉴权 401，`auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss` 正常且 `dev_order_endpoints=false`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200。部署后 `check-ecs-readiness.ps1` 和 `check-public-blackbox.ps1` 均通过，公网 API、官网、www、后台、协议页、公安图标和 HTTP->HTTPS 跳转状态为 ready。该部署只上线管理后台正式上架检查的 `manual` 区分和支付状态口径，不改 Android 真机包、三份提示词、模型输出过滤或聊天滚动主链。

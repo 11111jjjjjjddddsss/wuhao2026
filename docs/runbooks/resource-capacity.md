@@ -1,6 +1,6 @@
 # 云资源容量与续费巡检
 
-最后更新：2026-06-14
+最后更新：2026-06-15
 
 ## 目的
 
@@ -10,11 +10,12 @@
 
 ## 2026-06-14 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 5 条应用日志告警为 `ready`。巡检脚本后续会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 5 条应用日志告警为 `ready`。巡检脚本会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。2026-06-15 已按阿里云官方文档复核释放保护口径：ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 均为包年包月，脚本会显示 `deletion_protection=not_applicable_prepaid`，不要把旧输出里的 `False` 误读成缺少保护。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
 - ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 12 GiB（16%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
-- ECS 系统盘：80 GiB ESSD Entry，已绑定普通低频自动快照策略 `sp-2ze9ufwsu2i5hxm2wmrk` / `nongjiqiancha-prod-basic-7d`：每周二、周六北京时间 04:00 创建，保留 7 天，不启用跨地域复制或归档。ECS 是包年包月 `PrePaid`，删除保护接口不适用，不能把 `deletion_protection=false` 当成未买保护
+- ECS 系统盘：80 GiB ESSD Entry，已绑定普通低频自动快照策略 `sp-2ze9ufwsu2i5hxm2wmrk` / `nongjiqiancha-prod-basic-7d`：每周二、周六北京时间 04:00 创建，保留 7 天，不启用跨地域复制或归档。ECS 是包年包月 `PrePaid`，阿里云 ECS 释放保护只适用于按量付费实例，脚本输出为 `deletion_protection=not_applicable_prepaid`
+- RDS MySQL 是包年包月 `Prepaid`，阿里云 RDS MySQL 释放保护只适用于按量付费或 Serverless 实例，脚本输出为 `deletion_protection=not_applicable_prepaid`
 - RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 2.98 GiB（约 5.97%）；近 30 分钟 QPS/TPS 峰值约 10.03、IOPS 约 5.93、内存 / CPU 指标约 11.76%、连接约 4；备份保留 7 天，日志备份已启用
 - Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.39 MiB / 256 MiB（约 2.11%），CPU 峰值约 0.13%，连接使用约 0.04%；释放保护已开启
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 1、占用约 0.20 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
@@ -30,7 +31,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
 ```
 
-当前脚本汇总状态以实时输出为准。ECS / RDS 当前是包年包月，删除保护接口不适用；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。2026-06-14 严格巡检输出 `warnings=0 / errors=0 / status=ready`，包括 ECS 内存告警数据回到 `OK`。
+当前脚本汇总状态以实时输出为准。ECS / RDS 当前是包年包月，释放保护不适用，脚本会以 `not_applicable_prepaid` 表达；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。2026-06-15 严格巡检输出 `warnings=0 / errors=0 / status=ready`。
 
 公网黑盒只读巡检脚本会从当前运行机器直接请求公网域名，不通过 ECS 本机 `--resolve`，用于确认外部用户实际能访问 API、官网、www 和后台入口，并确认后台未登录仍是 401、HTTP 会跳 HTTPS：
 

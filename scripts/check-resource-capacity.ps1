@@ -214,12 +214,14 @@ $ecs = @($ecsList.Instances.Instance) | Where-Object { $_.InstanceId -eq $EcsIns
 if ($null -eq $ecs) {
     Add-ErrorItem "ecs_instance_missing:$EcsInstanceId"
 } else {
-    Write-Host "instance=$($ecs.InstanceId) status=$($ecs.Status) charge_type=$($ecs.InstanceChargeType) type=$($ecs.InstanceType) cpu=$($ecs.Cpu) memory_mib=$($ecs.Memory) public_ip=$(@($ecs.PublicIpAddress.IpAddress) -join ',') bandwidth_out_mbps=$($ecs.InternetMaxBandwidthOut) deletion_protection=$($ecs.DeletionProtection)"
+    $ecsDeletionProtectionApplicable = [string]$ecs.InstanceChargeType -eq "PostPaid"
+    $ecsDeletionProtection = if ($ecsDeletionProtectionApplicable) { [string]$ecs.DeletionProtection } else { "not_applicable_prepaid" }
+    Write-Host "instance=$($ecs.InstanceId) status=$($ecs.Status) charge_type=$($ecs.InstanceChargeType) type=$($ecs.InstanceType) cpu=$($ecs.Cpu) memory_mib=$($ecs.Memory) public_ip=$(@($ecs.PublicIpAddress.IpAddress) -join ',') bandwidth_out_mbps=$($ecs.InternetMaxBandwidthOut) deletion_protection=$ecsDeletionProtection deletion_protection_applicable=$ecsDeletionProtectionApplicable"
     Write-Expiry "ecs" $ecs.ExpiredTime
     if ($ecs.Status -ne "Running") {
         Add-ErrorItem "ecs_not_running:$($ecs.Status)"
     }
-    if ([string]$ecs.InstanceChargeType -eq "PostPaid" -and -not [bool]$ecs.DeletionProtection) {
+    if ($ecsDeletionProtectionApplicable -and -not [bool]$ecs.DeletionProtection) {
         Add-WarningItem "ecs_deletion_protection_disabled:$($ecs.InstanceId)"
     }
     if ([int]$ecs.InternetMaxBandwidthOut -lt 5) {
@@ -278,7 +280,9 @@ if ($null -eq $rdsAttr) {
 } else {
     $diskUsedGb = [math]::Round(([double]$rdsAttr.DBInstanceDiskUsed / 1GB), 2)
     $diskPct = [math]::Round(([double]$rdsAttr.DBInstanceDiskUsed / ([double]$rdsAttr.DBInstanceStorage * 1GB) * 100), 2)
-    Write-Host "instance=$($rdsAttr.DBInstanceId) status=$($rdsAttr.DBInstanceStatus) pay_type=$($rdsAttr.PayType) class=$($rdsAttr.DBInstanceClass) cpu=$($rdsAttr.DBInstanceCPU) memory_mib=$($rdsAttr.DBInstanceMemory) storage_gb=$($rdsAttr.DBInstanceStorage) disk_used_gb=$diskUsedGb disk_used_pct=$diskPct max_connections=$($rdsAttr.MaxConnections) deletion_protection=$($rdsAttr.DeletionProtection) security_ips=$($rdsAttr.SecurityIPList)"
+    $rdsDeletionProtectionApplicable = [string]$rdsAttr.PayType -match '^(Postpaid|PostPaid|Serverless)$'
+    $rdsDeletionProtection = if ($rdsDeletionProtectionApplicable) { [string]$rdsAttr.DeletionProtection } else { "not_applicable_prepaid" }
+    Write-Host "instance=$($rdsAttr.DBInstanceId) status=$($rdsAttr.DBInstanceStatus) pay_type=$($rdsAttr.PayType) class=$($rdsAttr.DBInstanceClass) cpu=$($rdsAttr.DBInstanceCPU) memory_mib=$($rdsAttr.DBInstanceMemory) storage_gb=$($rdsAttr.DBInstanceStorage) disk_used_gb=$diskUsedGb disk_used_pct=$diskPct max_connections=$($rdsAttr.MaxConnections) deletion_protection=$rdsDeletionProtection deletion_protection_applicable=$rdsDeletionProtectionApplicable security_ips=$($rdsAttr.SecurityIPList)"
     Write-Expiry "rds" $rdsAttr.ExpireTime
     if ($rdsAttr.DBInstanceStatus -ne "Running") {
         Add-ErrorItem "rds_not_running:$($rdsAttr.DBInstanceStatus)"
@@ -291,7 +295,7 @@ if ($null -eq $rdsAttr) {
     if ([string]$rdsAttr.SecurityIPList -notmatch '192\.168\.1\.237') {
         Add-WarningItem "rds_security_ip_missing_ecs_private_ip"
     }
-    if ([string]$rdsAttr.PayType -match '^(Postpaid|PostPaid|Serverless)$' -and -not [bool]$rdsAttr.DeletionProtection) {
+    if ($rdsDeletionProtectionApplicable -and -not [bool]$rdsAttr.DeletionProtection) {
         Add-WarningItem "rds_deletion_protection_disabled:$RdsInstanceId"
     }
 }
