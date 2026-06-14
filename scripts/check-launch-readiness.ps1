@@ -5,6 +5,7 @@ param(
     [switch]$SkipAdmin,
     [switch]$SkipCloud,
     [switch]$SkipDataBoundary,
+    [switch]$SkipManualGoLiveChecklist,
     [switch]$RequireAdminSmoke,
     [switch]$AllowAttentionExitZero
 )
@@ -80,6 +81,70 @@ function Test-AdminSmokeEnv {
     $password = if ($env:NONGJI_ADMIN_PASSWORD) { $env:NONGJI_ADMIN_PASSWORD } else { $env:ADMIN_SMOKE_PASSWORD }
     return -not [string]::IsNullOrWhiteSpace($username) -and `
         -not [string]::IsNullOrWhiteSpace($password)
+}
+
+function Test-TruthyEnv {
+    param([string]$Name)
+    $value = [Environment]::GetEnvironmentVariable($Name)
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $false
+    }
+    $normalized = $value.Trim().ToLowerInvariant()
+    return @("1", "true", "yes", "y", "ok", "ready", "confirmed", "done") -contains $normalized
+}
+
+function Invoke-ManualGoLiveChecklist {
+    $items = @(
+        [pscustomobject]@{
+            Key = "app_icp"
+            Env = "NONGJI_APP_ICP_CONFIRMED"
+            Summary = "App ICP filing has passed and the App filing number/materials are ready"
+        },
+        [pscustomobject]@{
+            Key = "app_police"
+            Env = "NONGJI_APP_POLICE_CONFIRMED"
+            Summary = "App public-security filing has been handled with final App information"
+        },
+        [pscustomobject]@{
+            Key = "access_keys_rotated"
+            Env = "NONGJI_ACCESS_KEYS_ROTATED_CONFIRMED"
+            Summary = "exposed or main-account AccessKeys have been rotated; production uses least-privilege credentials"
+        },
+        [pscustomobject]@{
+            Key = "final_device_regression"
+            Env = "NONGJI_FINAL_DEVICE_REGRESSION_CONFIRMED"
+            Summary = "final APK passed real-device regression: clean install/login/chat/images/today card/settings/member/support/update"
+        },
+        [pscustomobject]@{
+            Key = "sls_email_delivery"
+            Env = "NONGJI_SLS_EMAIL_CONFIRMED"
+            Summary = "first SLS alert email was confirmed by real or test trigger"
+        },
+        [pscustomobject]@{
+            Key = "sms_balance"
+            Env = "NONGJI_SMS_BALANCE_CONFIRMED"
+            Summary = "ordinary SMS package balance, expiry, and billing warning are manually confirmed"
+        },
+        [pscustomobject]@{
+            Key = "release_artifact"
+            Env = "NONGJI_RELEASE_ARTIFACT_CONFIRMED"
+            Summary = "final release APK/package name/signature/versionCode/store materials are aligned"
+        }
+    )
+
+    $pending = @()
+    foreach ($item in $items) {
+        $confirmed = Test-TruthyEnv $item.Env
+        $status = if ($confirmed) { "confirmed" } else { "pending" }
+        Write-Host "manual_check=$($item.Key) status=$status confirm_env=$($item.Env) summary=$($item.Summary)"
+        if (-not $confirmed) {
+            $pending += $item.Key
+        }
+    }
+    Write-Host "manual_note=real payment is not a launch blocker while Android purchase buttons remain disabled and server dev-order endpoints stay closed"
+    if ($pending.Count -gt 0) {
+        throw "manual go-live confirmations pending: $($pending -join ', ')"
+    }
 }
 
 Write-Host "== launch readiness gate =="
@@ -209,6 +274,12 @@ if (-not $SkipCloud) {
         Invoke-GateStep -Name "admin authenticated smoke" -Optional:$optional -ScriptBlock {
             throw "admin smoke credentials are not set in the current PowerShell session; set NONGJI_ADMIN_USERNAME/NONGJI_ADMIN_PASSWORD or ADMIN_SMOKE_USERNAME/ADMIN_SMOKE_PASSWORD"
         }
+    }
+}
+
+if (-not $SkipManualGoLiveChecklist) {
+    Invoke-GateStep -Name "manual go-live checklist" -Optional -ScriptBlock {
+        Invoke-ManualGoLiveChecklist
     }
 }
 

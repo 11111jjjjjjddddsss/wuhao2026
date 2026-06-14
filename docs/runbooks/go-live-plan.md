@@ -79,7 +79,21 @@
 .\scripts\check-launch-readiness.ps1
 ```
 
-默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、短信发送统计巡检、后端账号资产归属 / 账号完整性巡检；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势，但不等于短信套餐包余额已人工确认；真实上架前仍要确认套餐包余量和到期状态。
+默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、短信发送统计巡检、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势，但不等于短信套餐包余额已人工确认；真实上架前仍要确认套餐包余量和到期状态。
+
+人工上线确认项用于把脚本无法自动证明的事项直接暴露在总门禁末尾。正式上架前逐项确认后，可在当前 PowerShell 临时设置对应环境变量为 `1 / true / yes / ok / ready / confirmed / done`；不要把这些确认变量写进仓库或长期 shell 配置。当前确认项包括：
+
+| 环境变量 | 确认内容 |
+| --- | --- |
+| `NONGJI_APP_ICP_CONFIRMED` | App 备案已通过，备案号和材料可用于上架 |
+| `NONGJI_APP_POLICE_CONFIRMED` | App 公安备案已按最终 App 信息处理 |
+| `NONGJI_ACCESS_KEYS_ROTATED_CONFIRMED` | 已暴露或主账号 AccessKey 已轮换，生产改用最小权限凭证 |
+| `NONGJI_FINAL_DEVICE_REGRESSION_CONFIRMED` | 最终 APK 已真机跑完清数据、登录、聊天、图片、今日农情、设置、会员、帮助反馈和检查更新 |
+| `NONGJI_SLS_EMAIL_CONFIRMED` | SLS 首封告警邮件已通过真实或测试触发确认送达 |
+| `NONGJI_SMS_BALANCE_CONFIRMED` | 普通短信套餐包余额、到期和账单 / 预警已人工确认 |
+| `NONGJI_RELEASE_ARTIFACT_CONFIRMED` | 最终 release APK、包名、签名、versionCode 和应用商店材料一致 |
+
+纯技术日常巡检如果暂时不想看人工项，可显式加 `-SkipManualGoLiveChecklist`；正式上线门禁不要跳过。
 
 发版前完整慢检：
 
