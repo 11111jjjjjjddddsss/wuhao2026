@@ -50,7 +50,7 @@ fun TodayAgriNewsCard(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = 10.dp),
+            .padding(horizontal = horizontalPadding, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
         Surface(
@@ -62,7 +62,7 @@ fun TodayAgriNewsCard(
                 .fillMaxWidth()
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 13.dp)
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -107,7 +107,7 @@ fun TodayAgriNewsCard(
                             modifier = Modifier.padding(vertical = 10.dp)
                         )
                     } else {
-                        Box(modifier = Modifier.height(12.dp))
+                        Box(modifier = Modifier.height(10.dp))
                     }
                     TodayAgriNewsItem(
                         item = item,
@@ -175,7 +175,7 @@ private fun TodayAgriNewsItem(
     val source = item.source.orEmpty().trim()
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalAlignment = Alignment.Top
     ) {
         Surface(

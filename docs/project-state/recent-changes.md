@@ -5,6 +5,8 @@
 
 ## 2026-06-14
 
+- 继续按真机截图微调今日农情首屏卡片：在不改变 `ChatTimelineItem.TodayAgriCard` 正常列表项身份、不改滚动链和不做 overlay 的前提下，把只有农情卡片时的顶部安全距略增，卡片外层 / 内部横向和垂直间距再收紧一点，让黑色边框避开顶部标题栏遮挡，同时让摘要正文吃到更多宽度。后续仍需用户重新安装新包，在清数据后无真实消息、有后续消息、上下滑动三个场景真机看一眼。
+
 - 按用户换窗口前确认的“今日农情卡片必须像正常消息列表项一样上下滑动”做小范围 UI 收口：继续保留 `ChatTimelineItem.TodayAgriCard` 插入同一个正向 `LazyColumn` 视觉时间线，不改成 overlay、浮层、sticky 尾卡或关闭动画；仅在首屏没有真实消息、只有今日农情卡片时给列表顶部增加少量安全距，避免卡片顶边被顶部标题栏遮住。同步收窄今日农情卡片外层横向 padding、内部横向 padding、编号圆点和编号到正文间距，让 90-130 字摘要在常见手机宽度上吃到更多正文宽度。`./gradlew.bat :app:compileDebugKotlin` 和 `:app:assembleDebug` 已通过，只有既有弃用 warning。`scripts/check-android-build-parity.ps1` 同步显式按 UTF-8 读取源码，避免 Windows PowerShell 把 Kotlin 中文文案读成乱码后误报设置页 / 账号管理默认项缺失。
 
 - 按用户继续追问“滚动链有没有被误伤、UI 回退有没有日志”补齐 Android 可查证据：复核最近几波主聊天滚动改动后，确认没有恢复反向列表、overlay、raw delta、小分割等旧链，首屏贴底仍是正向列表同一视觉尾部锚点；新增 `ui.chat_startup_state`、`ui.chat_startup_bottom_snap_done`、`ui.chat_startup_bottom_snap_pending`、`ui.settings_main_opened` 和 `ui.account_management_opened` App 自动日志，用布尔状态、数量和阶段追踪清数据 / 登录后首屏 reveal、贴底校准、设置页默认入口和账号页默认条目是否走当前 APK 代码，不上传聊天正文、手机号、图片 URL 或 token。Android parity 脚本同步要求这些日志事件保留，防止后续排障点被误删。

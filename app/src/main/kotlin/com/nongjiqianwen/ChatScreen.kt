@@ -473,7 +473,7 @@ private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW = 56.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
-private val TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING = 10.dp
+private val TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
@@ -6753,7 +6753,7 @@ fun ChatScreen() {
                         is ChatTimelineItem.TodayAgriCard ->
                             TodayAgriNewsCard(
                                 card = msg.card,
-                                horizontalPadding = (listHorizontalPadding - 4.dp).coerceAtLeast(8.dp),
+                                horizontalPadding = (listHorizontalPadding - 6.dp).coerceAtLeast(8.dp),
                                 maxCardWidth = chromeMaxWidth
                             )
                     }
