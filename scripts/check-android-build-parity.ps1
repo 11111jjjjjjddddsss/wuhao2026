@@ -82,6 +82,8 @@ $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Cha
 $hamburgerMenuSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
+$debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
+$releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
 foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -173,14 +175,62 @@ if ($failures.Count -eq 0) {
         (Join-Path $RepoRoot "app/build/intermediates/packaged_manifests/debug/processDebugManifestForPackage/AndroidManifest.xml"),
         (Join-Path $RepoRoot "app/build/intermediates/packaged_manifests/release/processReleaseManifestForPackage/AndroidManifest.xml")
     )
+    $generatedManifestContents = @{}
     foreach ($manifestPath in $mergedManifestPaths) {
         if (!(Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
             Add-Failure $failures "Missing generated Android manifest for parity validation: $manifestPath. Run :app:processDebugManifest :app:processReleaseManifest :app:processDebugManifestForPackage :app:processReleaseManifestForPackage before this script."
             continue
         }
         $mergedManifest = Get-Content -LiteralPath $manifestPath -Raw
+        $generatedManifestContents[$manifestPath] = $mergedManifest
         Require-NoMatch $failures $mergedManifest 'android\.permission\.READ_PHONE_STATE|android\.permission\.ACCESS_WIFI_STATE|android\.permission\.CHANGE_NETWORK_STATE|com\.alicom\.fusion|com\.mobile\.auth\.gatewayauth|FusionAuthProtocolActivity' `
             "Generated manifests must not include fusion auth activities or old carrier-network permissions: $manifestPath"
+    }
+    foreach ($buildConfigPath in @($debugBuildConfigFile, $releaseBuildConfigFile)) {
+        if (!(Test-Path -LiteralPath $buildConfigPath -PathType Leaf)) {
+            Add-Failure $failures "Missing generated BuildConfig for parity validation: $buildConfigPath. Run :app:generateDebugBuildConfig :app:generateReleaseBuildConfig before this script."
+            continue
+        }
+        $generatedBuildConfig = Get-Content -LiteralPath $buildConfigPath -Raw
+        Require-Match $failures $generatedBuildConfig 'APPLICATION_ID\s*=\s*"com\.nongjiqiancha"' `
+            "Generated BuildConfig must keep applicationId com.nongjiqiancha: $buildConfigPath"
+        Require-Match $failures $generatedBuildConfig 'UPLOAD_BASE_URL\s*=\s*"https://api\.nongjiqiancha\.cn"' `
+            "Generated BuildConfig must keep the production HTTPS backend URL: $buildConfigPath"
+        Require-Match $failures $generatedBuildConfig 'USE_BACKEND_AB\s*=\s*true' `
+            "Generated BuildConfig must keep USE_BACKEND_AB=true: $buildConfigPath"
+    }
+    if ((Test-Path -LiteralPath $debugBuildConfigFile -PathType Leaf) -and (Test-Path -LiteralPath $releaseBuildConfigFile -PathType Leaf)) {
+        $debugBuildConfig = Get-Content -LiteralPath $debugBuildConfigFile -Raw
+        $releaseBuildConfig = Get-Content -LiteralPath $releaseBuildConfigFile -Raw
+        Require-Match $failures $debugBuildConfig 'BUILD_TYPE\s*=\s*"debug"' `
+            "Generated debug BuildConfig must identify the debug build type."
+        Require-Match $failures $releaseBuildConfig 'BUILD_TYPE\s*=\s*"release"' `
+            "Generated release BuildConfig must identify the release build type."
+    }
+    $debugPackagedManifestPath = Join-Path $RepoRoot "app/build/intermediates/packaged_manifests/debug/processDebugManifestForPackage/AndroidManifest.xml"
+    $releasePackagedManifestPath = Join-Path $RepoRoot "app/build/intermediates/packaged_manifests/release/processReleaseManifestForPackage/AndroidManifest.xml"
+    if ($generatedManifestContents.ContainsKey($debugPackagedManifestPath) -and $generatedManifestContents.ContainsKey($releasePackagedManifestPath)) {
+        $debugPackagedManifest = $generatedManifestContents[$debugPackagedManifestPath]
+        $releasePackagedManifest = $generatedManifestContents[$releasePackagedManifestPath]
+        Require-Match $failures $debugPackagedManifest 'package="com\.nongjiqiancha"' `
+            "Packaged debug manifest must keep package=com.nongjiqiancha."
+        Require-Match $failures $releasePackagedManifest 'package="com\.nongjiqiancha"' `
+            "Packaged release manifest must keep package=com.nongjiqiancha."
+        Require-Match $failures $debugPackagedManifest 'android:debuggable="true"' `
+            "Packaged debug manifest should be explicitly debuggable for Android Studio diagnostics."
+        Require-NoMatch $failures $releasePackagedManifest 'android:debuggable="true"' `
+            "Packaged release manifest must not be debuggable."
+        $debugPermissions = [regex]::Matches($debugPackagedManifest, '<uses-permission\b[^>]*android:name="([^"]+)"') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Sort-Object -Unique
+        $releasePermissions = [regex]::Matches($releasePackagedManifest, '<uses-permission\b[^>]*android:name="([^"]+)"') |
+            ForEach-Object { $_.Groups[1].Value } |
+            Sort-Object -Unique
+        $debugPermissionText = $debugPermissions -join "`n"
+        $releasePermissionText = $releasePermissions -join "`n"
+        if ($debugPermissionText -ne $releasePermissionText) {
+            Add-Failure $failures "Packaged debug and release manifests must keep the same permission set. Debug=[$($debugPermissions -join ', ')] Release=[$($releasePermissions -join ', ')]"
+        }
     }
 
     Require-Match $failures $sessionApi 'endpoint\s*=\s*"/api/auth/sms/login"' `

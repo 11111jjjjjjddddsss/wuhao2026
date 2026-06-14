@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 按“测试包除了预览面板其他都要和正式包一样”的上线口径，补强 Android parity 门禁：`scripts/check-android-build-parity.ps1` 不再只扫源码模式，还会读取 Gradle 实际生成的 debug / release `BuildConfig.java` 和 packaged manifest，确认实际产物同包名 `com.nongjiqiancha`、同生产 HTTPS 后端、同 `USE_BACKEND_AB=true`、release 不带 `android:debuggable=true`、debug / release 权限集合一致；debug 只允许保留 Android Studio 诊断所需的 debuggable 属性。该改动只加强自动检查，不改 App 运行代码、滚动链、提示词或后端接口。
+
 - 按用户反馈“主界面右上角加号不好看 / 图标有点小、颜色不重 / 稍小有点糊 / 左右稍微对称点”，把 Android 主聊天右上角会员中心入口从手绘“圆角方框 + 加号”换成透明底黑色线性旋转叶片：按 App 原始六片旋转叶片提取线条轮廓，不用原始 3D 绿叶位图、不带外部黑色背景、不保留原图暗纹；会员图标显示尺寸从 28/30dp 加到 36/38dp，左上角设置汉堡线条从 27/28dp 加到 31/32dp，线条加粗为纯黑，按钮点击区域、打开会员中心 / 设置的行为、会员权益 / 支付占位和后端接口均不变。该改动只影响主界面顶部视觉，不改滚动链、提示词或会员业务规则。
 
 - 按用户反馈“最主要是看不到小球跳动”，只调整 Android 主聊天 waiting 小球和流式吐字节奏，不改滚动链、工作线、今日农情卡片、后端输出或三份已定稿提示词。远端首个 chunk 太快返回时，waiting 小球最短展示从约 1.05 秒拉到约 1.5 秒，覆盖现有 720ms 往返呼吸动画的一轮完整跳动；streaming reveal 从最多 2 个 token 一拍收为 1 个 token 一拍，中文单字和标点 / 换行停顿略放慢，让小球和正文都有正常聊天产品的可见节奏，但不做慢速朗读感。
