@@ -2809,11 +2809,12 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       : "当前无待处理注销申请";
   const authFailures = queues.auth_failures ?? 0;
   const crashReports = queues.crash_reports ?? 0;
+  const crashRecency = latestCrashText(report.auth_logs);
   const authLevel = crashReports > 0 || authFailures >= 10 ? "bad" : authFailures > 0 ? "warn" : "ok";
   return `
     <div class="queue-grid">
       ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
-      ${queueCard("登录排障", authFailures, `最近24小时认证失败；闪退补报 ${crashReports} 条`, authLevel)}
+      ${queueCard("登录排障", authFailures, `最近24小时认证失败；闪退补报 ${crashReports} 条；${crashRecency}`, authLevel)}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("账号注销", accountDeletionPending, accountDeletionBody, accountDeletionOverdue ? "bad" : accountDeletionPending ? "warn" : "ok", "account-deletion")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
@@ -2866,6 +2867,7 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
   const envBlocked = authLogs.env_blocked ?? 0;
   const envWarnings = authLogs.env_warnings ?? 0;
   const loginNetworkFailures = authLogs.login_network_failures ?? 0;
+  const crashRecency = latestCrashText(authLogs);
   const level = crashReports > 0 || failures >= 10 ? "bad" : failures > 0 ? "warn" : "ok";
   return `
     <div class="auth-debug-grid">
@@ -2874,6 +2876,7 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
           <span class="small muted">最近24小时</span>
           <strong>${failures}</strong>
           <p>认证失败；短信 ${authLogs.sms_failures ?? 0}，旧包融合 ${authLogs.fusion_failures ?? 0}，登录前日志 ${authLogs.preauth_count ?? 0}，闪退补报 ${crashReports}。</p>
+          <p class="small muted">${escapeHTML(crashRecency)}</p>
           <p class="small muted">新包只走短信验证码；WiFi 或代理环境下也应可用，只要生产 HTTPS、Redis 和短信服务正常。</p>
           <div class="auth-debug-metrics">
             ${authDebugMetric("旧包环境阻断", envBlocked, envBlocked ? "warn" : "ok")}
@@ -3050,6 +3053,10 @@ function authDebugMetric(label: string, value: number, level: "ok" | "warn" | "b
       <strong>${value}</strong>
     </span>
   `;
+}
+
+function latestCrashText(authLogs: AdminMonitoring["auth_logs"] | undefined): string {
+  return authLogs?.latest_crash_at ? `最近闪退：${formatTime(authLogs.latest_crash_at)}` : "24h 无新闪退";
 }
 
 function filterButton(label: string, filter: { userID?: string; event?: string; eventPrefix?: string; level?: string; window?: string }): string {
@@ -3327,6 +3334,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
         ? "24 小时内已有新登录 session；仍要用真机确认短信收码和验证码登录。"
         : "短信配置正常不等于真机已过；真机测试时重点看验证码收码和生产 HTTPS 可达性。";
   const appQualityLevel = crashReports > 0 || appErrors >= 10 || authFailures >= 10 ? "bad" : appErrors > 0 || authFailures > 0 ? "warn" : "ok";
+  const appCrashRecency = latestCrashText(report.auth_logs);
   return `
     <section class="decision-grid">
       ${decisionCard(
@@ -3360,7 +3368,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ${decisionCard(
         "App 质量",
         appErrors || authFailures ? `${appErrors} 个错误 / ${authFailures} 个登录失败` : "暂无错误",
-        `最近24小时 warn ${day24?.app_warns ?? 0} 条，闪退补报 ${crashReports} 条。`,
+        `最近24小时 warn ${day24?.app_warns ?? 0} 条，闪退补报 ${crashReports} 条；${appCrashRecency}。`,
         appQualityLevel,
         "app-logs",
       )}

@@ -199,6 +199,7 @@ type AdminMonitoringAuthLogs struct {
 	EnvWarnings          int64                      `json:"env_warnings"`
 	LoginNetworkFailures int64                      `json:"login_network_failures"`
 	LastSeenAt           *int64                     `json:"last_seen_at,omitempty"`
+	LatestCrashAt        *int64                     `json:"latest_crash_at,omitempty"`
 	Funnel               []AdminMonitoringAuthStage `json:"funnel"`
 	TopEvents            []ClientAppLogSummaryEntry `json:"top_events"`
 }
@@ -1721,6 +1722,7 @@ func adminAuthFunnelEventIsSuccess(event string) bool {
 func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64) (AdminMonitoringAuthLogs, error) {
 	authLogs := AdminMonitoringAuthLogs{SinceMs: sinceMs}
 	var lastSeen sql.NullInt64
+	var latestCrash sql.NullInt64
 	err := s.db.QueryRowContext(
 		ctx,
 		`SELECT
@@ -1735,7 +1737,8 @@ func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64)
 		   COALESCE(SUM(CASE WHEN event = 'auth.fusion_env_blocked' THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'auth.fusion_env_warning' THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'auth.login_network_failed' THEN 1 ELSE 0 END), 0),
-		   MAX(created_at)
+		   MAX(created_at),
+		   MAX(CASE WHEN event IN ('app.crash', 'auth.app_crash') THEN created_at ELSE NULL END)
 		 FROM client_app_logs
 		WHERE created_at >= ?
 		  AND (event LIKE 'auth.%' OR event = 'app.crash')`,
@@ -1754,12 +1757,16 @@ func (s *Store) buildAdminMonitoringAuthLogs(ctx context.Context, sinceMs int64)
 		&authLogs.EnvWarnings,
 		&authLogs.LoginNetworkFailures,
 		&lastSeen,
+		&latestCrash,
 	)
 	if err != nil {
 		return authLogs, err
 	}
 	if lastSeen.Valid {
 		authLogs.LastSeenAt = int64Ptr(lastSeen.Int64)
+	}
+	if latestCrash.Valid {
+		authLogs.LatestCrashAt = int64Ptr(latestCrash.Int64)
 	}
 	funnel, err := s.buildAdminMonitoringAuthFunnel(ctx, sinceMs)
 	if err != nil {

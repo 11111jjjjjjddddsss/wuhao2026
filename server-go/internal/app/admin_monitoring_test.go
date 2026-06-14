@@ -166,6 +166,19 @@ func TestAdminMonitoringLegacyFusionCopyMatchesCurrentLoginPolicy(t *testing.T) 
 	assertContainsAll(t, warning.Body, "旧安装包", "4G+WiFi", "VPN", "新包不再拉 SDK")
 }
 
+func TestAdminMonitoringAuthLogsExposeLatestCrashTime(t *testing.T) {
+	source := mustReadFileForTest(t, "admin_api.go")
+	if !strings.Contains(source, "LatestCrashAt") || !strings.Contains(source, `json:"latest_crash_at,omitempty"`) {
+		t.Fatalf("auth logs must expose latest_crash_at for operator-readable crash recency")
+	}
+	block := functionBlockForTest(source, "func (s *Store) buildAdminMonitoringAuthLogs")
+	assertContainsAll(t, block,
+		"latestCrash",
+		"MAX(CASE WHEN event IN ('app.crash', 'auth.app_crash') THEN created_at ELSE NULL END)",
+		"authLogs.LatestCrashAt",
+	)
+}
+
 func TestAdminAuthFunnelStageMappingCoversKnownLoginEvents(t *testing.T) {
 	tests := map[string]string{
 		"auth.fusion_start_requested":            "legacy_fusion",
