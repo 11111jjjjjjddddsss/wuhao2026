@@ -3171,8 +3171,9 @@ function userRegionPanel(
 function monitoringHero(report: AdminMonitoring): string {
   const worst = monitoringWorstLevel(report);
   const readinessRows = report.launch_readiness || [];
-  const readinessBlocked = readinessRows.filter((row) => row.status === "blocked").length;
-  const readinessAttention = readinessRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
+  const readiness = launchReadinessCounts(readinessRows);
+  const readinessBlocked = readiness.blocked;
+  const readinessAttention = readiness.programAttention + readiness.manualAttention;
   const heroLevel = worst === "bad" || readinessBlocked > 0 ? "bad" : worst === "warn" || readinessAttention > 0 ? "warn" : "ok";
   const title =
     worst === "bad"
@@ -3186,7 +3187,7 @@ function monitoringHero(report: AdminMonitoring): string {
     worst === "bad"
       ? "先处理红色事项，再看 App 错误 Top 和审计失败。"
       : readinessBlocked > 0
-        ? `当前服务没有明显中断，但正式上架还有 ${readinessBlocked} 个阻塞项和 ${readinessAttention} 个需处理项。`
+        ? `当前服务没有明显中断，但正式上架还有 ${readinessBlocked} 个阻塞项；程序需处理 ${readiness.programAttention} 项，人工确认 ${readiness.manualAttention} 项。`
       : worst === "warn"
         ? "当前没有明确服务中断，但有运营队列需要跟进。"
         : "关键健康项、App 报错、反馈和礼品卡队列暂时没有明显异常。";
@@ -3205,17 +3206,30 @@ function monitoringHero(report: AdminMonitoring): string {
   `;
 }
 
+function launchReadinessCounts(rows: AdminMonitoring["launch_readiness"]): {
+  ready: number;
+  programAttention: number;
+  manualAttention: number;
+  blocked: number;
+} {
+  return {
+    ready: rows.filter((row) => row.status === "ready").length,
+    programAttention: rows.filter((row) => !row.manual && row.status !== "ready" && row.status !== "blocked").length,
+    manualAttention: rows.filter((row) => row.manual && row.status !== "ready" && row.status !== "blocked").length,
+    blocked: rows.filter((row) => row.status === "blocked").length,
+  };
+}
+
 function monitoringReadinessSummary(report: AdminMonitoring): string {
   const rows = report.launch_readiness || [];
-  const ready = rows.filter((row) => row.status === "ready").length;
-  const attention = rows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
-  const blocked = rows.filter((row) => row.status === "blocked").length;
+  const readiness = launchReadinessCounts(rows);
   const next = rows.find((row) => row.status === "blocked") || rows.find((row) => row.status !== "ready");
   return `
     <section class="readiness-summary">
-      <div class="readiness-count ok"><span>就绪</span><strong>${ready}</strong></div>
-      <div class="readiness-count warn"><span>需处理</span><strong>${attention}</strong></div>
-      <div class="readiness-count bad"><span>阻塞</span><strong>${blocked}</strong></div>
+      <div class="readiness-count ok"><span>就绪</span><strong>${readiness.ready}</strong></div>
+      <div class="readiness-count warn"><span>程序需处理</span><strong>${readiness.programAttention}</strong></div>
+      <div class="readiness-count info"><span>人工确认</span><strong>${readiness.manualAttention}</strong></div>
+      <div class="readiness-count bad"><span>上架阻塞</span><strong>${readiness.blocked}</strong></div>
       <div class="readiness-next">
         <span class="small muted">下一步</span>
         <strong>${escapeHTML(next?.title || "继续推进")}</strong>
@@ -3230,21 +3244,20 @@ function monitoringOperatorGuide(report: AdminMonitoring): string {
   const worst = monitoringWorstLevel(report);
   const actionCount = report.action_items?.length || 0;
   const readinessRows = report.launch_readiness || [];
-  const blocked = readinessRows.filter((row) => row.status === "blocked").length;
-  const attention = readinessRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
-  const primaryRoute = primaryMonitoringActionRoute(report, worst) || (blocked > 0 ? "monitoring" : "app-logs");
+  const readiness = launchReadinessCounts(readinessRows);
+  const primaryRoute = primaryMonitoringActionRoute(report, worst) || (readiness.blocked > 0 ? "monitoring" : "app-logs");
   const firstText =
     worst === "bad"
       ? "红色代表先处理，通常是服务、App异常或后台操作失败。"
-      : worst === "warn" || attention > 0 || blocked > 0
-        ? "黄色代表可以继续推进，但要人工确认或补一次真机回归。"
+      : worst === "warn" || readiness.programAttention > 0 || readiness.manualAttention > 0 || readiness.blocked > 0
+        ? "黄色代表可以继续推进，但要分清程序状态和人工确认。"
         : "绿色代表当前后台没有明显异常，可以继续按上线清单往前走。";
   return `
     <section class="operator-guide">
       <div class="operator-guide-copy">
         <span class="small muted">处理顺序</span>
         <strong>先看颜色，再点入口，不需要先读完整张表。</strong>
-        <p>${escapeHTML(firstText)} 当前还有 ${actionCount} 个先处理事项、${blocked} 个上架阻塞项、${attention} 个需确认项。</p>
+        <p>${escapeHTML(firstText)} 当前还有 ${actionCount} 个先处理事项、${readiness.blocked} 个上架阻塞项、${readiness.programAttention} 个程序需处理、${readiness.manualAttention} 个人工确认。</p>
       </div>
       <div class="operator-guide-steps">
         ${operatorGuideStep("1", "当前结论", "看最上面的状态和下一步；红色先处理，黄色先确认，绿色继续测。", routeActionButton(primaryRoute, "打开重点项"))}
@@ -3311,8 +3324,9 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
   const worst = monitoringWorstLevel(report);
   const primaryRoute = primaryMonitoringActionRoute(report, worst);
   const readinessRows = report.launch_readiness || [];
-  const readinessBlocked = readinessRows.filter((row) => row.status === "blocked").length;
-  const readinessAttention = readinessRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
+  const readiness = launchReadinessCounts(readinessRows);
+  const readinessBlocked = readiness.blocked;
+  const readinessAttention = readiness.programAttention + readiness.manualAttention;
   const loginDepsOK = loginHealthOK(report.health);
   const giftReady = (report.queues.gift_card_batch_count ?? 0) > 0 && (report.queues.gift_card_active ?? 0) > 0;
   const giftWarn = report.queues.gift_card_failed_attempts > 0 || !giftReady;
@@ -3342,7 +3356,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ${decisionCard(
         "当前结论",
         worst === "bad" ? "先处理" : readinessBlocked > 0 ? "运行正常 / 上架有阻塞" : worst === "warn" || readinessAttention > 0 ? "可推进但要盯" : "可以继续推进",
-        worst === "bad" ? "有红色事项，先点下面入口处理。" : readinessBlocked > 0 ? `服务运行信号暂稳，但正式上架还有 ${readinessBlocked} 个阻塞项和 ${readinessAttention} 个需处理项。` : worst === "warn" ? "没有明确中断，但有队列或配置需要看。" : `今日 ${today?.chat_rounds ?? 0} 轮问诊，关键服务正常。`,
+        worst === "bad" ? "有红色事项，先点下面入口处理。" : readinessBlocked > 0 ? `服务运行信号暂稳，但正式上架还有 ${readinessBlocked} 个阻塞项；程序需处理 ${readiness.programAttention} 项，人工确认 ${readiness.manualAttention} 项。` : worst === "warn" ? "没有明确中断，但有队列或配置需要看。" : `今日 ${today?.chat_rounds ?? 0} 轮问诊，关键服务正常。`,
         worst === "bad" ? "bad" : readinessBlocked > 0 || readinessAttention > 0 ? "warn" : worst,
         primaryRoute,
       )}

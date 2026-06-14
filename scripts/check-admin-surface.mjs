@@ -134,6 +134,9 @@ if (unknownRouteStrings.length) {
 expectAppLogPrefixFilter("auth.");
 expectAppLogPrefixFilter("auth.fusion_");
 expectAdminPattern("preauth app log filter", /filterButton\("[^"]+",\s*\{\s*userID:\s*"preauth"/);
+expectAdminPattern("readiness separates program attention", /程序需处理/);
+expectAdminPattern("readiness separates manual confirmation", /人工确认/);
+expectAdminPattern("readiness keeps launch blockers visible", /上架阻塞/);
 [
   "auth.login_network_failed",
   "auth.sms_send_failed",
