@@ -514,8 +514,6 @@ private const val ASSISTANT_RETRY_STATUS_TEXT = "回复未完成"
 private const val ASSISTANT_RETRY_ACTION_TEXT = "重试"
 private const val ASSISTANT_RETRYING_STATUS_TEXT = "正在重试..."
 private const val ASSISTANT_RETRY_PREVIEW_TEXT = "回复未完成 · 点击重试"
-private const val QUOTA_RETRY_STATUS_TEXT = "今日额度已用完"
-private const val QUOTA_RETRY_PREVIEW_TEXT = "今日额度已用完 · 点击重试"
 private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
 private const val USER_RETRYING_STATUS_TEXT = "正在重发..."
@@ -3989,6 +3987,40 @@ fun ChatScreen() {
             messages.any { it.id == assistantMessageId && it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
     }
 
+    fun clearStaleFailureAffordancesForNewSend(activeUserMessageId: String) {
+        val activeAssistantMessageId = assistantMessageIdForSourceUser(activeUserMessageId)
+        failedUserMessageStates.keys
+            .toList()
+            .filter { it != activeUserMessageId }
+            .forEach { messageId ->
+                failedUserMessageStates.remove(messageId)
+                retryingUserMessageIds.remove(messageId)
+                if (!hasSettledAssistantMessageForUser(messageId)) {
+                    removeMessageById(messageId)
+                }
+            }
+        failedAssistantMessageStates.entries
+            .toList()
+            .filter { (assistantMessageId, state) ->
+                assistantMessageId != activeAssistantMessageId &&
+                    state.sourceUserMessageId != activeUserMessageId
+            }
+            .forEach { (assistantMessageId, _) ->
+                failedAssistantMessageStates.remove(assistantMessageId)
+                retryingAssistantMessageIds.remove(assistantMessageId)
+                val assistantIndex = messages.indexOfFirst { message ->
+                    message.id == assistantMessageId &&
+                        message.role == ChatRole.ASSISTANT
+                }
+                if (
+                    assistantIndex >= 0 &&
+                    messages[assistantIndex].content.isBlank()
+                ) {
+                    messages.removeAt(assistantIndex)
+                }
+            }
+    }
+
     fun findFailedUserMessageIdByText(text: String): String? =
         messages.lastOrNull()
             ?.takeIf { message ->
@@ -5209,6 +5241,7 @@ fun ChatScreen() {
         }
 
         val userId = "user_${UUID.randomUUID()}"
+        clearStaleFailureAffordancesForNewSend(userId)
         failedUserMessageStates.remove(userId)
         clearFailedAssistantStateForUser(userId)
         upsertUserMessage(
@@ -5299,6 +5332,7 @@ fun ChatScreen() {
             }
         }
         val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
+        clearStaleFailureAffordancesForNewSend(userId)
         failedUserMessageStates.remove(userId)
         clearFailedAssistantStateForUser(userId)
         val assistantId = assistantMessageIdForSourceUser(userId)
@@ -5725,6 +5759,7 @@ fun ChatScreen() {
             releaseInitialWorklineToBottom()
             performJumpToBottom(
                 messagesCount = messages.size,
+                hasVisualTailItem = bottomAnchorIndexOrMinusOne() >= 0,
                 hasStreamingItem = hasStreamingItem,
                 isStreaming = isStreaming,
                 scrollModeState = scrollRuntime.scrollMode,
@@ -6364,19 +6399,14 @@ fun ChatScreen() {
                             }
                             if (failedAssistantState != null) {
                                 val assistantRetrying = retryingAssistantMessageIds[msg.id] == true
-                                val failedByQuota = failedAssistantState.reason == "quota"
                                 MessageStatusFooter(
                                     statusText = if (assistantRetrying) {
                                         ASSISTANT_RETRYING_STATUS_TEXT
-                                    } else if (failedByQuota) {
-                                        QUOTA_RETRY_STATUS_TEXT
                                     } else {
                                         ASSISTANT_RETRY_STATUS_TEXT
                                     },
                                     actionText = if (assistantRetrying) {
                                         null
-                                    } else if (failedByQuota) {
-                                        ASSISTANT_RETRY_ACTION_TEXT
                                     } else {
                                         ASSISTANT_RETRY_ACTION_TEXT
                                     },
@@ -7491,9 +7521,7 @@ private fun UiCopyPreviewOverlay(
                         COMPOSER_IMAGE_PLACEHOLDER_TEXT,
                         "输入框已有图片 placeholder",
                         UiCopyPreviewKind.ComposerImagePlaceholder
-                    ),
-                    UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
-                    UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽浮层", UiCopyPreviewKind.Quota)
+                    )
                 )
             ),
             UiCopyPreviewGroup(
@@ -7590,15 +7618,12 @@ private fun UiCopyPreviewOverlay(
                         UiCopyPreviewKind.AttachmentSheet
                     ),
                     UiCopyPreviewItem("帮助与反馈图片面板", "复用附件结构但不显示农业拍摄提示", UiCopyPreviewKind.SupportAttachmentSheet),
-                    UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量浮层", UiCopyPreviewKind.ImageCountHint),
                     UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "已满附件面板", UiCopyPreviewKind.ImageCountSheet)
                 )
             ),
             UiCopyPreviewGroup(
                 title = "图片与预览",
                 items = listOf(
-                    UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败浮层", UiCopyPreviewKind.ImageReadFailure),
-                    UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败浮层", UiCopyPreviewKind.CameraOpenFailed),
                     UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
                     UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
                     UiCopyPreviewItem(IMAGE_EXPIRED_THUMB_TEXT, "远端历史图过期后的占位", UiCopyPreviewKind.ImageExpiredPlaceholder)
@@ -7609,20 +7634,26 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
                     UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
-                    UiCopyPreviewItem(QUOTA_RETRY_PREVIEW_TEXT, "今日额度用完后尾部", UiCopyPreviewKind.QuotaRetry),
                     UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 尾部补上传图片时", UiCopyPreviewKind.AssistantRetrying),
                     UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
                     UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户尾部补上传图片时", UiCopyPreviewKind.UserRetrying)
                 )
             ),
             UiCopyPreviewGroup(
-                title = "异常浮层",
+                title = "主界面中部浮层",
                 items = listOf(
+                    UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽中部短提示", UiCopyPreviewKind.Quota),
                     UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网络发送 / 重试浮层", UiCopyPreviewKind.Network),
-                    UiCopyPreviewItem(SUPPORT_SEND_FAILED_HINT, "帮助与反馈发送失败浮层", UiCopyPreviewKind.SupportSendFailed),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
+                    UiCopyPreviewItem(SERVICE_UNAVAILABLE_HINT_TEXT, "服务临时不可用浮层", UiCopyPreviewKind.ServiceUnavailable),
+                    UiCopyPreviewItem(ACTIVE_STREAM_HINT_TEXT, "上一条仍在处理浮层", UiCopyPreviewKind.ActiveStream),
                     UiCopyPreviewItem(INTERRUPTED_NETWORK_HINT_TEXT, "streaming 网络中断浮层", UiCopyPreviewKind.Interrupted),
-                    UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback)
+                    UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback),
+                    UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
+                    UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量中部短提示", UiCopyPreviewKind.ImageCountHint),
+                    UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败中部短提示", UiCopyPreviewKind.ImageReadFailure),
+                    UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败中部短提示", UiCopyPreviewKind.CameraOpenFailed),
+                    UiCopyPreviewItem(SUPPORT_SEND_FAILED_HINT, "帮助与反馈发送失败中部短提示", UiCopyPreviewKind.SupportSendFailed)
                 )
             ),
             UiCopyPreviewGroup(
@@ -7861,7 +7892,6 @@ private enum class UiCopyPreviewKind {
     SupportAttachmentSheet,
     Disclaimer,
     AssistantRetry,
-    QuotaRetry,
     AssistantRetrying,
     UserRetry,
     UserRetrying,
@@ -7869,6 +7899,8 @@ private enum class UiCopyPreviewKind {
     SupportSendFailed,
     Quota,
     RateLimit,
+    ServiceUnavailable,
+    ActiveStream,
     Interrupted,
     InterruptedFallback,
     InputTooLong,
@@ -8387,14 +8419,6 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         onActionClick = {}
                     )
                 }
-                UiCopyPreviewKind.QuotaRetry -> {
-                    MessageStatusFooter(
-                        statusText = QUOTA_RETRY_STATUS_TEXT,
-                        actionText = ASSISTANT_RETRY_ACTION_TEXT,
-                        alignEnd = false,
-                        onActionClick = {}
-                    )
-                }
                 UiCopyPreviewKind.AssistantRetrying -> {
                     MessageStatusFooter(
                         statusText = ASSISTANT_RETRYING_STATUS_TEXT,
@@ -8425,6 +8449,8 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.SupportSendFailed -> UiCopyPreviewHint(SUPPORT_SEND_FAILED_HINT)
                 UiCopyPreviewKind.Quota -> UiCopyPreviewHint(QUOTA_EXHAUSTED_HINT_TEXT)
                 UiCopyPreviewKind.RateLimit -> UiCopyPreviewHint(RATE_LIMIT_HINT_TEXT)
+                UiCopyPreviewKind.ServiceUnavailable -> UiCopyPreviewHint(SERVICE_UNAVAILABLE_HINT_TEXT)
+                UiCopyPreviewKind.ActiveStream -> UiCopyPreviewHint(ACTIVE_STREAM_HINT_TEXT)
                 UiCopyPreviewKind.Interrupted -> UiCopyPreviewHint(INTERRUPTED_NETWORK_HINT_TEXT)
                 UiCopyPreviewKind.InterruptedFallback -> UiCopyPreviewHint(INTERRUPTED_FALLBACK_HINT_TEXT)
                 UiCopyPreviewKind.InputTooLong -> UiCopyPreviewHint(INPUT_TOO_LONG_HINT_TEXT)

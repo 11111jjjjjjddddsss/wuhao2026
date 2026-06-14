@@ -188,6 +188,7 @@ internal fun handleChatListScrollStateChanged(
 
 internal suspend fun performJumpToBottom(
     messagesCount: Int,
+    hasVisualTailItem: Boolean,
     hasStreamingItem: Boolean,
     isStreaming: Boolean,
     scrollModeState: MutableState<ScrollMode>,
@@ -195,7 +196,7 @@ internal suspend fun performJumpToBottom(
     jumpButtonPulseVisibleState: MutableState<Boolean>,
     scrollToBottom: suspend (Boolean) -> Unit
 ) {
-    if (messagesCount == 0 && !hasStreamingItem) return
+    if (messagesCount == 0 && !hasVisualTailItem && !hasStreamingItem) return
     val jumpingIntoStreaming = isStreaming && hasStreamingItem
     scrollModeState.value = if (jumpingIntoStreaming) {
         ScrollMode.AutoFollow
