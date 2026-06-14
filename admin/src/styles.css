@@ -696,6 +696,11 @@ button {
   margin-bottom: 12px;
 }
 
+.program-check-strip {
+  border-color: #d6d9de;
+  background: #fbfcfd;
+}
+
 .manual-check-head,
 .manual-check {
   display: flex;
@@ -1147,6 +1152,32 @@ button {
 .launch-head strong {
   color: #111827;
   font-size: 13px;
+}
+
+.launch-badges {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.launch-kind {
+  border: 1px solid #cfd6df;
+  border-radius: 999px;
+  padding: 2px 7px;
+  color: #4a5562;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.launch-kind.manual {
+  border-color: #c6d8ee;
+  color: #315273;
+  background: #f4f8fd;
 }
 
 .launch-card p {

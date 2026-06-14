@@ -135,6 +135,11 @@ expectAppLogPrefixFilter("auth.");
 expectAppLogPrefixFilter("auth.fusion_");
 expectAdminPattern("preauth app log filter", /filterButton\("[^"]+",\s*\{\s*userID:\s*"preauth"/);
 expectAdminPattern("readiness separates program attention", /程序需处理/);
+expectAdminPattern("monitoring shows program action strip", /程序需处理项/);
+expectAdminPattern("monitoring program strip excludes manual items", /filter\(\(row\)\s*=>\s*!row\.manual\s*&&\s*row\.status\s*!==\s*"ready"\)/);
+expectAdminPattern("monitoring program strip explains actionable work", /代码、配置、部署或后台操作/);
+expectAdminPattern("launch readiness cards show item owner type", /class="launch-kind \$\{row\.manual \? "manual" : "program"\}"/);
+expectAdminPattern("launch readiness cards distinguish manual items", /row\.manual \? "人工确认" : "程序处理"/);
 expectAdminPattern("readiness separates manual confirmation", /人工确认/);
 expectAdminPattern("readiness keeps launch blockers visible", /上架阻塞/);
 [

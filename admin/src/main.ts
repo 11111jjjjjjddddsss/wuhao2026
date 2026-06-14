@@ -394,6 +394,7 @@ async function monitoringPage(): Promise<string> {
     ${monitoringHero(report)}
     ${monitoringReadinessSummary(report)}
     ${monitoringOperatorGuide(report)}
+    ${monitoringProgramCheckStrip(report)}
     ${monitoringManualCheckStrip(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
@@ -3320,6 +3321,47 @@ function monitoringManualCheckStrip(report: AdminMonitoring): string {
   `;
 }
 
+function monitoringProgramCheckStrip(report: AdminMonitoring): string {
+  const rows = (report.launch_readiness || [])
+    .filter((row) => !row.manual && row.status !== "ready")
+    .sort((left, right) => (left.status === "blocked" ? 0 : 1) - (right.status === "blocked" ? 0 : 1));
+  if (!rows.length) return "";
+  const visibleRows = rows.slice(0, 4);
+  const remaining = rows.length - visibleRows.length;
+  return `
+    <section class="manual-check-strip program-check-strip">
+      <div class="manual-check-head">
+        <div>
+          <strong>程序需处理项</strong>
+          <p>这些通常能通过代码、配置、部署或后台操作推进；先处理红色，再看黄色。</p>
+        </div>
+        <span class="small muted">${rows.length} 项待处理</span>
+      </div>
+      <div class="manual-check-list">
+        ${visibleRows
+          .map((row) => {
+            const level = launchStatusLevel(row.status);
+            return `
+              <article class="manual-check ${level}">
+                <div class="manual-check-copy">
+                  <span class="small muted">${escapeHTML(row.owner || "程序处理")}</span>
+                  <strong>${escapeHTML(row.title)}</strong>
+                  <p>${escapeHTML(row.body)}</p>
+                </div>
+                <div class="manual-check-actions">
+                  ${statusPill(launchStatusText(row.status), level)}
+                  ${routeActionButton(row.route, "打开")}
+                </div>
+              </article>
+            `;
+          })
+          .join("")}
+        ${remaining > 0 ? `<div class="manual-check-more">还有 ${remaining} 项在正式上架检查里</div>` : ""}
+      </div>
+    </section>
+  `;
+}
+
 function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring["windows"][number] | undefined, day24: AdminMonitoring["windows"][number] | undefined): string {
   const worst = monitoringWorstLevel(report);
   const primaryRoute = primaryMonitoringActionRoute(report, worst);
@@ -3637,7 +3679,10 @@ function launchReadinessGrid(rows: AdminMonitoring["launch_readiness"]): string 
             <article class="launch-card ${level}">
               <div class="launch-head">
                 <strong>${escapeHTML(row.title)}</strong>
-                ${statusPill(launchStatusText(row.status), level)}
+                <div class="launch-badges">
+                  ${statusPill(launchStatusText(row.status), level)}
+                  <span class="launch-kind ${row.manual ? "manual" : "program"}">${row.manual ? "人工确认" : "程序处理"}</span>
+                </div>
               </div>
               <p>${escapeHTML(row.body)}</p>
               <div class="launch-foot">
