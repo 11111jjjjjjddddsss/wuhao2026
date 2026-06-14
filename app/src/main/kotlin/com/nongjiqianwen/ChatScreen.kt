@@ -7681,7 +7681,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
                     UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
-                    UiCopyPreviewItem("应用权限", "定位、手机号认证、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
+                    UiCopyPreviewItem("应用权限", "定位、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
                     UiCopyPreviewItem("礼品卡成功样式", "展示真实档位、30天、每日次数和到期时间", UiCopyPreviewKind.HamburgerGiftCardSuccess)
                 )

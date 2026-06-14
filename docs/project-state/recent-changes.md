@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“测试包和正式包权限口径一致、上架材料能解释清楚”的方向收口 Android 权限合规：`scripts/check-android-build-parity.ps1` 在确认 debug / release packaged manifest 权限集合一致之外，新增最终权限白名单校验，并锁住 AndroidX 合并的 `com.nongjiqiancha.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` 必须为签名级应用私有广播保护权限。App 内隐私政策 / 应用权限页补充“后台待发送和应用私有广播保护”用途说明，debug-only 文案预览去掉容易误解为电话权限的“手机号认证”字样；同步更新隐私合规 runbook。该改动不新增运行时权限、不改登录、聊天滚动、三份提示词、模型输出过滤或后端接口。
+
 - 已将提交 `5982361d` 部署到 ECS 和管理后台：`scripts/deploy-ecs-server.ps1` 远端 `go test ./...`、编译、新 slot health、Nginx 切换和后台 `/admin-api/` upstream 同步校验均通过，当前 Nginx active upstream 为 `3000`，后台 upstream 同为 `3000`，HTTPS healthz 200，未登录后台鉴权 401，`auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss` 正常且 `dev_order_endpoints=false`；`scripts/deploy-ecs-admin.ps1` 已重新部署 `https://admin.nongjiqiancha.cn/`，公网首页 200。部署后 `check-ecs-readiness.ps1` 和 `check-public-blackbox.ps1` 均通过，公网 API、官网、www、后台、协议页、公安图标和 HTTP->HTTPS 跳转状态为 ready。该部署只上线管理后台正式上架检查的 `manual` 区分和支付状态口径，不改 Android 真机包、三份提示词、模型输出过滤或聊天滚动主链。
 
 - 继续按“总负责人看后台不被误导”的方向修正管理后台正式上架检查：`launch_readiness` 新增 `manual` 标记，前端“上线人工确认项”只展示显式人工确认项，不再把服务健康、App 错误或其它程序问题混进“这些不是程序崩了”的人工事项区。支付接入在购买入口关闭、开发期订单端点关闭时从 `blocked` 调整为 `attention`，明确不阻塞免费版、礼品卡内测或不含内购的正式上架；开放真实收费前仍必须完成支付申请、验签、回调、对账和权益发放闭环。App 备案、App 公安备案、AccessKey 轮换、最终真机回归、短信套餐余额、最终 release 物料和 SLS 首封邮件确认拆成显式人工项并加单测锁住。该改动只影响后台监控判断和展示，不改 Android、后端业务接口、三份提示词、模型输出过滤或聊天滚动主链。

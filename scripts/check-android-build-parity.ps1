@@ -231,6 +231,25 @@ if ($failures.Count -eq 0) {
         if ($debugPermissionText -ne $releasePermissionText) {
             Add-Failure $failures "Packaged debug and release manifests must keep the same permission set. Debug=[$($debugPermissions -join ', ')] Release=[$($releasePermissions -join ', ')]"
         }
+        $expectedPackagedPermissions = @(
+            'android.permission.ACCESS_COARSE_LOCATION',
+            'android.permission.ACCESS_FINE_LOCATION',
+            'android.permission.ACCESS_NETWORK_STATE',
+            'android.permission.FOREGROUND_SERVICE',
+            'android.permission.INTERNET',
+            'android.permission.RECEIVE_BOOT_COMPLETED',
+            'android.permission.REQUEST_INSTALL_PACKAGES',
+            'android.permission.WAKE_LOCK',
+            'com.nongjiqiancha.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION'
+        ) | Sort-Object
+        $expectedPackagedPermissionText = $expectedPackagedPermissions -join "`n"
+        if ($debugPermissionText -ne $expectedPackagedPermissionText) {
+            Add-Failure $failures "Packaged Android permissions must stay on the documented allowlist. Expected=[$($expectedPackagedPermissions -join ', ')] Actual=[$($debugPermissions -join ', ')]"
+        }
+        Require-Match $failures $debugPackagedManifest '<permission\b(?=[^>]*android:name="com\.nongjiqiancha\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")(?=[^>]*android:protectionLevel="signature")[^>]*>' `
+            "Packaged manifest must keep the app-private dynamic receiver protection permission signature-only."
+        Require-Match $failures $releasePackagedManifest '<permission\b(?=[^>]*android:name="com\.nongjiqiancha\.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")(?=[^>]*android:protectionLevel="signature")[^>]*>' `
+            "Release packaged manifest must keep the app-private dynamic receiver protection permission signature-only."
     }
 
     Require-Match $failures $sessionApi 'endpoint\s*=\s*"/api/auth/sms/login"' `
