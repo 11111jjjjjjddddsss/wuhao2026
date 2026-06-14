@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-13
+最后更新：2026-06-15
 
 ## 当前定位
 
@@ -140,6 +140,29 @@ curl -H "X-Support-Admin-Secret: $SUPPORT_ADMIN_SECRET" \
 ```
 
 该接口只读，不返回聊天正文、AI 回复全文、图片内容 / URL、手机号、token 或模型 Key。成功或失败查询都会写入最小内部审计日志，只保存动作、过滤条件摘要、返回条数、脱敏 IP、UA 和时间，不保存密钥或日志 attrs 原文以外的额外敏感内容。
+
+## 闪退摘要脚本
+
+上线前真机回归或用户反馈“App 关闭 / 闪退”时，优先使用：
+
+```powershell
+./scripts/query-ecs-app-crashes.ps1 -SinceHours 24 -Limit 50
+```
+
+常用筛选：
+
+```powershell
+./scripts/query-ecs-app-crashes.ps1 -SinceHours 72 -Event app.crash
+./scripts/query-ecs-app-crashes.ps1 -SinceHours 72 -Event auth.app_crash -BuildType debug
+./scripts/query-ecs-app-crashes.ps1 -SinceHours 72 -DeviceModel "HONOR PTP-AN10"
+```
+
+脚本通过 Cloud Assistant 在 ECS 内部读取 `/etc/nongjiqiancha/server.env` 的 MySQL DSN，并只读查询 `client_app_logs` 里的 `app.crash` / `auth.app_crash`。输出只包含：
+
+- 崩溃签名聚合：事件名、异常类、栈顶类 / 方法 / 行号、次数、最近时间
+- 最近明细：脱敏用户类型 `preauth / acct / other`，包类型、版本号、系统版本、设备型号、栈顶三帧、安全登录阶段和上报尝试次数
+
+脚本不得输出完整账号 ID、手机号、token、图片 URL、聊天正文、反馈正文、完整 `attrs_json`、完整堆栈或模型 Key。若需要进一步定位，先让用户复现并确认新包已包含 2026-06-14 后的安全崩溃字段，再结合后台 App 日志页面或 Android `logcat` 做二次排查。
 
 ## SQL 查询示例
 

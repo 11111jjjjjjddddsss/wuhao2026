@@ -780,6 +780,76 @@ button {
   margin-bottom: 12px;
 }
 
+.operator-guide {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.8fr) minmax(0, 1.2fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.operator-guide-copy,
+.operator-step {
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 13px;
+}
+
+.operator-guide-copy {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  background: #fbfcfd;
+}
+
+.operator-guide-copy strong {
+  color: #111827;
+  font-size: 16px;
+  line-height: 1.35;
+}
+
+.operator-guide-copy p,
+.operator-step p {
+  margin: 0;
+  color: #4a5562;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.operator-guide-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.operator-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+}
+
+.operator-step > span {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: #111827;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.operator-step strong {
+  display: block;
+  margin-bottom: 5px;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .monitor-region-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -1626,6 +1696,11 @@ button {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 
+  .operator-guide,
+  .operator-guide-steps {
+    grid-template-columns: 1fr;
+  }
+
   .regression-grid {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
@@ -1695,6 +1770,8 @@ button {
 
   .grid.kpi,
   .grid.three,
+  .operator-guide,
+  .operator-guide-steps,
   .decision-grid,
   .regression-grid,
   .manual-check-list,

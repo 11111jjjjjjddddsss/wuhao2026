@@ -390,13 +390,14 @@ async function monitoringPage(): Promise<string> {
   const today = report.windows.find((item) => item.key === "today") || report.windows[0];
   const day24 = report.windows.find((item) => item.key === "24h") || report.windows[0];
   return `
-    ${pageHead("监控面板", "面向正式上架的健康、风险、运营队列和阻塞项。", "monitoring")}
+    ${pageHead("监控面板", "看现在能不能继续上线、哪里要处理、该打开哪个页面。", "monitoring")}
     ${monitoringHero(report)}
     ${monitoringReadinessSummary(report)}
+    ${monitoringOperatorGuide(report)}
     ${monitoringManualCheckStrip(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
-      <div class="card-head"><div class="card-title">模型调用口径</div><span class="small muted">模型名和搜索策略分开看</span></div>
+      <div class="card-head"><div class="card-title">模型链路说明</div><span class="small muted">当前后端实际怎么调用模型</span></div>
       <div class="card-body">${modelUsagePolicyBlock(report.model_usage_policy || [])}</div>
     </section>
     <section class="card" style="margin-bottom:12px">
@@ -404,14 +405,14 @@ async function monitoringPage(): Promise<string> {
       <div class="card-body">${monitoringRegressionChecklist(report)}</div>
     </section>
     <section class="card" style="margin-bottom:12px">
-      <div class="card-head"><div class="card-title">正式上架检查</div><span class="small muted">就绪 / 需处理 / 阻塞</span></div>
+      <div class="card-head"><div class="card-title">正式上架检查</div><span class="small muted">还能继续 / 需要确认 / 先别上架</span></div>
       <div class="card-body">${launchReadinessGrid(report.launch_readiness || [])}</div>
     </section>
     ${monitoringShortcutBar()}
     <section class="grid kpi">
-      ${kpi("服务异常", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
-      ${kpi("App报错", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
-      ${kpi("登录失败", report.queues.auth_failures ?? 0, `最近24小时，闪退补报 ${report.queues.crash_reports ?? 0} 条`)}
+      ${kpi("核心服务问题", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
+      ${kpi("App异常", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
+      ${kpi("登录问题", report.queues.auth_failures ?? 0, `最近24小时，闪退补报 ${report.queues.crash_reports ?? 0} 条`)}
       ${kpi("待回复反馈", report.queues.support_needs_reply, report.queues.support_oldest_pending_at ? `最早 ${formatTime(report.queues.support_oldest_pending_at)}` : "当前无等待")}
       ${kpi("今日问诊", today?.chat_rounds ?? 0, `${today?.chat_users ?? 0} 位去重用户`)}
       ${kpi("礼品卡异常", report.queues.gift_card_failed_attempts, "最近24小时兑换失败")}
@@ -423,7 +424,7 @@ async function monitoringPage(): Promise<string> {
         <div class="card-body">${actionItemList(report.action_items || [])}</div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">关键队列</div><span class="small muted">生产巡检</span></div>
+        <div class="card-head"><div class="card-title">运营队列</div><span class="small muted">反馈、注销、农情、更新、礼品卡</span></div>
         <div class="card-body">${monitoringQueueCards(report)}</div>
       </section>
     </div>
@@ -437,17 +438,17 @@ async function monitoringPage(): Promise<string> {
     </section>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
-        <div class="card-head"><div class="card-title">服务状态</div></div>
+        <div class="card-head"><div class="card-title">核心服务状态</div></div>
         <div class="card-body">${healthChipGrid(report.health)}</div>
       </section>
       <section class="card">
-        <div class="card-head"><div class="card-title">最近使用情况</div><span class="small muted">${formatTime(report.now_ms)}</span></div>
+        <div class="card-head"><div class="card-title">使用量趋势</div><span class="small muted">${formatTime(report.now_ms)}</span></div>
         <div class="table-wrap">${monitoringWindowTable(report.windows)}</div>
       </section>
     </div>
     <div class="grid two" style="margin-top:12px">
       <section class="card">
-        <div class="card-head"><div class="card-title">App错误 Top</div><span class="small muted">最近24小时</span></div>
+        <div class="card-head"><div class="card-title">App异常 Top</div><span class="small muted">最近24小时</span></div>
         <div class="card-body">${appErrorTopTable(report.top_app_errors)}</div>
       </section>
       <section class="card">
@@ -460,13 +461,13 @@ async function monitoringPage(): Promise<string> {
       <div class="card-body">${userRegionOverviewBlock(report.user_regions)}</div>
     </section>
     <section class="card" style="margin-top:12px">
-      <div class="card-head"><div class="card-title">这页不展示什么</div></div>
+      <div class="card-head"><div class="card-title">隐私边界</div></div>
       <div class="card-body stack">
         ${report.notes?.length ? report.notes.map((note) => notice(note.title, note.body, note.level)).join("") : emptyState("没有备注", "后端未返回监控备注。")}
       </div>
     </section>
     <section class="card" style="margin-top:12px">
-      <div class="card-head"><div class="card-title">后台能力状态</div><span class="small muted">真实接入情况</span></div>
+      <div class="card-head"><div class="card-title">后台功能接入情况</div><span class="small muted">哪些已能真实使用，哪些还只是规划</span></div>
       <div class="card-body">${capabilityGrid(report.capabilities || [])}</div>
     </section>
   `;
@@ -3213,6 +3214,48 @@ function monitoringReadinessSummary(report: AdminMonitoring): string {
         ${routeActionButton(next?.route, "打开")}
       </div>
     </section>
+  `;
+}
+
+function monitoringOperatorGuide(report: AdminMonitoring): string {
+  const worst = monitoringWorstLevel(report);
+  const actionCount = report.action_items?.length || 0;
+  const readinessRows = report.launch_readiness || [];
+  const blocked = readinessRows.filter((row) => row.status === "blocked").length;
+  const attention = readinessRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length;
+  const primaryRoute = primaryMonitoringActionRoute(report, worst) || (blocked > 0 ? "monitoring" : "app-logs");
+  const firstText =
+    worst === "bad"
+      ? "红色代表先处理，通常是服务、App异常或后台操作失败。"
+      : worst === "warn" || attention > 0 || blocked > 0
+        ? "黄色代表可以继续推进，但要人工确认或补一次真机回归。"
+        : "绿色代表当前后台没有明显异常，可以继续按上线清单往前走。";
+  return `
+    <section class="operator-guide">
+      <div class="operator-guide-copy">
+        <span class="small muted">处理顺序</span>
+        <strong>先看颜色，再点入口，不需要先读完整张表。</strong>
+        <p>${escapeHTML(firstText)} 当前还有 ${actionCount} 个先处理事项、${blocked} 个上架阻塞项、${attention} 个需确认项。</p>
+      </div>
+      <div class="operator-guide-steps">
+        ${operatorGuideStep("1", "当前结论", "看最上面的状态和下一步；红色先处理，黄色先确认，绿色继续测。", routeActionButton(primaryRoute, "打开重点项"))}
+        ${operatorGuideStep("2", "先处理事项", "只看有数量的队列：登录、闪退、反馈、注销、礼品卡、检查更新。", "")}
+        ${operatorGuideStep("3", "真机回归", "每测完一项，回来看 App 日志、服务健康和使用量有没有新增异常。", `${routeActionButton("app-logs", "App 日志")}${routeActionButton("health", "服务健康")}`)}
+      </div>
+    </section>
+  `;
+}
+
+function operatorGuideStep(index: string, title: string, body: string, actions: string): string {
+  return `
+    <article class="operator-step">
+      <span>${escapeHTML(index)}</span>
+      <div>
+        <strong>${escapeHTML(title)}</strong>
+        <p>${escapeHTML(body)}</p>
+        ${actions ? `<div class="row-actions compact">${actions}</div>` : ""}
+      </div>
+    </article>
   `;
 }
 
