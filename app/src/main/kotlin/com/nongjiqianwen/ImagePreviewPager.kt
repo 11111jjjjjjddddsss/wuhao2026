@@ -74,14 +74,22 @@ internal fun ImagePreviewPager(
                         .padding(horizontal = 42.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = unavailableText,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(Color(0xFFF0F1F3))
+                            .padding(horizontal = 22.dp, vertical = 18.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = unavailableText,
+                            color = Color(0xFF5F646D),
+                            fontSize = 15.sp,
+                            lineHeight = 22.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
                 }
             } else {
                 val zoomableState = rememberZoomableState(

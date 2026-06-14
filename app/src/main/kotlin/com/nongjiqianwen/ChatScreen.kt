@@ -7517,7 +7517,7 @@ private fun UiCopyPreviewOverlay(
                 title = "登录与协议",
                 items = listOf(
                     UiCopyPreviewItem("首次登录页", "无独立同意页，登录页对号承接隐私同意", UiCopyPreviewKind.LoginInitial),
-                    UiCopyPreviewItem("未勾选拦截", "不请求后端、不拉 SDK、不申请电话权限", UiCopyPreviewKind.LoginAgreementBlocked),
+                    UiCopyPreviewItem("未勾选拦截", "不请求平台、不进入登录校验", UiCopyPreviewKind.LoginAgreementBlocked),
                     UiCopyPreviewItem("短信登录", "手机号 + 6位验证码 + 协议勾选", UiCopyPreviewKind.LoginSmsFallback),
                     UiCopyPreviewItem("换手机号后发送", "倒计时只锁刚发成功的手机号，换号可立即发送", UiCopyPreviewKind.LoginPhoneChanged),
                     UiCopyPreviewItem("登录协议弹窗", "服务协议 / 隐私政策在登录页内打开", UiCopyPreviewKind.LoginLegalDialog)
@@ -7583,8 +7583,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：付费档位未开放", "展示“暂未开放”而不是可直接购买", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
-                    UiCopyPreviewItem("支付功能暂不可用", "预留提示条样式，当前主流程不会直接触发", UiCopyPreviewKind.MembershipPaymentNotice),
-                    UiCopyPreviewItem("支付成功卡片（预留）", "仅用于预览未来支付成功态，不代表当前已开放支付", UiCopyPreviewKind.MembershipPurchaseSuccess),
+                    UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
+                    UiCopyPreviewItem("支付成功卡片", "支付完成后的权益生效提示样式", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
                 )
             ),
@@ -7602,8 +7602,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
                     UiCopyPreviewItem("更新权限提示", "授权后返回 App 自动继续", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
-                    UiCopyPreviewItem("服务协议目录", "用户协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
-                    UiCopyPreviewItem("用户协议", "本地内置用户协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
+                    UiCopyPreviewItem("服务协议目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
+                    UiCopyPreviewItem("服务协议", "本地内置服务协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
                     UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
@@ -8129,7 +8129,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         listOf(
                             "清除 App 数据后应视为 clean-state。",
                             "不从本地恢复旧聊天、旧输入框高度或旧滚动位置。",
-                            "未登录阶段 user_id 可重置；以后账号恢复历史属于后端业务恢复。"
+                            "未登录阶段 user_id 可重置；以后账号恢复历史属于平台业务恢复。"
                         )
                     )
                 }
@@ -8616,7 +8616,7 @@ private fun UiCopyPreviewLoginPage(
             UiCopyPreviewPlainText(
                 listOf(
                     "同意前不初始化身份、不补报崩溃日志。",
-                    "验证码由后端短信服务发送和校验。",
+                    "验证码由平台短信服务发送和校验。",
                     "登录成功后继续使用同一个账号ID。"
                 )
             )
@@ -8665,7 +8665,7 @@ private fun UiCopyPreviewLoginLegalDialog() {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "用户协议",
+                    text = "服务协议",
                     color = Color(0xFF111111),
                     fontSize = 18.sp,
                     lineHeight = 24.sp,
@@ -8790,7 +8790,7 @@ private fun UiCopyPreviewRemoteSnapshotFallback() {
             modifier = Modifier.padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            UiCopyPreviewGuardRow("远端 snapshot 成功", "以后端最近 30 轮为真")
+            UiCopyPreviewGuardRow("远端 snapshot 成功", "以平台最近 30 轮为真")
             UiCopyPreviewGuardRow("远端 snapshot 失败", "普通本地历史不回灌")
             UiCopyPreviewGuardRow("pending / 失败态", "保留恢复入口")
         }
@@ -9212,12 +9212,13 @@ private fun UiCopyPreviewExpiredImagePlaceholder() {
                 .weight(1f)
                 .height(96.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(Color(0xE6000000)),
+                .background(Color(0xFFF0F1F3))
+                .border(1.dp, Color(0xFFE1E3E7), RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = IMAGE_EXPIRED_PREVIEW_TEXT,
-                color = Color.White,
+                color = Color(0xFF5F646D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.Medium,
