@@ -7570,7 +7570,7 @@ private fun UiCopyPreviewOverlay(
                 title = "会员中心",
                 items = listOf(
                     UiCopyPreviewItem("会员中心（账号ID）", "标题后展示账号短 ID", UiCopyPreviewKind.MembershipHeader),
-                    UiCopyPreviewItem("会员信息读取中", "读取中状态条", UiCopyPreviewKind.MembershipLoadingSummary),
+                    UiCopyPreviewItem("会员首次同步", "无旧权益时才显示读取中", UiCopyPreviewKind.MembershipLoadingSummary),
                     UiCopyPreviewItem("Free 基础额度", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipFreeSummary),
                     UiCopyPreviewItem(
                         "Free 额外次数",
@@ -7583,8 +7583,8 @@ private fun UiCopyPreviewOverlay(
                         UiCopyPreviewKind.MembershipPlusExtraSummary
                     ),
                     UiCopyPreviewItem("Pro 到期日", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipProSummary),
-                    UiCopyPreviewItem("会员信息未同步", "未同步状态条", UiCopyPreviewKind.MembershipFailedSummary),
-                    UiCopyPreviewItem("套餐区：未同步", "同步后开通置灰状态", UiCopyPreviewKind.MembershipPlanUnknown),
+                    UiCopyPreviewItem("会员同步失败", "保留旧权益并给重试入口", UiCopyPreviewKind.MembershipFailedSummary),
+                    UiCopyPreviewItem("套餐区：待同步", "无权益数据时才置灰", UiCopyPreviewKind.MembershipPlanUnknown),
                     UiCopyPreviewItem("套餐区：Free", "Plus / Pro 都显示“暂未开放”", UiCopyPreviewKind.MembershipPlanFree),
                     UiCopyPreviewItem("套餐区：Plus", "Plus 显示当前套餐，Pro 仍为“暂未开放”", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Plus 显示当前为 Pro", UiCopyPreviewKind.MembershipPlanPro),
@@ -7605,7 +7605,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
                     UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
-                    UiCopyPreviewItem("账号管理", "手机号、缓存、历史、退出、注销", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("账号管理", "手机号 / 缓存 / 历史 / 退出 / 注销", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("删除历史对话确认", "二次确认，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("注销账号确认", "提交申请并退出登录", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
@@ -7626,10 +7626,10 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "帮助与反馈",
                 items = listOf(
-                    UiCopyPreviewItem("对话与链接", "客服消息、用户消息、图片和网址点击", UiCopyPreviewKind.HamburgerSupportPage),
+                    UiCopyPreviewItem("对话与链接", "旧消息先展示，后台合并新消息", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("空消息", "无历史反馈时的空态", UiCopyPreviewKind.HamburgerSupportEmpty),
-                    UiCopyPreviewItem("同步中", "进入页面后的加载状态", UiCopyPreviewKind.HamburgerSupportLoading),
-                    UiCopyPreviewItem("同步失败", "加载失败和重试按钮", UiCopyPreviewKind.HamburgerSupportFailed),
+                    UiCopyPreviewItem("首次同步中", "无缓存时才显示加载态", UiCopyPreviewKind.HamburgerSupportLoading),
+                    UiCopyPreviewItem("首次同步失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerSupportFailed),
                     UiCopyPreviewItem("图片输入", "图片预览条、输入框抬高和发送中态", UiCopyPreviewKind.HamburgerSupportImageInput),
                     UiCopyPreviewItem("长文本输入", "多行输入不收缩，最多显示 6 行", UiCopyPreviewKind.HamburgerSupportLongInput)
                 )
@@ -7639,8 +7639,8 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("今日农情", "主聊天里的 3 条种植侧资讯卡片", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
-                    UiCopyPreviewItem("农情历史页", "设置页里近30天农情简报", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
-                    UiCopyPreviewItem("农情同步失败", "历史页加载失败和重试按钮", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
+                    UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
+                    UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
             ),
             UiCopyPreviewGroup(
