@@ -1346,7 +1346,9 @@ internal fun HamburgerServiceAgreementPagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerServiceAgreementContent(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
         )
     }
 }
@@ -1531,7 +1533,10 @@ internal fun HamburgerPrivacyPolicyPagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerPrivacyPolicyContent(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
         )
     }
 }
@@ -1599,7 +1604,10 @@ internal fun HamburgerThirdPartyListPagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerThirdPartyListContent(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
         )
     }
 }
@@ -1663,7 +1671,10 @@ internal fun HamburgerPersonalInfoListPagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerPersonalInfoListContent(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
         )
     }
 }
@@ -1731,7 +1742,10 @@ internal fun HamburgerPermissionListPagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerPermissionListContent(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
         )
     }
 }
@@ -1744,7 +1758,10 @@ internal fun HamburgerRiskNoticePagePreview() {
         border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
     ) {
         HamburgerRiskNoticeContent(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
         )
     }
 }
@@ -1759,7 +1776,7 @@ internal fun HamburgerMembershipCenterPagePreview(userId: String) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 560.dp)
+                .heightIn(min = 560.dp, max = 680.dp)
         ) {
             HamburgerMembershipCenterPage(
                 userId = userId,
@@ -1806,7 +1823,7 @@ internal fun HamburgerMenuShellPreview(userId: String) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 560.dp)
+                .heightIn(min = 560.dp, max = 680.dp)
         ) {
             Surface(
                 shape = CircleShape,
@@ -1977,7 +1994,7 @@ private fun HamburgerAccountManagementContent(
             HamburgerAccountInfoRow(
                 title = "手机号",
                 value = phoneMask ?: "未登录",
-                onClick = { onPendingAction(if (phoneMask != null) "当前账号已登录；退出设备不会删除历史、会员或权益" else "请先登录") }
+                onClick = { onPendingAction(if (phoneMask != null) "当前账号已登录" else "请先登录") }
             )
         }
 
@@ -1985,7 +2002,7 @@ private fun HamburgerAccountManagementContent(
             modifier = Modifier.padding(top = 22.dp)
         ) {
             HamburgerAccountActionRow(
-                title = if (cacheCleanupSubmitting) "清理中" else "清理更新包和临时拍照缓存",
+                title = if (cacheCleanupSubmitting) "清理中" else "清理临时缓存",
                 danger = false,
                 onClick = {
                     if (cacheCleanupSubmitting) return@HamburgerAccountActionRow
@@ -1994,18 +2011,18 @@ private fun HamburgerAccountManagementContent(
                     scope.launch {
                         val ok = LocalAppCacheCleaner.clearTemporaryCaches(appContext)
                         cacheCleanupSubmitting = false
-                        onPendingAction(if (ok) "更新包和临时拍照缓存已清理" else "清理失败，请稍后重试")
+                        onPendingAction(if (ok) "临时缓存已清理" else "清理失败，请稍后重试")
                     }
                 }
             )
             HamburgerMenuDivider()
             HamburgerAccountActionRow(
-                title = "删除所有历史对话",
+                title = "删除历史对话",
                 onClick = { deleteHistoryDialogVisible = true }
             )
             HamburgerMenuDivider()
             HamburgerAccountActionRow(
-                title = if (logoutSubmitting) "退出中" else "退出设备",
+                title = if (logoutSubmitting) "退出中" else "退出登录",
                 onClick = {
                     if (phoneMask == null) {
                         onPendingAction("请先登录")
@@ -2073,7 +2090,7 @@ private fun HamburgerAccountManagementContent(
                     if (ok) {
                         logoutDialogVisible = false
                         PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
-                        onPendingAction("已退出当前设备")
+                        onPendingAction("已退出登录")
                         onAuthSessionCleared()
                     } else {
                         onPendingAction("退出失败，请检查网络后重试")
@@ -2119,7 +2136,9 @@ internal fun HamburgerAccountManagementPagePreview() {
             onPendingAction = {},
             onClearChatHistory = {},
             onAuthSessionCleared = {},
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
         )
     }
 }
@@ -4164,7 +4183,9 @@ internal fun HamburgerRedeemCodePagePreview() {
         HamburgerRedeemCodeContent(
             onPendingAction = {},
             initialCode = "NJQW2026",
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
         )
     }
 }

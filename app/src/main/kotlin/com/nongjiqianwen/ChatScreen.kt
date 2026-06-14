@@ -3581,26 +3581,25 @@ fun ChatScreen() {
     suspend fun refreshMembershipEntitlement() {
         val requestEpoch = membershipRefreshEpoch + 1
         membershipRefreshEpoch = requestEpoch
-        membershipLoadState = MembershipLoadState.Loading
+        if (membershipEntitlement == null) {
+            membershipLoadState = MembershipLoadState.Loading
+        }
         val entitlement = awaitMembershipEntitlement()
         if (requestEpoch != membershipRefreshEpoch) {
             return
         }
-        membershipEntitlement = entitlement
-        if (
-            entitlement != null &&
-            (
+        membershipLoadState = if (entitlement != null) {
+            membershipEntitlement = entitlement
+            if (
                 (entitlement.dailyRemaining ?: 0) > 0 ||
-                    (entitlement.upgradeRemaining ?: 0) > 0 ||
-                    (entitlement.topupRemaining ?: 0) > 0
-                )
-        ) {
-            quotaExhaustedDayKey = null
-        }
-        membershipLoadState = if (entitlement == null) {
-            MembershipLoadState.Failed
-        } else {
+                (entitlement.upgradeRemaining ?: 0) > 0 ||
+                (entitlement.topupRemaining ?: 0) > 0
+            ) {
+                quotaExhaustedDayKey = null
+            }
             MembershipLoadState.Loaded
+        } else {
+            MembershipLoadState.Failed
         }
     }
 
@@ -4549,6 +4548,7 @@ fun ChatScreen() {
                 !isStreaming &&
                 shouldApplyHydratedSnapshot
             ) {
+                val messageListWasVisible = shouldRevealMessageList
                 replaceMessages(hydratedSnapshot.messages)
                 if (hydratedSnapshot.messages.isNotEmpty()) {
                     initialWorklinePhase = restoredInitialWorklinePhase(
@@ -4561,7 +4561,9 @@ fun ChatScreen() {
                 failedUserMessageStates.putAll(hydratedSnapshot.failedUserMessageStates)
                 failedAssistantMessageStates.clear()
                 failedAssistantMessageStates.putAll(hydratedSnapshot.failedAssistantMessageStates)
-                initialBottomSnapDone = false
+                if (!messageListWasVisible) {
+                    initialBottomSnapDone = false
+                }
                 persistTick++
             }
             historyHydrationComplete = true

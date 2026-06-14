@@ -1,6 +1,6 @@
 # 云资源容量与续费巡检
 
-最后更新：2026-06-13
+最后更新：2026-06-14
 
 ## 目的
 
@@ -10,17 +10,18 @@
 
 ## 2026-06-14 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮严格资源巡检显示 9 条云监控资源规则均为 `OK`。巡检脚本后续会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 5 条应用日志告警为 `ready`。巡检脚本后续会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
-- ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 12 GiB（15%），近 7 天未见 OOM
+- ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 12 GiB（16%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
 - ECS 系统盘：80 GiB ESSD Entry，已绑定普通低频自动快照策略 `sp-2ze9ufwsu2i5hxm2wmrk` / `nongjiqiancha-prod-basic-7d`：每周二、周六北京时间 04:00 创建，保留 7 天，不启用跨地域复制或归档。ECS 是包年包月 `PrePaid`，删除保护接口不适用，不能把 `deletion_protection=false` 当成未买保护
-- RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 3.08 GiB（约 6.17%）；近 30 分钟 QPS/TPS 峰值约 14.15、IOPS 约 7.32、内存 / CPU 指标约 11.66%、连接约 1；备份保留 7 天，日志备份已启用
-- Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.20 MiB / 256 MiB（约 2.03%），CPU 峰值约 0.13%，连接使用约 0.05%；释放保护已开启
-- OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 0、占用 0 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
+- RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 2.98 GiB（约 5.97%）；近 30 分钟 QPS/TPS 峰值约 10.03、IOPS 约 5.93、内存 / CPU 指标约 11.76%、连接约 4；备份保留 7 天，日志备份已启用
+- Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.39 MiB / 256 MiB（约 2.11%），CPU 峰值约 0.13%，连接使用约 0.04%；释放保护已开启
+- OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 1、占用约 0.20 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。ECS 已补装 CloudMonitor C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；本轮严格巡检里 ECS 内存规则已回到 `OK`。若未来云监控返回 `INSUFFICIENT_DATA`，严格巡检会以 warning / attention 提醒。该组用于资源不足提前邮件提醒，不走短信 / 电话
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
+- 云安全中心：2026-06-14 只读巡检曾看到 1 条提醒级事件 `云产品威胁检测-OSS可疑访问行为`，类型不是资源水位告警，关联 OSS 读取 Bucket 加密配置类操作；核对后与本次 CLI / ossutil 做 OSS 配置巡检或开启服务端加密的运维行为一致，已在云安全中心按“我已手工处理”收口，未创建长期白名单，待处理列表为空。聊天和仓库文档不记录 AK、IP、UserAgent 或其它敏感字段；后续若出现来源不明、写操作、删除操作、失败调用或越权类告警，不能静默忽略，应按安全事件处理并优先轮换相关凭证。
 - 普通短信服务：已购买国内通用短信套餐包，新 Android 登录消耗普通短信余量；DYPNS / 融合认证统计只作为历史兼容观察
 
 统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-14 起，云监控规则若返回 `INSUFFICIENT_DATA` 也会输出 warning / attention，避免 ECS 内存等操作系统指标无数据时假绿；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
