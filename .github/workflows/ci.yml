@@ -133,6 +133,27 @@ jobs:
       - name: Android debug/release parity check
         run: pwsh -NoProfile -File scripts/check-android-build-parity.ps1
 
+      - name: Android JVM unit tests
+        env:
+          BAILIAN_API_KEY: ci_dummy_key
+        run: |
+          chmod +x ./gradlew
+          retry() {
+            local max_attempts="$1"
+            shift
+            local attempt=1
+            until "$@"; do
+              if [ "$attempt" -ge "$max_attempts" ]; then
+                echo "Command failed after ${attempt} attempts: $*"
+                return 1
+              fi
+              attempt=$((attempt + 1))
+              echo "Retry ${attempt}/${max_attempts}: $*"
+              sleep 5
+            done
+          }
+          retry 2 ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Ensure WebView demo entry removed
         run: |
           if git grep -n -E "gpt-demo|android_asset" -- app/src/main; then

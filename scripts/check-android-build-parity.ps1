@@ -75,6 +75,9 @@ $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/
 $todayAgriCardUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/TodayAgriCardUi.kt"
 $userMessageImageUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/UserMessageImageUi.kt"
 $chatImagePreviewFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatImagePreview.kt"
+$chatRecyclerViewHostFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatRecyclerViewHost.kt"
+$chatScrollCoordinatorFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScrollCoordinator.kt"
+$chatStreamingRendererFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt"
 $chatComposerCoordinatorFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt"
 $chatComposerPanelFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt"
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
@@ -85,7 +88,7 @@ $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_s
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -106,6 +109,9 @@ if ($failures.Count -eq 0) {
     $todayAgriCardUi = Read-SourceFile $todayAgriCardUiFile
     $userMessageImageUi = Read-SourceFile $userMessageImageUiFile
     $chatImagePreview = Read-SourceFile $chatImagePreviewFile
+    $chatRecyclerViewHost = Read-SourceFile $chatRecyclerViewHostFile
+    $chatScrollCoordinator = Read-SourceFile $chatScrollCoordinatorFile
+    $chatStreamingRenderer = Read-SourceFile $chatStreamingRendererFile
     $chatComposerCoordinator = Read-SourceFile $chatComposerCoordinatorFile
     $chatComposerPanel = Read-SourceFile $chatComposerPanelFile
     $loginScreen = Read-SourceFile $loginScreenFile
@@ -415,6 +421,33 @@ if ($failures.Count -eq 0) {
     $composerCollapseOverlayPattern = "composerCollapseOverlay|ChatComposerCollapseOverlay|shouldDismissComposerCollapseOverlay|resolveBottomContentReservedHeightPx\s*\(\s*overlay"
     Require-NoMatch $failures ($chatScreen + $chatComposerCoordinator + $chatComposerPanel) $composerCollapseOverlayPattern `
         "Chat UI must not restore the dead composer collapse overlay chain; keep composer collapse on the single measured bottom-bar path."
+    $chatMainScrollSurface = $chatScreen + "`n" + $chatRecyclerViewHost + "`n" + $chatScrollCoordinator + "`n" + $chatStreamingRenderer
+    $forbiddenMainScrollPattern = "reverseLayout\s*=|asReversed\s*\(|dispatchRawDelta\s*\(|scrollBy\s*\(|StreamingBlockChatListItem|StreamingTextBlock|streaming_tail|SparseBottomSpacer|BottomActiveZone|StreamingLocation|requestSendStartBottomSnap|followStreamingByDelta|streamBottomFollowActive"
+    Require-NoMatch $failures $chatMainScrollSurface $forbiddenMainScrollPattern `
+        "Main chat must stay on the current forward LazyColumn chain and must not restore reverse layout, raw-delta/scrollBy chasing, active-zone overlay, or split streaming items."
+    Require-Match $failures $chatRecyclerViewHost 'LazyColumn\s*\((?s:.*?)verticalArrangement\s*=\s*verticalArrangement(?s:.*?)userScrollEnabled\s*=\s*true(?s:.*?)items\s*\(' `
+        "ChatRecyclerViewHost must remain a single user-scrollable forward LazyColumn over the provided timeline items."
+    Require-NoMatch $failures $chatRecyclerViewHost 'reverseLayout\s*=' `
+        "ChatRecyclerViewHost must not opt into reverseLayout."
+    Require-Match $failures $chatScreen 'shouldAnchorStreamingBottomThisFrame(?s:.*?)SideEffect\s*\{\s*requestForwardListBottomAnchor\s*\(\s*\)\s*\}' `
+        "Streaming content must keep the same-frame bottom-anchor SideEffect that prevents the tail from flashing below the workline."
+    $onAdvanceMatch = [regex]::Match(
+        $chatScreen,
+        'onAdvance\s*=\s*\{\s*advance\s*->(?s:.*?lastStreamingFreshRevealMs\s*=\s*advance\.lastFreshRevealMs\s*)\}'
+    )
+    if (!$onAdvanceMatch.Success) {
+        Add-Failure $failures "Streaming reveal onAdvance block must stay simple and inspectable."
+    } elseif ($onAdvanceMatch.Value -match 'requestForwardListBottomAnchor|requestProgrammaticForwardListBottomAnchor|scrollForwardListToBottom|scrollToItem|requestScrollToItem') {
+        Add-Failure $failures "Streaming reveal onAdvance must not do pre-content scroll anchoring; anchoring belongs in the same-frame SideEffect."
+    }
+    Require-Match $failures $chatScreen 'verticalArrangement\s*=\s*if\s*\(\s*shouldUseTopArrangementForConversation\s*\(\s*\)\s*\)\s*\{(?s:.*?)Arrangement\.Top(?s:.*?)\}\s*else\s*\{(?s:.*?)Arrangement\.Bottom' `
+        "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
+    Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsCard' `
+        "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list."
+    Require-Match $failures $chatStreamingRenderer 'val\s+selectContent\s*=\s*selectionEnabled\s*&&\s*!rendererContainsLinkCandidate\s*\(\s*content\s*\)' `
+        "Assistant settled text must not wrap link candidates in SelectionContainer, otherwise short-tap links can become plain text."
+    Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
+        "Assistant Markdown links and bare URLs must keep real URL annotations that open through the system URI handler."
     $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
     $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
     $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"

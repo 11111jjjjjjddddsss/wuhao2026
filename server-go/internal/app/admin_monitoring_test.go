@@ -485,6 +485,9 @@ func TestAdminMonitoringLaunchReadinessManualItemsAreExplicit(t *testing.T) {
 		if item.Status != "attention" {
 			t.Fatalf("manual launch item %q status = %q, want attention", title, item.Status)
 		}
+		if strings.TrimSpace(item.ConfirmHint) == "" {
+			t.Fatalf("manual launch item %q should include a confirmation hint: %#v", title, item)
+		}
 	}
 	serviceHealth := findAdminMonitoringLaunchItem(items, "后端生产健康")
 	if serviceHealth == nil {

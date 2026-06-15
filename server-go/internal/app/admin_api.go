@@ -266,12 +266,13 @@ type AdminMonitoringModelUsageRow struct {
 }
 
 type AdminMonitoringLaunchItem struct {
-	Title  string `json:"title"`
-	Status string `json:"status"`
-	Body   string `json:"body"`
-	Route  string `json:"route,omitempty"`
-	Owner  string `json:"owner,omitempty"`
-	Manual bool   `json:"manual,omitempty"`
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	Body        string `json:"body"`
+	ConfirmHint string `json:"confirm_hint,omitempty"`
+	Route       string `json:"route,omitempty"`
+	Owner       string `json:"owner,omitempty"`
+	Manual      bool   `json:"manual,omitempty"`
 }
 
 type AdminRegionMetric struct {
@@ -2212,54 +2213,60 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner:  "运营",
 	})
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "App 公安备案",
-		Status: "attention",
-		Body:   "App 公安备案需要按最终 App 信息处理；未确认前不要公开发布为已完成。",
-		Owner:  "运营 / 法务",
-		Manual: true,
+		Title:       "App 公安备案",
+		Status:      "attention",
+		Body:        "App 公安备案需要按最终 App 信息处理；未确认前不要公开发布为已完成。",
+		ConfirmHint: "到全国互联网安全管理服务平台提交 App 公安备案；通过后再确认备案号和 App 内展示位置，公安数据码和证件材料不要写入仓库或后台备注。",
+		Owner:       "运营 / 法务",
+		Manual:      true,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "AccessKey 轮换",
-		Status: "attention",
-		Body:   "上线前必须确认已暴露或主账号 AccessKey 已轮换，生产改用最小权限凭证；后台和日志不得展示真实密钥。",
-		Owner:  "运维",
-		Manual: true,
+		Title:       "AccessKey 轮换",
+		Status:      "attention",
+		Body:        "上线前必须确认已暴露或主账号 AccessKey 已轮换，生产改用最小权限凭证；后台和日志不得展示真实密钥。",
+		ConfirmHint: "在阿里云 RAM / CLI 完成轮换，确认 ECS 环境只保留最小权限凭证；用 readiness 看配置是否 set，不在聊天、文档、日志或后台页面展示密钥值。",
+		Owner:       "运维",
+		Manual:      true,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "最终真机回归",
-		Status: "attention",
-		Body:   "最终 APK 需要人工确认清数据、短信登录、主聊天、图片问诊、今日农情、设置、会员、帮助反馈和检查更新都跑通。",
-		Route:  "app-logs",
-		Owner:  "Android / 产品",
-		Manual: true,
+		Title:       "最终真机回归",
+		Status:      "attention",
+		Body:        "最终 APK 需要人工确认清数据、短信登录、主聊天、图片问诊、今日农情、设置、会员、帮助反馈和检查更新都跑通。",
+		ConfirmHint: "用最终 APK 在真机清数据跑完整流程；每测完登录、聊天、图片、农情、反馈和更新，再回 App 日志和服务健康看是否新增 auth、app_update、crash 或 5xx 异常。",
+		Route:       "app-logs",
+		Owner:       "Android / 产品",
+		Manual:      true,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "短信套餐余额",
-		Status: "attention",
-		Body:   "短信发送统计只能证明近期调用趋势；套餐包余额、到期和账单预警仍需在阿里云控制台人工确认。",
-		Route:  "health",
-		Owner:  "运营 / 运维",
-		Manual: true,
+		Title:       "短信套餐余额",
+		Status:      "attention",
+		Body:        "短信发送统计只能证明近期调用趋势；套餐包余额、到期和账单预警仍需在阿里云控制台人工确认。",
+		ConfirmHint: "登录阿里云短信服务或费用中心确认普通短信套餐包余量、到期时间、余量预警和自动复购；仓库脚本里的发送统计只当趋势，不当余额证明。",
+		Route:       "health",
+		Owner:       "运营 / 运维",
+		Manual:      true,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "最终 release 物料",
-		Status: "attention",
-		Body:   "最终 release APK、包名、签名、versionCode、应用商店截图和文字材料需要人工确认一致；检查更新物料齐全也不等于已完成覆盖安装验收。",
-		Route:  "app-update",
-		Owner:  "发布",
-		Manual: true,
+		Title:       "最终 release 物料",
+		Status:      "attention",
+		Body:        "最终 release APK、包名、签名、versionCode、应用商店截图和文字材料需要人工确认一致；检查更新物料齐全也不等于已完成覆盖安装验收。",
+		ConfirmHint: "先跑 release APK 物料校验脚本，再核对后台检查更新配置、应用商店截图、简介、备案号和测试账号；旧包覆盖安装要另行真机确认。",
+		Route:       "app-update",
+		Owner:       "发布",
+		Manual:      true,
 	})
 	slsStatus := "attention"
 	if queues.AppErrors >= 10 || queues.AuthFailures >= 10 || queues.CrashReports > 0 || queues.AuditFailures > 0 {
 		slsStatus = "blocked"
 	}
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "日志告警",
-		Status: slsStatus,
-		Body:   "Go / Nginx 日志和 App 自动日志已接入；SLS 邮件行动策略、最小仪表盘和资源水位云监控邮件以最近严格巡检脚本为准，本页不实时读取云上规则；剩余重点是确认首封告警邮件真实送达。",
-		Route:  "app-logs",
-		Owner:  "运维",
-		Manual: slsStatus == "attention",
+		Title:       "日志告警",
+		Status:      slsStatus,
+		Body:        "Go / Nginx 日志和 App 自动日志已接入；SLS 邮件行动策略、最小仪表盘和资源水位云监控邮件以最近严格巡检脚本为准，本页不实时读取云上规则；剩余重点是确认首封告警邮件真实送达。",
+		ConfirmHint: ternary(slsStatus == "attention", "用测试触发或真实告警确认 NongjiQianchaOps 邮箱收到首封 SLS / 云监控邮件；脚本只能证明规则和行动策略存在。", ""),
+		Route:       "app-logs",
+		Owner:       "运维",
+		Manual:      slsStatus == "attention",
 	})
 	supportStatus := "ready"
 	supportBody := "后台已支持待回复 / 已回复 / 已关闭队列、搜索、回复、关闭和重开；正式运营后再补坐席分配、标签、站外通知和保存 / 删除规则。"

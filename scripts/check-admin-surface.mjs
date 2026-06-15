@@ -140,6 +140,8 @@ expectAdminPattern("monitoring program strip excludes manual items", /filter\(\(
 expectAdminPattern("monitoring program strip explains actionable work", /代码、配置、部署或后台操作/);
 expectAdminPattern("launch readiness cards show item owner type", /class="launch-kind \$\{row\.manual \? "manual" : "program"\}"/);
 expectAdminPattern("launch readiness cards distinguish manual items", /row\.manual \? "人工确认" : "程序处理"/);
+expectAdminPattern("launch readiness renders confirmation hints", /确认方式：/);
+expectAdminPattern("launch readiness confirmation hints come from backend", /row\.confirm_hint/);
 expectAdminPattern("readiness separates manual confirmation", /人工确认/);
 expectAdminPattern("readiness keeps launch blockers visible", /上架阻塞/);
 [

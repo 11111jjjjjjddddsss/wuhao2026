@@ -764,6 +764,19 @@ button {
   line-height: 1.5;
 }
 
+.manual-check-copy .confirm-hint,
+.launch-card .confirm-hint {
+  margin-top: 3px;
+  border-left: 2px solid #c7d2e2;
+  padding-left: 8px;
+  color: #5f6b7a;
+}
+
+.confirm-hint span {
+  color: #374151;
+  font-weight: 700;
+}
+
 .manual-check-actions {
   display: grid;
   flex: 0 0 auto;

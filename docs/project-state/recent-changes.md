@@ -5,6 +5,10 @@
 
 ## 2026-06-15
 
+- 继续按“主界面所有深度交互检查”的角度收口 Android 主链护栏：静态巡检未发现 `reverseLayout / asReversed / dispatchRawDelta / scrollBy / SparseBottomSpacer / BottomActiveZone / split streaming item` 等旧滚动渲染方案残留；`scripts/check-android-build-parity.ps1` 现在会锁住主聊天仍是单个可滚动正向 `LazyColumn`、streaming 底部锚定仍在同帧 `SideEffect`、今日农情仍是普通 `ChatTimelineItem.TodayAgriCard`、含链接 AI 回复不会被 `SelectionContainer` 吞成纯文本。新增 `ChatComposerPanelTest` 覆盖空输入、纯图片、streaming 中禁发、额度耗尽和超长输入的发送按钮状态，GitHub Android CI 新增 `:app:testDebugUnitTest`。支付 readiness 脚本同步输出支付宝沙箱和微信 App 支付前置配置缺口，不打印密钥值；当前本机仍缺两家调试所需 AppID / 商户号 / 私钥 / 公钥等材料。本轮没有修改主对话锚点、记忆提示词、今日农情提示词、后端模型过滤或聊天滚动主链；本机未连接真机，真实设备交互仍需下一次装包回归。
+
+- 继续从“总负责人看后台不只是知道有事，还要知道怎么确认”的角度补监控面板：`launch_readiness` 新增可选 `confirm_hint` 字段，App 公安备案、AccessKey 轮换、最终真机回归、短信套餐余额、最终 release 物料和 SLS 首封告警邮件等人工项会在“上线人工确认项”和“正式上架检查”卡片里显示“确认方式”。前端只展示后端给出的提示，不新增写操作；`scripts/check-admin-surface.mjs` 和后端单测会锁住人工项必须有确认方式，避免以后只剩“待确认”但不知道去哪确认。本轮不改 Android、聊天滚动、三份提示词、支付真实接入或云资源。
+
 - App 备案已按通过状态收口：Android 设置页底部新增低调小灰字 App 备案号 `京ICP备2026031728号-2A` 和工信部备案查询链接，服务协议 / 隐私政策基础信息同步展示该编号；后台 `launch_readiness` 将“App 备案”改为 ready，正式上线人工确认项不再列 App 备案，只保留 App 公安备案等未闭环事项。同步修正 ECS、官网、管理后台、上线计划、合规、支付材料和项目记忆文档里的旧口径。另按用户反馈“AI 发的网址点不动”收紧 Android AI 回复链接渲染：Markdown 链接和裸 URL 都保留真实 URL 注解、显示为蓝色下划线并走系统打开；含链接的 AI 回复优先保证短按可点。本轮不修改主对话锚点、记忆提示词、今日农情提示词、后端模型过滤或聊天滚动主链。
 
 - 继续按“支付先调试但不假扣费”的边界补上线门禁：新增 [check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)，检查 Android 会员 / 加油包购买入口仍关闭、Android 未调用开发期订单接口、后端开发期订单接口仍有 `PAYMENT_NOT_CONFIGURED` 防线、公网 `/healthz` 显示 `dev_order_endpoints=false`，并输出微信 / 支付宝回调 URL 建议；[check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1) 已接入该只读步骤。支付 runbook 同步补充微信产品开放状态需以商户后台实际可开通项为准、支付宝未上线 / 未开通阶段可走沙箱联调但生产仍以正式审核和配置为准。App 公安备案也按阿里云提示和官方文档补充为“全国互联网安全管理服务平台单独提交，按开通后 30 日内处理”。本轮不接真实支付 SDK、不保存支付密钥、不打开真实扣费入口。

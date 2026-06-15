@@ -255,6 +255,7 @@ export interface AdminMonitoringLaunchItem {
   title: string;
   status: AdminMonitoringLaunchStatus;
   body: string;
+  confirm_hint?: string;
   route?: AdminRouteKey;
   owner?: string;
   manual?: boolean;

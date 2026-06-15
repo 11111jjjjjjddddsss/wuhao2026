@@ -3306,6 +3306,7 @@ function monitoringManualCheckStrip(report: AdminMonitoring): string {
                   <span class="small muted">${escapeHTML(row.owner || "负责人待定")}</span>
                   <strong>${escapeHTML(row.title)}</strong>
                   <p>${escapeHTML(row.body)}</p>
+                  ${launchConfirmHint(row)}
                 </div>
                 <div class="manual-check-actions">
                   ${statusPill(launchStatusText(row.status), level)}
@@ -3347,6 +3348,7 @@ function monitoringProgramCheckStrip(report: AdminMonitoring): string {
                   <span class="small muted">${escapeHTML(row.owner || "程序处理")}</span>
                   <strong>${escapeHTML(row.title)}</strong>
                   <p>${escapeHTML(row.body)}</p>
+                  ${launchConfirmHint(row)}
                 </div>
                 <div class="manual-check-actions">
                   ${statusPill(launchStatusText(row.status), level)}
@@ -3685,6 +3687,7 @@ function launchReadinessGrid(rows: AdminMonitoring["launch_readiness"]): string 
                 </div>
               </div>
               <p>${escapeHTML(row.body)}</p>
+              ${launchConfirmHint(row)}
               <div class="launch-foot">
                 <span>${escapeHTML(row.owner || "")}</span>
                 ${routeActionButton(row.route, "打开")}
@@ -3695,6 +3698,11 @@ function launchReadinessGrid(rows: AdminMonitoring["launch_readiness"]): string 
         .join("")}
     </div>
   `;
+}
+
+function launchConfirmHint(row: AdminMonitoring["launch_readiness"][number]): string {
+  if (!row.confirm_hint) return "";
+  return `<p class="confirm-hint"><span>确认方式：</span>${escapeHTML(row.confirm_hint)}</p>`;
 }
 
 function launchStatusText(status: string): string {
