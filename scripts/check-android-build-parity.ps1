@@ -482,6 +482,10 @@ if ($failures.Count -eq 0) {
         "Chat offline precheck must reject captive-portal networks instead of treating every INTERNET-capable network as usable."
     Require-Match $failures $hamburgerMenuSheet 'BackHandler\s*\(\s*enabled\s*=\s*visible\s*\)(?s:.*?)handleBackClick\s*\(\s*\)' `
         "Settings shell must let Android back close the main settings page as well as nested pages."
+    Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*Unit\s*\)(?s:.*?)onDispose\s*\{(?s:.*?)if\s*\(\s*selectedImages\.isNotEmpty\s*\(\s*\)\s*\)(?s:.*?)imagesForCleanup\.forEach\s*\(\s*contextForCleanup::deleteComposerImageAttachment\s*\)' `
+        "Support feedback must clean temporary selected images on page disposal, including interrupted sending states."
+    Require-NoMatch $failures $hamburgerMenuSheet 'if\s*\(\s*!\s*sending\s*&&\s*selectedImages\.isNotEmpty\s*\(\s*\)\s*\)' `
+        "Support feedback disposal cleanup must not skip temporary images while a send is in progress."
     $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
     $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
     $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"

@@ -2586,7 +2586,7 @@ private fun HamburgerSupportFeedbackPage(
 
     DisposableEffect(Unit) {
         onDispose {
-            if (!sending && selectedImages.isNotEmpty()) {
+            if (selectedImages.isNotEmpty()) {
                 val contextForCleanup = context.applicationContext
                 val imagesForCleanup = selectedImages.toList()
                 CoroutineScope(Dispatchers.IO).launch {
