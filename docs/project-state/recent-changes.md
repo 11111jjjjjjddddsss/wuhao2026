@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 已将管理后台前端提交 `c7f69281` 部署到生产 `https://admin.nongjiqiancha.cn/`：`scripts/deploy-ecs-admin.ps1` 本地 `npm run build` 通过，上传静态包 `SHA256=4d6eba82c39e3e324c7048414335bc7c67fc1fb6c8684ba2bfcb9877dbf9b921`，远端安装后 Nginx 配置检测通过，证书未到期无需续签；脚本验证 `admin-http-redirect=301`、`admin-https-root=200`、`admin-https-auth-me=401`。部署后 `check-public-blackbox.ps1`、`check-ecs-readiness.ps1` 和 `check-admin-surface.mjs` 均通过，当前 API 与后台 `/admin-api/` active upstream 同为 `3000`，生产健康标记 `auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss` 正常。该部署只上线后台监控页“程序需处理项”和“程序处理 / 人工确认”展示标签，不改 Android 包、后端接口、三份提示词、模型过滤或聊天滚动主链。
+
 - 继续按“监控页要让总负责人直接知道谁能处理”的方向补首屏可行动性：管理后台监控页在“处理顺序”和“上线人工确认项”之间新增“程序需处理项”，只展示 `launch_readiness` 里 `manual!=true` 且未 ready 的条目，并优先把红色阻塞排在前面；每项保留负责人、状态和直达入口，文案明确这些通常能通过代码、配置、部署或后台操作推进。正式上架检查明细卡也新增“程序处理 / 人工确认”小标签，避免人工确认项在明细区仍被“需处理”误读成程序故障。`scripts/check-admin-surface.mjs` 同步锁住该区域、人工项不混进程序项，以及明细卡分类标签。该改动只影响后台前端展示和只读 surface 巡检，不改后端接口、Android 运行逻辑、三份提示词、模型过滤或聊天滚动主链。
 
 - 继续按用户视频里“流式渲染不像成熟产品”的体感补 Android renderer 边界：`ChatStreamingRenderer.kt` 不换引擎、不等全文完成、不改正向 `LazyColumn`，只收紧 typewriter 和 inline Markdown。长英文 / 数字词块单次 reveal 限制到 8 个字符，省略号 / 破折号按强停顿处理；emoji cluster 扩到肤色修饰、ZWJ 组合和旗帜，避免半个符号闪一下；已换行 / 空行分隔出去的旧块如果仍含未闭合加粗、斜体或行内代码，会继续按 streaming inline 规则显示，减少 raw `**` 露出和加粗处宽度突变。同步补 `ChatStreamingRendererTest` 和聊天 UI 回归文档；本轮不改三份提示词、不加后端过滤、不恢复 overlay / 反向列表 / raw delta / scrollBy / 小分割 item。
