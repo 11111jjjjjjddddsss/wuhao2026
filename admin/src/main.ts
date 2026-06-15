@@ -3191,6 +3191,8 @@ function monitoringHero(report: AdminMonitoring): string {
         ? `当前服务没有明显中断，但正式上架还有 ${readinessBlocked} 个阻塞项；程序需处理 ${readiness.programAttention} 项，人工确认 ${readiness.manualAttention} 项。`
       : worst === "warn"
         ? "当前没有明确服务中断，但有运营队列需要跟进。"
+      : readinessAttention > 0
+        ? `当前服务没有明显中断，但上线清单仍有 ${readiness.programAttention} 个程序项、${readiness.manualAttention} 个人工确认项需要跟进。`
         : "关键健康项、App 报错、反馈和礼品卡队列暂时没有明显异常。";
   return `
     <section class="monitor-hero ${heroLevel}">

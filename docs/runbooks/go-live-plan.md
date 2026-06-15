@@ -80,7 +80,7 @@
 .\scripts\check-launch-readiness.ps1
 ```
 
-默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、支付 readiness、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、短信发送统计巡检、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。支付 readiness 只证明 Android 购买入口仍关闭、生产开发期订单端点仍关闭、回调 URL 和 runbook 边界齐全，不代表真实支付已接入。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
+默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、支付关闭护栏、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、短信发送统计和余额确认提示、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。支付关闭护栏在正式支付未配置时会显示 `payment closed guard` attention：它只证明 Android 购买入口仍关闭、生产开发期订单端点仍关闭、回调 URL 和 runbook 边界齐全，不代表真实支付已接入。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`，总门禁会把非 confirmed 状态保留为 attention。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
 
 人工上线确认项用于把脚本无法自动证明的事项直接暴露在总门禁末尾。正式上架前逐项确认后，可在当前 PowerShell 临时设置对应环境变量为 `1 / true / yes / ok / ready / confirmed / done`；不要把这些确认变量写进仓库或长期 shell 配置。当前确认项包括：
 

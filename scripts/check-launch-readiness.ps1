@@ -112,6 +112,20 @@ function Invoke-NativeCaptured {
     }
 }
 
+function Get-CapturedValue {
+    param(
+        [string[]]$Lines,
+        [string]$Key
+    )
+    $value = ""
+    foreach ($line in $Lines) {
+        if ($line -match "^$([regex]::Escape($Key))=(.+?)\s*$") {
+            $value = $Matches[1].Trim()
+        }
+    }
+    return $value
+}
+
 function Invoke-GateStep {
     param(
         [string]$Name,
@@ -153,19 +167,28 @@ function Invoke-SmsUsageGateStep {
             "scripts/check-sms-usage.ps1"
         )
         $timer.Stop()
-        $hasAttention = @($lines | Where-Object { $_ -match "^sms_usage_status=attention\s*$" }).Count -gt 0
-        if ($hasAttention) {
-            $message = "sms usage returned attention; empty statistics are a trend warning and must remain visible in the launch gate"
-            Add-GateResult -Name "sms usage" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        $smsUsageStatus = Get-CapturedValue -Lines $lines -Key "sms_usage_status"
+        $smsPackageStatus = Get-CapturedValue -Lines $lines -Key "sms_package_status"
+        $attentionMessages = @()
+        if ($smsUsageStatus -eq "attention") {
+            $attentionMessages += "sms send statistics are empty"
+        }
+        if ([string]::IsNullOrWhiteSpace($smsPackageStatus) -or $smsPackageStatus -ne "confirmed") {
+            $packageText = if ([string]::IsNullOrWhiteSpace($smsPackageStatus)) { "not_reported" } else { $smsPackageStatus }
+            $attentionMessages += "SMS package balance/expiry still needs console confirmation ($packageText)"
+        }
+        if ($attentionMessages.Count -gt 0) {
+            $message = $attentionMessages -join "; "
+            Add-GateResult -Name "sms usage and balance" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
             Write-Warning "step_status=skipped_or_attention seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
             return
         }
-        Add-GateResult -Name "sms usage" -Status "ready" -Seconds $timer.Elapsed.TotalSeconds
+        Add-GateResult -Name "sms usage and balance" -Status "ready" -Seconds $timer.Elapsed.TotalSeconds
         Write-Host "step_status=ready seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
     } catch {
         $timer.Stop()
         $message = $_.Exception.Message
-        Add-GateResult -Name "sms usage" -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        Add-GateResult -Name "sms usage and balance" -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
         Write-Host "step_status=failed seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
     }
 }
@@ -189,18 +212,26 @@ function Invoke-PaymentReadinessGateStep {
         }
         $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $paymentArgs
         $timer.Stop()
-        $hasSafePlaceholder = @($lines | Where-Object { $_ -match "^payment_readiness_status=attention\s*$" }).Count -gt 0
-        $message = if ($hasSafePlaceholder) {
-            "formal payment is not configured; guard passed because Android purchase buttons are closed and dev-order endpoints are closed"
-        } else {
-            ""
+        $paymentStatus = Get-CapturedValue -Lines $lines -Key "payment_readiness_status"
+        $hasSafePlaceholder = $paymentStatus -eq "attention"
+        $message = ""
+        $status = "ready"
+        $name = "payment readiness"
+        if ($hasSafePlaceholder) {
+            $name = "payment closed guard"
+            $status = "skipped_or_attention"
+            $message = "formal payment is not configured; safe only because Android purchase buttons and dev-order endpoints remain closed"
         }
-        Add-GateResult -Name "payment readiness" -Status "ready" -Seconds $timer.Elapsed.TotalSeconds -Message $message
-        $line = "step_status=ready seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
+        Add-GateResult -Name $name -Status $status -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        $line = "step_status=$status seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
         if (-not [string]::IsNullOrWhiteSpace($message)) {
             $line += " message=$message"
         }
-        Write-Host $line
+        if ($status -eq "ready") {
+            Write-Host $line
+        } else {
+            Write-Warning $line
+        }
     } catch {
         $timer.Stop()
         $message = $_.Exception.Message

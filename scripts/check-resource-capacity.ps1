@@ -588,6 +588,66 @@ if (Test-Path -LiteralPath $slsScript) {
     Add-WarningItem "sls_alert_readiness_script_missing"
 }
 
+Write-Host
+Write-Host "== SLS cost guard =="
+$slsCostScript = Join-Path $PSScriptRoot "check-sls-cost-guard.ps1"
+if (Test-Path -LiteralPath $slsCostScript) {
+    $slsCostArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $slsCostScript,
+        "-RegionId",
+        $RegionId,
+        "-ProjectName",
+        $SlsProjectName
+    )
+    if ($Strict) {
+        $slsCostArgs += "-FailOnWarning"
+    }
+    & powershell.exe @slsCostArgs
+    if ($LASTEXITCODE -ne 0) {
+        if ($Strict) {
+            Add-ErrorItem "sls_cost_guard_failed"
+        } else {
+            Add-WarningItem "sls_cost_guard_attention"
+        }
+    }
+} else {
+    Add-WarningItem "sls_cost_guard_script_missing"
+}
+
+Write-Host
+Write-Host "== data retention and cost guard =="
+$dataRetentionScript = Join-Path $PSScriptRoot "check-data-retention-cost.ps1"
+if (Test-Path -LiteralPath $dataRetentionScript) {
+    $dataRetentionArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $dataRetentionScript,
+        "-RegionId",
+        $RegionId,
+        "-InstanceId",
+        $EcsInstanceId
+    )
+    if ($Strict) {
+        $dataRetentionArgs += "-FailOnWarning"
+    }
+    & powershell.exe @dataRetentionArgs
+    if ($LASTEXITCODE -ne 0) {
+        if ($Strict) {
+            Add-ErrorItem "data_retention_cost_guard_failed"
+        } else {
+            Add-WarningItem "data_retention_cost_guard_attention"
+        }
+    }
+} else {
+    Add-WarningItem "data_retention_cost_guard_script_missing"
+}
+
 if (-not $SkipAuthUsage) {
     Write-Host
     Write-Host "== sms usage =="

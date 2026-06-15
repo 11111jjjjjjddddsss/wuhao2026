@@ -17,7 +17,7 @@
 ## D3 项目记忆是否继续从文件级校验细化到章节级
 
 - 当前选项：维持当前“按变更类型要求特定 memory 文件”的文件级校验，或继续细化为“改登录必须更新 R10、改部署必须更新 active slot 章节、改今日农情必须更新 R13”等章节级 / 关键词级一致性检查
-- 现状：`scripts/check_project_memory.py` 和 CI 已接入，2026-06-12 已从“至少更新一份 memory 文件”收紧为文件级规则：关键代码 / runbook / 运维脚本变更默认要求 `recent-changes.md`，当前真相类变更要求 `current-status.md`，风险敏感区域要求 `open-risks.md`，项目记忆校验策略变化要求 `pending-decisions.md`
+- 现状：`scripts/check_project_memory.py` 和 CI 已接入，2026-06-12 已从“至少更新一份 memory 文件”收紧为文件级规则：关键代码 / runbook / 运维脚本变更默认要求 `recent-changes.md`，当前真相类变更要求 `current-status.md`，风险敏感区域要求 `open-risks.md`，项目记忆校验策略变化要求 `pending-decisions.md`。2026-06-15 起，SLS 低成本巡检脚本 `scripts/check-sls-cost-guard.ps1` 和数据留存 / 文字表成本巡检脚本 `scripts/check-data-retention-cost.ps1` 也纳入项目记忆护栏，避免后续修改日志成本、聊天归档、App 日志或客服留存口径却不更新项目状态 / 风险记录
 - 待定原因：文件级校验已经能挡住最常见的“只改代码不改项目记忆”和“只改一份无关记忆文件”问题；章节级校验更稳，但容易误报，需要先观察文件级规则对日常提交的维护成本
 
 ## D4 正式云资源首版怎么落

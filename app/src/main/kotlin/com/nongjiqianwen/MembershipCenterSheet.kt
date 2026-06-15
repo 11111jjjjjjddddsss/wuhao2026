@@ -584,6 +584,18 @@ private fun MembershipPlanSection(
     topupRemaining: Int,
     onPaymentUnavailable: () -> Unit
 ) {
+    val plusActionText = when (activeTier) {
+        "unknown" -> "同步后开通"
+        "plus" -> "当前套餐"
+        "pro" -> "当前为 Pro"
+        else -> "暂未开放"
+    }
+    val proActionText = when (activeTier) {
+        "unknown" -> "同步后开通"
+        "plus" -> "暂未开放"
+        "pro" -> "当前套餐"
+        else -> "暂未开放"
+    }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         MembershipUnavailableNotice()
         MembershipPlanSectionTitle(
@@ -595,13 +607,9 @@ private fun MembershipPlanSection(
             price = MEMBERSHIP_PLUS_PRICE_TEXT,
             active = activeTier == "plus",
             highlights = listOf("每天${MEMBERSHIP_PLUS_DAILY_LIMIT}次问诊", "图文问题随时问", "记忆与上下文更强"),
-            actionText = when (activeTier) {
-                "unknown" -> "同步后开通"
-                "plus" -> "当前套餐"
-                "pro" -> "当前为 Pro"
-                else -> "暂未开放"
-            },
+            actionText = plusActionText,
             actionEnabled = false,
+            actionClickableWhenDisabled = plusActionText == "暂未开放" || plusActionText == "同步后开通",
             onActionClick = onPaymentUnavailable
         )
         MembershipPlanCard(
@@ -610,13 +618,9 @@ private fun MembershipPlanSection(
             badge = "推荐",
             active = activeTier == "pro",
             highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
-            actionText = when (activeTier) {
-                "unknown" -> "同步后开通"
-                "plus" -> "暂未开放"
-                "pro" -> "当前套餐"
-                else -> "暂未开放"
-            },
+            actionText = proActionText,
             actionEnabled = false,
+            actionClickableWhenDisabled = proActionText == "暂未开放" || proActionText == "同步后开通",
             onActionClick = onPaymentUnavailable
         )
     }
@@ -686,6 +690,7 @@ private fun MembershipPlanCard(
     highlights: List<String>,
     actionText: String,
     actionEnabled: Boolean,
+    actionClickableWhenDisabled: Boolean = false,
     onActionClick: () -> Unit,
     badge: String? = null
 ) {
@@ -754,6 +759,7 @@ private fun MembershipPlanCard(
             MembershipActionButton(
                 text = actionText,
                 enabled = actionEnabled,
+                clickableWhenDisabled = actionClickableWhenDisabled,
                 onClick = onActionClick
             )
         }
@@ -832,6 +838,7 @@ private fun MembershipTopupCard(
                     else -> "暂未开放"
                 },
                 enabled = canBuy,
+                clickableWhenDisabled = !hasActiveTopup || isPaidTier,
                 onClick = onPaymentUnavailable
             )
         }
@@ -860,10 +867,12 @@ private fun MembershipPill(text: String) {
 private fun MembershipActionButton(
     text: String,
     enabled: Boolean,
+    clickableWhenDisabled: Boolean = false,
     onClick: () -> Unit
 ) {
     val color = if (enabled) Color(0xFF111111) else Color(0xFFEDEFF2)
     val contentColor = if (enabled) Color.White else Color(0xFF8A8E96)
+    val canClick = enabled || clickableWhenDisabled
     Surface(
         color = color,
         shape = RoundedCornerShape(14.dp),
@@ -871,7 +880,7 @@ private fun MembershipActionButton(
             .fillMaxWidth()
             .height(46.dp)
             .then(
-                if (enabled) {
+                if (canClick) {
                     Modifier.clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,

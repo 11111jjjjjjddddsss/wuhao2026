@@ -104,6 +104,13 @@ function Assert-AliyunOk {
     throw "$Operation failed: Code=$code Message=$message"
 }
 
+function Format-RedactedJson {
+    param($Value)
+    $json = $Value | ConvertTo-Json -Depth 10
+    return $json `
+        -replace '(?i)("(?:PhoneNumber|PhoneNum)"\s*:\s*")[^"]+', '${1}REDACTED'
+}
+
 function Get-TargetList {
     param($Stats)
     $data = Get-JsonPropertyValue $Stats "Data"
@@ -301,5 +308,5 @@ if (-not [string]::IsNullOrWhiteSpace($PhoneNumber)) {
         "--page-size", "20"
     )
     Assert-AliyunOk $details "SMS detail query"
-    $details | ConvertTo-Json -Depth 10
+    Format-RedactedJson $details
 }

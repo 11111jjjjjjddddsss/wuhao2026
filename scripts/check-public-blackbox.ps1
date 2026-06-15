@@ -77,6 +77,45 @@ function Invoke-HttpProbe {
     }
 }
 
+function Invoke-AdminAssetProbe {
+    param(
+        [string]$RootUrl = "https://admin.nongjiqiancha.cn/"
+    )
+
+    $client = $null
+    try {
+        $client = New-HttpClient -AllowRedirect:$true
+        $response = $client.GetAsync($RootUrl).GetAwaiter().GetResult()
+        $status = [int]$response.StatusCode
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        Write-Host "probe=admin_https_asset_manifest status=$status"
+        if ($status -ne 200) {
+            Add-ErrorItem "admin_https_asset_manifest expected_status=200 actual=$status"
+            return
+        }
+        $match = [regex]::Match($body, 'src="(?<src>[^"]*/assets/[^"]+\.js)"')
+        if (-not $match.Success) {
+            Add-ErrorItem "admin_https_asset_manifest missing_first_js_asset"
+            return
+        }
+        $src = $match.Groups["src"].Value
+        $assetUrl = if ($src.StartsWith("http", [StringComparison]::OrdinalIgnoreCase)) {
+            $src
+        } elseif ($src.StartsWith("/")) {
+            "https://admin.nongjiqiancha.cn$src"
+        } else {
+            "$RootUrl$src"
+        }
+        Invoke-HttpProbe -Name "admin_https_first_js" -Url $assetUrl -ExpectedStatus @(200)
+    } catch {
+        Add-ErrorItem "admin_https_asset_manifest request_failed=$($_.Exception.Message)"
+    } finally {
+        if ($null -ne $client) {
+            $client.Dispose()
+        }
+    }
+}
+
 Write-Host "== public blackbox =="
 
 Invoke-HttpProbe `
@@ -115,7 +154,8 @@ Invoke-HttpProbe -Name "site_gongan_icon" -Url "https://nongjiqiancha.cn/gongan.
 Invoke-HttpProbe -Name "site_www_user_agreement" -Url "https://www.nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement")
 Invoke-HttpProbe -Name "site_www_privacy_policy" -Url "https://www.nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy")
 Invoke-HttpProbe -Name "site_www_gongan_icon" -Url "https://www.nongjiqiancha.cn/gongan.png" -ExpectedStatus @(200)
-Invoke-HttpProbe -Name "admin_https_root" -Url "https://admin.nongjiqiancha.cn/" -ExpectedStatus @(200)
+Invoke-HttpProbe -Name "admin_https_root" -Url "https://admin.nongjiqiancha.cn/" -ExpectedStatus @(200) -RequiredBodyMarkers @('id="app"', "/assets/")
+Invoke-AdminAssetProbe
 Invoke-HttpProbe -Name "admin_https_auth_me" -Url "https://admin.nongjiqiancha.cn/admin-api/v1/auth/me" -ExpectedStatus @(401)
 
 if (-not $SkipHttpRedirectChecks) {

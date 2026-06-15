@@ -48,6 +48,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-backe
 - 不查询手机号明文、聊天正文、反馈正文、图片 URL、礼品卡完整码、token 或模型 Key
 - 只要会员、订单、礼品卡、聊天、反馈、日志、注销等需要账号归属的表出现非 `acct_...`，或 `acct_...` 业务记录找不到对应 `app_accounts`，或 `app_accounts.phone_ciphertext` 缺失，脚本失败
 
+## 只读留存与成本巡检
+
+固定入口：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-data-retention-cost.ps1
+```
+
+脚本行为：
+
+- 通过 Cloud Assistant 在 ECS 内部只读查询 MySQL，不输出数据库密码、正文、图片 URL、手机号、token 或密钥。
+- 统计 `session_round_archive / client_app_logs / support_messages / admin_audit_logs / session_round_ledger / quota_ledger / orders / gift_card_redemption_attempts / daily_agri_cards` 的行数、最早 / 最新记录时间和表体量。
+- 默认把聊天完整归档超过 31 天、App 自动日志超过 90 天、客服文字 / 后台审计 / 幂等 ledger 超过 365 天或单表超过 1GB 作为 attention；`-FailOnWarning` 可在严格巡检里把 attention 变成失败。
+- `check-resource-capacity.ps1 -Strict` 已接入该脚本，和云资源、OSS 生命周期、SLS 低成本护栏一起巡检。
+
+2026-06-15 生产只读结果：
+
+- `session_round_archive=12`，最早约 1.5 天前，表体量约 0.109MB。
+- `client_app_logs=298`，最早约 6.5 天前，表体量约 0.203MB。
+- `support_messages=3`，最早约 1.5 天前，表体量约 0.078MB。
+- `admin_audit_logs=454`，最早约 7.6 天前，表体量约 0.219MB。
+- 重点追踪表合计约 0.828MB，`warnings=0 / errors=0 / status=ready`。
+
 ## 2026-06-15 线上只读结果
 
 - `app_accounts=1 / auth_sessions=11 / auth_sessions_active=5 / user_entitlement=1 / orders=0 / gift_cards=0 / session_ab=1 / session_round_archive=12`

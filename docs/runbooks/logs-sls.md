@@ -62,6 +62,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-a
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning
 ```
 
+低成本护栏只读巡检：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-cost-guard.ps1
+```
+
+它会确认农技千查业务 Project 当前只保留 `server-go` 和 `nginx-error` 两个 Logstore、TTL 不超过 7 天、每个 Logstore 仍是 1 个 Shard、未开启自动分裂、append meta 或归档存储。正式严格巡检可加 `-FailOnWarning`，`check-resource-capacity.ps1 -Strict` 也会调用它；如果后续确实需要增加 Logstore、延长保留期、扩 Shard 或采 Nginx access，必须先确认费用影响并同步更新本 runbook 和项目记忆。
+
+数据库侧日志 / 文本留存也有独立只读护栏：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-data-retention-cost.ps1
+```
+
+它不会删除数据，只检查 App 自动日志、后台审计、客服文字、聊天归档和账本类表的最早时间、行数和体量；`check-resource-capacity.ps1 -Strict` 已接入该脚本。当前重点是避免 App 自动日志、客服记录或后台审计在 MySQL 里无限增长，同时不把交易 / 权益账本和普通聊天记录混为一谈。
+
 当前已创建的最小规则：
 
 | 规则名 | Logstore | 查询 | 条件 | 重复提醒 |
@@ -162,5 +178,5 @@ systemctl status nginx --no-pager
 - 首版已经创建农技千查专用 Project / Logstore，设置 7 天 TTL，先采集 Go 结构化日志和 Nginx error log
 - 暂不把所有 Nginx access log、聊天正文、AI 回复、图片 URL、手机号、token、模型 Key、数据库密码采进 SLS
 - 如果后续 App 自动日志要进 SLS，优先从 `client_app_logs` 做管理后台查询或脱敏聚合，不直接上传原始聊天内容
-- 如果日志量上涨，再评估资源包、告警规则、仪表盘和更细的采集过滤
+- 如果日志量上涨，优先减少写入、减少索引字段、缩短保留期或对高频 App 事件采样，再评估 SLS 资源包、告警规则、仪表盘和更细的采集过滤
 - 不删除阿里云系统 / 产品托管 Project，除非先确认没有依赖且不会影响云监控 / APM / 产品事件
