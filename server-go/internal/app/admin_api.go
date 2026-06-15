@@ -2207,10 +2207,9 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	})
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "App 备案",
-		Status: "attention",
-		Body:   "App 备案结果和备案号需要人工确认；未确认前不要把正式上架材料标成完成。",
+		Status: "ready",
+		Body:   "App 备案已通过，备案号为 京ICP备2026031728号-2A；App 内设置页底部和协议 / 隐私基础信息已展示，并链接工信部备案查询。",
 		Owner:  "运营",
-		Manual: true,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "App 公安备案",

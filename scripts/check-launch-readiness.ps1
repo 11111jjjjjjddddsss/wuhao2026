@@ -145,6 +145,45 @@ function Invoke-SmsUsageGateStep {
     }
 }
 
+function Invoke-PaymentReadinessGateStep {
+    param([switch]$SkipPublicHealth)
+
+    Write-Host
+    Write-Host "== payment readiness =="
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $paymentArgs = @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check-payment-readiness.ps1"
+        )
+        if ($SkipPublicHealth) {
+            $paymentArgs += "-SkipPublicHealth"
+        }
+        $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $paymentArgs
+        $timer.Stop()
+        $hasSafePlaceholder = @($lines | Where-Object { $_ -match "^payment_readiness_status=attention\s*$" }).Count -gt 0
+        $message = if ($hasSafePlaceholder) {
+            "formal payment is not configured; guard passed because Android purchase buttons are closed and dev-order endpoints are closed"
+        } else {
+            ""
+        }
+        Add-GateResult -Name "payment readiness" -Status "ready" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        $line = "step_status=ready seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
+        if (-not [string]::IsNullOrWhiteSpace($message)) {
+            $line += " message=$message"
+        }
+        Write-Host $line
+    } catch {
+        $timer.Stop()
+        $message = $_.Exception.Message
+        Add-GateResult -Name "payment readiness" -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        Write-Host "step_status=failed seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
+    }
+}
+
 function Test-AdminSmokeEnv {
     $username = if ($env:NONGJI_ADMIN_USERNAME) { $env:NONGJI_ADMIN_USERNAME } else { $env:ADMIN_SMOKE_USERNAME }
     $password = if ($env:NONGJI_ADMIN_PASSWORD) { $env:NONGJI_ADMIN_PASSWORD } else { $env:ADMIN_SMOKE_PASSWORD }
@@ -164,11 +203,6 @@ function Test-TruthyEnv {
 
 function Invoke-ManualGoLiveChecklist {
     $items = @(
-        [pscustomobject]@{
-            Key = "app_icp"
-            Env = "NONGJI_APP_ICP_CONFIRMED"
-            Summary = "App ICP filing has passed and the App filing number/materials are ready"
-        },
         [pscustomobject]@{
             Key = "app_police"
             Env = "NONGJI_APP_POLICE_CONFIRMED"
@@ -284,6 +318,10 @@ if ($CheckAppUpdateReleaseMatch) {
         }
         Invoke-Native -FilePath "powershell.exe" -Arguments $matchArgs
     }
+}
+
+if (-not $SkipAndroid -and -not $SkipBackend) {
+    Invoke-PaymentReadinessGateStep -SkipPublicHealth:$SkipCloud
 }
 
 if (-not $SkipCloud) {

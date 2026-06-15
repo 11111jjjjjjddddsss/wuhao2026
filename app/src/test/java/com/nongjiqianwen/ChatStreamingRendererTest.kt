@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -144,6 +145,8 @@ class ChatStreamingRendererTest {
         assertEquals("看官网，或 https://www.natesc.org.cn/。", rendered.text)
         assertTrue(rendered.hasSpanFor("官网") { it.textDecoration == TextDecoration.Underline })
         assertTrue(rendered.hasSpanFor("https://www.natesc.org.cn/") { it.textDecoration == TextDecoration.Underline })
+        assertTrue(rendered.hasUrlFor("官网", "https://www.moa.gov.cn"))
+        assertTrue(rendered.hasUrlFor("https://www.natesc.org.cn/", "https://www.natesc.org.cn/"))
     }
 
     @Test
@@ -566,5 +569,17 @@ private fun AnnotatedString.hasSpanFor(
     val end = start + needle.length
     return spanStyles.any { range ->
         range.start <= start && range.end >= end && predicate(range.item)
+    }
+}
+
+private fun AnnotatedString.hasUrlFor(
+    needle: String,
+    expectedUrl: String
+): Boolean {
+    val start = text.indexOf(needle)
+    if (start < 0) return false
+    val end = start + needle.length
+    return getLinkAnnotations(start, end).any { range ->
+        (range.item as? LinkAnnotation.Url)?.url == expectedUrl
     }
 }

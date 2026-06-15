@@ -41,9 +41,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -204,6 +206,10 @@ private val rendererSettledInlineMarkdownCache =
 internal enum class RendererInlineMode {
     Streaming,
     Settled
+}
+
+private fun rendererContainsLinkCandidate(text: String): Boolean {
+    return rendererMarkdownLinkRegex.containsMatchIn(text) || rendererBareUrlRegex.containsMatchIn(text)
 }
 
 private fun splitRendererMarkdownTableCells(line: String): List<String> {
@@ -1034,7 +1040,8 @@ private fun RendererAssistantMessageContentImpl(
                 )
             }
         } else {
-            if (selectionEnabled) {
+            val selectContent = selectionEnabled && !rendererContainsLinkCandidate(content)
+            if (selectContent) {
                 SelectionContainer {
                     RendererAssistantMarkdownContentImpl(
                         content = content,
@@ -1298,8 +1305,13 @@ private fun RendererStreamingActiveTextImpl(
         Spacer(modifier = modifier.height(minLineHeight))
         return
     }
-    val renderedText = remember(text, inlineMode) {
-        buildRendererInlineAnnotatedString(text = text, mode = inlineMode)
+    val linkInteractionListener = rememberRendererLinkInteractionListener()
+    val renderedText = remember(text, inlineMode, linkInteractionListener) {
+        buildRendererInlineAnnotatedString(
+            text = text,
+            mode = inlineMode,
+            linkInteractionListener = linkInteractionListener
+        )
     }
     Text(
         text = renderedText,
@@ -1310,11 +1322,24 @@ private fun RendererStreamingActiveTextImpl(
     )
 }
 
+@Composable
+private fun rememberRendererLinkInteractionListener(): LinkInteractionListener {
+    val uriHandler = LocalUriHandler.current
+    return remember(uriHandler) {
+        LinkInteractionListener { link ->
+            val url = (link as? LinkAnnotation.Url)?.url ?: return@LinkInteractionListener
+            runCatching { uriHandler.openUri(url) }
+        }
+    }
+}
+
 internal fun buildRendererInlineAnnotatedString(
     text: String,
-    mode: RendererInlineMode
+    mode: RendererInlineMode,
+    linkInteractionListener: LinkInteractionListener? = null
 ): AnnotatedString {
-    if (mode == RendererInlineMode.Settled) {
+    val canUseCache = mode == RendererInlineMode.Settled && linkInteractionListener == null
+    if (canUseCache) {
         synchronized(rendererSettledInlineMarkdownCache) {
             rendererSettledInlineMarkdownCache[text]?.let { return it }
         }
@@ -1336,7 +1361,7 @@ internal fun buildRendererInlineAnnotatedString(
 
         fun currentLinkStyle(): SpanStyle {
             return currentTextStyle().copy(
-                color = Color(0xFF111111),
+                color = Color(0xFF2563EB),
                 textDecoration = TextDecoration.Underline
             )
         }
@@ -1350,7 +1375,12 @@ internal fun buildRendererInlineAnnotatedString(
 
         fun appendLinked(displayText: String, url: String) {
             if (displayText.isEmpty()) return
-            withLink(LinkAnnotation.Url(normalizeRendererLinkTarget(url))) {
+            withLink(
+                LinkAnnotation.Url(
+                    url = normalizeRendererLinkTarget(url),
+                    linkInteractionListener = linkInteractionListener
+                )
+            ) {
                 withStyle(currentLinkStyle()) {
                     append(displayText)
                 }
@@ -1408,7 +1438,7 @@ internal fun buildRendererInlineAnnotatedString(
             }
         }
     }.also { built ->
-        if (mode == RendererInlineMode.Settled) {
+        if (canUseCache) {
             synchronized(rendererSettledInlineMarkdownCache) {
                 rendererSettledInlineMarkdownCache[text] = built
             }

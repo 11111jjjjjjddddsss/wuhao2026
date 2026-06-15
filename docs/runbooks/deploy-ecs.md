@@ -26,7 +26,7 @@
 - 今日农情每日生成当前推荐走 ECS systemd timer：本机脚本 [configure-ecs-daily-agri-job.ps1](D:/wuhao/scripts/configure-ecs-daily-agri-job.ps1) 会通过 Cloud Assistant 在 ECS 写入 `nongji-daily-agri.service` / `nongji-daily-agri.timer` 和 `/usr/local/bin/nongji-generate-today-agri.sh`，脚本从 `/etc/nongjiqiancha/server.env` 读取 `DAILY_AGRI_JOB_SECRET` 并调用 `POST /internal/jobs/today-agri-card/generate`；默认 `OnCalendar=*-*-* 21:35:00 UTC`，对应北京时间约 `05:35`
 - 阿里云 DNS 已创建 A 记录 `api.nongjiqiancha.cn -> 39.106.1.151`，ECS 内 `getent hosts api.nongjiqiancha.cn` 会解析到本机；HTTPS healthz 返回 200，HTTP healthz 返回 301 跳 HTTPS 属于预期。本机 Windows 若处在代理 / fake DNS 模式下可能仍看到 `198.18.x.x`，不能作为云端解析失败依据
 - DashScope 主 / 副模型 Key 已通过 Cloud Assistant 写入 ECS 主备槽位并重启，真实 Key 值不进入仓库、文档、提交信息或聊天记忆；后端代码按 `DASHSCOPE_API_KEY_1` 主 Key、`DASHSCOPE_API_KEY_2` 副 Key 主备优先使用，旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 仅作兼容入口
-- 网站 ICP 备案已通过：主体备案号 `京ICP备2026031728号`，网站备案号 `京ICP备2026031728号-1`；App 备案已于 2026-06-05 20:03 左右提交阿里云初审，订单号 `2036780517515`；2026-06-05 已通过 Let’s Encrypt / certbot 为 `api.nongjiqiancha.cn` 配置 Nginx 443 HTTPS，并公网验证 `https://api.nongjiqiancha.cn/healthz` 返回 200。当前仍缺 App 备案通过、App 公安备案和真机登录 / 主聊天 / 图片问诊回归，正式 App 切生产域名前仍需最终回归
+- 网站 ICP 备案已通过：主体备案号 `京ICP备2026031728号`，网站备案号 `京ICP备2026031728号-1`；App 备案已通过，App 备案号 `京ICP备2026031728号-2A`，Android 设置页底部和协议 / 隐私基础信息已展示并链接工信部备案查询；2026-06-05 已通过 Let’s Encrypt / certbot 为 `api.nongjiqiancha.cn` 配置 Nginx 443 HTTPS，并公网验证 `https://api.nongjiqiancha.cn/healthz` 返回 200。当前仍缺 App 公安备案和真机登录 / 主聊天 / 图片问诊回归，正式 App 切生产域名前仍需最终回归
 
 ## 安全组
 
@@ -166,7 +166,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 
 ## 下一步
 
-1. 跟进 App 备案审核通过、后续 App 公安备案；网站 ICP 已于 2026-06-05 通过，网站公安联网备案号已于 2026-06-10 下发并已补官网 footer，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配置完成。
+1. 跟进 App 公安备案；网站 ICP 已于 2026-06-05 通过，App 备案已通过并取得 `京ICP备2026031728号-2A`，网站公安联网备案号已于 2026-06-10 下发并已补官网 footer，`api.nongjiqiancha.cn` HTTPS 已于 2026-06-05 配置完成。
 2. 上线前轮换已暴露过的主账号 AccessKey，优先改成最小权限 RAM 用户，并重新写入 ECS 普通短信 `SMS_*`、OSS、模型等生产环境变量；`DYPNS_*` 只在明确需要历史融合兼容时保留，不作为新 Android 登录主链配置。
 3. 用真实 App 链路验证短信验证码登录、`/upload`、`/uploads/`、模型拉图、主聊天流和历史图片过期占位。
 4. 后续若要做到跨实例高可用，再升级为多 ECS / SLB 滚动发布；当前双端口只解决单机重启空窗，不等于多机容灾。

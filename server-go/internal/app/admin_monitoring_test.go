@@ -456,8 +456,17 @@ func TestAdminMonitoringLaunchReadinessManualItemsAreExplicit(t *testing.T) {
 		},
 	}
 	items := buildAdminMonitoringLaunchReadiness(report)
+	appICP := findAdminMonitoringLaunchItem(items, "App 备案")
+	if appICP == nil {
+		t.Fatalf("missing App ICP launch item: %#v", items)
+	}
+	if appICP.Status != "ready" || appICP.Manual {
+		t.Fatalf("App ICP should be ready and no longer require manual confirmation: %#v", appICP)
+	}
+	if !strings.Contains(appICP.Body, "京ICP备2026031728号-2A") || !strings.Contains(appICP.Body, "工信部备案查询") {
+		t.Fatalf("App ICP launch item should mention the filing number and query link: %#v", appICP)
+	}
 	manualTitles := []string{
-		"App 备案",
 		"App 公安备案",
 		"AccessKey 轮换",
 		"最终真机回归",

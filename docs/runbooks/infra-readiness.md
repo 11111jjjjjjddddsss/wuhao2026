@@ -10,10 +10,10 @@
 
 - Android 客户端与 `server-go` 后端代码主线已存在
 - 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
-- 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、后端部署、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进；当前网站 ICP 已通过，App 备案已提交阿里云初审但尚未通过
+- 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、后端部署、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进；当前网站 ICP 和 App 备案均已通过，App 备案号为 `京ICP备2026031728号-2A`
 - 买服务器前功能巡检记录已开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：当前已巡检会员中心 / 额度体系，以及 Go 后端高并发 / 性能边界
 - 正式云资源已落地为首版单 ECS 生产链：Region 选定 `华北2（北京）/ cn-beijing`；ECS `i-2ze5nrem0jrchln4f0eh`、RDS MySQL `rm-2zes3vmj76p85n8g1`、Redis `r-2zet46zvmoo9wu3bic`、OSS Bucket `nongjiqiancha-prod`、域名 / DNS / HTTPS、SLS Project / Logstore、管理后台 `admin.nongjiqiancha.cn` 均已配置。后端以双端口 slot + Nginx 反代运行，`scripts/check-ecs-readiness.ps1` 是线上 readiness 真相入口，当前要求 `auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss / dev_order_endpoints=false`；`dypns_*` 只作旧包兼容状态参考。RDS 自动备份当前保留 7 天，ECS 系统盘已绑定每周二 / 周六普通低频自动快照 7 天保留；资源水位由阿里云云监控邮件告警覆盖，SLS 应用日志 5 条 AlertHub 最小告警已绑定邮件行动策略和最小仪表盘。公网入口可用 [scripts/check-public-blackbox.ps1](D:/wuhao/scripts/check-public-blackbox.ps1) 从外部用户视角检查 API、官网、www、后台首页、未登录后台 401 和 HTTP->HTTPS 跳转。
-- 当前尚未购买 / 接入：SLS 节省计划 / 资源包、CDN / OSS 下行流量包。以当前“一个用户都还没有”的阶段，这些不是上线硬前置；后续按 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md) 和真实用量再提示购买或升级。当前尚未完成：App 备案通过、App 公安备案、短信验证码登录 / 主聊天 / 图片问诊真机回归、旧包检查更新覆盖安装回归、首封 SLS 告警邮件送达确认、上线前已暴露 AccessKey 轮换、真实支付渠道申请和回调链路。
+- 当前尚未购买 / 接入：SLS 节省计划 / 资源包、CDN / OSS 下行流量包。以当前“一个用户都还没有”的阶段，这些不是上线硬前置；后续按 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md) 和真实用量再提示购买或升级。当前尚未完成：App 公安备案、短信验证码登录 / 主聊天 / 图片问诊真机回归、旧包检查更新覆盖安装回归、首封 SLS 告警邮件送达确认、上线前已暴露 AccessKey 轮换、真实支付渠道申请和回调链路。
 
 ## 最小上线资源清单
 
@@ -35,7 +35,7 @@
 1. 已完成：Region 选定 `cn-beijing`，旧 SAE demo 应用已删除，域名 `nongjiqiancha.cn` 已购买并口头确认过审，ECS / RDS MySQL / OSS 100GB 存储包已购买
 2. 已完成：ECS 基础系统环境、Nginx、systemd、RDS 数据库 / 账号 / 白名单和 `server-go` 首版部署
 3. 已完成：购买 Redis 开源版 256MB 最小实例，放入生产 VPC，并把普通短信验证码发送 / 登录校验、App 自动日志接收、帮助与反馈用户发消息、上传短期限流接到 Redis；生产 ECS 已部署验证 `redis=ok`
-4. 下一步：跟进 App 备案审核 / App 公安备案、真机登录 / 主聊天 / 图片问诊回归、上线前 AccessKey 轮换、第一封 SLS 告警邮件送达确认、旧包检查更新覆盖安装回归和公网黑盒自动定时通知；网站公安备案号已下发并补到官网 footer，SLS 最小日志集、5 条 AlertHub 最小告警、公网黑盒只读巡检脚本和上线总门禁脚本已先接入用于排障
+4. 下一步：跟进 App 公安备案、真机登录 / 主聊天 / 图片问诊回归、上线前 AccessKey 轮换、第一封 SLS 告警邮件送达确认、旧包检查更新覆盖安装回归和公网黑盒自动定时通知；App 备案和网站公安备案号已补到对应展示位置，SLS 最小日志集、5 条 AlertHub 最小告警、公网黑盒只读巡检脚本和上线总门禁脚本已先接入用于排障
 
 ## 采购前必须拍板的问题
 
@@ -70,7 +70,7 @@
 
 ## 暂行原则
 
-- 只把已真实落地的资源写成既成事实：当前可写旧 SAE demo 应用已删除、ECS 实例 `i-2ze5nrem0jrchln4f0eh`、RDS 实例 `rm-2zes3vmj76p85n8g1`、RDS 库 / 账号 / 白名单、ECS 上运行中的 `server-go`、`api.nongjiqiancha.cn` DNS / HTTPS / Nginx 443、根域名官网 DNS / HTTPS / Nginx 静态站、域名 `nongjiqiancha.cn`、网站 ICP 备案号、网站公安备案号、OSS 100GB 存储包、OSS Bucket `nongjiqiancha-prod` 与生命周期、Redis 实例、SLS 服务开通状态和模型 Key 槽位配置状态；模型 Key 只记录配置状态不记录真实值，App 备案号、App 公安备案号和未真实落地的后台入口仍不得伪造
+- 只把已真实落地的资源写成既成事实：当前可写旧 SAE demo 应用已删除、ECS 实例 `i-2ze5nrem0jrchln4f0eh`、RDS 实例 `rm-2zes3vmj76p85n8g1`、RDS 库 / 账号 / 白名单、ECS 上运行中的 `server-go`、`api.nongjiqiancha.cn` DNS / HTTPS / Nginx 443、根域名官网 DNS / HTTPS / Nginx 静态站、域名 `nongjiqiancha.cn`、网站 ICP 备案号、App 备案号、网站公安备案号、OSS 100GB 存储包、OSS Bucket `nongjiqiancha-prod` 与生命周期、Redis 实例、SLS 服务开通状态和模型 Key 槽位配置状态；模型 Key 只记录配置状态不记录真实值，App 公安备案号和未真实落地的后台入口仍不得伪造
 - 未真正采购 / 配置完成前，runbook 只记录“要拍板什么”和“买完后补哪里”，不伪造部署命令
 - 一旦出现第一套真实环境，必须同次把对应 runbook 补成可执行入口
 - Go 后端首版不做盲目性能调参；先用默认连接池和单实例 / 小规格跑通，接入 SLS / RDS 监控后再按真实连接数、慢查询、SSE 中断率和模型限流调参

@@ -6,11 +6,11 @@
 
 把“农技千查”从当前本地开发状态推进到可备案、可部署、可上架的顺序固定下来。后续新窗口先看本文件，不再靠聊天记录回忆下一步。
 
-这份计划只记录执行顺序和依赖关系；已购买的 ECS / RDS / OSS / 域名、已通过的网站 ICP 备案、已下发的网站公安备案号、已配置的 HTTPS 和模型 Key 槽位写成当前事实，未落地的 App 备案号、App 公安备案号、真实密钥值、后端服务地址或后台地址不伪造。
+这份计划只记录执行顺序和依赖关系；已购买的 ECS / RDS / OSS / 域名、已通过的网站 ICP 备案、App 备案号、已下发的网站公安备案号、已配置的 HTTPS 和模型 Key 槽位写成当前事实，未落地的 App 公安备案号、真实密钥值、后端服务地址或后台地址不伪造。
 
 ## 总判断
 
-- 备案不要等手机号登录做完后才开始；买好符合备案条件的中国内地云资源和域名后，应立即启动 ICP / App 备案。当前网站 ICP 已通过，App 备案已提交阿里云初审，仍待审核通过。
+- 备案不要等手机号登录做完后才开始；买好符合备案条件的中国内地云资源和域名后，应立即启动 ICP / App 备案。当前网站 ICP 和 App 备案均已通过，App 备案号为 `京ICP备2026031728号-2A`。
 - 手机号登录、ECS 后端部署、RDS、OSS、SLS、帮助与反馈、检查更新、模型 Key 池等技术联调，可以在备案审核等待期间并行推进。
 - 应用商店审核和备案不是同一个口：商标注册通常不是上架硬前置，但 App 名称、图标、软著 / 电子版权、备案号、隐私合规和截图物料需要尽量一致。
 - 当前 App 名称按“农技千查”推进；公司主体仍是“北京农技千问科技有限公司”，不要把公司名机械改成产品名。
@@ -33,13 +33,14 @@
 目标：先把等待周期最长的备案跑起来。
 
 1. 已完成：域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过。
-2. 已完成：按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链的主要资源，其中 ECS / RDS / OSS 存储包已买，OSS Bucket / 生命周期和生产上传后端已切通，DNS 已创建 `api.nongjiqiancha.cn`、`nongjiqiancha.cn`、`www.nongjiqiancha.cn` 到 `39.106.1.151` 的 A 记录，`server-go` 已部署到 ECS 并由 Nginx 双端口 slot 反代，`api.nongjiqiancha.cn` HTTPS 已配置并公网验证通过，根域名官网 HTTPS 已部署并公网验证通过，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`；App 备案通过、App 公安备案和真机登录 / 主聊天 / 图片问诊回归尚未完成。
+2. 已完成：按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链的主要资源，其中 ECS / RDS / OSS 存储包已买，OSS Bucket / 生命周期和生产上传后端已切通，DNS 已创建 `api.nongjiqiancha.cn`、`nongjiqiancha.cn`、`www.nongjiqiancha.cn` 到 `39.106.1.151` 的 A 记录，`server-go` 已部署到 ECS 并由 Nginx 双端口 slot 反代，`api.nongjiqiancha.cn` HTTPS 已配置并公网验证通过，根域名官网 HTTPS 已部署并公网验证通过，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`；App 备案已通过，App 公安备案和真机登录 / 主聊天 / 图片问诊回归尚未完成。
 3. 已完成：网站 ICP 备案已通过，主体备案号 `京ICP备2026031728号`，网站备案号 `京ICP备2026031728号-1`，网站名称“农技千查”，域名 `nongjiqiancha.cn`。
-4. 已提交：2026-06-05 20:03 左右 App 备案订单进入阿里云初审，订单号 `2036780517515`；截至 2026-06-12 仓库尚未记录 App 备案号、通过或补正结论，后续需登录阿里云备案控制台确认当前审核 / 补正状态，并按阿里云 / 管局要求接听审核电话、处理短信核验和补正材料。
+4. 已完成：App 备案已通过，App 备案号为 `京ICP备2026031728号-2A`；Android 设置页底部以小灰字展示该编号和工信部备案查询链接，服务协议 / 隐私政策基础信息也同步展示该编号。
 5. 如果备案控制台提示当前资源不满足备案校验，再补最低成本的可备案云产品兜底；后端当前优先部署在 ECS，若后续因平台能力重新启用 SAE，必须同步更新 runbook。
 
 注意：
-- 网站 ICP 已过，`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS 和模型 Key 主 / 副槽位已配，但 App 备案、App 公安备案和真机登录 / 主聊天 / 图片问诊回归未闭环前，仍不要把它当成完整生产上线。
+- 网站 ICP 和 App 备案已过，`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS 和模型 Key 主 / 副槽位已配，但 App 公安备案和真机登录 / 主聊天 / 图片问诊回归未闭环前，仍不要把它当成完整生产上线。
+- App 公安备案需要在全国互联网安全管理服务平台单独提交，按网站 / App 开通后 30 日内处理；这不是工信部 ICP / App 备案，也不是继续在阿里云备案订单里提交。
 - 备案过程中若 App 图标、名称、包名、签名等核心物料改动，可能需要重新提交或后续变更。
 - 公安联网备案数据码只用于全国互联网安全管理服务平台提交，不写入仓库或聊天交接。
 
@@ -62,12 +63,12 @@
 
 目标：让 App、后端和材料进入可公开测试状态。
 
-- 官网首版代码已在 `site` 目录准备好并通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，包含 App 介绍、安卓下载入口和备案 footer；网站 ICP 备案号已展示在公开页脚并链接工信部备案系统。App 内协议 / 隐私政策先记录网站 ICP 备案状态，App 备案号必须等 App 备案通过后再补。
-- 跟进 App 备案阿里云初审、管局提交、工信部短信核验和管局审核；当前网站 ICP 已通过不等于 App 备案已通过。
+- 官网首版代码已在 `site` 目录准备好并通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，包含 App 介绍、安卓下载入口和备案 footer；网站 ICP 备案号已展示在公开页脚并链接工信部备案系统。App 内设置页、服务协议和隐私政策已补 App 备案号 `京ICP备2026031728号-2A`。
+- App 备案已通过，后续重点改为 App 公安备案、软著 / 电子版权和应用商店物料一致性。
 - `api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、后端公开 API 基地址、图片公开基地址和 `admin.nongjiqiancha.cn` 后台 HTTPS 已完成；后续下载域名如果启用，需要单独配置入口和证书。
 - 确认 `APP_ANDROID_*` 检查更新环境变量指向正确 APK、版本号、文件大小、SHA-256 和更新说明。
 - 做一次完整真机回归：清数据、登录、文字问诊、图片问诊、历史恢复、删除历史对话、帮助与反馈、检查更新、会员中心、礼品卡页、协议页、今日农情。
-- 网站公安联网备案号已于 2026-06-10 下发，官网 footer 使用真实编号 `京公网安备11010602202723号`、警徽图标和查询链接。App 备案通过并开通后，再按实际要求补 App 对应公安备案信息。
+- 网站公安联网备案号已于 2026-06-10 下发，官网 footer 使用真实编号 `京公网安备11010602202723号`、警徽图标和查询链接。App 备案已通过并取得编号，下一步按实际要求补 App 对应公安备案信息。
 
 ## 上线门禁脚本
 
@@ -79,13 +80,12 @@
 .\scripts\check-launch-readiness.ps1
 ```
 
-默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、短信发送统计巡检、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
+默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、支付 readiness、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、短信发送统计巡检、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。支付 readiness 只证明 Android 购买入口仍关闭、生产开发期订单端点仍关闭、回调 URL 和 runbook 边界齐全，不代表真实支付已接入。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
 
 人工上线确认项用于把脚本无法自动证明的事项直接暴露在总门禁末尾。正式上架前逐项确认后，可在当前 PowerShell 临时设置对应环境变量为 `1 / true / yes / ok / ready / confirmed / done`；不要把这些确认变量写进仓库或长期 shell 配置。当前确认项包括：
 
 | 环境变量 | 确认内容 |
 | --- | --- |
-| `NONGJI_APP_ICP_CONFIRMED` | App 备案已通过，备案号和材料可用于上架 |
 | `NONGJI_APP_POLICE_CONFIRMED` | App 公安备案已按最终 App 信息处理 |
 | `NONGJI_ACCESS_KEYS_ROTATED_CONFIRMED` | 已暴露或主账号 AccessKey 已轮换，生产改用最小权限凭证 |
 | `NONGJI_FINAL_DEVICE_REGRESSION_CONFIRMED` | 最终 APK 已真机跑完清数据、登录、聊天、图片、今日农情、设置、会员、帮助反馈和检查更新 |
@@ -101,7 +101,7 @@
 .\scripts\check-launch-readiness.ps1 -IncludeBuilds
 ```
 
-`-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建、最终 release APK 物料校验，再重新跑 parity。release APK 物料校验由 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1) 读取最终 APK 本体，核对包名、版本、权限、不可调试、固定 release 证书指纹，并输出 `apk_size_bytes` 和 `apk_sha256`。这个脚本不替代真机回归、App 备案 / App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
+`-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建、最终 release APK 物料校验，再重新跑 parity。release APK 物料校验由 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1) 读取最终 APK 本体，核对包名、版本、权限、不可调试、固定 release 证书指纹，并输出 `apk_size_bytes` 和 `apk_sha256`。这个脚本不替代真机回归、App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
 
 如果这次正式包已经上传到后台“检查更新”并准备对外启用，再加后台配置对账：
 

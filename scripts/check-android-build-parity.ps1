@@ -364,6 +364,12 @@ if ($failures.Count -eq 0) {
         "Settings main page must keep a safe client log so clean-state UI rollback reports are traceable."
     Require-Match $failures $hamburgerMenuSheet 'ui\.account_management_opened' `
         "Account management page must keep a safe client log so clean-state UI rollback reports are traceable."
+    Require-Match $failures $hamburgerMenuSheet 'APP_ICP_RECORD_NUMBER\s*=\s*"京ICP备2026031728号-2A"' `
+        "Settings/legal pages must keep the approved App ICP filing number visible in the APK."
+    Require-Match $failures $hamburgerMenuSheet 'MIIT_BEIAN_QUERY_URL\s*=\s*"https://beian\.miit\.gov\.cn/"' `
+        "Settings/legal pages must keep the MIIT filing query link for public verification."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+AppFilingFooter(?s:.*?)APP_ICP_RECORD_NUMBER(?s:.*?)MIIT_BEIAN_QUERY_URL' `
+        "Settings main page must keep a low-noise App ICP filing footer with a query link."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
         "Settings main page defaults must include every production row after app data is cleared."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"') `

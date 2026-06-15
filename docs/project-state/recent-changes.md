@@ -5,6 +5,10 @@
 
 ## 2026-06-15
 
+- App 备案已按通过状态收口：Android 设置页底部新增低调小灰字 App 备案号 `京ICP备2026031728号-2A` 和工信部备案查询链接，服务协议 / 隐私政策基础信息同步展示该编号；后台 `launch_readiness` 将“App 备案”改为 ready，正式上线人工确认项不再列 App 备案，只保留 App 公安备案等未闭环事项。同步修正 ECS、官网、管理后台、上线计划、合规、支付材料和项目记忆文档里的旧口径。另按用户反馈“AI 发的网址点不动”收紧 Android AI 回复链接渲染：Markdown 链接和裸 URL 都保留真实 URL 注解、显示为蓝色下划线并走系统打开；含链接的 AI 回复优先保证短按可点。本轮不修改主对话锚点、记忆提示词、今日农情提示词、后端模型过滤或聊天滚动主链。
+
+- 继续按“支付先调试但不假扣费”的边界补上线门禁：新增 [check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)，检查 Android 会员 / 加油包购买入口仍关闭、Android 未调用开发期订单接口、后端开发期订单接口仍有 `PAYMENT_NOT_CONFIGURED` 防线、公网 `/healthz` 显示 `dev_order_endpoints=false`，并输出微信 / 支付宝回调 URL 建议；[check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1) 已接入该只读步骤。支付 runbook 同步补充微信产品开放状态需以商户后台实际可开通项为准、支付宝未上线 / 未开通阶段可走沙箱联调但生产仍以正式审核和配置为准。App 公安备案也按阿里云提示和官方文档补充为“全国互联网安全管理服务平台单独提交，按开通后 30 日内处理”。本轮不接真实支付 SDK、不保存支付密钥、不打开真实扣费入口。
+
 - 复核用户反馈“设置里能看到今日农情，主界面文本区没有”后，生产日志显示今日农情当天生成成功，主界面 `/api/today-agri-card` 和设置页历史 `/api/today-agri-cards` 均返回 200，未见 `today_agri.fetch_failed`；当前手机仍是 2026-06-14 21:31 左右安装的旧 debug 包，晚于该包的 `29284b01 Restore today agri card after remote hydrate` 已修复远端历史 hydrate 后主聊天今日农情卡不恢复的问题。Android 主聊天新增 `today_agri.main_card_loaded` 和 `today_agri.main_card_visible` 两个只记录日期键、条数、列表数量、揭示状态和锚点状态的安全诊断事件，便于下一次真机装新包后区分“接口已拉到但未插入列表”还是“已插入但视觉不可见”；不记录今日农情标题 / 摘要、聊天正文、手机号、图片 URL 或 token，且不改变今日农情仍作为普通聊天列表项的交互口径。
 
 - 继续按“短信门禁不能把发送统计当余额证明”的角度补只读巡检：`scripts/check-sms-usage.ps1` 除了阿里云 `QuerySendStatistics` 发送趋势，还会调用费用中心 `QueryResourcePackageInstances` 查询当前有效资源包，并用商品码、包类型、备注和适用产品判断是否出现短信类套餐包；当前实测只返回百炼推理资源包和 OSS 存储包，没有返回短信类套餐包，因此脚本输出 `sms_package_status=not_visible_manual_required`，提醒仍需去短信服务控制台确认普通短信套餐包余额、到期、余量预警和自动复购。该改动只增强只读门禁证据和 runbook，不改短信发送、后端鉴权、Android 运行逻辑、三份提示词、模型过滤或聊天滚动主链。

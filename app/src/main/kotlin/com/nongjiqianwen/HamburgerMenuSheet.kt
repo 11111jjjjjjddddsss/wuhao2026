@@ -126,6 +126,8 @@ internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后
 private val HamburgerBackButtonTopPadding = 4.dp
 private const val APP_UPDATE_PROMPT_PREFS = "app_update_prompt"
 private const val APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY = "last_prompted_version_code"
+private const val APP_ICP_RECORD_NUMBER = "京ICP备2026031728号-2A"
+private const val MIIT_BEIAN_QUERY_URL = "https://beian.miit.gov.cn/"
 private val supportBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 
 private fun normalizeSupportLinkTarget(raw: String): String {
@@ -1192,6 +1194,56 @@ private fun HamburgerMenuMainPage(
                 onClick = onLogoutClick
             )
         }
+
+        AppFilingFooter(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp)
+        )
+    }
+}
+
+@Composable
+private fun AppFilingFooter(
+    modifier: Modifier = Modifier
+) {
+    val linkStyle = SpanStyle(
+        color = Color(0xFF767B84),
+        textDecoration = TextDecoration.Underline
+    )
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Text(
+            text = buildAnnotatedString {
+                append("App备案号：")
+                withLink(LinkAnnotation.Url(MIIT_BEIAN_QUERY_URL)) {
+                    withStyle(linkStyle) {
+                        append(APP_ICP_RECORD_NUMBER)
+                    }
+                }
+            },
+            color = Color(0xFF8B9098),
+            fontSize = 11.5.sp,
+            lineHeight = 17.sp,
+            textAlign = TextAlign.Center
+        )
+        Text(
+            text = buildAnnotatedString {
+                append("备案查询：")
+                withLink(LinkAnnotation.Url(MIIT_BEIAN_QUERY_URL)) {
+                    withStyle(linkStyle) {
+                        append("beian.miit.gov.cn")
+                    }
+                }
+            },
+            color = Color(0xFF9AA0A8),
+            fontSize = 11.sp,
+            lineHeight = 16.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -1350,7 +1402,7 @@ internal fun HamburgerServiceAgreementContent(
     }
     HamburgerLegalTextPage(
         title = "服务协议",
-        meta = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com",
+        meta = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
         sections = sections,
         modifier = modifier,
     )
@@ -1416,7 +1468,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年6月1日\n生效日期：2026年6月1日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com",
+            text = "更新日期：2026年6月1日\n生效日期：2026年6月1日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
