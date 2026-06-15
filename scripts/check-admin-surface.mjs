@@ -52,6 +52,12 @@ function expectAdminPattern(name, pattern) {
   }
 }
 
+function expectServerPattern(name, pattern) {
+  if (!pattern.test(adminAPI)) {
+    fail.push(`${name}: missing expected admin API contract`);
+  }
+}
+
 function expectAppLogEventFilter(event) {
   expectAdminPattern(
     `app log event filter ${event}`,
@@ -144,6 +150,8 @@ expectAdminPattern("launch readiness renders confirmation hints", /确认方式�
 expectAdminPattern("launch readiness confirmation hints come from backend", /row\.confirm_hint/);
 expectAdminPattern("readiness separates manual confirmation", /人工确认/);
 expectAdminPattern("readiness keeps launch blockers visible", /上架阻塞/);
+expectServerPattern("launch readiness includes cost confirmation", /费用 \/ 套餐成本/);
+expectServerPattern("launch readiness cost item points to cost script", /check-aliyun-costs\.ps1/);
 [
   "auth.login_network_failed",
   "auth.sms_send_failed",

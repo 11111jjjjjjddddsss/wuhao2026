@@ -471,6 +471,7 @@ func TestAdminMonitoringLaunchReadinessManualItemsAreExplicit(t *testing.T) {
 		"AccessKey 轮换",
 		"最终真机回归",
 		"短信套餐余额",
+		"费用 / 套餐成本",
 		"最终 release 物料",
 		"日志告警",
 	}
@@ -488,6 +489,16 @@ func TestAdminMonitoringLaunchReadinessManualItemsAreExplicit(t *testing.T) {
 		if strings.TrimSpace(item.ConfirmHint) == "" {
 			t.Fatalf("manual launch item %q should include a confirmation hint: %#v", title, item)
 		}
+	}
+	costItem := findAdminMonitoringLaunchItem(items, "费用 / 套餐成本")
+	if costItem == nil {
+		t.Fatalf("missing cost confirmation launch item: %#v", items)
+	}
+	if !strings.Contains(costItem.Body, "DYPNS") || !strings.Contains(costItem.Body, "模型资源包") {
+		t.Fatalf("cost confirmation item should mention DYPNS and model packages: %#v", costItem)
+	}
+	if !strings.Contains(costItem.ConfirmHint, "check-aliyun-costs.ps1") || !strings.Contains(costItem.ConfirmHint, "AccessKey") {
+		t.Fatalf("cost confirmation hint should point to the cost script and sensitive data boundary: %#v", costItem)
 	}
 	serviceHealth := findAdminMonitoringLaunchItem(items, "后端生产健康")
 	if serviceHealth == nil {

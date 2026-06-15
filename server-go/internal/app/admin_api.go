@@ -2247,6 +2247,15 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Manual:      true,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
+		Title:       "费用 / 套餐成本",
+		Status:      "attention",
+		Body:        "费用中心总账巡检已能看账户余额、当月账单、模型资源包和有效实例；DYPNS / 融合认证套餐仍需确认是否取消、退款或关闭续费，模型资源包和节省计划按真实用量再决定。",
+		ConfirmHint: "运行 check-aliyun-costs.ps1 或上线总门禁，确认账户余额、DYPNS / 融合认证套餐处置、短信套餐余量、qwen-plus 资源包和百炼节省计划；不要把账单敏感截图、AccessKey 或密钥写进仓库、日志或后台备注。",
+		Route:       "health",
+		Owner:       "运营 / 运维 / 财务",
+		Manual:      true,
+	})
+	items = append(items, AdminMonitoringLaunchItem{
 		Title:       "最终 release 物料",
 		Status:      "attention",
 		Body:        "最终 release APK、包名、签名、versionCode、应用商店截图和文字材料需要人工确认一致；检查更新物料齐全也不等于已完成覆盖安装验收。",

@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续从“后台监控面板也要看到账单 / 套餐确认”的角度补上线人工项：`server-go` 的 `/admin-api/v1/monitoring` 现在会在 `launch_readiness` 里返回“费用 / 套餐成本”人工确认项，提示通过 `check-aliyun-costs.ps1` 或上线总门禁确认账户余额、DYPNS / 融合认证套餐处置、短信套餐余量、qwen-plus 资源包和百炼节省计划；前端已有人工确认区和正式上架检查会展示该项。后台不实时读取阿里云费用中心，不持有阿里云密钥，也不保存账单敏感截图、AccessKey 或密钥。后端单测和 `check-admin-surface.mjs` 已锁住该项。该后端改动已通过 `scripts/deploy-ecs-server.ps1` 部署到生产，当前 Nginx active upstream 与后台 `/admin-api/` upstream 同为 `3001`，公网黑盒 `status=ready`。本轮不修改 Android、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。
+
 - 继续按“总门禁别漏账单和套餐成本”的口径把费用中心总账巡检接进 [check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1)：云资源段现在会调用 `check-aliyun-costs.ps1`，并把非 ready 结果显示为独立的 `aliyun costs` attention，用于提醒 DYPNS / 融合认证套餐仍存在、短信套餐包余额仍需控制台确认、模型资源包 / 节省计划或当月账单需要关注。这是经营成本提醒，不代表 ECS、后端、Android 或监控服务不可用；日常看报告可继续用 `-AllowAttentionExitZero`，正式 `-ReleaseGate` 仍要求 attention 被人工处理或确认。本轮只改只读门禁和项目记忆，不修改 Android、后端业务逻辑、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。
 
 - 按“所有成本都要能查、能解释、能控住”的口径补费用中心总账巡检：新增 `scripts/check-aliyun-costs.ps1`，通过阿里云 BSS OpenAPI 只读查询账户余额、当月 / 上月产品账单、当前月明细、百炼每日走势、有效资源包和有效实例，带费用中心偶发超时重试和请求签名 / 账号字段脱敏，不买资源、不续费、不释放实例。当前实测账户可用余额约 `628.35` 元；2026-06 当月税前账单约 `130.1225` 元，主要是百炼约 `60.2716` 元、短信套餐包 `35` 元、DYPNS / 融合认证套餐 `34.85` 元，SLS 约 `0.0009` 元；百炼最近 5 天税前均值约 `0.0714` 元 / 天，qwen-plus 推理资源包仍剩约 `11.49M / 12M tokens`。脚本会把 DYPNS 订阅仍存在、短信套餐包未被资源包 API 暴露、百炼节省计划临近到期等输出为 `status=attention`；这是经营成本提醒，不代表服务故障。同步更新资源容量 runbook、当前状态、风险和项目记忆护栏。本轮不修改 Android、后端业务逻辑、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。
