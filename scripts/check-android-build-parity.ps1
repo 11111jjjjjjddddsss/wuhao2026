@@ -480,6 +480,8 @@ if ($failures.Count -eq 0) {
         "Assistant link open failures must remain user-visible and logged only as a safe summary, not as full URLs."
     Require-Match $failures $chatScreen 'hasActiveNetworkConnection(?s:.*?)NET_CAPABILITY_INTERNET(?s:.*?)NET_CAPABILITY_CAPTIVE_PORTAL(?s:.*?)hasInternetCapability\s*&&\s*!isCaptivePortal' `
         "Chat offline precheck must reject captive-portal networks instead of treating every INTERNET-capable network as usable."
+    Require-Match $failures $hamburgerMenuSheet 'BackHandler\s*\(\s*enabled\s*=\s*visible\s*\)(?s:.*?)handleBackClick\s*\(\s*\)' `
+        "Settings shell must let Android back close the main settings page as well as nested pages."
     $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
     $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
     $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"

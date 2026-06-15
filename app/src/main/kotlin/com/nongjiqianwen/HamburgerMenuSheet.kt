@@ -474,7 +474,7 @@ internal fun HamburgerMenuSheet(
         delay(1200)
         checkAppUpdate(userTriggered = false)
     }
-    BackHandler(enabled = visible && page != HamburgerMenuPage.Menu) {
+    BackHandler(enabled = visible) {
         handleBackClick()
     }
     AnimatedVisibility(

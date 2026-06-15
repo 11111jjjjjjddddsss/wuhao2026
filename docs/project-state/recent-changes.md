@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“前端外壳极端交互”巡检 Android 设置壳层：设置页首页现在也注册系统返回键，走同一个 `handleBackClick()`，因此在设置首页按系统返回会关闭设置页，二级页仍先返回设置首页；`check-android-build-parity.ps1` 已把这一点纳入门禁，避免以后只保留二级页返回而首页返回无反馈。本轮只改设置外壳返回键和门禁，不修改主聊天滚动主链、今日农情插入链、三份提示词、支付真实接入或模型输出过滤。
+
 - 继续按“极端网络 / 极端交互先补低风险护栏”的角度收口 Android 主聊天：联网校准 Android 官方网络能力口径后，发送前网络预检不再把 captive portal 门户 Wi-Fi 当作可用网络，但也不把 `NET_CAPABILITY_VALIDATED` 设为硬门槛，避免部分 ROM / 运营商网络误拦；AI 回复链接打开失败时会给用户短提示“链接打开失败，请复制后打开”，并只上报 `ui.link_open_failed` 的 scheme 和异常类名，不记录完整 URL、正文或敏感信息。`check-android-build-parity.ps1` 已锁住这两条护栏。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型输出过滤或主聊天滚动主链；本机未连接真机，飞行模式、弱网、门户 Wi-Fi、ROM 链接拦截和连续点击仍需新包真机回归。
 
 - 继续按“清数据 / 慢网 / 重置竞态不能把主界面卡死”的角度收口动态交互：Android `SessionApi.getSnapshot()` 和 `getTodayAgriCard()` 在运行时 generation 变旧时不再静默 `return`，而是回调空结果，让 `ChatScreen` 的 hydrate / 今日农情协程继续走既有兜底，降低清历史、清数据、远端请求刚好返回时 UI 回退、今日农情消失或加载状态悬挂的风险；`check-android-build-parity.ps1` 已锁住这些 stale callback 不能回退。管理后台同步收高风险运营动作：帮助反馈状态从“已回复”改成“已处理/无需回复”，前端要求处理备注，后端在最新用户消息尚无后台回复时拒绝无备注标记；礼品卡生成增加真实权益提醒和输入张数确认；检查更新启用确认展示 SHA-256、文件大小并提示先跑 release-match 校验；停更空配置不再显示为配置异常；`check-admin-surface.mjs` 锁住这些确认项。短信统计脚本原始 JSON 输出改为脱敏输出。后端和后台已部署到生产，`check-ecs-readiness.ps1` 显示 active upstream `3000`、后台 upstream 同为 `3000`、HTTPS healthz 200，后台静态包 `SHA256=b516a5bbb61fa2b63812816256cb8f72971f215966ca967ac78c7203ad4b364b`，公网黑盒 `status=ready`。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型输出过滤或主聊天滚动主链。
