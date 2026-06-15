@@ -23,7 +23,7 @@
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。ECS 已补装 CloudMonitor C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；本轮严格巡检里 ECS 内存规则已回到 `OK`。若未来云监控返回 `INSUFFICIENT_DATA`，严格巡检会以 warning / attention 提醒。该组用于资源不足提前邮件提醒，不走短信 / 电话
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
 - 云安全中心：2026-06-14 只读巡检曾看到 1 条提醒级事件 `云产品威胁检测-OSS可疑访问行为`，类型不是资源水位告警，关联 OSS 读取 Bucket 加密配置类操作；核对后与本次 CLI / ossutil 做 OSS 配置巡检或开启服务端加密的运维行为一致，已在云安全中心按“我已手工处理”收口，未创建长期白名单，待处理列表为空。聊天和仓库文档不记录 AK、IP、UserAgent 或其它敏感字段；后续若出现来源不明、写操作、删除操作、失败调用或越权类告警，不能静默忽略，应按安全事件处理并优先轮换相关凭证。
-- 普通短信服务：已购买国内通用短信套餐包，新 Android 登录消耗普通短信余量；DYPNS / 融合认证统计只作为历史兼容观察
+- 普通短信服务：已购买国内通用短信套餐包，新 Android 登录消耗普通短信余量；DYPNS / 融合认证统计只作为历史兼容观察。`check-sms-usage.ps1` 会额外调用费用中心有效资源包 API 做交叉检查，但 2026-06-15 当前只返回百炼推理资源包和 OSS 存储包，没有返回短信类套餐包；因此短信套餐包余额、到期、余量预警和自动复购仍需以短信服务控制台为准
 
 统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-14 起，云监控规则若返回 `INSUFFICIENT_DATA` 也会输出 warning / attention，避免 ECS 内存等操作系统指标无数据时假绿；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
 
@@ -148,7 +148,7 @@ aliyun oss du oss://nongjiqiancha-prod --block-size MB
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sms-usage.ps1
 ```
 
-脚本会校验阿里云短信统计接口状态，默认不按短信签名过滤，统计为空时默认短暂重试一次，并输出发送总量、成功、失败和无回执汇总；如果最终仍为空，只能说明所选日期范围统计没有返回明细或供应商统计存在延迟，不等于套餐包余额充足，也不等于线上一定没有验证码请求。若手动传 `-SignName` 导致空统计，应再用默认总量口径复查。旧 DYPNS / 融合认证用量脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 只保留给历史包排障；新 Android 包不再消耗融合认证主链。短信套餐包余量和账单仍以阿里云费用中心 / 短信服务控制台为准，脚本用于看普通短信发送统计和失败趋势。
+脚本会校验阿里云短信统计接口状态，默认不按短信签名过滤，统计为空时默认短暂重试一次，并输出发送总量、成功、失败和无回执汇总；如果最终仍为空，只能说明所选日期范围统计没有返回明细或供应商统计存在延迟，不等于套餐包余额充足，也不等于线上一定没有验证码请求。脚本还会调用费用中心 `QueryResourcePackageInstances` 查询当前有效资源包，并输出是否能看到短信类套餐包；当前该 API 未返回短信类套餐包时会输出 `sms_package_status=not_visible_manual_required`。若手动传 `-SignName` 导致空统计，应再用默认总量口径复查。旧 DYPNS / 融合认证用量脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 只保留给历史包排障；新 Android 包不再消耗融合认证主链。短信套餐包余量、到期、余量预警、自动复购和账单仍以短信服务控制台 / 费用中心页面为准，脚本用于看普通短信发送统计、失败趋势和资源包 API 可见性。
 
 ## 提前提醒阈值
 
