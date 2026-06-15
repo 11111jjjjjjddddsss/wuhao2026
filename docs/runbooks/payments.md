@@ -12,6 +12,7 @@
 
 - Android 会员中心只展示会员规则和权益状态，套餐 / 加油包相关操作会提示“会员购买暂未开放 / 相关功能暂未开放，当前不会扣费”。
 - Android 不调用 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro` 或 `/api/topup/buy`。
+- Android 用户点击当前未开放的会员 / 加油包购买入口时，会上报 `payment.unavailable_clicked` 到自有 App 自动日志，attrs 只带 `source`，用于观察需求和证明未开放收费阶段没有进入真实扣费链；该日志不调用模型、不扣用户次数。
 - 后端这 4 个接口仍存在，但只是本地 / 内测开发期直改接口。
 - 开发期订单接口默认返回 `PAYMENT_NOT_CONFIGURED`。
 - 只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境明确为 `APP_ENV / ENV / GO_ENV = local / dev / development / test` 时，开发期订单接口才会放行；缺失环境名也按关闭处理。
@@ -62,6 +63,8 @@
 
 - `check-payment-readiness.ps1` 当前输出 `alipay_sandbox_prereqs=missing`，缺少沙箱 AppID、应用私钥和支付宝公钥 / 证书材料；补齐后可先做支付宝沙箱下单、同步返回和异步通知验签联调。
 - `check-payment-readiness.ps1` 当前输出 `wechat_app_pay_prereqs=missing`，缺少微信 AppID、商户号、商户私钥、商户证书序列号和 APIv3 密钥；补齐并确认商户后台 App 支付产品权限后，才能调用微信 App 下单和正式 / 可用测试链路。
+- 当前已能自动测试的内容：Android 购买入口仍关闭、Android 未调用开发期订单接口、生产 `/healthz` 的 `dev_order_endpoints=false`、后端开发期订单接口默认返回 `PAYMENT_NOT_CONFIGURED`、支付回调 URL 口径、支付宝 / 微信联调材料缺口、以及用户点未开放购买入口会进入自有 App 日志。
+- 当前不能凭空测试的内容：支付宝沙箱真实下单、支付宝沙箱异步通知验签、微信 App 下单、微信 App 拉起支付、微信回调解密验签。这些都需要对应平台提供的 AppID、商户号、公钥 / 私钥 / 证书 / APIv3 Key 等测试或生产材料，不能由代码自行生成，也不能使用别人的商户身份。
 - 以上前置项只允许放本机安全配置、服务器环境变量或云端密钥管理，不能进入 APK、仓库、日志、后台页面或聊天记录。
 
 共同边界：

@@ -1066,7 +1066,7 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		s.writeError(w, http.StatusBadRequest, "release_notes_too_long")
 		return
 	}
-	if cfg.FileSizeBytes < 0 {
+	if cfg.FileSizeBytes < 0 || cfg.FileSizeBytes > maxAndroidAPKBytes {
 		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "invalid_file_size")
 		s.writeError(w, http.StatusBadRequest, "invalid_file_size")
 		return

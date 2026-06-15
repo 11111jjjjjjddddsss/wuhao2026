@@ -578,6 +578,12 @@ internal fun HamburgerMenuSheet(
                                 onRetryLoad = onRequestMembershipRefresh,
                                 onPaymentUnavailable = {
                                     performButtonHaptic()
+                                    SessionApi.reportClientLog(
+                                        level = "info",
+                                        event = "payment.unavailable_clicked",
+                                        message = "Membership payment unavailable clicked",
+                                        attrs = mapOf("source" to "settings_membership_page")
+                                    )
                                     onMembershipPaymentUnavailable()
                                 }
                             )

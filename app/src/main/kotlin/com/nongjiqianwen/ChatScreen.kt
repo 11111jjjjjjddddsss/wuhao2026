@@ -7108,6 +7108,12 @@ fun ChatScreen() {
                     },
                     onPaymentUnavailable = {
                         performButtonHaptic()
+                        SessionApi.reportClientLog(
+                            level = "info",
+                            event = "payment.unavailable_clicked",
+                            message = "Membership payment unavailable clicked",
+                            attrs = mapOf("source" to "chat_membership_sheet")
+                        )
                     },
                     onRetryLoad = {
                         performButtonHaptic()

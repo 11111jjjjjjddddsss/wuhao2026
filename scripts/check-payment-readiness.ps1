@@ -84,10 +84,14 @@ Write-Host "== payment readiness =="
 Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth"
 
 $membershipPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MembershipCenterSheet.kt"
+$chatScreenPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
+$hamburgerMenuPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
 $serverPath = Join-Path $RepoRoot "server-go/internal/app/server.go"
 $paymentsRunbookPath = Join-Path $RepoRoot "docs/runbooks/payments.md"
 
 $membership = Read-SourceFile $membershipPath
+$chatScreen = Read-SourceFile $chatScreenPath
+$hamburgerMenu = Read-SourceFile $hamburgerMenuPath
 $server = Read-SourceFile $serverPath
 $paymentsRunbook = Read-SourceFile $paymentsRunbookPath
 
@@ -96,6 +100,8 @@ Require-Match -Name "android_topup_component" -Content $membership -Pattern "Mem
 Require-Match -Name "android_plan_actions_disabled" -Content $membership -Pattern "actionEnabled\s*=\s*false"
 Require-Match -Name "android_topup_action_disabled" -Content $membership -Pattern "val\s+canBuy\s*=\s*false"
 Require-NoMatch -Name "android_no_dev_order_api_calls" -Content $membership -Pattern "/api/(tier/renew_plus|tier/renew_pro|tier/upgrade_plus_to_pro|topup/buy)"
+Require-Match -Name "android_chat_membership_payment_click_log" -Content $chatScreen -Pattern "payment\.unavailable_clicked(?s:.*?)chat_membership_sheet"
+Require-Match -Name "android_settings_membership_payment_click_log" -Content $hamburgerMenu -Pattern "payment\.unavailable_clicked(?s:.*?)settings_membership_page"
 
 Require-Match -Name "server_dev_order_guard" -Content $server -Pattern "func\s+\(s \*Server\)\s+allowDevOrderEndpoint"
 Require-Match -Name "server_payment_not_configured" -Content $server -Pattern "PAYMENT_NOT_CONFIGURED"

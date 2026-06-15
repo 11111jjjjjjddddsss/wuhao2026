@@ -113,6 +113,39 @@ func TestBuildAndroidUpdateInfoRequiresDownloadArtifacts(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoRejectsOversizedAPK(t *testing.T) {
+	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     maxAndroidAPKBytes + 1,
+	})
+	if info.HasUpdate {
+		t.Fatalf("expected oversized apk to disable update, got %#v", info)
+	}
+	if info.APKURL != "" {
+		t.Fatalf("apk url = %q, want empty", info.APKURL)
+	}
+	if got := androidUpdateIgnoredReason(androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     maxAndroidAPKBytes + 1,
+	}); got != "apk_too_large" {
+		t.Fatalf("ignored reason = %q, want apk_too_large", got)
+	}
+	if androidUpdateConfigValid(androidUpdateConfig{
+		LatestVersionCode: 4,
+		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		FileSizeBytes:     maxAndroidAPKBytes + 1,
+	}) {
+		t.Fatalf("oversized apk config must be invalid")
+	}
+}
+
 func TestBuildAndroidUpdateInfoHidesChecksumWhenNoUpdate(t *testing.T) {
 	info := buildAndroidUpdateInfo(4, "1.0.4", androidUpdateConfig{
 		Enabled:           true,

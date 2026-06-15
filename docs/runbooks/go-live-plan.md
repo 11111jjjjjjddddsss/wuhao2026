@@ -109,7 +109,15 @@
 .\scripts\check-launch-readiness.ps1 -IncludeBuilds -CheckAppUpdateReleaseMatch
 ```
 
-这会额外调用 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1)，确认后台当前发布配置的 `versionCode / versionName / SHA-256 / 文件大小` 与本地最终 APK 一致，并要求后台已启用更新。若要连后台 APK 链接也下载回来重算大小和 SHA-256，可再加 `-VerifyAppUpdateDownload`。日常巡检或首版还未通过自有更新分发时，不默认强制这一步，避免把“暂未启用更新”误报成程序故障。
+这会额外调用 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1)，确认后台当前发布配置的 `versionCode / versionName / SHA-256 / 文件大小` 与本地最终 APK 一致，并要求后台已启用更新。若要连后台 APK 链接也下载回来重算大小和 SHA-256，可再加 `-VerifyAppUpdateDownload`，脚本会同时确认最终下载地址仍是 HTTPS。日常巡检或首版还未通过自有更新分发时，不默认强制这一步，避免把“暂未启用更新”误报成程序故障。
+
+如果这次是给旧包用户推送自有 APK 更新，使用自更新发版门禁，并传入旧包 `versionCode`：
+
+```powershell
+.\scripts\check-launch-readiness.ps1 -AppUpdateReleaseGate -AppUpdatePreviousVersionCode <旧包versionCode>
+```
+
+`-AppUpdateReleaseGate` 会强制启用构建、后台 owner smoke、后台“检查更新”物料对账、后台 APK 链接下载回验，并调用公网 `/api/app/update` 证明旧包版本会看到 `has_update=true`；没有 `-AppUpdatePreviousVersionCode` 或环境变量 `NONGJI_APP_UPDATE_PREVIOUS_VERSION_CODE` 时会直接失败。它用于正式自更新发包，不用于日常报告。
 
 真正准备打正式包 / 提交上架前，优先使用正式上线门禁：
 

@@ -5,6 +5,10 @@
 
 ## 2026-06-15
 
+- 继续按“支付只能先做假测试，不做真实扣费”的边界收口：Android 主界面会员入口和设置页会员入口点击未开放购买时，会记录自有 App 日志 `payment.unavailable_clicked`，attrs 只带入口 `source`，用于观察需求和证明当前没有进入真实扣费链；`check-payment-readiness.ps1` 同步锁住这两个埋点、购买入口关闭、Android 不调用开发期订单接口、生产 `dev_order_endpoints=false`、后端 `PAYMENT_NOT_CONFIGURED` 防线以及支付宝 / 微信联调材料缺口。同步更新支付 runbook、App 日志 runbook、当前状态和 R12 风险；这仍只是安全占位 / 假测试，不代表支付宝沙箱或微信 App 支付真实下单、验签、回调已经完成。
+
+- 继续按“检查更新能不能在旧包真机上顺利拉起系统安装页”的角度收口自有 APK 更新链路：`AppUpdateInstaller` 现在优先使用系统包安装器 action，失败再回退通用 APK `ACTION_VIEW`；安装包仍只来自 App 自己的 `cacheDir/app_updates`，并通过 `${applicationId}.fileprovider` 临时授予读取权限，不暴露裸文件路径。`scripts/check-android-build-parity.ps1` 同步锁住 `REQUEST_INSTALL_PACKAGES`、FileProvider `app_updates` 路径、未知来源授权返回后继续同一更新、防重复检查 / 下载、双 intent 安装兜底，以及 SHA / 文件大小 / 包名 / versionCode fail closed。后端、后台写入口、Android 下载器和发版脚本统一 200MB APK 上限；`check-app-update-release-match.ps1 -VerifyDownload` 会确认最终下载 URL 仍是 HTTPS，`check-launch-readiness.ps1 -AppUpdateReleaseGate -AppUpdatePreviousVersionCode <旧包版本号>` 会强制后台物料对账、下载回验和公网旧包版本探针。同步更新检查更新 runbook、当前状态和 R15 风险；这只是减少代码回潮和 ROM 兼容风险，旧包真机覆盖安装仍需正式物料验证。本轮不修改主聊天滚动链、三份提示词、模型输出过滤或支付真实接入。
+
 - 继续按“主界面所有深度交互检查”的角度收口 Android 主链护栏：静态巡检未发现 `reverseLayout / asReversed / dispatchRawDelta / scrollBy / SparseBottomSpacer / BottomActiveZone / split streaming item` 等旧滚动渲染方案残留；`scripts/check-android-build-parity.ps1` 现在会锁住主聊天仍是单个可滚动正向 `LazyColumn`、streaming 底部锚定仍在同帧 `SideEffect`、今日农情仍是普通 `ChatTimelineItem.TodayAgriCard`、含链接 AI 回复不会被 `SelectionContainer` 吞成纯文本。新增 `ChatComposerPanelTest` 覆盖空输入、纯图片、streaming 中禁发、额度耗尽和超长输入的发送按钮状态，GitHub Android CI 新增 `:app:testDebugUnitTest`。支付 readiness 脚本同步输出支付宝沙箱和微信 App 支付前置配置缺口，不打印密钥值；当前本机仍缺两家调试所需 AppID / 商户号 / 私钥 / 公钥等材料。本轮没有修改主对话锚点、记忆提示词、今日农情提示词、后端模型过滤或聊天滚动主链；本机未连接真机，真实设备交互仍需下一次装包回归。
 
 - 继续从“总负责人看后台不只是知道有事，还要知道怎么确认”的角度补监控面板：`launch_readiness` 新增可选 `confirm_hint` 字段，App 公安备案、AccessKey 轮换、最终真机回归、短信套餐余额、最终 release 物料和 SLS 首封告警邮件等人工项会在“上线人工确认项”和“正式上架检查”卡片里显示“确认方式”。前端只展示后端给出的提示，不新增写操作；`scripts/check-admin-surface.mjs` 和后端单测会锁住人工项必须有确认方式，避免以后只剩“待确认”但不知道去哪确认。本轮不改 Android、聊天滚动、三份提示词、支付真实接入或云资源。

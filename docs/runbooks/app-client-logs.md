@@ -25,6 +25,7 @@
 - `chat.background_stream_failed`
 - `image.upload_failed`
 - `support.send_failed`
+- `payment.unavailable_clicked`
 - `app_update.check_started`
 - `app_update.available`
 - `app_update.no_update`
@@ -87,7 +88,7 @@ Android 只上报结构化错误信息：
 
 ## 后续接后台面板
 
-第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示短信发送失败、短信登录失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.login_network_failed` 表示登录请求本身网络失败；`auth.sms_send_failed` 表示验证码发送失败；`auth.sms_login_failed` 表示验证码校验或账号登录失败；`auth.sms_login_success` 表示短信登录成功。后台“登录排障”卡会把这些事件纳入 `auth.*` 整组筛选，待处理事项也会提示先查生产 API 可达性、短信配置、验证码是否新发送、手机号 / IP 是否触发短期限流和 Redis 是否健康。后台排障按钮既支持用 `event_prefix=auth.` 查看全部登录相关日志，也会按真实上报事件拆开：短信发送、短信登录校验、登录成功、登录网络失败和闪退补报。历史 `auth.fusion_*` 仍可在 App 日志里查到，但只代表旧包 / 旧联调。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；排障按钮支持 `event_prefix=app_update.` 查看全部检查更新日志，也支持按具体阶段精确过滤。App 日志页还可按 `platform`、`build_type`、`app_version_code`、`app_version_name`、`os_version`、`device_model` 过滤，方便上线前真机回归时区分测试包 / 正式包、具体版本、系统版本或机型问题。下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
+第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示短信发送失败、短信登录失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.login_network_failed` 表示登录请求本身网络失败；`auth.sms_send_failed` 表示验证码发送失败；`auth.sms_login_failed` 表示验证码校验或账号登录失败；`auth.sms_login_success` 表示短信登录成功。后台“登录排障”卡会把这些事件纳入 `auth.*` 整组筛选，待处理事项也会提示先查生产 API 可达性、短信配置、验证码是否新发送、手机号 / IP 是否触发短期限流和 Redis 是否健康。后台排障按钮既支持用 `event_prefix=auth.` 查看全部登录相关日志，也会按真实上报事件拆开：短信发送、短信登录校验、登录成功、登录网络失败和闪退补报。历史 `auth.fusion_*` 仍可在 App 日志里查到，但只代表旧包 / 旧联调。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；排障按钮支持 `event_prefix=app_update.` 查看全部检查更新日志，也支持按具体阶段精确过滤。`payment.unavailable_clicked` 只记录用户点击了当前未开放的会员 / 加油包购买入口，attrs 只保留 `source`，用于观察需求和证明未开放收费阶段没有走真实扣费链。App 日志页还可按 `platform`、`build_type`、`app_version_code`、`app_version_name`、`os_version`、`device_model` 过滤，方便上线前真机回归时区分测试包 / 正式包、具体版本、系统版本或机型问题。下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
 - 更细的版本 / 设备 / 地区聚合趋势
 - SLS 趋势图、第一封告警邮件送达确认和复制单条事件用于排障
 

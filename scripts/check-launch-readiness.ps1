@@ -8,8 +8,11 @@ param(
     [switch]$SkipManualGoLiveChecklist,
     [switch]$RequireAdminSmoke,
     [switch]$ReleaseGate,
+    [switch]$AppUpdateReleaseGate,
     [switch]$CheckAppUpdateReleaseMatch,
     [switch]$VerifyAppUpdateDownload,
+    [int]$AppUpdatePreviousVersionCode = 0,
+    [string]$AppUpdatePublicApiBaseUrl = "https://api.nongjiqiancha.cn",
     [switch]$AllowAttentionExitZero
 )
 
@@ -27,6 +30,28 @@ if ($ReleaseGate) {
     }
     $IncludeBuilds = $true
     $RequireAdminSmoke = $true
+}
+if ($AppUpdateReleaseGate) {
+    if ($AllowAttentionExitZero) {
+        throw "-AppUpdateReleaseGate cannot be combined with -AllowAttentionExitZero; an APK update release gate must fail closed."
+    }
+    if ($SkipAndroid -or $SkipBackend -or $SkipAdmin -or $SkipCloud -or $SkipDataBoundary -or $SkipManualGoLiveChecklist) {
+        throw "-AppUpdateReleaseGate cannot be combined with Skip* switches; use the daily gate when you need a partial report."
+    }
+    if ($AppUpdatePreviousVersionCode -le 0) {
+        $envPrevious = [Environment]::GetEnvironmentVariable("NONGJI_APP_UPDATE_PREVIOUS_VERSION_CODE")
+        $parsedPrevious = 0
+        if (-not [string]::IsNullOrWhiteSpace($envPrevious) -and [int]::TryParse($envPrevious.Trim(), [ref]$parsedPrevious)) {
+            $AppUpdatePreviousVersionCode = $parsedPrevious
+        }
+    }
+    if ($AppUpdatePreviousVersionCode -le 0) {
+        throw "-AppUpdateReleaseGate requires -AppUpdatePreviousVersionCode or NONGJI_APP_UPDATE_PREVIOUS_VERSION_CODE so the gate can prove the new APK is newer than the installed old package."
+    }
+    $IncludeBuilds = $true
+    $RequireAdminSmoke = $true
+    $CheckAppUpdateReleaseMatch = $true
+    $VerifyAppUpdateDownload = $true
 }
 
 function Add-GateResult {
@@ -251,7 +276,7 @@ function Invoke-ManualGoLiveChecklist {
 }
 
 Write-Host "== launch readiness gate =="
-Write-Host "repo=$repoRoot release_gate=$ReleaseGate include_builds=$IncludeBuilds require_admin_smoke=$RequireAdminSmoke skip_cloud=$SkipCloud check_app_update_release_match=$CheckAppUpdateReleaseMatch"
+Write-Host "repo=$repoRoot release_gate=$ReleaseGate app_update_release_gate=$AppUpdateReleaseGate include_builds=$IncludeBuilds require_admin_smoke=$RequireAdminSmoke skip_cloud=$SkipCloud check_app_update_release_match=$CheckAppUpdateReleaseMatch app_update_previous_version_code=$AppUpdatePreviousVersionCode"
 
 Invoke-GateStep -Name "project memory guard" -ScriptBlock {
     Invoke-Native -FilePath "python" -Arguments @("scripts/check_project_memory.py")
@@ -315,6 +340,15 @@ if ($CheckAppUpdateReleaseMatch) {
         )
         if ($VerifyAppUpdateDownload) {
             $matchArgs += "-VerifyDownload"
+        }
+        if ($AppUpdatePreviousVersionCode -gt 0) {
+            $matchArgs += @("-PreviousVersionCode", "$AppUpdatePreviousVersionCode")
+        }
+        if (-not [string]::IsNullOrWhiteSpace($AppUpdatePublicApiBaseUrl)) {
+            $matchArgs += @("-PublicApiBaseUrl", $AppUpdatePublicApiBaseUrl)
+        }
+        if ($AppUpdateReleaseGate) {
+            $matchArgs += "-ProbePreviousVersionUpdate"
         }
         Invoke-Native -FilePath "powershell.exe" -Arguments $matchArgs
     }

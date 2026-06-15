@@ -64,6 +64,7 @@ $failures = [System.Collections.Generic.List[string]]::new()
 $buildFile = Join-Path $RepoRoot "app/build.gradle.kts"
 $manifestFile = Join-Path $RepoRoot "app/src/main/AndroidManifest.xml"
 $networkSecurityFile = Join-Path $RepoRoot "app/src/main/res/xml/network_security_config.xml"
+$filePathsFile = Join-Path $RepoRoot "app/src/main/res/xml/file_paths.xml"
 $backupRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/backup_rules.xml"
 $dataExtractionRulesFile = Join-Path $RepoRoot "app/src/main/res/xml/data_extraction_rules.xml"
 $idManagerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/IdManager.kt"
@@ -88,7 +89,7 @@ $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_s
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -98,6 +99,7 @@ if ($failures.Count -eq 0) {
     $build = Read-SourceFile $buildFile
     $manifest = Read-SourceFile $manifestFile
     $networkSecurity = Read-SourceFile $networkSecurityFile
+    $filePaths = Read-SourceFile $filePathsFile
     $backupRules = Read-SourceFile $backupRulesFile
     $dataExtractionRules = Read-SourceFile $dataExtractionRulesFile
     $idManager = Read-SourceFile $idManagerFile
@@ -276,6 +278,18 @@ if ($failures.Count -eq 0) {
         "Legacy Android SMS login success logging must remain for old-package compatibility diagnostics."
     Require-Match $failures $sessionApi 'latestCode\s*>\s*BuildConfig\.VERSION_CODE(?s:.*?)normalizeAppUpdateSha256\s*\(\s*apkSha256\s*\)\s*!=\s*null(?s:.*?)sizeBytes\s*>\s*0L(?s:.*?)sizeBytes\s*<=\s*APP_UPDATE_MAX_APK_DOWNLOAD_BYTES' `
         "Android app update availability must require a newer version, SHA-256 and a positive bounded file size."
+    Require-Match $failures $manifest '<uses-permission\s+android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s*/>' `
+        "Android app update flow must keep REQUEST_INSTALL_PACKAGES so Android O+ can request package installation."
+    Require-Match $failures $manifest '<provider\b(?=[^>]*android:authorities="\$\{applicationId\}\.fileprovider")(?=[^>]*android:grantUriPermissions="true")(?=[^>]*android:exported="false")(?s:.*?)android:resource="@xml/file_paths"' `
+        "Android app update APKs must keep using the app FileProvider with grantUriPermissions."
+    Require-Match $failures $filePaths '<cache-path\b(?=[^>]*name="app_updates")(?=[^>]*path="app_updates/")' `
+        "Android FileProvider paths must keep cacheDir/app_updates exposed for downloaded APK install intents."
+    Require-Match $failures $appUpdateInstaller 'canRequestPackageInstalls\s*\(\s*\)(?s:.*?)Settings\.ACTION_MANAGE_UNKNOWN_APP_SOURCES' `
+        "Android app update flow must keep the Android O+ unknown-app-source permission check and settings handoff."
+    Require-Match $failures $appUpdateInstaller 'Intent\.ACTION_INSTALL_PACKAGE(?s:.*?)startInstallIntent(?s:.*?)Intent\.ACTION_VIEW' `
+        "Android app update install must prefer the package installer action and keep ACTION_VIEW as a compatibility fallback."
+    Require-Match $failures $appUpdateInstaller 'FileProvider\.getUriForFile(?s:.*?)"\$\{BuildConfig\.APPLICATION_ID\}\.fileprovider"(?s:.*?)FLAG_GRANT_READ_URI_PERMISSION' `
+        "Android app update install intents must grant read access to a FileProvider content URI, not expose raw files."
     Require-Match $failures $appUpdateInstaller 'DownloadFailureReason\.MissingReleaseMetadata' `
         "Android app update downloader must fail closed when release metadata is incomplete."
     Require-NoMatch $failures $appUpdateInstaller 'update\.fileSizeBytes\s*\?:\s*0L' `
@@ -284,6 +298,10 @@ if ($failures.Count -eq 0) {
         "Android app update downloader must not skip SHA-256 verification when SHA metadata is missing or invalid."
     Require-NoMatch $failures $appUpdateInstaller 'expectedVersionCode\s*!=\s*null\s*&&' `
         "Android app update downloader must not skip versionCode verification when version metadata is missing."
+    Require-Match $failures $hamburgerMenuSheet 'pendingInstallPermissionUpdate(?s:.*?)Lifecycle\.Event\.ON_RESUME(?s:.*?)canRequestInstallPackages(?s:.*?)startAppUpdate\s*\(\s*pendingUpdate\s*\)' `
+        "Android app update flow must resume the same update after the user returns from unknown-app-source settings."
+    Require-Match $failures $hamburgerMenuSheet 'if\s*\(\s*updateChecking\s*\|\|\s*updateDownloading\s*\)\s*return(?s:.*?)clickable\s*\((?s:.*?)enabled\s*=\s*!downloading' `
+        "Android app update UI must prevent duplicate checks/downloads while a package is being prepared."
     Require-Match $failures $loginScreen 'SessionApi\.sendSmsCode' `
         "LoginScreen must expose the ordinary backend SMS send flow."
     Require-Match $failures $loginScreen 'SessionApi\.loginWithSms' `

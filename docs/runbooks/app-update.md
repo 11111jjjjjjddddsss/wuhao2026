@@ -13,7 +13,7 @@
 - App 请求 `GET /api/app/update?platform=android&version_code=<当前versionCode>&version_name=<当前versionName>`
 - 无更新：提示“已是最新版本”
 - 有更新：弹“发现新版本”卡片，按钮为“稍后 / 立即更新”
-- 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，并通过 FileProvider 调起 Android 系统安装页
+- 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，并通过 FileProvider 调起 Android 系统安装页；Android 侧优先使用系统包安装器 action，失败时保留通用 APK `ACTION_VIEW` 兜底，降低不同 ROM 安装页兼容风险
 - 客户端也会 fail closed：只有更高 `versionCode`、HTTPS APK、合法 SHA-256 和正数文件大小都齐全时，才会把服务端响应当成可用更新；下载入口若遇到物料缺失 / 非法，也会直接失败并上报 `MissingReleaseMetadata`
 - Android 8+ 如果用户还没允许本 App 安装未知应用，会先打开系统授权页；用户授权后返回 App，会自动继续本次下载 / 安装流程
 - App 会把检查更新关键阶段通过自动日志上报到后台：检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页。日志只包含阶段、版本号、是否强更、是否配置 APK / SHA / 文件大小、失败原因和 HTTP 状态，不上传 APK URL、SHA-256、手机号、token 或其他敏感内容。
@@ -23,7 +23,7 @@
 
 更新说明默认统一为“修复已知问题，优化使用体验。”。以后普通发版时后台“更新说明”可以留空，后端会向 App 返回这句默认文案，App 端也有同一句兜底；除非用户明确要求，不单独编写花哨更新说明。
 
-Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确认。
+Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确认。Android O 及以上还需要先检查本 App 是否被允许“安装未知应用”；未允许时只跳系统授权页，用户返回 App 且授权成功后，再继续同一份更新下载 / 安装流程。
 
 ## 实际发布时你只做这几步
 
@@ -41,8 +41,9 @@ Codex 默认按下面流程处理：
 3. Codex 负责运行 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用最终 `app-release.apk` 本体校验包名、`versionCode`、`versionName`、release 不可调试、权限白名单、签名证书指纹，并输出 APK 文件大小和 SHA-256；更新说明默认留空，展示统一默认文案
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接
 5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
-6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；需要连公网下载包体验证时加 `-VerifyDownload`
-7. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
+6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；需要连公网下载包体验证时加 `-VerifyDownload`，脚本会确认最终下载地址仍是 HTTPS
+7. 如果这是要给旧包用户推送的自更新包，必须带上旧包 `versionCode` 跑 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK、后台配置和公网 `/api/app/update` 都会对这个旧版本返回可更新
+8. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
 
 这件事不需要你手写接口，也不需要你自己拼 JSON。
 
@@ -81,11 +82,12 @@ Codex 默认按下面流程处理：
 - `APP_ANDROID_FORCE_UPDATE`：兼容保留字段，普通发版默认不使用；当前后端默认会压成 false，只有未来显式配置 `APP_UPDATE_ALLOW_FORCE_UPDATE=true` 并完成产品 / 合规确认后才允许强制更新
 - `APP_UPDATE_ALLOW_FORCE_UPDATE`：强制更新总开关，默认不设置；当前普通发版和后台发布页都不应启用
 - `APP_ANDROID_FILE_SIZE_BYTES`：必填，APK 字节大小，用于更新卡片展示和下载后校验；缺失或小于等于 0 时，后端不会对外返回可用更新
+- APK 文件大小不能超过 200MB；Android、后端用户接口、后台保存入口和发版校验都按这个上限处理，避免后台保存了一个客户端永远不会下载 / 安装的包
 - `APP_ANDROID_UPDATE_ENABLED`：可选，兼容环境变量开关；未配置时若版本号和 APK URL 都存在，默认视为启用，但仍必须同时具备 SHA-256 和文件大小才会下发
 
 管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明和是否对外启用。后台保存后会在同一事务里更新 `app_release_configs` 并追加 `app_release_events` 发布历史，`/api/app/update` 会优先按当前配置对外返回；取消“对外启用更新”并保存，就是停更，也会留下停更记录。发布历史只记录版本、物料状态、操作人、时间和更新说明，不替代 APK 文件上传、真机覆盖安装验收或正式回滚演练。
 
-管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL 这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts`。
+管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL / 文件大小上限这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和 1 到 200MB 的文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts` 或 `apk_too_large`。
 
 管理后台“监控面板”已新增“检查更新排障”卡，聚合最近 24 小时 `app_update.*` 自动日志，并提供直达 App 日志筛选按钮。若真机测试更新失败，优先按下面顺序看：
 
@@ -101,6 +103,7 @@ Codex 默认按下面流程处理：
 - 后端只会在文件大小和 SHA-256 都已配置时下发更新；客户端也要求文件大小为正且不超过 200MB，下载后文件大小必须一致。
 - 后端只会在 SHA-256 合法时下发更新；客户端也要求 SHA-256 合法，下载后文件哈希必须一致。
 - APK 包名必须等于当前 App 包名，APK `versionCode` 必须等于后端下发的最新版本号，且大于当前已安装版本。
+- 安装包必须来自 App 自己的 `cacheDir/app_updates` 并通过 `${applicationId}.fileprovider` 授予临时读取权限，不能把裸文件路径暴露给其它应用。`scripts/check-android-build-parity.ps1` 会锁住 `REQUEST_INSTALL_PACKAGES`、FileProvider `app_updates` 路径、未知来源授权返回续下、下载中防重复点击、官方包安装 action 和 `ACTION_VIEW` 兜底。
 
 ## 发布流程
 
@@ -120,7 +123,7 @@ Codex 默认按下面流程处理：
 .\scripts\check-app-update-release-match.ps1 -RequireEnabled
 ```
 
-该脚本会先复用最终 APK 物料校验，再登录后台只读读取 `/admin-api/v1/app-update/android`，核对后台版本号、版本名、SHA-256 和文件大小是否与本地最终 APK 一致，并确认 APK URL 是公网 HTTPS。若要同时下载后台 APK 链接并重新比对大小和 SHA-256，可加 `-VerifyDownload`。
+该脚本会先复用最终 APK 物料校验，再登录后台只读读取 `/admin-api/v1/app-update/android`，核对后台版本号、版本名、SHA-256 和文件大小是否与本地最终 APK 一致，并确认 APK URL 是公网 HTTPS。若要同时下载后台 APK 链接并重新比对大小和 SHA-256，可加 `-VerifyDownload`，脚本会同时确认最终下载地址没有从 HTTPS 跳到 HTTP。若这是一次给旧包用户推送的自更新发版，再加 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK 和后台版本都大于旧包，并且公网 `/api/app/update` 会对该旧版本返回 `has_update=true`。
 6. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
 7. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开
 

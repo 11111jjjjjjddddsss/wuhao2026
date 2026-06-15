@@ -8,7 +8,10 @@ param(
     [switch]$RequireEnabled,
     [switch]$SkipIfMissingCredentials,
     [string]$ExpectedApkUrl = "",
-    [switch]$VerifyDownload
+    [switch]$VerifyDownload,
+    [int]$PreviousVersionCode = 0,
+    [string]$PublicApiBaseUrl = "https://api.nongjiqiancha.cn",
+    [switch]$ProbePreviousVersionUpdate
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,9 +48,54 @@ function Get-FileSha256Hex {
     }
 }
 
+function Save-HttpDownload {
+    param(
+        [string]$Url,
+        [string]$OutFile,
+        [int]$TimeoutSeconds
+    )
+    $handler = [System.Net.Http.HttpClientHandler]::new()
+    $handler.AllowAutoRedirect = $true
+    $client = [System.Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromSeconds($TimeoutSeconds)
+    try {
+        $response = $client.GetAsync($Url, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+        try {
+            if (-not $response.IsSuccessStatusCode) {
+                throw "download failed with HTTP $([int]$response.StatusCode)"
+            }
+            $finalUrl = [string]$response.RequestMessage.RequestUri.AbsoluteUri
+            $inputStream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+            try {
+                $outputStream = [System.IO.File]::Create($OutFile)
+                try {
+                    $inputStream.CopyTo($outputStream)
+                } finally {
+                    $outputStream.Dispose()
+                }
+            } finally {
+                $inputStream.Dispose()
+            }
+            return $finalUrl
+        } finally {
+            $response.Dispose()
+        }
+    } finally {
+        $client.Dispose()
+        $handler.Dispose()
+    }
+}
+
 function Join-AdminUrl {
     param([string]$Path)
     $base = $BaseUrl.TrimEnd("/")
+    $pathPart = if ($Path.StartsWith("/")) { $Path } else { "/$Path" }
+    return "$base$pathPart"
+}
+
+function Join-PublicApiUrl {
+    param([string]$Path)
+    $base = $PublicApiBaseUrl.TrimEnd("/")
     $pathPart = if ($Path.StartsWith("/")) { $Path } else { "/$Path" }
     return "$base$pathPart"
 }
@@ -154,6 +202,9 @@ function Read-AdminAppUpdateConfig {
 
 Write-Host "== app update release match =="
 Write-Host ("base_url={0}" -f $BaseUrl)
+if ($PreviousVersionCode -gt 0) {
+    Write-Host ("previous_version_code={0}" -f $PreviousVersionCode)
+}
 
 $artifact = Read-ReleaseArtifact
 Write-Host ("local_apk_version_code={0}" -f $artifact.VersionCode)
@@ -208,6 +259,14 @@ if ($adminSizeBytes -ne $artifact.SizeBytes) {
 if ($adminSha256 -ne $artifact.Sha256) {
     Add-Failure $failures "SHA-256 mismatch. local=$($artifact.Sha256) admin=$adminSha256"
 }
+if ($PreviousVersionCode -gt 0) {
+    if ($artifact.VersionCode -le $PreviousVersionCode) {
+        Add-Failure $failures "local APK versionCode must be greater than PreviousVersionCode. previous=$PreviousVersionCode local=$($artifact.VersionCode)"
+    }
+    if ($adminVersionCode -le $PreviousVersionCode) {
+        Add-Failure $failures "admin latest_version_code must be greater than PreviousVersionCode. previous=$PreviousVersionCode admin=$adminVersionCode"
+    }
+}
 
 $parsedApkUrl = $null
 if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
@@ -228,7 +287,13 @@ if ($VerifyDownload -and $failures.Count -eq 0) {
     $tempApk = Join-Path ([System.IO.Path]::GetTempPath()) ("nongjiqiancha-release-check-{0}.apk" -f ([guid]::NewGuid().ToString("N")))
     try {
         Write-Host "download_verify=started"
-        Invoke-WebRequest -Uri $adminApkUrl -OutFile $tempApk -TimeoutSec $TimeoutSec | Out-Null
+        $finalDownloadUrl = Save-HttpDownload -Url $adminApkUrl -OutFile $tempApk -TimeoutSeconds $TimeoutSec
+        $parsedFinalDownloadUrl = $null
+        if (-not [System.Uri]::TryCreate($finalDownloadUrl, [System.UriKind]::Absolute, [ref]$parsedFinalDownloadUrl) -or $parsedFinalDownloadUrl.Scheme -ne "https") {
+            Add-Failure $failures "download final URL must remain https. final=$finalDownloadUrl"
+        } else {
+            Write-Host ("download_final_url_host={0}" -f $parsedFinalDownloadUrl.Host)
+        }
         $downloadItem = Get-Item -LiteralPath $tempApk
         $downloadSha256 = Get-FileSha256Hex $tempApk
         Write-Host ("download_size_bytes={0}" -f $downloadItem.Length)
@@ -242,6 +307,26 @@ if ($VerifyDownload -and $failures.Count -eq 0) {
         Write-Host "download_verify=ok"
     } finally {
         Remove-Item -LiteralPath $tempApk -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if ($ProbePreviousVersionUpdate -and $failures.Count -eq 0) {
+    if ($PreviousVersionCode -le 0) {
+        Add-Failure $failures "ProbePreviousVersionUpdate requires PreviousVersionCode > 0"
+    } else {
+        $probeUrl = Join-PublicApiUrl ("/api/app/update?platform=android&version_code={0}&version_name=previous" -f $PreviousVersionCode)
+        Write-Host ("public_update_probe_url_host={0}" -f ([System.Uri]$probeUrl).Host)
+        $probe = Invoke-RestMethod -Method Get -Uri $probeUrl -TimeoutSec $TimeoutSec
+        $probeHasUpdate = [bool]$probe.has_update
+        $probeLatestVersionCode = [int]$probe.latest_version_code
+        Write-Host ("public_update_probe_has_update={0}" -f $probeHasUpdate)
+        Write-Host ("public_update_probe_latest_version_code={0}" -f $probeLatestVersionCode)
+        if (-not $probeHasUpdate) {
+            Add-Failure $failures "public /api/app/update does not report an update for PreviousVersionCode=$PreviousVersionCode"
+        }
+        if ($probeLatestVersionCode -ne $artifact.VersionCode) {
+            Add-Failure $failures "public /api/app/update latest version mismatch. local=$($artifact.VersionCode) public=$probeLatestVersionCode"
+        }
     }
 }
 

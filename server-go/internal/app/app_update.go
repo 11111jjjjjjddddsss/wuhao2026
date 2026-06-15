@@ -10,7 +10,10 @@ import (
 	"strings"
 )
 
-const defaultAndroidUpdateReleaseNotes = "修复已知问题，优化使用体验。"
+const (
+	defaultAndroidUpdateReleaseNotes = "修复已知问题，优化使用体验。"
+	maxAndroidAPKBytes               = int64(200 * 1024 * 1024)
+)
 
 type AppUpdateInfo struct {
 	Platform           string `json:"platform"`
@@ -167,18 +170,24 @@ func androidUpdateIgnoredReason(cfg androidUpdateConfig) string {
 	if strings.TrimSpace(cfg.APKChecksumSHA256) == "" || cfg.FileSizeBytes <= 0 {
 		return "missing_release_artifacts"
 	}
+	if cfg.FileSizeBytes > maxAndroidAPKBytes {
+		return "apk_too_large"
+	}
 	return "not_available"
 }
 
 func androidUpdateConfigValid(cfg androidUpdateConfig) bool {
-	return cfg.LatestVersionCode > 0 && (strings.TrimSpace(cfg.APKURL) == "" || isHTTPSURL(cfg.APKURL))
+	return cfg.LatestVersionCode > 0 &&
+		(strings.TrimSpace(cfg.APKURL) == "" || isHTTPSURL(cfg.APKURL)) &&
+		cfg.FileSizeBytes <= maxAndroidAPKBytes
 }
 
 func androidUpdateDownloadArtifactsComplete(cfg androidUpdateConfig) bool {
 	return strings.TrimSpace(cfg.APKURL) != "" &&
 		isHTTPSURL(cfg.APKURL) &&
 		strings.TrimSpace(cfg.APKChecksumSHA256) != "" &&
-		cfg.FileSizeBytes > 0
+		cfg.FileSizeBytes > 0 &&
+		cfg.FileSizeBytes <= maxAndroidAPKBytes
 }
 
 func isHTTPSURL(raw string) bool {

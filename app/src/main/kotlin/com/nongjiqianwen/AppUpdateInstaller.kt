@@ -173,24 +173,43 @@ object AppUpdateInstaller {
         return installApkDetailed(context, apkFile).started
     }
 
+    @Suppress("DEPRECATION")
     fun installApkDetailed(context: Context, apkFile: File): InstallResult {
         if (!apkFile.exists()) return InstallResult(started = false, reason = InstallFailureReason.FileMissing)
-        return try {
-            val uri = FileProvider.getUriForFile(
+        val uri = try {
+            FileProvider.getUriForFile(
                 context,
                 "${BuildConfig.APPLICATION_ID}.fileprovider",
                 apkFile
             )
-            val intent = Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-            InstallResult(started = true)
         } catch (_: Exception) {
+            return InstallResult(started = false, reason = InstallFailureReason.IntentFailed)
+        }
+        val installIntent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+            .setData(uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (startInstallIntent(context, installIntent)) {
+            return InstallResult(started = true)
+        }
+        val viewIntent = Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, "application/vnd.android.package-archive")
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        return if (startInstallIntent(context, viewIntent)) {
+            InstallResult(started = true)
+        } else {
             InstallResult(started = false, reason = InstallFailureReason.IntentFailed)
         }
     }
+
+    private fun startInstallIntent(context: Context, intent: Intent): Boolean =
+        try {
+            context.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
 
     private fun verifyDownloadedApkFailure(
         context: Context,
