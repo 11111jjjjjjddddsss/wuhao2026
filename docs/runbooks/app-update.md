@@ -1,6 +1,6 @@
 # App 更新 Runbook
 
-最后更新：2026-06-13
+最后更新：2026-06-15
 
 当前 Android “检查更新”走自有服务器 APK 分发，不走应用商店，也不做静默安装。
 
@@ -40,8 +40,9 @@ Codex 默认按下面流程处理：
 2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
 3. Codex 负责运行 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用最终 `app-release.apk` 本体校验包名、`versionCode`、`versionName`、release 不可调试、权限白名单、签名证书指纹，并输出 APK 文件大小和 SHA-256；更新说明默认留空，展示统一默认文案
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接
-5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小，再用旧版 App 点“检查更新”验证
-6. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
+5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
+6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；需要连公网下载包体验证时加 `-VerifyDownload`
+7. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
 
 这件事不需要你手写接口，也不需要你自己拼 JSON。
 
@@ -113,8 +114,15 @@ Codex 默认按下面流程处理：
 脚本会直接检查最终 `app/build/outputs/apk/release/app-release.apk`，并输出 `apk_size_bytes`、`apk_sha256`、`apk_package`、`apk_version_code`、`apk_version_name` 和 `apk_cert_sha256`。其中 `apk_size_bytes`、`apk_sha256` 和版本号用于填写后台“检查更新”页；证书指纹用于确认仍是固定 release 签名。
 3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK
 4. 在管理后台“检查更新”页填写版本号、HTTPS APK、SHA-256 和文件大小，更新说明留空即可，勾上“对外启用更新”后保存；保存成功后检查“发布历史”出现本次记录；如暂时不走后台，也可继续改 `APP_ANDROID_*` 环境变量，但环境变量兜底不会自动写发布历史
-5. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
-6. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开
+5. 运行后台配置对账：
+
+```powershell
+.\scripts\check-app-update-release-match.ps1 -RequireEnabled
+```
+
+该脚本会先复用最终 APK 物料校验，再登录后台只读读取 `/admin-api/v1/app-update/android`，核对后台版本号、版本名、SHA-256 和文件大小是否与本地最终 APK 一致，并确认 APK URL 是公网 HTTPS。若要同时下载后台 APK 链接并重新比对大小和 SHA-256，可加 `-VerifyDownload`。
+6. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
+7. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开
 
 发布时还要记录签名证书指纹。当前 release 签名公钥和指纹信息保存在本机 `%USERPROFILE%\\.nongjiqiancha\\android-release-public-info.txt`；签名密码配置保存在 `%USERPROFILE%\\.nongjiqiancha\\android-release-signing.properties`，不能提交到 git 或写入公开文档。
 

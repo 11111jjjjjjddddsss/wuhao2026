@@ -103,6 +103,14 @@
 
 `-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建、最终 release APK 物料校验，再重新跑 parity。release APK 物料校验由 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1) 读取最终 APK 本体，核对包名、版本、权限、不可调试、固定 release 证书指纹，并输出 `apk_size_bytes` 和 `apk_sha256`。这个脚本不替代真机回归、App 备案 / App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
 
+如果这次正式包已经上传到后台“检查更新”并准备对外启用，再加后台配置对账：
+
+```powershell
+.\scripts\check-launch-readiness.ps1 -IncludeBuilds -CheckAppUpdateReleaseMatch
+```
+
+这会额外调用 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1)，确认后台当前发布配置的 `versionCode / versionName / SHA-256 / 文件大小` 与本地最终 APK 一致，并要求后台已启用更新。若要连后台 APK 链接也下载回来重算大小和 SHA-256，可再加 `-VerifyAppUpdateDownload`。日常巡检或首版还未通过自有更新分发时，不默认强制这一步，避免把“暂未启用更新”误报成程序故障。
+
 真正准备打正式包 / 提交上架前，优先使用正式上线门禁：
 
 ```powershell

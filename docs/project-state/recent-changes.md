@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续从“正式发 APK 时最容易人工抄错”的角度补检查更新发布护栏：新增只读脚本 `scripts/check-app-update-release-match.ps1`，先复用最终 `app-release.apk` 物料校验，再登录后台读取 `/admin-api/v1/app-update/android`，核对后台当前 `versionCode / versionName / SHA-256 / 文件大小` 与本地最终 APK 是否一致，并确认 APK URL 是 HTTPS；需要时可加 `-VerifyDownload` 下载后台链接重新计算大小和 SHA-256。`check-launch-readiness.ps1` 新增可选 `-CheckAppUpdateReleaseMatch` / `-VerifyAppUpdateDownload`，只在正式包已上传并准备走自有“检查更新”分发时启用，不把日常巡检或首版暂未启用更新误报为程序故障。该改动只增强只读发版对账和 runbook，不改 Android 运行逻辑、后端接口、三份提示词、模型过滤或聊天滚动主链。
+
 - 已将管理后台前端提交 `c7f69281` 部署到生产 `https://admin.nongjiqiancha.cn/`：`scripts/deploy-ecs-admin.ps1` 本地 `npm run build` 通过，上传静态包 `SHA256=4d6eba82c39e3e324c7048414335bc7c67fc1fb6c8684ba2bfcb9877dbf9b921`，远端安装后 Nginx 配置检测通过，证书未到期无需续签；脚本验证 `admin-http-redirect=301`、`admin-https-root=200`、`admin-https-auth-me=401`。部署后 `check-public-blackbox.ps1`、`check-ecs-readiness.ps1` 和 `check-admin-surface.mjs` 均通过，当前 API 与后台 `/admin-api/` active upstream 同为 `3000`，生产健康标记 `auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss` 正常。该部署只上线后台监控页“程序需处理项”和“程序处理 / 人工确认”展示标签，不改 Android 包、后端接口、三份提示词、模型过滤或聊天滚动主链。
 
 - 继续按“监控页要让总负责人直接知道谁能处理”的方向补首屏可行动性：管理后台监控页在“处理顺序”和“上线人工确认项”之间新增“程序需处理项”，只展示 `launch_readiness` 里 `manual!=true` 且未 ready 的条目，并优先把红色阻塞排在前面；每项保留负责人、状态和直达入口，文案明确这些通常能通过代码、配置、部署或后台操作推进。正式上架检查明细卡也新增“程序处理 / 人工确认”小标签，避免人工确认项在明细区仍被“需处理”误读成程序故障。`scripts/check-admin-surface.mjs` 同步锁住该区域、人工项不混进程序项，以及明细卡分类标签。该改动只影响后台前端展示和只读 surface 巡检，不改后端接口、Android 运行逻辑、三份提示词、模型过滤或聊天滚动主链。

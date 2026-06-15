@@ -8,6 +8,8 @@ param(
     [switch]$SkipManualGoLiveChecklist,
     [switch]$RequireAdminSmoke,
     [switch]$ReleaseGate,
+    [switch]$CheckAppUpdateReleaseMatch,
+    [switch]$VerifyAppUpdateDownload,
     [switch]$AllowAttentionExitZero
 )
 
@@ -215,7 +217,7 @@ function Invoke-ManualGoLiveChecklist {
 }
 
 Write-Host "== launch readiness gate =="
-Write-Host "repo=$repoRoot release_gate=$ReleaseGate include_builds=$IncludeBuilds require_admin_smoke=$RequireAdminSmoke skip_cloud=$SkipCloud"
+Write-Host "repo=$repoRoot release_gate=$ReleaseGate include_builds=$IncludeBuilds require_admin_smoke=$RequireAdminSmoke skip_cloud=$SkipCloud check_app_update_release_match=$CheckAppUpdateReleaseMatch"
 
 Invoke-GateStep -Name "project memory guard" -ScriptBlock {
     Invoke-Native -FilePath "python" -Arguments @("scripts/check_project_memory.py")
@@ -264,6 +266,23 @@ if (-not $SkipAndroid) {
             "-File",
             "scripts/check-android-build-parity.ps1"
         )
+    }
+}
+
+if ($CheckAppUpdateReleaseMatch) {
+    Invoke-GateStep -Name "app update release match" -ScriptBlock {
+        $matchArgs = @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check-app-update-release-match.ps1",
+            "-RequireEnabled"
+        )
+        if ($VerifyAppUpdateDownload) {
+            $matchArgs += "-VerifyDownload"
+        }
+        Invoke-Native -FilePath "powershell.exe" -Arguments $matchArgs
     }
 }
 
