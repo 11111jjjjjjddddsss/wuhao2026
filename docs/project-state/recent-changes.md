@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 复核用户反馈“设置里能看到今日农情，主界面文本区没有”后，生产日志显示今日农情当天生成成功，主界面 `/api/today-agri-card` 和设置页历史 `/api/today-agri-cards` 均返回 200，未见 `today_agri.fetch_failed`；当前手机仍是 2026-06-14 21:31 左右安装的旧 debug 包，晚于该包的 `29284b01 Restore today agri card after remote hydrate` 已修复远端历史 hydrate 后主聊天今日农情卡不恢复的问题。Android 主聊天新增 `today_agri.main_card_loaded` 和 `today_agri.main_card_visible` 两个只记录日期键、条数、列表数量、揭示状态和锚点状态的安全诊断事件，便于下一次真机装新包后区分“接口已拉到但未插入列表”还是“已插入但视觉不可见”；不记录今日农情标题 / 摘要、聊天正文、手机号、图片 URL 或 token，且不改变今日农情仍作为普通聊天列表项的交互口径。
+
 - 继续按“短信门禁不能把发送统计当余额证明”的角度补只读巡检：`scripts/check-sms-usage.ps1` 除了阿里云 `QuerySendStatistics` 发送趋势，还会调用费用中心 `QueryResourcePackageInstances` 查询当前有效资源包，并用商品码、包类型、备注和适用产品判断是否出现短信类套餐包；当前实测只返回百炼推理资源包和 OSS 存储包，没有返回短信类套餐包，因此脚本输出 `sms_package_status=not_visible_manual_required`，提醒仍需去短信服务控制台确认普通短信套餐包余额、到期、余量预警和自动复购。该改动只增强只读门禁证据和 runbook，不改短信发送、后端鉴权、Android 运行逻辑、三份提示词、模型过滤或聊天滚动主链。
 
 - 继续从“正式发 APK 时最容易人工抄错”的角度补检查更新发布护栏：新增只读脚本 `scripts/check-app-update-release-match.ps1`，先复用最终 `app-release.apk` 物料校验，再登录后台读取 `/admin-api/v1/app-update/android`，核对后台当前 `versionCode / versionName / SHA-256 / 文件大小` 与本地最终 APK 是否一致，并确认 APK URL 是 HTTPS；需要时可加 `-VerifyDownload` 下载后台链接重新计算大小和 SHA-256。`check-launch-readiness.ps1` 新增可选 `-CheckAppUpdateReleaseMatch` / `-VerifyAppUpdateDownload`，只在正式包已上传并准备走自有“检查更新”分发时启用，不把日常巡检或首版暂未启用更新误报为程序故障。该改动只增强只读发版对账和 runbook，不改 Android 运行逻辑、后端接口、三份提示词、模型过滤或聊天滚动主链。

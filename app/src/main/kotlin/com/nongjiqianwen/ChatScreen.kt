@@ -2363,6 +2363,8 @@ fun ChatScreen() {
     var startupUiStateLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var startupBottomSnapDoneLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var startupBottomSnapPendingLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var todayAgriMainCardLoadedLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var todayAgriMainCardVisibleLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
     var suppressJumpButtonForLifecycleResume by scrollRuntime.suppressJumpButtonForLifecycleResume
     var bottomBarHeightPx by scrollRuntime.bottomBarHeightPx
@@ -3130,6 +3132,38 @@ fun ChatScreen() {
             )
         )
     }
+    LaunchedEffect(
+        hasTodayAgriCard,
+        shouldShowTodayAgriCard,
+        currentTodayAgriCardDay,
+        todayAgriCardAnchorForRender,
+        shouldRevealMessageList,
+        chatListItems.size,
+        messages.size
+    ) {
+        if (!hasTodayAgriCard || !shouldShowTodayAgriCard || todayAgriMainCardVisibleLogged) {
+            return@LaunchedEffect
+        }
+        todayAgriMainCardVisibleLogged = true
+        val anchorState = when {
+            todayAgriCardAnchorForRender == TODAY_AGRI_CARD_ANCHOR_START -> "start"
+            todayAgriCardAnchorForRender.isNullOrBlank() -> "none"
+            else -> "message"
+        }
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "today_agri.main_card_visible",
+            message = "Today agri main card visible",
+            attrs = mapOf(
+                "card_day" to currentTodayAgriCardDay,
+                "visible_item_count" to messages.size,
+                "list_item_count" to chatListItems.size,
+                "list_revealed" to shouldRevealMessageList,
+                "anchor_state" to anchorState,
+                "bottom_snap_done" to initialBottomSnapDone
+            )
+        )
+    }
     val focusManager = LocalFocusManager.current
     val lifecycleOwner = LocalLifecycleOwner.current
     var inputSelectionToolbarState by remember(uiRuntimeResetKey) {
@@ -3177,6 +3211,20 @@ fun ChatScreen() {
                 card != null &&
                 normalizeTodayAgriCardDayKey(card.dateCn.orEmpty()) == refreshDayKey
             ) {
+                if (!todayAgriMainCardLoadedLogged) {
+                    todayAgriMainCardLoadedLogged = true
+                    SessionApi.reportClientLog(
+                        level = "info",
+                        event = "today_agri.main_card_loaded",
+                        message = "Today agri main card loaded",
+                        attrs = mapOf(
+                            "card_day" to normalizeTodayAgriCardDayKey(card.dateCn.orEmpty()),
+                            "item_count" to (card.items?.size ?: 0),
+                            "attempt" to (attempt + 1),
+                            "history_hydrated" to historyHydrationComplete
+                        )
+                    )
+                }
                 todayAgriCard = card
                 return@LaunchedEffect
             }

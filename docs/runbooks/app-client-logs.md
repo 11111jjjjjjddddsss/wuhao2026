@@ -43,6 +43,8 @@
 - `entitlement.fetch_failed`
 - `gift_card.redeem_failed`
 - `today_agri.fetch_failed`
+- `today_agri.main_card_loaded`
+- `today_agri.main_card_visible`
 - `today_agri.recent_fetch_failed`
 - `support.summary_fetch_failed`
 - `support.messages_fetch_failed`

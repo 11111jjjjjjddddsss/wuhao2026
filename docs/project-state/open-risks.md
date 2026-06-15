@@ -52,6 +52,7 @@
 - 风险补充：2026-06-15 按用户视频里“生成中文字有点往下掉又上来”的体感，`onAdvance` 已去掉写入新内容前的程序化底部锚定，改为依赖内容提交后的 `SideEffect` / `requestScrollToItem` 下一次 remeasure 锚定，避免同一批 reveal 前后两次锚点抢节奏。该改动仍保留边生成边渲染，不恢复 overlay、反向列表、小分割、raw delta 或 scrollBy；仍需真机长回复复测加粗、编号、表格、今日农情同屏和手动上滑 / 回底。
 - 风险补充：2026-06-15 按用户视频继续深查 streaming 渲染和滚动：保留 `SideEffect` 同帧底部锚定，不恢复 overlay、反向列表、小分割或 raw delta；`ChatScrollCoordinator.kt` 已收窄 streaming 期间的滚动归因，避免把同帧锚定 / 内部 remeasure 造成的 `isScrollInProgress` 当成用户浏览而短暂停 AutoFollow。`ChatStreamingRenderer.kt` 新增 streaming-aware inline Markdown 子集，加粗、斜体、行内代码和链接在生成中尽量实时渲染，streaming 帧如果刚好停在待续的 `**`、`*` 或反引号也不再短暂露 raw marker，DONE 后按打字节奏 drain 本地 buffer，不再一口气 flush 尾段。当前 renderer 仍是轻量子集，不是全量 Markwon / CommonMark / GFM；复杂 Markdown 能力若要扩大，应另起受控评估，不在这条滚动修复里顺手替换渲染引擎。仍需用户用真机复测长回复、加粗 / 链接 / 表格样本、清数据首屏、今日农情卡片和手动上滑 / 回底。
 - 风险补充：2026-06-15 今日农情视觉时间线插入已补单测，覆盖只有卡片、卡片锚在真实消息后、原锚点被 30 轮 UI 窗口裁掉后落到历史提示后；`SessionApi.resetUiRuntimeForCleanState()` 也不再清空共享 handler 的全部回调，只取消当前 SSE。该收口降低清空历史时误取消设置 / 会员 / 反馈 / 更新回调的风险，但仍需真机继续看清数据首屏、后续发送自然上移和长回复滚动稳定性。
+- 风险补充：2026-06-15 用户反馈同一旧包“设置里能看到今日农情，主界面文本区没有”；生产日志显示今日农情已生成，设置页历史接口和主界面 `/api/today-agri-card` 都返回 200，且未见 `today_agri.fetch_failed`。当前手机仍是 2026-06-14 21:31 左右安装的旧 debug 包，后续提交 `29284b01 Restore today agri card after remote hydrate` 和本轮新增的 `today_agri.main_card_loaded / today_agri.main_card_visible` 诊断尚未在真机复测；因此该项仍保持观察，下一次应先安装最新 debug 包，再看主界面卡片是否出现，并用后台 App 日志确认是“已加载 / 已插入 / 视觉不可见”哪一层。
 - 后续动作：把当前正向列表滚动链作为稳定基线保留；短期只做边角验证和低风险清理，不再主动重构滚动主链
 
 ## R5 聊天页主文件偏重但暂不影响运行时主链

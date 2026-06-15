@@ -338,6 +338,10 @@ if ($failures.Count -eq 0) {
         "Chat startup must log when initial bottom calibration completes."
     Require-Match $failures $chatScreen 'ui\.chat_startup_bottom_snap_pending' `
         "Chat startup must log a warning when bottom calibration remains pending after retries."
+    Require-Match $failures $chatScreen 'today_agri\.main_card_loaded' `
+        "Chat startup must log when the today agri main card is loaded for diagnostics."
+    Require-Match $failures $chatScreen 'today_agri\.main_card_visible' `
+        "Chat startup must log when the today agri main card is inserted into the visible timeline."
     $settingsLabelMembership = [regex]::Escape("$([char]0x4f1a)$([char]0x5458)$([char]0x4e2d)$([char]0x5fc3)")
     $settingsLabelAccount = [regex]::Escape("$([char]0x8d26)$([char]0x53f7)$([char]0x7ba1)$([char]0x7406)")
     $settingsLabelSupport = [regex]::Escape("$([char]0x5e2e)$([char]0x52a9)$([char]0x4e0e)$([char]0x53cd)$([char]0x9988)")

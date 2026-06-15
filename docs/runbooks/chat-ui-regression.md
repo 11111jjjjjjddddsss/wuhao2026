@@ -34,7 +34,7 @@
 - 当前 `ChatStreamingRenderer.kt` 是移动聊天轻量 Markdown 子集渲染器，不是 Markwon / CommonMark / GFM 全量引擎。支持段落、标题、列表、引用、加粗、斜体、行内代码、Markdown 链接、裸 URL、emoji / 普通 Unicode；标准 Markdown 表格降级成普通项目行文本，代码块内的 `|` 不做表格降级。复杂嵌套列表、GFM 表格网格、代码高亮、数学公式、Mermaid、图片 Markdown 和任意 HTML 不作为当前主聊天承诺能力
 - 清除 App 数据 / 缓存属于常规用户路径，不再按极端场景处理。清数据后本地登录态、DataStore、私有数据库和缓存可以消失，但固定 UI 默认样式、设置页入口、账号管理条目、登录页和主聊天基础布局必须全部来自当前 APK 代码；手机号账号、会员、额度、礼品卡、反馈、聊天历史和今日农情等业务数据应在重新登录后从后端恢复。本地缓存只用于加速首屏和减少闪烁，不能成为新 UI 是否存在、默认菜单是否出现、启动是否贴底的唯一来源。
 - `scripts/check-android-build-parity.ps1` 需要同时挡住 clean-state 相关回退：启动贴底不能把本地消息存在误判为已完成；设置页默认入口必须包含会员中心、账号管理、帮助与反馈、今日农情、检查更新、礼品卡、服务协议和退出登录；账号管理默认条目必须包含手机号、清理临时缓存、删除历史对话、退出登录和注销账号。
-- App 自动日志会记录清数据 / 登录后可查的安全诊断事件：`ui.chat_startup_state`、`ui.chat_startup_bottom_snap_done`、`ui.chat_startup_bottom_snap_pending`、`ui.settings_main_opened`、`ui.account_management_opened`。这些事件只允许带布尔状态、数量和阶段，不允许带聊天正文、完整手机号、图片 URL、token、密钥或用户输入内容；排查 UI 回退时先查这些事件，再对照截图和真机 logcat。
+- App 自动日志会记录清数据 / 登录后可查的安全诊断事件：`ui.chat_startup_state`、`ui.chat_startup_bottom_snap_done`、`ui.chat_startup_bottom_snap_pending`、`today_agri.main_card_loaded`、`today_agri.main_card_visible`、`ui.settings_main_opened`、`ui.account_management_opened`。这些事件只允许带布尔状态、数量、日期键和阶段，不允许带聊天正文、今日农情标题 / 摘要、完整手机号、图片 URL、token、密钥或用户输入内容；排查 UI 回退或主聊天今日农情不显示时先查这些事件，再对照截图和真机 logcat。
 
 ## 禁止回归的旧链
 
