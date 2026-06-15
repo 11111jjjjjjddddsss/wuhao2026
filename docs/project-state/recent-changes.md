@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“图片短留存要省钱，也要能证明规则没漂”的角度收紧 OSS 生命周期巡检：`check-resource-capacity.ps1` 现在会解析阿里云 OSS 生命周期 XML，逐条确认 `uploads/` 问诊图规则为启用且 3 天过期、`support/` 帮助反馈图规则为启用且 30 天过期，并要求两条规则都配置 1 天未完成分片清理；输出会显示 `lifecycle prefix=... status=... expiration_days=... abort_multipart_days=...`，避免旧文本包含式检查把不同规则拼成假绿。同步更新 OSS / 资源容量 runbook 和项目记忆，明确图片删除前仍可能产生少量存储、请求、生命周期处理和下载流量成本，但当前 100GB 存储包、压图和短生命周期足够早期使用。本轮不修改 Android、后端业务接口、三份提示词、模型输出过滤、支付真实接入或主聊天滚动链。
+
 - 继续从“后台监控面板也要看到账单 / 套餐确认”的角度补上线人工项：`server-go` 的 `/admin-api/v1/monitoring` 现在会在 `launch_readiness` 里返回“费用 / 套餐成本”人工确认项，提示通过 `check-aliyun-costs.ps1` 或上线总门禁确认账户余额、DYPNS / 融合认证套餐处置、短信套餐余量、qwen-plus 资源包和百炼节省计划；前端已有人工确认区和正式上架检查会展示该项。后台不实时读取阿里云费用中心，不持有阿里云密钥，也不保存账单敏感截图、AccessKey 或密钥。后端单测和 `check-admin-surface.mjs` 已锁住该项。该后端改动已通过 `scripts/deploy-ecs-server.ps1` 部署到生产，当前 Nginx active upstream 与后台 `/admin-api/` upstream 同为 `3001`，公网黑盒 `status=ready`。本轮不修改 Android、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。
 
 - 继续按“总门禁别漏账单和套餐成本”的口径把费用中心总账巡检接进 [check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1)：云资源段现在会调用 `check-aliyun-costs.ps1`，并把非 ready 结果显示为独立的 `aliyun costs` attention，用于提醒 DYPNS / 融合认证套餐仍存在、短信套餐包余额仍需控制台确认、模型资源包 / 节省计划或当月账单需要关注。这是经营成本提醒，不代表 ECS、后端、Android 或监控服务不可用；日常看报告可继续用 `-AllowAttentionExitZero`，正式 `-ReleaseGate` 仍要求 attention 被人工处理或确认。本轮只改只读门禁和项目记忆，不修改 Android、后端业务逻辑、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。

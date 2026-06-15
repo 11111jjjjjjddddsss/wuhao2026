@@ -208,6 +208,43 @@ function Get-NumericSamples {
     return @($numbers)
 }
 
+function ConvertFrom-OssLifecycleText {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+    $start = $Text.IndexOf("<?xml", [StringComparison]::OrdinalIgnoreCase)
+    if ($start -lt 0) {
+        $start = $Text.IndexOf("<LifecycleConfiguration", [StringComparison]::OrdinalIgnoreCase)
+    }
+    $endTag = "</LifecycleConfiguration>"
+    $end = $Text.IndexOf($endTag, [StringComparison]::OrdinalIgnoreCase)
+    if ($start -lt 0 -or $end -lt 0) {
+        return $null
+    }
+    $xmlText = $Text.Substring($start, $end + $endTag.Length - $start)
+    try {
+        return [xml]$xmlText
+    } catch {
+        return $null
+    }
+}
+
+function Get-XmlNodeText {
+    param(
+        [object]$Node,
+        [string]$XPath
+    )
+    if ($null -eq $Node) {
+        return ""
+    }
+    $found = $Node.SelectSingleNode($XPath)
+    if ($null -eq $found) {
+        return ""
+    }
+    return ([string]$found.InnerText).Trim()
+}
+
 Write-Host "== ECS instance =="
 $ecsList = Invoke-JsonCommand @("aliyun", "ecs", "DescribeInstances", "--RegionId", $RegionId, "--PageSize", "100")
 $ecs = @($ecsList.Instances.Instance) | Where-Object { $_.InstanceId -eq $EcsInstanceId } | Select-Object -First 1
@@ -404,11 +441,41 @@ if ($ossDu -match 'total du size\(MB\):([0-9.]+)') {
     }
 }
 $ossLifecycle = Invoke-TextCommand @("aliyun", "oss", "lifecycle", "--method", "get", "oss://$OssBucket")
-if ($ossLifecycle -notmatch '<Prefix>uploads/</Prefix>' -or $ossLifecycle -notmatch '<Days>3</Days>') {
-    Add-WarningItem "oss_uploads_lifecycle_not_3_days"
-}
-if ($ossLifecycle -notmatch '<Prefix>support/</Prefix>' -or $ossLifecycle -notmatch '<Days>30</Days>') {
-    Add-WarningItem "oss_support_lifecycle_not_30_days"
+Write-Host $ossLifecycle.Trim()
+$ossLifecycleDoc = ConvertFrom-OssLifecycleText $ossLifecycle
+if ($null -eq $ossLifecycleDoc) {
+    Add-WarningItem "oss_lifecycle_parse_failed:$OssBucket"
+} else {
+    $rules = @($ossLifecycleDoc.LifecycleConfiguration.Rule)
+    $expectedLifecycleRules = @(
+        [pscustomobject]@{ Prefix = "uploads/"; ExpirationDays = 3; ExpirationWarning = "oss_uploads_lifecycle_not_3_days"; AbortWarning = "oss_uploads_abort_multipart_not_1_day" },
+        [pscustomobject]@{ Prefix = "support/"; ExpirationDays = 30; ExpirationWarning = "oss_support_lifecycle_not_30_days"; AbortWarning = "oss_support_abort_multipart_not_1_day" }
+    )
+    foreach ($expectedRule in $expectedLifecycleRules) {
+        $rule = @($rules | Where-Object {
+            (Get-XmlNodeText $_ "Prefix") -eq $expectedRule.Prefix
+        } | Select-Object -First 1)
+        if ($rule.Count -eq 0) {
+            Add-WarningItem "oss_lifecycle_rule_missing:$($expectedRule.Prefix)"
+            continue
+        }
+        $ruleNode = $rule[0]
+        $status = Get-XmlNodeText $ruleNode "Status"
+        $expirationDaysText = Get-XmlNodeText $ruleNode "Expiration/Days"
+        $abortDaysText = Get-XmlNodeText $ruleNode "AbortMultipartUpload/Days"
+        Write-Host "lifecycle prefix=$($expectedRule.Prefix) status=$status expiration_days=$expirationDaysText abort_multipart_days=$abortDaysText"
+        if ($status -ne "Enabled") {
+            Add-WarningItem "oss_lifecycle_rule_not_enabled:$($expectedRule.Prefix)"
+        }
+        $expirationDays = 0
+        if (-not [int]::TryParse($expirationDaysText, [ref]$expirationDays) -or $expirationDays -ne [int]$expectedRule.ExpirationDays) {
+            Add-WarningItem $expectedRule.ExpirationWarning
+        }
+        $abortDays = 0
+        if (-not [int]::TryParse($abortDaysText, [ref]$abortDays) -or $abortDays -ne 1) {
+            Add-WarningItem $expectedRule.AbortWarning
+        }
+    }
 }
 try {
     $ossEncryption = Invoke-TextCommand @("aliyun", "oss", "bucket-encryption", "--method", "get", "oss://$OssBucket")
