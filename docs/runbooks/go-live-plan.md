@@ -80,7 +80,7 @@
 .\scripts\check-launch-readiness.ps1
 ```
 
-默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、支付关闭护栏、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、费用中心总账巡检、短信发送统计和余额确认提示、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。支付关闭护栏在正式支付未配置时会显示 `payment closed guard` attention：它只证明 Android 购买入口仍关闭、生产开发期订单端点仍关闭、回调 URL 和 runbook 边界齐全，不代表真实支付已接入。费用中心总账巡检会调用 `check-aliyun-costs.ps1`，把 DYPNS / 融合认证套餐仍存在、短信套餐包余额仍需控制台确认、模型资源包或当月账单需要关注等输出为 `aliyun costs` attention；这是经营成本提醒，不代表 ECS / 后端不可用。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`，总门禁会把非 confirmed 状态保留为 attention。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
+默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、支付关闭护栏、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、费用中心总账巡检、短信发送统计和余额确认提示、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。支付关闭护栏在正式支付未配置时会显示 `payment closed guard` attention：它只证明 Android 购买入口仍关闭、生产开发期订单端点仍关闭、回调 URL 和 runbook 边界齐全，不代表真实支付已接入。费用中心总账巡检会调用 `check-aliyun-costs.ps1`，把短信套餐包余额仍需控制台确认、模型资源包或当月账单需要关注、DYPNS / 融合认证只需确认不再使用且不自动续费 / 不新增购买等输出为 `aliyun costs` attention；已购融合认证包本身按沉没成本处理，不再作为上线前必须退款 / 退订动作。这是经营成本提醒，不代表 ECS / 后端不可用。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`，总门禁会把非 confirmed 状态保留为 attention。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
 
 人工上线确认项用于把脚本无法自动证明的事项直接暴露在总门禁末尾。正式上架前逐项确认后，可在当前 PowerShell 临时设置对应环境变量为 `1 / true / yes / ok / ready / confirmed / done`；不要把这些确认变量写进仓库或长期 shell 配置。当前确认项包括：
 
@@ -146,6 +146,7 @@
 - 观察 RDS 会话连接、连接数利用率、TPS / QPS、慢查询、行锁、IOPS、ECS CPU / 内存，再决定是否调整 `MYSQL_MAX_OPEN_CONNS` 等连接池参数、ECS 规格 / 实例数或 Redis / 网关限流。
 - 帮助与反馈先用第一版网页后台处理；当前已接状态队列、搜索、关闭和重开，继续补正式坐席分配、标签、站外通知和消息保存 / 删除规则。
 - 后台第一阶段代码已覆盖按用户查看反馈 / 回复、用户额度查询、礼品卡、检查更新状态、检查更新发布历史、今日农情状态、App 日志和审计；上线后继续补公网黑盒自动定时通知、数据库只读脚本、检查更新 APK 上传 / 完整回滚入口和高风险动作二次确认。
+- 高风险后台动作继续按“默认不误伤用户资产”推进：帮助反馈的 `replied` 队列在页面上按“已处理/无需回复”展示，不代表已经给用户发了客服消息；用户最后发言后若没有后台回复，标记已处理必须填写备注。礼品卡生成不是假测试，生成后可兑换真实权益；后台要求二次输入张数确认。检查更新启用前必须核对 versionCode、HTTPS APK、SHA-256 和文件大小，并优先跑 `check-app-update-release-match.ps1` 对账。
 - 每次真实发版、回滚、查日志、查库、补权益或处理客服，都要把可执行入口回填到对应 runbook。
 
 ## 当前不要做

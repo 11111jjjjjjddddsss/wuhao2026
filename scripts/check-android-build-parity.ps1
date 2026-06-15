@@ -366,6 +366,16 @@ if ($failures.Count -eq 0) {
         "Chat startup must log when the today agri main card is loaded for diagnostics."
     Require-Match $failures $chatScreen 'today_agri\.main_card_visible' `
         "Chat startup must log when the today agri main card is inserted into the visible timeline."
+    Require-Match $failures $sessionApi 'fun\s+getTodayAgriCard\b(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return@use\s*\}' `
+        "Today agri fetch must always invoke its callback when a reset makes the in-flight request stale."
+    Require-Match $failures $sessionApi 'fun\s+getSnapshot\b(?s:.*?)fun\s+attempt\s*\(\s*networkRetry:\s*Int\s*\)\s*\{(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return\s*\}' `
+        "Session snapshot fetch must callback on stale start so clean-state resets cannot leave hydration pending."
+    Require-Match $failures $sessionApi 'fun\s+getSnapshot\b(?s:.*?)onResult\s*=\s*\{\s*response\s*->(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return@use\s*\}' `
+        "Session snapshot fetch must callback when a stale HTTP response arrives after a runtime reset."
+    Require-Match $failures $sessionApi 'fun\s+getSnapshot\b(?s:.*?)onFailure\s*=\s*\{\s*error\s*->(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return@enqueueWithRetry401\s*\}' `
+        "Session snapshot fetch must callback when a stale failure arrives after a runtime reset."
+    Require-Match $failures $sessionApi 'fun\s+getSnapshot\b(?s:.*?)postDelayed\s*\(\s*\{(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return@postDelayed\s*\}' `
+        "Session snapshot delayed retry must callback when a reset happens before retry execution."
     $settingsLabelMembership = [regex]::Escape("$([char]0x4f1a)$([char]0x5458)$([char]0x4e2d)$([char]0x5fc3)")
     $settingsLabelAccount = [regex]::Escape("$([char]0x8d26)$([char]0x53f7)$([char]0x7ba1)$([char]0x7406)")
     $settingsLabelSupport = [regex]::Escape("$([char]0x5e2e)$([char]0x52a9)$([char]0x4e0e)$([char]0x53cd)$([char]0x9988)")

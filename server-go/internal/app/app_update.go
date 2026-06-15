@@ -177,9 +177,22 @@ func androidUpdateIgnoredReason(cfg androidUpdateConfig) string {
 }
 
 func androidUpdateConfigValid(cfg androidUpdateConfig) bool {
+	if !cfg.Enabled && androidUpdateConfigEmpty(cfg) {
+		return true
+	}
 	return cfg.LatestVersionCode > 0 &&
 		(strings.TrimSpace(cfg.APKURL) == "" || isHTTPSURL(cfg.APKURL)) &&
 		cfg.FileSizeBytes <= maxAndroidAPKBytes
+}
+
+func androidUpdateConfigEmpty(cfg androidUpdateConfig) bool {
+	return cfg.LatestVersionCode <= 0 &&
+		strings.TrimSpace(cfg.LatestVersionName) == "" &&
+		strings.TrimSpace(cfg.APKURL) == "" &&
+		strings.TrimSpace(cfg.APKChecksumSHA256) == "" &&
+		strings.TrimSpace(cfg.ReleaseNotes) == "" &&
+		!cfg.ForceUpdate &&
+		cfg.FileSizeBytes <= 0
 }
 
 func androidUpdateDownloadArtifactsComplete(cfg androidUpdateConfig) bool {

@@ -1012,7 +1012,10 @@ object SessionApi {
             },
             onResult = { response ->
                 response.use {
-                    if (isRuntimeStale()) return@use
+                    if (isRuntimeStale()) {
+                        onResult(null)
+                        return@use
+                    }
                     if (!it.isSuccessful) {
                         reportClientLog(
                             level = if (it.code >= 500) "error" else "warn",
@@ -1621,7 +1624,10 @@ object SessionApi {
             return
         }
         fun attempt(networkRetry: Int) {
-            if (isRuntimeStale()) return
+            if (isRuntimeStale()) {
+                onResult(null)
+                return
+            }
             enqueueWithRetry401(
                 requestFactory = { token ->
                     val builder = applyIdentityHeaders(
@@ -1635,6 +1641,7 @@ object SessionApi {
                 onResult = { response ->
                     response.use {
                         if (isRuntimeStale()) {
+                            onResult(null)
                             return@use
                         }
                         if (!it.isSuccessful) {
@@ -1699,11 +1706,17 @@ object SessionApi {
                     }
                 },
                 onFailure = { error ->
-                    if (isRuntimeStale()) return@enqueueWithRetry401
+                    if (isRuntimeStale()) {
+                        onResult(null)
+                        return@enqueueWithRetry401
+                    }
                     if (networkRetry < SNAPSHOT_NETWORK_RETRY_MAX) {
                         val retryDelayMs = 300L * (networkRetry + 1)
                         mainHandler.postDelayed({
-                            if (isRuntimeStale()) return@postDelayed
+                            if (isRuntimeStale()) {
+                                onResult(null)
+                                return@postDelayed
+                            }
                             attempt(networkRetry + 1)
                         }, retryDelayMs)
                     } else {

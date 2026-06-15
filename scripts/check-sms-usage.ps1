@@ -217,7 +217,7 @@ for ($attempt = 0; $attempt -le $retryLimit; $attempt++) {
     }
 }
 
-$stats | ConvertTo-Json -Depth 10
+Format-RedactedJson $stats
 $data = Get-JsonPropertyValue $stats "Data"
 $totalSize = Get-IntProperty $data "TotalSize"
 $totalCount = [int64]0

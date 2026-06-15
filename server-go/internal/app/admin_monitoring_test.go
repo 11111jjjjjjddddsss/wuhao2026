@@ -598,6 +598,11 @@ func TestAndroidUpdateConfigValidityContract(t *testing.T) {
 		wantArtifacts bool
 	}{
 		{
+			name:      "disabled empty config is a valid stop state",
+			cfg:       androidUpdateConfig{Enabled: false},
+			wantValid: true,
+		},
+		{
 			name:      "version only is valid config but no download artifacts",
 			cfg:       androidUpdateConfig{LatestVersionCode: 4},
 			wantValid: true,

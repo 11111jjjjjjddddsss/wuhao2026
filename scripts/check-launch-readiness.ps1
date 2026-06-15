@@ -213,7 +213,7 @@ function Invoke-AliyunCostGateStep {
             return
         }
         $statusText = if ([string]::IsNullOrWhiteSpace($costStatus)) { "not_reported" } else { $costStatus }
-        $message = "Aliyun cost guard requires review ($statusText); check DYPNS/fusion package, SMS package balance, model plan/resource package, and abnormal monthly spend"
+        $message = "Aliyun cost guard requires review ($statusText); check SMS package balance, model plan/resource package, abnormal monthly spend, and DYPNS/fusion only for no-new-use/no-auto-renew status"
         Add-GateResult -Name "aliyun costs" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
         Write-Warning "step_status=skipped_or_attention seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
     } catch {

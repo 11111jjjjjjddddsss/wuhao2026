@@ -618,7 +618,7 @@ async function giftCardsPage(): Promise<string> {
       ${kpi("完整卡码", canViewCodes ? "财务可见" : "仅财务可见", lastGiftCardCodes.length ? "本次新生成在下方" : canViewCodes ? "列表可直接复制" : "当前角色只看尾号/脱敏码")}
     </section>
     <div class="grid two" style="margin-top:12px">
-      ${notice("现在可以怎么用", "这里生成 1 张正式礼品卡，复制完整卡码到 Android 设置里的“礼品卡”兑换；成功后本页按账号ID、批次或卡尾号都能追到激活记录。", "info")}
+      ${notice("正式权益提醒", "这里不是假测试。生成后的礼品卡可兑换真实会员权益；需要测试时只生成 1 张，并在 Android 设置里的“礼品卡”入口兑换后回到本页追溯。", "warn")}
       ${notice("当前口径", `当前“可兑换卡”只统计已经生效且未过期的 active 卡；全量 active 卡共 ${summary.active_count} 张。完整卡码不要写进备注、作废原因、审计说明或导出文件。`, "warn")}
     </div>
     <section class="card">
@@ -739,7 +739,7 @@ async function supportPage(): Promise<string> {
     }
   }
   return `
-    ${pageHead("帮助反馈", "按待回复、已回复、已关闭队列处理用户反馈；回复和状态动作都会写审计。", "support")}
+    ${pageHead("帮助反馈", "按待回复、已处理、已关闭队列处理用户反馈；回复和状态动作都会写审计。", "support")}
     ${supportFilterForm()}
     <div class="split">
       <section class="card list-pane">
@@ -875,7 +875,7 @@ async function insightsPage(): Promise<string> {
       ${kpi("7天图片问诊", day7?.image_chat_rounds ?? 0, `${formatPercent(day7?.image_chat_ratio ?? 0)} 占比`)}
       ${kpi("7天新增用户", day7?.new_users ?? 0, `${day7?.recent_auth_sessions ?? 0} 次新登录 session`)}
       ${kpi("7天 App 异常", (day7?.app_errors ?? 0) + (day7?.app_warns ?? 0), `error ${day7?.app_errors ?? 0} / warn ${day7?.app_warns ?? 0}`)}
-      ${kpi("待回复反馈", quality.support_needs_reply ?? 0, `${quality.support_open ?? 0} open / ${quality.support_replied ?? 0} replied`)}
+      ${kpi("待回复反馈", quality.support_needs_reply ?? 0, `${quality.support_open ?? 0} 待回复 / ${quality.support_replied ?? 0} 已处理`)}
       ${kpi("可兑换礼品卡", quality.gift_card_redeemable ?? 0, `24h 失败 ${quality.gift_card_failed_attempts ?? 0}`)}
     </section>
     <div class="grid two">
@@ -897,7 +897,7 @@ async function insightsPage(): Promise<string> {
               ${metricRow("农情更新时间", formatTime(quality.daily_agri_updated_at))}
               ${metricRow("检查更新", quality.app_update_enabled ? (quality.app_update_ready ? "已启用，物料已齐" : "已启用，物料未齐") : "已停更")}
               ${metricRow("更新版本", quality.app_update_version_code ? `${quality.app_update_version_name || ""} (${quality.app_update_version_code})` : "未配置")}
-              ${metricRow("反馈队列", `${quality.support_open ?? 0} 待回复 / ${quality.support_replied ?? 0} 已回复 / ${quality.support_closed ?? 0} 已关闭`)}
+              ${metricRow("反馈队列", `${quality.support_open ?? 0} 待回复 / ${quality.support_replied ?? 0} 已处理 / ${quality.support_closed ?? 0} 已关闭`)}
               ${metricRow("礼品卡异常", `${quality.gift_card_failed_attempts ?? 0} 次 24h 失败尝试`)}
             </tbody>
           </table>
@@ -1313,6 +1313,12 @@ async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
   ) {
     return;
   }
+  const typedConfirmation = window.prompt(`请输入 ${quantity} 确认生成真实礼品卡。`);
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== String(quantity)) {
+    window.alert("输入的确认张数不一致，已取消生成。");
+    return;
+  }
   const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
   if (button) button.disabled = true;
   try {
@@ -1361,7 +1367,7 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     return;
   }
   const confirmText = enabled
-    ? `确认对外启用普通检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\n\n保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。更新说明留空时默认显示“修复已知问题，优化使用体验。”`
+    ? `确认对外启用普通检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\nSHA-256: ${apkSHA256}\n文件大小: ${fileSizeBytes} bytes\n\n请先跑 check-app-update-release-match.ps1 核对 APK 包名、签名、versionCode、SHA-256 和文件大小。保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。更新说明留空时默认显示“修复已知问题，优化使用体验。”`
     : "确认保存为停更状态？停更后，App 启动静默检查和用户手动检查都不会拿到新包。";
   if (!window.confirm(confirmText)) {
     return;
@@ -1490,14 +1496,22 @@ async function updateSupportConversationStatus(userID: string, status: string, b
   if (!userID || !status) return;
   const labels: Record<string, string> = {
     open: "重新打开为待回复",
-    replied: "标记为已回复",
+    replied: "标记为已处理/无需回复",
     closed: "关闭会话",
   };
   let note = "";
-  if (status === "closed") {
-    const input = window.prompt("关闭原因，可留空。不要写手机号全文、密钥或内部敏感信息。");
+  if (status === "replied" || status === "closed") {
+    const input = window.prompt(
+      status === "replied"
+        ? "处理备注必填。只写为什么无需继续回复，不要写手机号全文、密钥或内部敏感信息。"
+        : "关闭原因，可留空。不要写手机号全文、密钥或内部敏感信息。",
+    );
     if (input === null) return;
     note = input.trim();
+    if (status === "replied" && !note) {
+      window.alert("标记为已处理/无需回复时，处理备注不能为空。");
+      return;
+    }
   }
   if (!window.confirm(`确认${labels[status] || "更新状态"}？`)) return;
   await withButtonBusy(button, "更新中", async () => {
@@ -2239,7 +2253,7 @@ function supportFilterForm(): string {
     <form id="support-filter-form" class="filters support-filters">
       <label class="field">
         <span>队列</span>
-        ${selectHTML("status", pageState.supportStatus, [["", "全部"], ["open", "待回复"], ["replied", "已回复"], ["closed", "已关闭"]])}
+        ${selectHTML("status", pageState.supportStatus, [["", "全部"], ["open", "待回复"], ["replied", "已处理"], ["closed", "已关闭"]])}
       </label>
       <label class="field wide">
         <span>搜索</span>
@@ -2299,7 +2313,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
         ? `
           <div class="row-actions" style="margin-bottom:12px">
             <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="open" type="button">重开待回复</button>
-            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="replied" type="button">标已回复</button>
+            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="replied" type="button">已处理/无需回复</button>
             <button class="button danger" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="closed" type="button">关闭</button>
           </div>
           <form id="support-reply-form" class="stack">
@@ -2363,7 +2377,7 @@ function supportStatusPill(item: AdminSupportConversation): string {
   const status = item.status || (item.needs_reply ? "open" : "replied");
   if (status === "closed") return statusPill("已关闭", "info");
   if (status === "open" || item.needs_reply) return statusPill("待回复", "warn");
-  return statusPill("已回复", "ok");
+  return statusPill("已处理", "ok");
 }
 
 function appLogsTable(rows: ClientAppLogEntry[]): string {
@@ -2800,7 +2814,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
   const giftReady = (queues.gift_card_batch_count ?? 0) > 0 && (queues.gift_card_active ?? 0) > 0;
   const giftLevel = queues.gift_card_failed_attempts ? "warn" : giftReady ? "ok" : "warn";
   const giftBody = `${queues.gift_card_batch_count ?? 0} 个批次 / ${queues.gift_card_total ?? 0} 张总卡；${queues.gift_card_redeemed} 张已兑换；24h 失败 ${queues.gift_card_failed_attempts} 次`;
-  const supportBody = `${queues.support_open ?? queues.support_needs_reply} 待回复 / ${queues.support_replied ?? 0} 已回复 / ${queues.support_closed ?? 0} 已关闭`;
+  const supportBody = `${queues.support_open ?? queues.support_needs_reply} 待回复 / ${queues.support_replied ?? 0} 已处理 / ${queues.support_closed ?? 0} 已关闭`;
   const accountDeletionPending = queues.account_deletion_pending ?? 0;
   const accountDeletionOverdue = queues.account_deletion_overdue ?? 0;
   const accountDeletionBody = accountDeletionOverdue
@@ -3423,7 +3437,7 @@ function monitoringDecisionGrid(report: AdminMonitoring, today: AdminMonitoring[
       ${decisionCard(
         "客服反馈",
         report.queues.support_needs_reply ? `${report.queues.support_needs_reply} 待回复` : "队列正常",
-        `${report.queues.support_open ?? report.queues.support_needs_reply} 待回复 / ${report.queues.support_replied ?? 0} 已回复 / ${report.queues.support_closed ?? 0} 已关闭。`,
+        `${report.queues.support_open ?? report.queues.support_needs_reply} 待回复 / ${report.queues.support_replied ?? 0} 已处理 / ${report.queues.support_closed ?? 0} 已关闭。`,
         report.queues.support_needs_reply ? "warn" : "ok",
         "support",
       )}
@@ -3460,8 +3474,8 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
   const updateReady = appUpdate.enabled && appUpdate.config_valid && appUpdate.download_artifacts_complete;
   const updateStatus =
     updateTrouble > 0 ? "看日志" :
-    !appUpdate.config_valid ? "配置异常" :
     !appUpdate.enabled ? "已停更" :
+    !appUpdate.config_valid ? "配置异常" :
     !appUpdate.download_artifacts_complete ? "物料未齐" :
     updateLogCount > 0 ? "有检查" :
     "可测";
@@ -3471,8 +3485,8 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
     "warn";
   const updateBody =
     updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" :
-    !appUpdate.config_valid ? "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。" :
     !appUpdate.enabled ? "当前处于停更状态，旧版 App 点“检查更新”不会拿到新包；发版前需要启用并完成真机覆盖安装验证。" :
+    !appUpdate.config_valid ? "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。" :
     !appUpdate.download_artifacts_complete ? "正式下载物料未齐，后端不会下发新包；必须补 HTTPS APK、SHA-256 和文件大小。" :
     updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号，覆盖安装未跑完前不算正式验收。" :
     "点 App 内检查更新，重点看 HTTPS APK、SHA-256、大小、包名和安装未知应用权限。";

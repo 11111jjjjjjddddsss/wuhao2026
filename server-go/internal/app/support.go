@@ -38,6 +38,8 @@ const (
 	supportGreetingAutoReplyBody                = "您好，请说明您遇到的问题或反馈内容，客服会在本页跟进回复。"
 )
 
+var errSupportStatusNoteRequired = errors.New("support status note required")
+
 var errSupportMessageBusy = errors.New("support message busy")
 
 type SupportMessage struct {
@@ -875,6 +877,12 @@ func (s *Store) UpdateSupportConversationStatus(ctx context.Context, userID stri
 	}
 	if !latestID.Valid || messageCount.Int64 == 0 {
 		return sql.ErrNoRows
+	}
+	if status == "replied" &&
+		strings.TrimSpace(note) == "" &&
+		latestUserAt.Valid &&
+		(!latestAdminAt.Valid || latestUserAt.Int64 > latestAdminAt.Int64) {
+		return errSupportStatusNoteRequired
 	}
 	var closedAt any
 	if status == "closed" {

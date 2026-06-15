@@ -52,6 +52,12 @@ function expectAdminPattern(name, pattern) {
   }
 }
 
+function rejectAdminPattern(name, pattern) {
+  if (pattern.test(adminMain)) {
+    fail.push(`${name}: forbidden admin UI contract present`);
+  }
+}
+
 function expectServerPattern(name, pattern) {
   if (!pattern.test(adminAPI)) {
     fail.push(`${name}: missing expected admin API contract`);
@@ -152,6 +158,15 @@ expectAdminPattern("readiness separates manual confirmation", /人工确认/);
 expectAdminPattern("readiness keeps launch blockers visible", /上架阻塞/);
 expectServerPattern("launch readiness includes cost confirmation", /费用 \/ 套餐成本/);
 expectServerPattern("launch readiness cost item points to cost script", /check-aliyun-costs\.ps1/);
+expectAdminPattern("support handled action is not phrased as already replied", /已处理\/无需回复/);
+expectAdminPattern("support handled action requires note", /status === "replied" && !note/);
+rejectAdminPattern("support action must not say 标已回复", /标已回复/);
+expectServerPattern("support handled status has note-required API guard", /support_status_note_required/);
+expectAdminPattern("gift card generation emphasizes real entitlement", /这里不是假测试/);
+expectAdminPattern("gift card generation requires typed quantity confirmation", /请输入 \$\{quantity\} 确认生成真实礼品卡/);
+expectAdminPattern("app update enable confirm shows sha256", /SHA-256: \$\{apkSHA256\}/);
+expectAdminPattern("app update enable confirm shows file size", /文件大小: \$\{fileSizeBytes\} bytes/);
+expectAdminPattern("app update enable confirm points to release-match script", /check-app-update-release-match\.ps1/);
 [
   "auth.login_network_failed",
   "auth.sms_send_failed",

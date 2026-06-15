@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"sort"
 	"strconv"
@@ -822,7 +823,10 @@ func (s *Server) handleAdminUpdateSupportConversationStatus(w http.ResponseWrite
 	if err := s.store.UpdateSupportConversationStatus(r.Context(), userID, status, admin.User.Username, note, time.Now().UnixMilli()); err != nil {
 		httpStatus := http.StatusInternalServerError
 		code := "internal_error"
-		if err == sql.ErrNoRows {
+		if errors.Is(err, errSupportStatusNoteRequired) {
+			httpStatus = http.StatusBadRequest
+			code = "support_status_note_required"
+		} else if err == sql.ErrNoRows {
 			httpStatus = http.StatusNotFound
 			code = "support_conversation_not_found"
 		}
@@ -2182,12 +2186,12 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	})
 	updateStatus := "attention"
 	updateBody := "版本号、HTTPS APK、SHA-256 和文件大小已齐，可进入真机覆盖安装验证；完成旧包覆盖安装前不要标成正式验收。"
-	if !queues.AppUpdate.ConfigValid {
-		updateStatus = "blocked"
-		updateBody = "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。"
-	} else if !queues.AppUpdate.Enabled {
+	if !queues.AppUpdate.Enabled {
 		updateStatus = "attention"
 		updateBody = "检查更新当前处于停更状态；用户点“检查更新”不会拿到新包。"
+	} else if !queues.AppUpdate.ConfigValid {
+		updateStatus = "blocked"
+		updateBody = "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。"
 	} else if !queues.AppUpdate.DownloadArtifactsComplete {
 		updateStatus = "attention"
 		updateBody = "检查更新配置合法，但正式下载物料未齐；上架前必须补 HTTPS APK、SHA-256 和文件大小，否则后端不会下发新包。"
@@ -2249,8 +2253,8 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:       "费用 / 套餐成本",
 		Status:      "attention",
-		Body:        "费用中心总账巡检已能看账户余额、当月账单、模型资源包和有效实例；DYPNS / 融合认证套餐仍需确认是否取消、退款或关闭续费，模型资源包和节省计划按真实用量再决定。",
-		ConfirmHint: "运行 check-aliyun-costs.ps1 或上线总门禁，确认账户余额、DYPNS / 融合认证套餐处置、短信套餐余量、qwen-plus 资源包和百炼节省计划；不要把账单敏感截图、AccessKey 或密钥写进仓库、日志或后台备注。",
+		Body:        "费用中心总账巡检已能看账户余额、当月账单、模型资源包和有效实例；DYPNS / 融合认证已按已购沉没成本处理，新 Android 不再使用，后续只确认不自动续费、不新增购买；模型资源包和节省计划按真实用量再决定。",
+		ConfirmHint: "运行 check-aliyun-costs.ps1 或上线总门禁，确认账户余额、短信套餐余量、qwen-plus 资源包和百炼节省计划；DYPNS / 融合认证只确认新包不再使用且后续不自动续费 / 不新增购买。不要把账单敏感截图、AccessKey 或密钥写进仓库、日志或后台备注。",
 		Route:       "health",
 		Owner:       "运营 / 运维 / 财务",
 		Manual:      true,
@@ -2278,7 +2282,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Manual:      slsStatus == "attention",
 	})
 	supportStatus := "ready"
-	supportBody := "后台已支持待回复 / 已回复 / 已关闭队列、搜索、回复、关闭和重开；正式运营后再补坐席分配、标签、站外通知和保存 / 删除规则。"
+	supportBody := "后台已支持待回复 / 已处理 / 已关闭队列、搜索、回复、关闭和重开；正式运营后再补坐席分配、标签、站外通知和保存 / 删除规则。"
 	if queues.SupportNeedsReply > 0 {
 		supportStatus = "attention"
 		supportBody = "有用户反馈待回复；先处理，再继续公开测试。"
@@ -2328,7 +2332,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
 		{Title: "账号登录", Status: "partial", Body: "账号ID收敛、短信验证码登录和日志排障入口已接入；仍需真机收码并登录成功后才算上线验收。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
-		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已回复 / 已关闭队列，按账号ID / 手机号 / 最近消息搜索，发送后台回复并关闭或重开会话。", Route: "support"},
+		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已处理 / 已关闭队列，按账号ID / 手机号 / 最近消息搜索，发送后台回复并关闭或重开会话。", Route: "support"},
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；完整卡码仅财务角色可见。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},

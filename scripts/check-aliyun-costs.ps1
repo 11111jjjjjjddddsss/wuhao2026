@@ -16,6 +16,7 @@ $ErrorActionPreference = "Stop"
 
 $warnings = New-Object System.Collections.Generic.List[string]
 $errors = New-Object System.Collections.Generic.List[string]
+$DypnsFusionDisabledCutoffUtc = [DateTime]::Parse("2026-06-15T00:00:00Z").ToUniversalTime()
 
 function Add-WarningItem {
     param([string]$Message)
@@ -281,6 +282,15 @@ function Test-ResourcePackageSmsLike {
     return $text -match '(?i)sms|dysms|short\s*message|短信'
 }
 
+function Test-AutoRenewStatus {
+    param([string]$RenewStatus)
+    $normalized = (Format-InlineValue $RenewStatus)
+    if ($normalized -eq "-") {
+        return $false
+    }
+    return $normalized -match '(?i)auto.?renew|自动续费|AutoRenewal'
+}
+
 Write-Host "== Aliyun cost guard =="
 Write-Host "billing_cycle=$BillingCycle previous_billing_cycle=$PreviousBillingCycle monthly_attention_yuan=$MonthlyAttentionYuan"
 
@@ -329,7 +339,7 @@ foreach ($item in $nonZeroOverview) {
 
 $dypnsCost = (@($currentItems | Where-Object { [string]$_.ProductCode -eq "dypns" -or [string]$_.ProductName -match "号码认证" } | ForEach-Object { Get-Double $_.PretaxAmount }) | Measure-Object -Sum).Sum
 if ($dypnsCost -gt 0) {
-    Add-WarningItem "dypns_cost_present_new_android_no_longer_uses_fusion_auth:${BillingCycle}:$(Format-Money $dypnsCost)"
+    Write-Host "dypns_fusion_cost_note=sunk_cost_new_android_unused billing_cycle=$BillingCycle pretax_yuan=$(Format-Money $dypnsCost)"
 }
 $slsCost = (@($currentItems | Where-Object { [string]$_.ProductCode -eq "sls" -or [string]$_.ProductName -match "日志服务" } | ForEach-Object { Get-Double $_.PretaxAmount }) | Measure-Object -Sum).Sum
 if ($slsCost -ge $SlsMonthlyAttentionYuan) {
@@ -428,11 +438,23 @@ try {
         $productType = Format-InlineValue ([string]$instance.ProductType)
         $subscription = Format-InlineValue ([string]$instance.SubscriptionType)
         $status = Format-InlineValue ([string]$instance.Status)
+        $createTime = Format-InlineValue ([string]$instance.CreateTime)
         $endTime = Format-InlineValue ([string]$instance.EndTime)
         $renewStatus = Format-InlineValue ([string]$instance.RenewStatus)
-        Write-Host "available_instance product=$productCode type=$productType subscription=$subscription status=$status renew=$renewStatus end=$endTime id=$instanceId"
+        Write-Host "available_instance product=$productCode type=$productType subscription=$subscription status=$status renew=$renewStatus created=$createTime end=$endTime id=$instanceId"
         if ($productCode -eq "dypns" -and $subscription -eq "Subscription") {
-            Add-WarningItem "active_dypns_subscription_instance_review_cancel_or_no_renew:$instanceId"
+            Write-Host "dypns_fusion_instance_note=sunk_cost_new_android_unused_no_refund_required renew=$renewStatus end=$endTime id=$instanceId"
+            if (Test-AutoRenewStatus $renewStatus) {
+                Add-WarningItem "active_dypns_subscription_auto_renew_review_no_new_use:$instanceId"
+            }
+            try {
+                $createdUtc = [DateTime]::Parse([string]$instance.CreateTime).ToUniversalTime()
+                if ($createdUtc -gt $DypnsFusionDisabledCutoffUtc) {
+                    Add-WarningItem "new_dypns_subscription_after_fusion_auth_disabled:$instanceId"
+                }
+            } catch {
+                Add-WarningItem "dypns_subscription_create_time_unreadable:$instanceId"
+            }
         }
         $daysLeft = Get-DaysUntil ([string]$instance.EndTime)
         if ($null -ne $daysLeft -and $daysLeft -lt 60) {
@@ -446,7 +468,7 @@ try {
 
 Write-Host
 Write-Host "== interpretation =="
-Write-Host "cost_note=Prepaid ECS/RDS/Redis/domain/OSS/SMS package are mostly sunk or renewal costs; current monthly attention should focus on model usage, SMS PayAsYouGo, SLS growth, snapshots, and unused DYPNS renewal."
+Write-Host "cost_note=Prepaid ECS/RDS/Redis/domain/OSS/SMS/DYPNS packages are mostly sunk or renewal costs; DYPNS/fusion is no longer used by new Android and is treated as sunk cost unless auto-renew or new purchase appears; current monthly attention should focus on model usage, SMS PayAsYouGo, SLS growth, snapshots, and real renewal decisions."
 Write-Host "model_note=Early prompt tests can create spikes. Use recent daily average and resource package remaining tokens before buying more plans."
 Write-Host "storage_note=Ask images stay in OSS uploads/ for 3 days and support images in support/ for 30 days; current storage cost should stay tiny unless traffic or model image analysis grows."
 
