@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 按“所有成本都要能查、能解释、能控住”的口径补费用中心总账巡检：新增 `scripts/check-aliyun-costs.ps1`，通过阿里云 BSS OpenAPI 只读查询账户余额、当月 / 上月产品账单、当前月明细、百炼每日走势、有效资源包和有效实例，带费用中心偶发超时重试和请求签名 / 账号字段脱敏，不买资源、不续费、不释放实例。当前实测账户可用余额约 `628.35` 元；2026-06 当月税前账单约 `130.1225` 元，主要是百炼约 `60.2716` 元、短信套餐包 `35` 元、DYPNS / 融合认证套餐 `34.85` 元，SLS 约 `0.0009` 元；百炼最近 5 天税前均值约 `0.0714` 元 / 天，qwen-plus 推理资源包仍剩约 `11.49M / 12M tokens`。脚本会把 DYPNS 订阅仍存在、短信套餐包未被资源包 API 暴露、百炼节省计划临近到期等输出为 `status=attention`；这是经营成本提醒，不代表服务故障。同步更新资源容量 runbook、当前状态、风险和项目记忆护栏。本轮不修改 Android、后端业务逻辑、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。
+
 - 按“30 天聊天记录不算长，但要有工程护栏”的口径补数据留存和成本巡检：新增 `scripts/check-data-retention-cost.ps1`，通过 Cloud Assistant 在 ECS 内部只读统计 `session_round_archive / client_app_logs / support_messages / admin_audit_logs / session_round_ledger / quota_ledger / orders / gift_card_redemption_attempts / daily_agri_cards` 的行数、最早 / 最新时间和表体量，不输出正文、图片 URL、手机号、token 或密钥；`check-resource-capacity.ps1 -Strict` 已接入该脚本，`check_project_memory.py` 也把它纳入项目记忆护栏。本轮生产实测重点表合计约 `0.828MB`，`status=ready`。主聊天完整归档仍按 30 天滚动保留，不是第 30 天秒级删除；用户主动“删除历史对话”会立即清问诊历史、A 层和记忆文档。同步更新合规、数据边界、资源容量、SLS 和 App 日志 runbook，以及当前状态 / 风险文档。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型过滤或聊天滚动主链。
 
 - 继续按“假测试支付可以点、但不能让门禁假绿”的边界收口：会员中心里的灰色“暂未开放 / 同步后开通 / 用完再续”按钮现在可点击出“不扣费”提示并记录 `payment.unavailable_clicked`，方便测试未开放购买入口的反馈和日志链路；“当前套餐 / 当前为 Pro / 剩余次数可用”仍不可点。`check-launch-readiness.ps1` 会把短信套餐包状态非 confirmed 计入 `sms usage and balance` attention，把正式支付未配置但购买入口关闭显示为 `payment closed guard` attention，不再把它们误写成全绿 ready；公网黑盒新增后台首页 DOM marker 和首个 JS 资产检查，短信单手机号明细输出也会脱敏 `PhoneNumber / PhoneNum`。监控面板首屏在服务健康但仍有程序 / 人工上线 attention 时会直接说明待处理数量。同步记录 SLS 成本口径：当前只按 7 天、少采集、邮件告警和 App 日志限流脱敏使用，用户量上来前还要补日志量 / 账单阈值或采样护栏。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型过滤或聊天滚动主链。
