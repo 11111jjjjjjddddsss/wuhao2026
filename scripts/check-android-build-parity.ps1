@@ -476,6 +476,10 @@ if ($failures.Count -eq 0) {
         "Assistant settled text must not wrap link candidates in SelectionContainer, otherwise short-tap links can become plain text."
     Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
         "Assistant Markdown links and bare URLs must keep real URL annotations that open through the system URI handler."
+    Require-Match $failures $chatStreamingRenderer 'ui\.link_open_failed(?s:.*?)substringBefore\(":"(?s:.*?)exception' `
+        "Assistant link open failures must remain user-visible and logged only as a safe summary, not as full URLs."
+    Require-Match $failures $chatScreen 'hasActiveNetworkConnection(?s:.*?)NET_CAPABILITY_INTERNET(?s:.*?)NET_CAPABILITY_CAPTIVE_PORTAL(?s:.*?)hasInternetCapability\s*&&\s*!isCaptivePortal' `
+        "Chat offline precheck must reject captive-portal networks instead of treating every INTERNET-capable network as usable."
     $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
     $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
     $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"

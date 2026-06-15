@@ -2,6 +2,7 @@ package com.nongjiqianwen
 
 import android.os.Handler
 import android.os.SystemClock
+import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -40,6 +41,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -1324,11 +1326,26 @@ private fun RendererStreamingActiveTextImpl(
 
 @Composable
 private fun rememberRendererLinkInteractionListener(): LinkInteractionListener {
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    return remember(uriHandler) {
+    return remember(context, uriHandler) {
         LinkInteractionListener { link ->
             val url = (link as? LinkAnnotation.Url)?.url ?: return@LinkInteractionListener
             runCatching { uriHandler.openUri(url) }
+                .onFailure { error ->
+                    Toast.makeText(context, "链接打开失败，请复制后打开", Toast.LENGTH_SHORT).show()
+                    SessionApi.reportClientLog(
+                        level = "warn",
+                        event = "ui.link_open_failed",
+                        message = "Assistant link open failed",
+                        attrs = mapOf(
+                            "scheme" to url.substringBefore(":", missingDelimiterValue = "")
+                                .lowercase()
+                                .take(12),
+                            "exception" to error.javaClass.simpleName
+                        )
+                    )
+                }
         }
     }
 }
