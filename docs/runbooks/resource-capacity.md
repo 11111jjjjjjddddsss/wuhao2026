@@ -41,7 +41,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-aliyun-costs.ps1
 ```
 
-该脚本会把“成本需要关注”输出成 `status=attention`，例如当月总额超过阈值、DYPNS / 融合认证仍有费用、短信套餐包没有被资源包 API 暴露、百炼节省计划即将到期等。`attention` 不是发布失败，也不是服务不可用；处理方式是复核经营决策、控制台续费 / 取消 / 购买资源包或继续观察。
+该脚本会把“成本需要关注”输出成 `status=attention`，例如当月总额超过阈值、DYPNS / 融合认证仍有费用、短信套餐包没有被资源包 API 暴露、百炼节省计划即将到期等。`attention` 不是发布失败，也不是服务不可用；处理方式是复核经营决策、控制台续费 / 取消 / 购买资源包或继续观察。2026-06-15 起，[check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1) 也会在云资源段调用该脚本，并把非 ready 结果显示为单独的 `aliyun costs` attention，避免上线总门禁漏看账单 / 套餐 / 模型资源包状态。
 
 公网黑盒只读巡检脚本会从当前运行机器直接请求公网域名，不通过 ECS 本机 `--resolve`，用于确认外部用户实际能访问 API、官网、www 和后台入口，并确认后台未登录仍是 401、HTTP 会跳 HTTPS：
 

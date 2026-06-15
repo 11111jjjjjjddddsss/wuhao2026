@@ -5,6 +5,8 @@
 
 ## 2026-06-15
 
+- 继续按“总门禁别漏账单和套餐成本”的口径把费用中心总账巡检接进 [check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1)：云资源段现在会调用 `check-aliyun-costs.ps1`，并把非 ready 结果显示为独立的 `aliyun costs` attention，用于提醒 DYPNS / 融合认证套餐仍存在、短信套餐包余额仍需控制台确认、模型资源包 / 节省计划或当月账单需要关注。这是经营成本提醒，不代表 ECS、后端、Android 或监控服务不可用；日常看报告可继续用 `-AllowAttentionExitZero`，正式 `-ReleaseGate` 仍要求 attention 被人工处理或确认。本轮只改只读门禁和项目记忆，不修改 Android、后端业务逻辑、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。
+
 - 按“所有成本都要能查、能解释、能控住”的口径补费用中心总账巡检：新增 `scripts/check-aliyun-costs.ps1`，通过阿里云 BSS OpenAPI 只读查询账户余额、当月 / 上月产品账单、当前月明细、百炼每日走势、有效资源包和有效实例，带费用中心偶发超时重试和请求签名 / 账号字段脱敏，不买资源、不续费、不释放实例。当前实测账户可用余额约 `628.35` 元；2026-06 当月税前账单约 `130.1225` 元，主要是百炼约 `60.2716` 元、短信套餐包 `35` 元、DYPNS / 融合认证套餐 `34.85` 元，SLS 约 `0.0009` 元；百炼最近 5 天税前均值约 `0.0714` 元 / 天，qwen-plus 推理资源包仍剩约 `11.49M / 12M tokens`。脚本会把 DYPNS 订阅仍存在、短信套餐包未被资源包 API 暴露、百炼节省计划临近到期等输出为 `status=attention`；这是经营成本提醒，不代表服务故障。同步更新资源容量 runbook、当前状态、风险和项目记忆护栏。本轮不修改 Android、后端业务逻辑、三份提示词、模型输出过滤、支付真实接入或聊天滚动主链。
 
 - 按“30 天聊天记录不算长，但要有工程护栏”的口径补数据留存和成本巡检：新增 `scripts/check-data-retention-cost.ps1`，通过 Cloud Assistant 在 ECS 内部只读统计 `session_round_archive / client_app_logs / support_messages / admin_audit_logs / session_round_ledger / quota_ledger / orders / gift_card_redemption_attempts / daily_agri_cards` 的行数、最早 / 最新时间和表体量，不输出正文、图片 URL、手机号、token 或密钥；`check-resource-capacity.ps1 -Strict` 已接入该脚本，`check_project_memory.py` 也把它纳入项目记忆护栏。本轮生产实测重点表合计约 `0.828MB`，`status=ready`。主聊天完整归档仍按 30 天滚动保留，不是第 30 天秒级删除；用户主动“删除历史对话”会立即清问诊历史、A 层和记忆文档。同步更新合规、数据边界、资源容量、SLS 和 App 日志 runbook，以及当前状态 / 风险文档。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型过滤或聊天滚动主链。

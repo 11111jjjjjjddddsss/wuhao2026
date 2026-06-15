@@ -193,6 +193,37 @@ function Invoke-SmsUsageGateStep {
     }
 }
 
+function Invoke-AliyunCostGateStep {
+    Write-Host
+    Write-Host "== aliyun costs =="
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check-aliyun-costs.ps1"
+        )
+        $timer.Stop()
+        $costStatus = Get-CapturedValue -Lines $lines -Key "status"
+        if ($costStatus -eq "ready") {
+            Add-GateResult -Name "aliyun costs" -Status "ready" -Seconds $timer.Elapsed.TotalSeconds
+            Write-Host "step_status=ready seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
+            return
+        }
+        $statusText = if ([string]::IsNullOrWhiteSpace($costStatus)) { "not_reported" } else { $costStatus }
+        $message = "Aliyun cost guard requires review ($statusText); check DYPNS/fusion package, SMS package balance, model plan/resource package, and abnormal monthly spend"
+        Add-GateResult -Name "aliyun costs" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        Write-Warning "step_status=skipped_or_attention seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
+    } catch {
+        $timer.Stop()
+        $message = $_.Exception.Message
+        Add-GateResult -Name "aliyun costs" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        Write-Warning "step_status=skipped_or_attention seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
+    }
+}
+
 function Invoke-PaymentReadinessGateStep {
     param([switch]$SkipPublicHealth)
 
@@ -433,6 +464,7 @@ if (-not $SkipCloud) {
             "-RequireSlsDashboard"
         )
     }
+    Invoke-AliyunCostGateStep
     Invoke-SmsUsageGateStep
     if (-not $SkipDataBoundary) {
         Invoke-GateStep -Name "backend data boundaries" -ScriptBlock {
