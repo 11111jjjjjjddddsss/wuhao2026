@@ -242,6 +242,13 @@ func TestDashScopeKeySelectionDefaultsToFallback(t *testing.T) {
 	}
 }
 
+func TestDashScopeKeySelectionInvalidValueFallsBackToFallback(t *testing.T) {
+	t.Setenv("DASHSCOPE_KEY_SELECTION_MODE", "typo-auto")
+	if got := getDashScopeKeySelectionMode(); got != keySelectionModeFallback {
+		t.Fatalf("invalid key selection mode = %v, want fallback", got)
+	}
+}
+
 func TestOpenStreamUsesRoundRobinInSmoothMode(t *testing.T) {
 	authHeaders := []string{}
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

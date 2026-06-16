@@ -37,6 +37,8 @@ function Invoke-HttpProbe {
         [string]$Url,
         [int[]]$ExpectedStatus,
         [string[]]$RequiredBodyMarkers = @(),
+        [string]$Method = "GET",
+        [string]$Body = "",
         [switch]$NoRedirect,
         [string]$ExpectedLocationPrefix = ""
     )
@@ -44,7 +46,12 @@ function Invoke-HttpProbe {
     $client = $null
     try {
         $client = New-HttpClient -AllowRedirect:(!$NoRedirect)
-        $response = $client.GetAsync($Url).GetAwaiter().GetResult()
+        if ($Method.ToUpperInvariant() -eq "POST") {
+            $content = New-Object System.Net.Http.StringContent -ArgumentList @($Body, [System.Text.Encoding]::UTF8, "application/json")
+            $response = $client.PostAsync($Url, $content).GetAwaiter().GetResult()
+        } else {
+            $response = $client.GetAsync($Url).GetAwaiter().GetResult()
+        }
         $status = [int]$response.StatusCode
         $location = ""
         if ($null -ne $response.Headers.Location) {
@@ -262,6 +269,20 @@ foreach ($adminPath in @(
         $adminPath.Trim("/") -replace "^admin-api/v1/", "" -replace "[^A-Za-z0-9]+", "_"
     ).Trim("_")
     Invoke-HttpProbe -Name $probeName -Url "https://admin.nongjiqiancha.cn$adminPath" -ExpectedStatus @(401, 403)
+}
+
+foreach ($adminWritePath in @(
+    "/admin-api/v1/app-update/android",
+    "/admin-api/v1/gift-cards/batches",
+    "/admin-api/v1/gift-cards/void",
+    "/admin-api/v1/support/messages",
+    "/admin-api/v1/support/conversations/status",
+    "/admin-api/v1/today-agri/generate"
+)) {
+    $probeName = "admin_protected_post_" + (
+        $adminWritePath.Trim("/") -replace "^admin-api/v1/", "" -replace "[^A-Za-z0-9]+", "_"
+    ).Trim("_")
+    Invoke-HttpProbe -Name $probeName -Url "https://admin.nongjiqiancha.cn$adminWritePath" -ExpectedStatus @(401, 403) -Method "POST" -Body "{}"
 }
 
 if (-not $SkipSecurityHeaderChecks) {

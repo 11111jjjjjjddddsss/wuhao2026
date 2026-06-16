@@ -265,6 +265,30 @@ nginx_site='/etc/nginx/sites-available/nongjiqiancha-site'
 nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-site'
 cert_root='/var/www/certbot'
 cert_dir="/etc/letsencrypt/live/`$domain"
+nginx_site_backup='/tmp/nongjiqiancha-site.nginx-site.backup'
+nginx_site_backup_state='/tmp/nongjiqiancha-site.nginx-site.backup-state'
+
+backup_nginx_site() {
+  if [ -f "`$nginx_site" ]; then
+    cp -f "`$nginx_site" "`$nginx_site_backup"
+    echo 'present' > "`$nginx_site_backup_state"
+  else
+    rm -f "`$nginx_site_backup"
+    echo 'missing' > "`$nginx_site_backup_state"
+  fi
+}
+
+restore_nginx_site() {
+  local state
+  state=`$(cat "`$nginx_site_backup_state" 2>/dev/null || echo missing)
+  if [ "`$state" = "present" ] && [ -f "`$nginx_site_backup" ]; then
+    cp -f "`$nginx_site_backup" "`$nginx_site"
+    ln -sfn "`$nginx_site" "`$nginx_enabled"
+  else
+    rm -f "`$nginx_site" "`$nginx_enabled"
+  fi
+  nginx -t && systemctl reload nginx || true
+}
 
 write_http_nginx() {
   cat > "`$nginx_site" <<EOF
@@ -272,16 +296,13 @@ server {
     listen 80;
     server_name `$domain `$www_domain;
 
-    root `$current_link;
-    index index.html;
-
     location ^~ /.well-known/acme-challenge/ {
         root `$cert_root;
         default_type "text/plain";
     }
 
     location / {
-        try_files \`$uri \`$uri/ /index.html;
+        return 404;
     }
 }
 EOF
@@ -348,6 +369,7 @@ ln -sfn "`$release_dir" "`$current_link"
 chown -R www-data:www-data "`$site_base" "`$cert_root"
 
 echo nginx-http
+backup_nginx_site
 write_http_nginx
 ln -sfn "`$nginx_site" "`$nginx_enabled"
 nginx -t
@@ -357,7 +379,7 @@ echo certbot
 if command -v certbot >/dev/null 2>&1; then
   certbot certonly --webroot -w "`$cert_root" -d "`$domain" -d "`$www_domain" --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring || true
 else
-  echo 'certbot not found; leaving HTTP site enabled' >&2
+  echo 'certbot not found; using existing site certificate if present' >&2
 fi
 
 if [ -f "`$cert_dir/fullchain.pem" ] && [ -f "`$cert_dir/privkey.pem" ]; then
@@ -366,7 +388,9 @@ if [ -f "`$cert_dir/fullchain.pem" ] && [ -f "`$cert_dir/privkey.pem" ]; then
   nginx -t
   systemctl reload nginx
 else
-  echo 'site certificate is not available yet; HTTP remains enabled' >&2
+  echo 'site certificate is not available; refusing to keep site over HTTP' >&2
+  restore_nginx_site
+  exit 19
 fi
 
 echo verify
@@ -427,12 +451,8 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_contains "site-www-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
 else
-  expect_status "site-http-root" "200" -H "Host: `$domain" http://127.0.0.1/
-  expect_status "site-http-legal-user" "200" -H "Host: `$domain" http://127.0.0.1/legal/user-agreement/
-  expect_status "site-http-legal-privacy" "200" -H "Host: `$domain" http://127.0.0.1/legal/privacy-policy/
-  expect_status "site-http-gongan" "200" -H "Host: `$domain" http://127.0.0.1/gongan.png
-  expect_contains "site-http-legal-user-marker" "nongji-page-user-agreement" -H "Host: `$domain" http://127.0.0.1/legal/user-agreement/
-  expect_contains "site-http-legal-privacy-marker" "nongji-page-privacy-policy" -H "Host: `$domain" http://127.0.0.1/legal/privacy-policy/
+  echo 'site certificate missing after deploy' >&2
+  exit 23
 fi
 "@
 

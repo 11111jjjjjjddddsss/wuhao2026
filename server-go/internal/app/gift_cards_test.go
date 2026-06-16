@@ -92,6 +92,62 @@ func TestNormalizeGiftCardBatchInputUsesImmediateValidFrom(t *testing.T) {
 	}
 }
 
+func TestCreateGiftCardBatchInsertsCardRows(t *testing.T) {
+	t.Setenv("APP_SECRET", "unit-test-secret")
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	validUntil := int64(1_800_000_000_000)
+	input := GiftCardBatchInput{
+		Name:         "代理测试 Pro 月卡",
+		Tier:         TierPro,
+		DurationDays: 30,
+		Quantity:     1,
+		ValidFrom:    int64(1_700_000_000_000),
+		ValidUntil:   &validUntil,
+		CreatedBy:    "owner",
+		Note:         "代理测试",
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectExec("INSERT INTO gift_card_batches").
+		WithArgs(sqlmock.AnyArg(), input.Name, string(input.Tier), input.DurationDays, input.Quantity, input.ValidFrom, validUntil, input.CreatedBy, input.Note, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO gift_cards").
+		WithArgs(
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+			string(input.Tier),
+			input.DurationDays,
+			input.ValidFrom,
+			validUntil,
+			input.CreatedBy,
+			input.Note,
+			sqlmock.AnyArg(),
+			sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	batch, codes, err := store.CreateGiftCardBatch(context.Background(), input)
+	if err != nil {
+		t.Fatalf("CreateGiftCardBatch failed: %v", err)
+	}
+	if batch.ActiveCount != 1 || len(codes) != 1 {
+		t.Fatalf("batch active=%d codes=%d, want 1/1", batch.ActiveCount, len(codes))
+	}
+	if codes[0].Code == "" || codes[0].CodeMask == "" || codes[0].CodeSuffix == "" {
+		t.Fatalf("created code missing display fields: %#v", codes[0])
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 func TestScanGiftCardEntryOnlyDecryptsWhenAllowed(t *testing.T) {
 	t.Setenv("APP_SECRET", "unit-test-secret")
 	code := "NQ-M7AB-CD23-EF45-GH67"

@@ -21,11 +21,12 @@ import (
 )
 
 const (
-	upstreamMaxAttempts   = 1
-	upstreamRetryBaseWait = 350 * time.Millisecond
-	chatStreamMaxDuration = 30 * time.Minute
-	maxClientMsgIDLength  = 128
-	maxChatTextRunes      = 6000
+	upstreamMaxAttempts    = 1
+	upstreamRetryBaseWait  = 350 * time.Millisecond
+	chatStreamMaxDuration  = 30 * time.Minute
+	maxClientMsgIDLength   = 128
+	maxChatTextRunes       = 6000
+	maxBailianSSELineBytes = 256 * 1024
 )
 
 type chatRateLimiter struct {
@@ -424,7 +425,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	reader := bufio.NewReader(upstream.Body)
 	for {
-		line, readErr := reader.ReadString('\n')
+		line, readErr := readLimitedSSELine(reader, maxBailianSSELineBytes)
 		if line != "" {
 			trimmedLine := strings.TrimRight(line, "\r\n")
 			if trimmedLine != "" && !strings.HasPrefix(trimmedLine, ":") && !strings.HasPrefix(trimmedLine, "event:") && strings.HasPrefix(trimmedLine, "data:") {
@@ -449,7 +450,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if readErr != nil {
-			if readErr != io.EOF {
+			if errors.Is(readErr, errSSELineTooLarge) {
+				s.logger.Error("sse relay line too large", "userId", auth.UserID, "clientMsgId", clientMsgID, "limit_bytes", maxBailianSSELineBytes)
+			} else if readErr != io.EOF {
 				s.logger.Error("sse relay failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", readErr)
 			}
 			break
@@ -479,12 +482,15 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						User:              text,
 						UserImages:        images,
 						Assistant:         replyText,
+						CreatedAt:         requestReceivedAtMs,
 						Region:            region.Region,
 						RegionSource:      region.Source,
 						RegionReliability: region.Reliability,
 					},
 					aWindowRounds,
 					memoryEveryRounds,
+					tier,
+					dayCN,
 					"stream_done",
 				)
 				if appendErr != nil {
@@ -500,6 +506,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
 						go s.retryQuotaConsumeOnDone(auth.UserID, tier, clientMsgID, dayCN)
 					} else {
+						if err := s.store.MarkQuotaConsumeOutboxDone(context.Background(), auth.UserID, clientMsgID, time.Now().UnixMilli()); err != nil {
+							s.logger.Warn("quota consume outbox mark done failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
+						}
 						s.logger.Info("quota consume on DONE", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)
 					}
 					sendDoneAfterArchive = true
@@ -585,6 +594,28 @@ func isSessionRoundCompletionBeforeClear(completion SessionRoundCompletion, stat
 	return completion.Completed && state.ClearedAt > 0 && completion.CreatedAt <= state.ClearedAt
 }
 
+var errSSELineTooLarge = errors.New("sse line too large")
+
+func readLimitedSSELine(reader *bufio.Reader, limit int) (string, error) {
+	if limit <= 0 {
+		limit = maxBailianSSELineBytes
+	}
+	var data []byte
+	for {
+		part, err := reader.ReadSlice('\n')
+		if len(part) > 0 {
+			data = append(data, part...)
+			if len(data) > limit {
+				return "", errSSELineTooLarge
+			}
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		return string(data), err
+	}
+}
+
 func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID string, dayCN string) {
 	delays := []time.Duration{
 		500 * time.Millisecond,
@@ -595,6 +626,9 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 		time.Sleep(delay)
 		consume, err := s.store.ConsumeOnDone(context.Background(), userID, tier, clientMsgID, dayCN)
 		if err == nil {
+			if markErr := s.store.MarkQuotaConsumeOutboxDone(context.Background(), userID, clientMsgID, time.Now().UnixMilli()); markErr != nil {
+				s.logger.Warn("quota consume outbox mark done after retry failed", "userId", userID, "clientMsgId", clientMsgID, "error", markErr)
+			}
 			s.logger.Info(
 				"quota consume on DONE retry recovered",
 				"userId", userID,
@@ -612,6 +646,11 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 			"attempt", attempt+1,
 			"error", err,
 		)
+	}
+	nowMs := time.Now().UnixMilli()
+	nextAttemptAt := nowMs + int64(quotaConsumeRepairBackoff(0)/time.Millisecond)
+	if err := s.store.MarkQuotaConsumeOutboxFailed(context.Background(), userID, clientMsgID, "short retry failed", nextAttemptAt, nowMs); err != nil {
+		s.logger.Warn("quota consume outbox mark failed failed", "userId", userID, "clientMsgId", clientMsgID, "error", err)
 	}
 }
 

@@ -616,10 +616,17 @@ func adminCSRFTokenFromCookie(r *http.Request) string {
 
 func adminCookieSecure() bool {
 	raw := strings.TrimSpace(os.Getenv("ADMIN_COOKIE_SECURE"))
-	if raw != "" {
-		return parseBoolEnv(raw)
+	if raw == "" {
+		return isProductionEnv()
 	}
-	return isProductionEnv()
+	switch strings.ToLower(raw) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	case "0", "false", "no", "n", "off":
+		return false
+	default:
+		return isProductionEnv()
+	}
 }
 
 func resolveAdminSessionDuration() time.Duration {

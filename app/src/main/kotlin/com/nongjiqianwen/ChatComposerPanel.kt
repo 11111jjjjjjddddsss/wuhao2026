@@ -78,6 +78,10 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalTextToolbar
@@ -1135,6 +1139,10 @@ private fun ComposerSendActionButton(
             )
             .clip(CircleShape)
             .background(backgroundColor)
+            .semantics {
+                contentDescription = "发送"
+                role = Role.Button
+            }
             .clickable(
                 enabled = enabled,
                 interactionSource = interactionSource,
@@ -1166,6 +1174,10 @@ private fun ComposerInlineAddButton(
             .size(size)
             .clip(CircleShape)
             .background(surfaceColor.copy(alpha = 0f))
+            .semantics {
+                contentDescription = "添加图片"
+                role = Role.Button
+            }
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -1359,6 +1371,10 @@ private fun InputActionMenuButton(
             .heightIn(min = 40.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Transparent)
+            .semantics {
+                contentDescription = label
+                role = Role.Button
+            }
             .pointerInput(label) {
                 detectTapGestures(onTap = { onClick() })
             }

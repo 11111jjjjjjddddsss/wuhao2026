@@ -148,7 +148,9 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -342,7 +344,7 @@ private fun ChatHistoryWindowNotice(
             border = BorderStroke(1.dp, Color(0xFFE1E4E8))
         ) {
             Text(
-                text = "仅显示最近 30 轮；更早 ${hiddenRoundCount} 轮已保留，后续对话会尽量接上",
+                text = "仅显示最近 30 轮；更早 ${hiddenRoundCount} 轮会由记忆承接，后续对话会尽量接上",
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.sp,
@@ -449,14 +451,14 @@ private const val JUMP_BUTTON_AUTO_HIDE_MS = 2200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 20L
 private const val STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS = 40L
-internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 48L
+internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
 internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
 internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
 internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
-private const val REMOTE_STREAM_MIN_BALL_MS = 2300L
+private const val REMOTE_STREAM_MIN_BALL_MS = 1800L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
@@ -469,9 +471,9 @@ private const val COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE = 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
-internal const val GPT_BALL_PULSE_MS = 780
+internal const val GPT_BALL_PULSE_MS = 700
 private const val GPT_BALL_EXIT_MS = 180
-private const val GPT_STREAM_TEXT_ENTRY_MS = 220
+private const val GPT_STREAM_TEXT_ENTRY_MS = 180
 private val STREAM_VISIBLE_BOTTOM_GAP = 96.dp
 private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
@@ -1042,7 +1044,10 @@ private fun buildMarkdownAnnotatedStringInternal(
         }
     }
 }
-private fun buildPlainLinkedAnnotatedString(text: String): AnnotatedString {
+private fun buildPlainLinkedAnnotatedString(
+    text: String,
+    linkColor: Color = Color(0xFF111111)
+): AnnotatedString {
     return buildAnnotatedString {
         var index = 0
         while (index < text.length) {
@@ -1061,7 +1066,7 @@ private fun buildPlainLinkedAnnotatedString(text: String): AnnotatedString {
                 continue
             }
             withLink(LinkAnnotation.Url(normalizeLinkTarget(displayText))) {
-                withStyle(chatLinkSpanStyle()) {
+                withStyle(chatLinkSpanStyle().copy(color = linkColor)) {
                     append(displayText)
                 }
             }
@@ -1164,7 +1169,7 @@ internal fun assistantDisclaimerTextStyle(): TextStyle = TextStyle(
     color = Color(0xFF8D929A),
     letterSpacing = 0.sp,
     fontFamily = FontFamily.SansSerif,
-    fontWeight = FontWeight.Medium,
+    fontWeight = FontWeight.Normal,
     textMotion = TextMotion.Static
 )
 
@@ -2141,8 +2146,7 @@ private fun MembershipCenterLeafIcon(
 ) {
     Box(
         modifier = modifier
-            .size(size)
-            .semantics { contentDescription = "会员中心" },
+            .size(size),
         contentAlignment = Alignment.Center
     ) {
         Image(
@@ -2941,8 +2945,8 @@ fun ChatScreen() {
     val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
-    val userBubbleColor = Color.White
-    val userBubbleBorderColor = Color(0xFFCFCFCF).copy(alpha = 0.96f)
+    val userBubbleColor = Color(0xFF050505)
+    val userBubbleBorderColor = Color(0xFF050505)
     var inputChromeMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var messageViewportMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var composerMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -5317,12 +5321,15 @@ fun ChatScreen() {
         }
     }
 
-    fun currentClientRegionForSend(): ClientRegionContext? =
-        latestClientRegion ?: ClientRegionProvider.cachedRegion(context)
+    fun currentClientRegionForSend(): ClientRegionContext? {
+        if (!ClientRegionProvider.hasLocationPermission(context)) return null
+        return latestClientRegion ?: ClientRegionProvider.cachedRegion(context)
+    }
 
     suspend fun refreshClientRegionForSend(): ClientRegionContext? {
         if (!hasRemoteHistorySource) return null
         if (!ClientRegionProvider.hasLocationPermission(context)) {
+            latestClientRegion = null
             if (!ClientRegionProvider.wasLocationPermissionPrompted(context)) {
                 ClientRegionProvider.markLocationPermissionPrompted(context)
                 locationPermissionLauncher.launch(
@@ -5332,7 +5339,7 @@ fun ChatScreen() {
                     )
                 )
             }
-            return currentClientRegionForSend()
+            return null
         }
         val refreshed = ClientRegionProvider.refreshRegion(context)
         if (refreshed != null) {
@@ -7310,7 +7317,9 @@ fun ChatScreen() {
                             focusManager.clearFocus(force = true)
                             membershipCenterVisible = true
                         },
-                        modifier = Modifier.size(topButtonTouchSize)
+                        modifier = Modifier
+                            .size(topButtonTouchSize)
+                            .semantics { contentDescription = "会员中心" }
                     ) {
                         MembershipCenterLeafIcon(
                             size = membershipIconSize
@@ -7446,6 +7455,10 @@ private fun MessageActionMenuButton(
             .heightIn(min = 40.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(Color.Transparent)
+            .semantics {
+                contentDescription = label
+                role = Role.Button
+            }
             .pointerInput(label) {
                 detectTapGestures(onTap = { onClick() })
             }
@@ -7752,7 +7765,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
                     UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
-                    UiCopyPreviewItem("账号管理", "手机号 / 更新缓存 / 历史 / 退出 / 申请注销", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("账号管理", "手机号 / 清理临时缓存 / 历史 / 退出 / 申请注销", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("退出登录确认", "退出当前设备，不删除资产", UiCopyPreviewKind.HamburgerLogoutConfirm),
                     UiCopyPreviewItem("删除历史对话确认", "二次确认，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("注销申请确认", "提交申请并退出登录", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
@@ -7760,6 +7773,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("检查更新", "普通更新弹窗，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
                     UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
+                    UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("礼品卡失败提示", "失败原因停留在兑换页内", UiCopyPreviewKind.HamburgerGiftCardFailure),
                     UiCopyPreviewItem("服务协议目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
@@ -7788,8 +7802,9 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "今日农情",
                 items = listOf(
-                    UiCopyPreviewItem("今日农情", "主聊天里的 3 条种植侧普通 AI 文本", UiCopyPreviewKind.TodayAgriCard),
+                    UiCopyPreviewItem("今日农情", "主聊天里的 3 条种植侧黑框资讯", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
+                    UiCopyPreviewItem("今日农情窄屏", "280dp 下黑框、标题和编号不互挤", UiCopyPreviewKind.TodayAgriNarrow),
                     UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
@@ -8066,6 +8081,7 @@ private enum class UiCopyPreviewKind {
     HamburgerAppUpdateDialog,
     HamburgerAppUpdateDownloading,
     AppUpdateInstallPermissionHint,
+    AppUpdateInstallNotCompletedHint,
     HamburgerGiftCardPage,
     HamburgerGiftCardFailure,
     HamburgerLegalHubPage,
@@ -8080,6 +8096,7 @@ private enum class UiCopyPreviewKind {
     HamburgerGiftCardReplay,
     TodayAgriCard,
     TodayAgriLongSummaryCard,
+    TodayAgriNarrow,
     HamburgerTodayAgriHistoryPage,
     HamburgerTodayAgriHistoryFailed,
     AssistantMarkdownSample,
@@ -8515,6 +8532,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.AppUpdateInstallPermissionHint -> {
                     UiCopyPreviewHint("允许安装未知应用后，返回本页继续更新")
                 }
+                UiCopyPreviewKind.AppUpdateInstallNotCompletedHint -> {
+                    UiCopyPreviewHint("更新未完成，可稍后继续安装")
+                }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
                 }
@@ -8568,6 +8588,15 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         card = uiCopyPreviewTodayAgriLongSummaryCard()
                     )
                 }
+                UiCopyPreviewKind.TodayAgriNarrow -> {
+                    Box(modifier = Modifier.width(280.dp)) {
+                        TodayAgriNewsText(
+                            card = uiCopyPreviewTodayAgriLongSummaryCard(),
+                            horizontalPadding = 0.dp,
+                            maxContentWidth = 280.dp
+                        )
+                    }
+                }
                 UiCopyPreviewKind.HamburgerTodayAgriHistoryPage -> {
                     HamburgerTodayAgriHistoryPagePreview()
                 }
@@ -8614,8 +8643,8 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         textToolbar = LocalTextToolbar.current,
                         selectionResetKey = 0,
                         userBubbleMaxWidth = 280.dp,
-                        userBubbleColor = Color(0xFFF7F8FA),
-                        userBubbleBorderColor = Color(0xFFE0E4EA)
+                        userBubbleColor = Color(0xFF050505),
+                        userBubbleBorderColor = Color(0xFF050505)
                     )
                 }
                 UiCopyPreviewKind.AttachmentSheet -> {
@@ -9142,25 +9171,18 @@ private fun UiCopyPreviewCleanStateFirstSend() {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End
-        ) {
-            Surface(
-                color = Color(0xFFF5F6F8),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, Color(0xFFE4E6EA)),
-                shadowElevation = 1.dp,
-                modifier = Modifier.widthIn(max = 260.dp)
-            ) {
-                Text(
-                    text = "刚清数据后，第一次发送一条短问题",
-                    color = Color(0xFF161616),
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)
-                )
-            }
-        }
+        SelectableRenderedUserMessageBubble(
+            content = "刚清数据后，第一次发送一条短问题",
+            textSelectionColors = TextSelectionColors(
+                handleColor = CHAT_SELECTION_HANDLE_COLOR,
+                backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
+            ),
+            textToolbar = LocalTextToolbar.current,
+            selectionResetKey = 0,
+            userBubbleMaxWidth = 260.dp,
+            userBubbleColor = Color(0xFF050505),
+            userBubbleBorderColor = Color(0xFF050505)
+        )
         ChatStreamingRenderer(
             content = "",
             renderMode = StreamingRenderMode.Waiting,
@@ -9441,7 +9463,7 @@ private fun SelectableRenderedUserMessageBubble(
     onBubbleBoundsChanged: (Rect?) -> Unit = {}
 ) {
     val bubbleShape = RoundedCornerShape(20.dp)
-    val renderedContent = remember(content) { buildPlainLinkedAnnotatedString(content) }
+    val renderedContent = remember(content) { buildPlainLinkedAnnotatedString(content, linkColor = Color.White) }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -9476,7 +9498,7 @@ private fun SelectableRenderedUserMessageBubble(
                             text = renderedContent,
                             modifier = Modifier.wrapContentWidth(Alignment.Start),
                             style = MaterialTheme.typography.bodyLarge,
-                            color = Color(0xFF161616)
+                            color = Color.White
                         )
                     }
                 }

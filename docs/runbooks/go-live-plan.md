@@ -35,7 +35,7 @@
 1. 已完成：域名 `nongjiqiancha.cn` 已购买，用户口头确认实名认证 / 模板审核已通过。
 2. 已完成：按 `ECS + RDS MySQL + OSS + 域名 / HTTPS` 落最小生产链的主要资源，其中 ECS / RDS / OSS 存储包已买，OSS Bucket / 生命周期和生产上传后端已切通，DNS 已创建 `api.nongjiqiancha.cn`、`nongjiqiancha.cn`、`www.nongjiqiancha.cn` 到 `39.106.1.151` 的 A 记录，`server-go` 已部署到 ECS 并由 Nginx 双端口 slot 反代，`api.nongjiqiancha.cn` HTTPS 已配置并公网验证通过，根域名官网 HTTPS 已部署并公网验证通过，DashScope 主 / 副模型 Key 已配置并显示 `bailian=ok`；App 备案已通过，App 公安备案和真机登录 / 主聊天 / 图片问诊回归尚未完成。
 3. 已完成：网站 ICP 备案已通过，主体备案号 `京ICP备2026031728号`，网站备案号 `京ICP备2026031728号-1`，网站名称“农技千查”，域名 `nongjiqiancha.cn`。
-4. 已完成：App 备案已通过，App 备案号为 `京ICP备2026031728号-2A`；Android 设置页底部以小灰字展示该编号和工信部备案查询链接，服务协议 / 隐私政策基础信息也同步展示该编号。
+4. 已完成：App 备案已通过，App 备案号为 `京ICP备2026031728号-2A`；Android 设置页底部以小灰字展示该编号，服务协议 / 隐私政策基础信息也同步展示该编号。
 5. 如果备案控制台提示当前资源不满足备案校验，再补最低成本的可备案云产品兜底；后端当前优先部署在 ECS，若后续因平台能力重新启用 SAE，必须同步更新 runbook。
 
 注意：

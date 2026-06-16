@@ -97,8 +97,13 @@ window.addEventListener("hashchange", () => {
   void render();
 });
 
+function clearSensitiveAdminState(): void {
+  lastGiftCardCodes = [];
+}
+
 window.addEventListener("admin:unauthorized", () => {
   auth = null;
+  clearSensitiveAdminState();
   renderLogin("登录状态已失效，请重新登录。");
 });
 
@@ -131,6 +136,7 @@ async function boot(): Promise<void> {
   } catch {
     auth = null;
     setStoredAuth(null);
+    clearSensitiveAdminState();
     renderLogin();
   }
 }
@@ -356,6 +362,7 @@ async function overviewPage(): Promise<string> {
               ${metricRow("活跃 App 登录 session", today.active_auth_sessions)}
               ${metricRow("问诊去重用户", today.chat_users)}
               ${metricRow("额度扣减", today.quota_deductions)}
+              ${metricRow("待补扣", today.quota_consume_pending ?? 0)}
               ${metricRow("近30天反馈会话", today.support_conversations)}
             </tbody>
           </table>
@@ -501,6 +508,8 @@ async function usersPage(): Promise<string> {
 }
 
 async function entitlementsPage(): Promise<string> {
+  const summary = await apiFetch<AdminEntitlementSummary>("/admin-api/v1/entitlements/summary");
+  const summaryBlock = entitlementOverviewBlock(summary);
   return userScopedPage({
     title: "会员额度",
     desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包和补偿。",
@@ -509,12 +518,15 @@ async function entitlementsPage(): Promise<string> {
     value: pageState.entitlementUserID,
     placeholder: "输入账号ID查询权益",
     content: async (userID) => {
-      const summary = await apiFetch<AdminEntitlementSummary>("/admin-api/v1/entitlements/summary");
-      const summaryBlock = entitlementOverviewBlock(summary);
       if (!userID) {
         return summaryBlock;
       }
-      const detail = await fetchUserDetail(userID);
+      let detail: AdminUserDetail;
+      try {
+        detail = await fetchUserDetail(userID);
+      } catch (error) {
+        return `${summaryBlock}${errorBlock(error)}`;
+      }
       return `
         ${summaryBlock}
         <div class="grid two">
@@ -597,18 +609,26 @@ async function giftCardsPage(): Promise<string> {
     success: pageState.giftCardAttemptSuccess,
     failure_reason: pageState.giftCardAttemptReason,
   };
-  const [summaryResponse, batchesResponse, cardsResponse, attemptsResponse] = await Promise.all([
+  const [summaryResult, batchesResult, cardsResult, attemptsResult] = await Promise.allSettled([
     apiFetch<{ summary: AdminGiftCardSummary }>("/admin-api/v1/gift-cards/summary"),
     apiFetch<{ batches: AdminGiftCardBatch[] }>("/admin-api/v1/gift-cards/batches?limit=50"),
     apiFetch<{ cards: AdminGiftCardEntry[] }>(`/admin-api/v1/gift-cards/cards${toQuery(cardParams)}`),
     apiFetch<{ attempts: AdminGiftCardAttempt[] }>(`/admin-api/v1/gift-cards/attempts${toQuery(attemptParams)}`),
   ]);
-  const batches = batchesResponse.batches ?? [];
-  const cards = cardsResponse.cards ?? [];
-  const attempts = attemptsResponse.attempts ?? [];
-  const summary = normalizeGiftCardSummary(summaryResponse.summary);
+  rethrowGiftCardAuthError([summaryResult, batchesResult, cardsResult, attemptsResult]);
+  const loadErrors = giftCardLoadErrors([
+    ["汇总", summaryResult],
+    ["批次", batchesResult],
+    ["卡列表", cardsResult],
+    ["兑换尝试", attemptsResult],
+  ]);
+  const summary = normalizeGiftCardSummary(summaryResult.status === "fulfilled" ? summaryResult.value.summary : undefined);
+  const batches = batchesResult.status === "fulfilled" ? (batchesResult.value.batches ?? []) : [];
+  const cards = cardsResult.status === "fulfilled" ? (cardsResult.value.cards ?? []) : [];
+  const attempts = attemptsResult.status === "fulfilled" ? (attemptsResult.value.attempts ?? []) : [];
   return `
     ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；完整卡码仅 owner / finance_ops 可见。", "gift-cards")}
+    ${loadErrors.length ? notice("部分数据暂时不可用", `以下区块加载失败：${loadErrors.join("、")}。页面已先展示可用数据，稍后刷新即可。`, "warn") : ""}
     <section class="grid kpi">
       ${kpi("可兑换卡", summary.redeemable_count, "当前可兑换")}
       ${kpi("已兑换", summary.redeemed_count, "权益已发放")}
@@ -676,6 +696,19 @@ async function giftCardsPage(): Promise<string> {
       <div class="table-wrap">${giftCardAttemptsTable(attempts)}</div>
     </section>
   `;
+}
+
+function rethrowGiftCardAuthError(results: PromiseSettledResult<unknown>[]): void {
+  rethrowBlockingAdminError(results);
+}
+
+function giftCardLoadErrors(entries: [string, PromiseSettledResult<unknown>][]): string[] {
+  return entries
+    .filter(([, result]) => result.status === "rejected")
+    .map(([label, result]) => {
+      const reason = result.status === "rejected" ? errorMessage(result.reason) : "";
+      return reason ? `${label}（${reason}）` : label;
+    });
 }
 
 async function accountDeletionPage(): Promise<string> {
@@ -810,12 +843,18 @@ function isPreviewableTodayAgriCard(row: AdminDailyAgriEntry): boolean {
 }
 
 async function appUpdatePage(): Promise<string> {
-  const [config, eventsResponse] = await Promise.all([
+  const [configResult, eventsResult] = await Promise.allSettled([
     apiFetch<AdminAppUpdateConfig>("/admin-api/v1/app-update/android"),
     apiFetch<{ events: AdminAppUpdateEvent[] }>("/admin-api/v1/app-update/android/events?limit=20"),
   ]);
+  rethrowBlockingAdminError([configResult, eventsResult]);
+  if (configResult.status === "rejected") throw configResult.reason;
+  const config = configResult.value;
+  const events = eventsResult.status === "fulfilled" ? (eventsResult.value.events ?? []) : [];
+  const eventsError = eventsResult.status === "rejected" ? errorMessage(eventsResult.reason) : "";
   return `
     ${pageHead("检查更新", "没有系统通知推送；App 启动会静默检查，用户也可手动检查。本页支持普通发布和停更。", "app-update")}
+    ${eventsError ? notice("发布历史暂时不可用", `更新配置已正常展示，发布历史加载失败：${eventsError}。稍后刷新即可。`, "warn") : ""}
     <div class="grid two">
       <section class="card">
         <div class="card-head">
@@ -834,11 +873,21 @@ async function appUpdatePage(): Promise<string> {
     <section class="card">
       <div class="card-head">
         <div class="card-title">发布历史</div>
-        <span class="small muted">${eventsResponse.events.length} 条</span>
+        <span class="small muted">${events.length} 条</span>
       </div>
-      <div class="table-wrap">${appUpdateEventsTable(eventsResponse.events)}</div>
+      <div class="table-wrap">${appUpdateEventsTable(events)}</div>
     </section>
   `;
+}
+
+function rethrowBlockingAdminError(results: PromiseSettledResult<unknown>[]): void {
+  const blockingError = results.find(
+    (result) =>
+      result.status === "rejected" &&
+      result.reason instanceof ApiError &&
+      [401, 403, 428].includes(result.reason.status),
+  ) as PromiseRejectedResult | undefined;
+  if (blockingError) throw blockingError.reason;
 }
 
 async function auditPage(): Promise<string> {
@@ -1259,6 +1308,7 @@ async function logout(): Promise<void> {
   }
   auth = null;
   setStoredAuth(null);
+  clearSensitiveAdminState();
   renderLogin();
 }
 
@@ -1472,7 +1522,12 @@ async function updateAccountDeletionStatus(requestID: string, status: string, bu
       return;
     }
   }
-  if (!window.confirm(`确认${labels[status] || "更新状态"}？`)) return;
+  const confirmText = [
+    `确认${labels[status] || "更新状态"}？`,
+    `申请ID：${requestID}`,
+    `目标状态：${status}`,
+  ].join("\n");
+  if (!window.confirm(confirmText)) return;
   await withButtonBusy(button, "更新中", async () => {
     await apiFetch("/admin-api/v1/account-deletion-requests/status", {
       method: "POST",
@@ -1708,6 +1763,20 @@ function phoneDisplay(phoneNumber?: string, phoneMask?: string): string {
   return "未返回";
 }
 
+function phoneDisplayInline(phoneNumber?: string, phoneMask?: string): string {
+  const fullPhone = (phoneNumber || "").trim();
+  if (fullPhone && canViewAccountPhone()) {
+    return escapeHTML(fullPhone);
+  }
+  if (fullPhone) {
+    return phoneMask ? escapeHTML(phoneMask) : "完整号仅授权角色可见";
+  }
+  if (phoneMask) {
+    return escapeHTML(phoneMask);
+  }
+  return "未返回手机号";
+}
+
 function userKV(user: AdminUserListEntry): string {
   return `
     <dl class="kv">
@@ -1822,7 +1891,7 @@ function ordersTable(rows: AdminOrderEntry[]): string {
               <tr>
                 <td>${escapeHTML(row.order_id)}</td><td><div class="truncate" style="max-width:220px">${escapeHTML(row.user_id)}</div></td>
                 <td>${escapeHTML(row.type)}</td><td>${escapeHTML(row.amount)}</td>
-                <td>${statusPill(row.status)}</td><td>${formatTime(row.created_at)}</td><td class="wrap">${jsonInline(row.result)}</td>
+                <td>${statusPill(row.status)}</td><td>${formatTime(row.created_at)}</td><td class="wrap">${jsonInline(redactSensitiveDisplayValue(row.result))}</td>
               </tr>
             `,
           )
@@ -2283,7 +2352,7 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
       (item) => `
         <button class="selectable-row ${item.user_id === pageState.supportUserID ? "active" : ""}" data-action="support-select" data-user-id="${escapeAttr(item.user_id)}">
           <strong class="truncate">${escapeHTML(item.user_id)}</strong>
-          <span class="small muted truncate">${escapeHTML(item.phone_number || item.phone_mask || "未返回手机号")} · ${formatTime(item.latest_message.created_at)}</span>
+          <span class="small muted truncate">${phoneDisplayInline(item.phone_number, item.phone_mask)} · ${formatTime(item.latest_message.created_at)}</span>
           <span class="small muted truncate">${escapeHTML(item.latest_message.body_excerpt || item.latest_message.body || "无正文")}</span>
           <span>${supportStatusPill(item)} <span class="small muted">${item.message_count} 条</span></span>
         </button>
@@ -2522,7 +2591,7 @@ function auditTable(rows: AdminAuditLogEntry[]): string {
                 <td>${formatTime(row.created_at)}</td><td>${escapeHTML(row.actor)}</td><td>${escapeHTML(row.action)}</td>
                 <td>${escapeHTML([row.target_type, row.target_id].filter(Boolean).join(" / "))}</td>
                 <td>${escapeHTML(row.target_user_id || "")}</td><td>${row.success ? statusPill("success", "ok") : statusPill("failed", "bad")}</td>
-                <td>${row.status_code || ""}</td><td class="wrap">${jsonInline(row.details)}</td>
+                <td>${row.status_code || ""}</td><td class="wrap">${jsonInline(redactSensitiveDisplayValue(row.details))}</td>
               </tr>
             `,
           )
@@ -2794,7 +2863,7 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
     <table class="table">
       <thead>
         <tr>
-          <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>App异常</th><th>登录排障</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
+          <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>待补扣</th><th>App异常</th><th>登录排障</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
         </tr>
       </thead>
       <tbody>
@@ -2808,6 +2877,7 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
                 <td>${row.chat_rounds} / ${row.chat_users}<div class="small muted">去重用户</div></td>
                 <td>${row.image_chat_rounds}</td>
                 <td>${row.quota_deductions}</td>
+                <td>${row.quota_consume_pending ?? 0}</td>
                 <td>${row.app_errors} / ${row.app_warns}</td>
                 <td>${row.auth_failures ?? 0}<div class="small muted">闪退 ${row.crash_reports ?? 0}</div></td>
                 <td>${row.support_messages}<div class="small muted">${row.support_users} 位去重用户</div></td>
@@ -3049,11 +3119,11 @@ function appUpdateTroubleshootingBlock(updateLogs: AdminMonitoring["app_update_l
         <div>
           <span class="small muted">最近24小时</span>
           <strong>${failures}</strong>
-          <p>检查失败 ${updateLogs.check_failures ?? 0}，下载失败 ${updateLogs.download_failures ?? 0}，安装页失败 ${updateLogs.install_failures ?? 0}，需要安装权限 ${permissionRequired}。</p>
+          <p>检查失败 ${updateLogs.check_failures ?? 0}，下载失败 ${updateLogs.download_failures ?? 0}，安装未完成 ${updateLogs.install_failures ?? 0}，需要安装权限 ${permissionRequired}。</p>
           <div class="auth-debug-metrics">
             ${authDebugMetric("检查失败", updateLogs.check_failures ?? 0, updateLogs.check_failures ? "warn" : "ok")}
             ${authDebugMetric("下载失败", updateLogs.download_failures ?? 0, updateLogs.download_failures ? "bad" : "ok")}
-            ${authDebugMetric("安装页失败", updateLogs.install_failures ?? 0, updateLogs.install_failures ? "bad" : "ok")}
+            ${authDebugMetric("安装未完成", updateLogs.install_failures ?? 0, updateLogs.install_failures ? "bad" : "ok")}
             ${authDebugMetric("权限确认", permissionRequired, permissionRequired ? "warn" : "ok")}
           </div>
           <p class="small muted">最近出现：${updateLogs.last_seen_at ? formatTime(updateLogs.last_seen_at) : "暂无"}</p>
@@ -3069,6 +3139,8 @@ function appUpdateTroubleshootingBlock(updateLogs: AdminMonitoring["app_update_l
           ${filterButton("下载失败", { event: "app_update.download_failed", window: "24h" })}
           ${filterButton("安装页失败", { event: "app_update.install_intent_failed", window: "24h" })}
           ${filterButton("已拉起安装", { event: "app_update.install_started", window: "24h" })}
+          ${filterButton("安装完成", { event: "app_update.install_completed", window: "24h" })}
+          ${filterButton("安装未完成", { event: "app_update.install_not_completed", window: "24h" })}
         </div>
       </div>
       <div class="table-wrap">${updateLogs.top_events?.length ? appLogSummaryTable(updateLogs.top_events) : emptyState("暂无更新日志", "最近24小时没有 app_update.* 自动日志。")}</div>
@@ -3918,12 +3990,15 @@ function compactLogs(rows: ClientAppLogEntry[]): string {
   return rows
     .slice(0, 4)
     .map(
-      (row) => `
-        <div class="message">
-          <div class="message-head"><strong>${escapeHTML(row.event)}</strong><span>${formatTime(row.created_at)}</span></div>
-          <div>${statusPill(row.level)} <span class="muted">${escapeHTML([row.build_type, row.message || ""].filter(Boolean).join(" / "))}</span></div>
-        </div>
-      `,
+      (row) => {
+        const safeMessage = redactSensitiveDisplayText(row.message || "");
+        return `
+          <div class="message">
+            <div class="message-head"><strong>${escapeHTML(row.event)}</strong><span>${formatTime(row.created_at)}</span></div>
+            <div>${statusPill(row.level)} <span class="muted">${escapeHTML([row.build_type, safeMessage].filter(Boolean).join(" / "))}</span></div>
+          </div>
+        `;
+      },
     )
     .join("");
 }

@@ -17,6 +17,8 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 
 internal data class ClientRegionContext(
@@ -34,6 +36,7 @@ internal object ClientRegionProvider {
     private const val KEY_RELIABILITY = "reliability"
     private const val KEY_OBSERVED_AT_MS = "observed_at_ms"
     private const val LOCATION_TIMEOUT_MS = 1_500L
+    private const val GEOCODE_TIMEOUT_MS = 1_200L
     private const val MAX_RELIABLE_LOCATION_AGE_MS = 2 * 60 * 60 * 1000L
 
     fun hasLocationPermission(context: Context): Boolean =
@@ -57,7 +60,9 @@ internal object ClientRegionProvider {
     }
 
     fun cachedRegion(context: Context): ClientRegionContext? {
-        val prefs = prefs(context)
+        val appContext = context.applicationContext
+        if (!hasLocationPermission(appContext)) return null
+        val prefs = prefs(appContext)
         val region = prefs.getString(KEY_REGION, null)
             ?.trim()
             ?.takeIf { it.isNotBlank() && it != "未知" }
@@ -171,14 +176,30 @@ internal object ClientRegionProvider {
     @Suppress("DEPRECATION")
     private suspend fun reverseGeocodeRegion(context: Context, location: Location): String? =
         withContext(Dispatchers.IO) {
-            if (!Geocoder.isPresent()) return@withContext null
-            val address = runCatching {
-                Geocoder(context.applicationContext, Locale.CHINA)
-                    .getFromLocation(location.latitude, location.longitude, 1)
-                    ?.firstOrNull()
-            }.getOrNull() ?: return@withContext null
-            address.toRegionName()
+            val executor = Executors.newSingleThreadExecutor()
+            val future = executor.submit<String?> {
+                reverseGeocodeRegionBlocking(context.applicationContext, location)
+            }
+            try {
+                future.get(GEOCODE_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            } catch (_: Exception) {
+                future.cancel(true)
+                null
+            } finally {
+                executor.shutdownNow()
+            }
         }
+
+    @Suppress("DEPRECATION")
+    private fun reverseGeocodeRegionBlocking(context: Context, location: Location): String? {
+        if (!Geocoder.isPresent()) return null
+        val address = runCatching {
+            Geocoder(context.applicationContext, Locale.CHINA)
+                .getFromLocation(location.latitude, location.longitude, 1)
+                ?.firstOrNull()
+        }.getOrNull() ?: return null
+        return address.toRegionName()
+    }
 
     private fun Address.toRegionName(): String? {
         val values = listOf(

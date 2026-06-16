@@ -92,6 +92,7 @@ const navRoutes = unique(stringsFrom(/key:\s*"([^"]+)"/g, routesBlock));
 
 const routeContentBlock = findBlock(adminMain, /async function routeContent/);
 const switchRoutes = unique(stringsFrom(/case\s+"([^"]+)"/g, routeContentBlock));
+const compactLogsBlock = findBlock(adminMain, /function compactLogs/);
 
 const knownRouteBlock = findBlock(adminAPI, /func adminRouteAllowed/);
 const backendRouteCases = unique(
@@ -152,6 +153,12 @@ if (unknownRouteStrings.length) {
 expectAppLogPrefixFilter("auth.");
 expectAppLogPrefixFilter("auth.fusion_");
 expectAdminPattern("preauth app log filter", /filterButton\("[^"]+",\s*\{\s*userID:\s*"preauth"/);
+if (!/redactSensitiveDisplayText\(row\.message \|\| ""\)/.test(compactLogsBlock)) {
+  fail.push("user detail compact app logs: message must be redacted before rendering");
+}
+if (/\battrs\b|\bmasked_ip\b|device_model|os_version/.test(compactLogsBlock)) {
+  fail.push("user detail compact app logs: must not render attrs, masked_ip, or device details");
+}
 expectAdminPattern("readiness separates program attention", /程序需处理/);
 expectAdminPattern("monitoring shows program action strip", /程序需处理项/);
 expectAdminPattern("monitoring program strip excludes manual items", /filter\(\(row\)\s*=>\s*!row\.manual\s*&&\s*row\.status\s*!==\s*"ready"\)/);
@@ -206,6 +213,8 @@ expectAppLogPrefixFilter("app_update.");
   "app_update.download_failed",
   "app_update.install_intent_failed",
   "app_update.install_started",
+  "app_update.install_completed",
+  "app_update.install_not_completed",
 ].forEach(expectAppLogEventFilter);
 
 if (fail.length) {

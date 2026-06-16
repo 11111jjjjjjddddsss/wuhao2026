@@ -47,6 +47,7 @@ type AdminTodayMetrics struct {
 	ChatUsers            int64  `json:"chat_users"`
 	ImageChatRounds      int64  `json:"image_chat_rounds"`
 	QuotaDeductions      int64  `json:"quota_deductions"`
+	QuotaConsumePending  int64  `json:"quota_consume_pending"`
 	AppErrors            int64  `json:"app_errors"`
 	SupportConversations int64  `json:"support_conversations"`
 	SupportNeedsReply    int64  `json:"support_needs_reply"`
@@ -149,6 +150,7 @@ type AdminMonitoringWindow struct {
 	ChatUsers            int64  `json:"chat_users"`
 	ImageChatRounds      int64  `json:"image_chat_rounds"`
 	QuotaDeductions      int64  `json:"quota_deductions"`
+	QuotaConsumePending  int64  `json:"quota_consume_pending"`
 	AppErrors            int64  `json:"app_errors"`
 	AppWarns             int64  `json:"app_warns"`
 	AuthFailures         int64  `json:"auth_failures"`
@@ -180,6 +182,7 @@ type AdminMonitoringQueues struct {
 	GiftCardRedeemed       int64                    `json:"gift_card_redeemed"`
 	GiftCardFailedAttempts int64                    `json:"gift_card_failed_attempts"`
 	AuditFailures          int64                    `json:"audit_failures"`
+	QuotaConsumePending    int64                    `json:"quota_consume_pending"`
 	AppErrors              int64                    `json:"app_errors"`
 	AuthFailures           int64                    `json:"auth_failures"`
 	CrashReports           int64                    `json:"crash_reports"`
@@ -1180,6 +1183,9 @@ func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus
 	if overview.Today.QuotaDeductions, err = s.countQuery(ctx, "SELECT COALESCE(SUM(delta),0) FROM quota_ledger WHERE created_at >= ?", []any{sinceMs}); err != nil {
 		return overview, err
 	}
+	if overview.Today.QuotaConsumePending, err = s.CountPendingQuotaConsumeOutbox(ctx); err != nil {
+		return overview, err
+	}
 	if overview.Today.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{sinceMs}); err != nil {
 		return overview, err
 	}
@@ -1529,6 +1535,9 @@ func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, labe
 	if window.QuotaDeductions, err = s.countQuery(ctx, "SELECT COALESCE(SUM(delta),0) FROM quota_ledger WHERE created_at >= ?", []any{sinceMs}); err != nil {
 		return window, err
 	}
+	if window.QuotaConsumePending, err = s.countQuery(ctx, "SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed') AND completion_at >= ?", []any{sinceMs}); err != nil {
+		return window, err
+	}
 	if window.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{sinceMs}); err != nil {
 		return window, err
 	}
@@ -1630,6 +1639,9 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 		return queues, err
 	}
 	if queues.AuditFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM admin_audit_logs WHERE created_at >= ? AND success = 0", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+		return queues, err
+	}
+	if queues.QuotaConsumePending, err = s.CountPendingQuotaConsumeOutbox(ctx); err != nil {
 		return queues, err
 	}
 	if queues.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
@@ -1898,7 +1910,7 @@ func (s *Store) buildAdminMonitoringAppUpdateLogs(ctx context.Context, sinceMs i
 		   COALESCE(SUM(CASE WHEN level = 'error' THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'app_update.check_failed' THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'app_update.download_failed' THEN 1 ELSE 0 END), 0),
-		   COALESCE(SUM(CASE WHEN event = 'app_update.install_intent_failed' THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event IN ('app_update.install_intent_failed','app_update.install_not_completed') THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'app_update.install_permission_required' THEN 1 ELSE 0 END), 0),
 		   MAX(created_at)
 		 FROM client_app_logs
@@ -1965,6 +1977,15 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Level: level,
 			Route: "app-logs",
 			Count: queues.AuthFailures,
+		})
+	}
+	if queues.QuotaConsumePending > 0 {
+		items = append(items, AdminMonitoringActionItem{
+			Title: "扣次补偿待处理",
+			Body:  "已有完整回答归档，但扣次补偿还未完成；系统会自动重试，持续增加时再查数据库和额度日志。",
+			Level: "warn",
+			Route: "monitoring",
+			Count: queues.QuotaConsumePending,
 		})
 	}
 	if report.AppUpdateLogs.CheckFailures > 0 || report.AppUpdateLogs.DownloadFailures > 0 || report.AppUpdateLogs.InstallFailures > 0 {
@@ -2235,7 +2256,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "App 备案",
 		Status: "ready",
-		Body:   "App 备案已通过，备案号为 京ICP备2026031728号-2A；App 内设置页底部和协议 / 隐私基础信息已展示，并链接工信部备案查询。",
+		Body:   "App 备案已通过，备案号为 京ICP备2026031728号-2A；App 内设置页底部和协议 / 隐私基础信息已展示该编号。",
 		Owner:  "运营",
 	})
 	items = append(items, AdminMonitoringLaunchItem{

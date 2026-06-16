@@ -46,6 +46,22 @@ func TestAccessLogAddsRequestIDAndAvoidsSensitiveFields(t *testing.T) {
 	}
 }
 
+func TestSanitizeLoggedUserAgentRedactsClientControlledSecrets(t *testing.T) {
+	cases := []string{
+		"Mozilla token=secret-token",
+		"Client 13800138000",
+		"Aliyun LTAIabcdef",
+	}
+	for _, raw := range cases {
+		if got := sanitizeLoggedUserAgent(raw); got != "[redacted]" {
+			t.Fatalf("sanitizeLoggedUserAgent(%q) = %q, want [redacted]", raw, got)
+		}
+	}
+	if got := sanitizeLoggedUserAgent("Mozilla/5.0 NongjiTest"); got != "Mozilla/5.0 NongjiTest" {
+		t.Fatalf("expected ordinary user agent preserved, got %q", got)
+	}
+}
+
 func TestAccessLogMarksSlowRequest(t *testing.T) {
 	t.Setenv("ACCESS_LOG_SLOW_MS", "1")
 	var logs bytes.Buffer

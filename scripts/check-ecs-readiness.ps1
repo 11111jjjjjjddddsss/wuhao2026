@@ -107,7 +107,22 @@ if ! nginx -t 2>&1; then
   echo 'nginx configuration test failed' >&2
   exit 17
 fi
-active_port=$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "$nginx_site" 2>/dev/null | head -1 | sed -E 's/.*:([0-9]+);/\1/' || true)
+extract_unique_upstream_port() {
+  site="$1"
+  label="$2"
+  ports=$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "$site" 2>/dev/null | sed -E 's/.*:([0-9]+);/\1/' | sort -u || true)
+  count=$(printf '%s\n' "$ports" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [ "$count" = "0" ]; then
+    printf 'unknown'
+    return 0
+  fi
+  if [ "$count" != "1" ]; then
+    echo "${label} has mixed upstream ports: $(printf '%s' "$ports" | tr '\n' ' ')" >&2
+    exit 13
+  fi
+  printf '%s' "$ports" | sed '/^$/d'
+}
+active_port=$(extract_unique_upstream_port "$nginx_site" "api nginx")
 if [ -z "$active_port" ]; then
   active_port=unknown
 fi
@@ -122,7 +137,7 @@ if [ "$active_port" != "unknown" ]; then
   fi
 fi
 if [ -f "$admin_nginx_site" ]; then
-  admin_port=$(grep -oE 'proxy_pass http://127\.0\.0\.1:(3000|3001);' "$admin_nginx_site" 2>/dev/null | head -1 | sed -E 's/.*:([0-9]+);/\1/' || true)
+  admin_port=$(extract_unique_upstream_port "$admin_nginx_site" "admin nginx")
   if [ -z "$admin_port" ]; then
     admin_port=unknown
   fi
@@ -279,8 +294,13 @@ is_truthy() {
   [ "$value" = "1" ] || [ "$value" = "true" ] || [ "$value" = "yes" ] || [ "$value" = "on" ]
 }
 
+is_falsey() {
+  value=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | xargs)
+  [ "$value" = "0" ] || [ "$value" = "false" ] || [ "$value" = "no" ] || [ "$value" = "off" ]
+}
+
 for key in \
-  APP_ENV AUTH_STRICT AUTH_ALLOW_LEGACY_TOKEN AUTH_ALLOW_UNPROVEN_LEGACY_UUID APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
+  APP_ENV ENV GO_ENV ADMIN_COOKIE_SECURE AUTH_STRICT AUTH_ALLOW_LEGACY_TOKEN AUTH_ALLOW_UNPROVEN_LEGACY_UUID APP_SECRET MYSQL_URL MYSQL_MAX_OPEN_CONNS MYSQL_MAX_IDLE_CONNS BASE_PUBLIC_URL UPLOAD_BASE_URL \
   LOG_FILE_PATH ACCESS_LOG_SLOW_MS \
   IP2REGION_V4_XDB_PATH IP2REGION_V6_XDB_PATH IP2REGION_XDB_PATH \
   LISTEN_ADDR LISTEN_HOST PORT \
@@ -288,6 +308,7 @@ for key in \
   UPLOAD_STORAGE_BACKEND OSS_BUCKET OSS_ENDPOINT OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET \
   DASHSCOPE_API_KEY DASHSCOPE_API_KEY_1 DASHSCOPE_API_KEY_2 DASHSCOPE_API_KEY_3 DASHSCOPE_API_KEYS DASHSCOPE_KEY_COOLDOWN_SECONDS \
   DASHSCOPE_KEY_SELECTION_MODE DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS \
+  APP_ANDROID_UPDATE_ENABLED APP_UPDATE_ALLOW_FORCE_UPDATE APP_ANDROID_LATEST_VERSION_CODE APP_ANDROID_APK_URL APP_ANDROID_APK_SHA256 APP_ANDROID_FILE_SIZE_BYTES \
   DYPNS_ACCESS_KEY_ID DYPNS_ACCESS_KEY_SECRET DYPNS_FUSION_SCHEME_CODE \
   AUTH_FUSION_COMPAT_ENABLED \
   SMS_ACCESS_KEY_ID SMS_ACCESS_KEY_SECRET SMS_SIGN_NAME SMS_TEMPLATE_CODE \
@@ -319,6 +340,33 @@ fi
 auth_fusion_compat_enabled=$(env_value AUTH_FUSION_COMPAT_ENABLED || true)
 if is_truthy "$auth_fusion_compat_enabled"; then
   echo 'AUTH_FUSION_COMPAT_ENABLED must not be enabled in production readiness' >&2
+  exit 16
+fi
+
+app_android_update_enabled=$(env_value APP_ANDROID_UPDATE_ENABLED || true)
+if is_truthy "$app_android_update_enabled"; then
+  echo 'APP_ANDROID_UPDATE_ENABLED must stay disabled in normal production readiness; use the dedicated release-match script only after an explicit release command' >&2
+  exit 16
+fi
+
+app_update_allow_force_update=$(env_value APP_UPDATE_ALLOW_FORCE_UPDATE || true)
+if is_truthy "$app_update_allow_force_update"; then
+  echo 'APP_UPDATE_ALLOW_FORCE_UPDATE must not be enabled in production readiness' >&2
+  exit 16
+fi
+
+runtime_env=$(printf '%s' "$(env_value APP_ENV || env_value ENV || env_value GO_ENV || true)" | tr '[:upper:]' '[:lower:]' | xargs)
+admin_cookie_secure=$(env_value ADMIN_COOKIE_SECURE || true)
+if is_falsey "$admin_cookie_secure"; then
+  echo 'ADMIN_COOKIE_SECURE is explicitly false; production admin cookies must stay Secure over HTTPS' >&2
+  exit 16
+fi
+if [ -n "$admin_cookie_secure" ] && ! is_truthy "$admin_cookie_secure"; then
+  echo 'ADMIN_COOKIE_SECURE has an invalid value; use true/yes/on/1 or leave it unset in APP_ENV=production' >&2
+  exit 16
+fi
+if [ "$runtime_env" != "prod" ] && [ "$runtime_env" != "production" ] && ! is_truthy "$admin_cookie_secure"; then
+  echo 'Admin cookies must be Secure in production readiness; set APP_ENV=production with ADMIN_COOKIE_SECURE unset, or set ADMIN_COOKIE_SECURE=true' >&2
   exit 16
 fi
 

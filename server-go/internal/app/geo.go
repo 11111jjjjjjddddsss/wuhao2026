@@ -56,11 +56,8 @@ func ParseRegionValues(regionValue, sourceValue, reliabilityValue string) *Regio
 	}
 
 	reliability := RegionUnreliable
-	if RegionReliability(strings.ToLower(strings.TrimSpace(reliabilityValue))) == RegionReliable {
+	if source == RegionSourceGPS && RegionReliability(strings.ToLower(strings.TrimSpace(reliabilityValue))) == RegionReliable {
 		reliability = RegionReliable
-	}
-	if source == RegionSourceGPS && reliability != RegionReliable {
-		reliability = RegionUnreliable
 	}
 
 	return &RegionContext{

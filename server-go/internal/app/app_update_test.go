@@ -41,6 +41,29 @@ func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
 	}
 }
 
+func TestReadAndroidUpdateConfigRequiresExplicitEnvEnable(t *testing.T) {
+	values := map[string]string{
+		"APP_ANDROID_LATEST_VERSION_CODE": "4",
+		"APP_ANDROID_LATEST_VERSION_NAME": "1.0.4",
+		"APP_ANDROID_APK_URL":             "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		"APP_ANDROID_APK_SHA256":          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		"APP_ANDROID_FILE_SIZE_BYTES":     "12345",
+	}
+	cfg := readAndroidUpdateConfig(func(key string) string {
+		return values[key]
+	})
+	if cfg.Enabled {
+		t.Fatalf("env fallback must not implicitly enable update without APP_ANDROID_UPDATE_ENABLED=true")
+	}
+	values["APP_ANDROID_UPDATE_ENABLED"] = "true"
+	cfg = readAndroidUpdateConfig(func(key string) string {
+		return values[key]
+	})
+	if !cfg.Enabled {
+		t.Fatalf("env fallback should enable update when APP_ANDROID_UPDATE_ENABLED=true")
+	}
+}
+
 func TestBuildAndroidUpdateInfoDoesNotForceUpdateByDefault(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
 		Enabled:           true,

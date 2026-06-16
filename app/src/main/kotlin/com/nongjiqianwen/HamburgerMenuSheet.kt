@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.app.Activity
 import android.content.Context
 import android.net.Uri
+import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -129,8 +130,8 @@ internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后
 private val HamburgerBackButtonTopPadding = 4.dp
 private const val APP_UPDATE_PROMPT_PREFS = "app_update_prompt"
 private const val APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY = "last_prompted_version_code"
+private const val APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY = "pending_install_version_code"
 private const val APP_ICP_RECORD_NUMBER = "京ICP备2026031728号-2A"
-private const val MIIT_BEIAN_QUERY_URL = "https://beian.miit.gov.cn/"
 private val supportBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 
 private fun normalizeSupportLinkTarget(raw: String): String {
@@ -160,13 +161,50 @@ private fun Context.saveLastPromptedUpdateVersionCode(versionCode: Int) {
         .apply()
 }
 
+private fun Context.clearLastPromptedUpdateVersionCode(versionCode: Int) {
+    if (versionCode <= 0) return
+    val prefs = applicationContext.getSharedPreferences(APP_UPDATE_PROMPT_PREFS, Context.MODE_PRIVATE)
+    if (prefs.getInt(APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY, 0) != versionCode) return
+    prefs.edit().remove(APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY).apply()
+}
+
+private fun Context.loadPendingInstallAttemptVersionCode(): Int =
+    applicationContext
+        .getSharedPreferences(APP_UPDATE_PROMPT_PREFS, Context.MODE_PRIVATE)
+        .getInt(APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY, 0)
+
+private fun Context.savePendingInstallAttemptVersionCode(versionCode: Int) {
+    if (versionCode <= 0) return
+    applicationContext
+        .getSharedPreferences(APP_UPDATE_PROMPT_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putInt(APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY, versionCode)
+        .apply()
+}
+
+private fun Context.clearPendingInstallAttemptVersionCode(versionCode: Int = 0) {
+    val prefs = applicationContext.getSharedPreferences(APP_UPDATE_PROMPT_PREFS, Context.MODE_PRIVATE)
+    val pendingVersionCode = prefs.getInt(APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY, 0)
+    if (pendingVersionCode <= 0) return
+    if (versionCode > 0 && pendingVersionCode != versionCode) return
+    prefs.edit().remove(APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY).apply()
+}
+
+@Suppress("DEPRECATION")
+private fun Context.currentInstalledVersionCode(): Long =
+    runCatching {
+        val info = packageManager.getPackageInfo(packageName, 0)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            info.longVersionCode
+        } else {
+            info.versionCode.toLong()
+        }
+    }.getOrDefault(BuildConfig.VERSION_CODE.toLong())
+
 private fun trimSupportBareUrlDisplayText(raw: String): String {
     val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
     return raw.trimEnd { it in trailingPunctuation }
 }
-
-private fun supportContainsLinkCandidate(text: String): Boolean =
-    supportBareUrlRegex.containsMatchIn(text)
 
 private fun buildSupportLinkedText(
     text: String,
@@ -281,6 +319,7 @@ internal fun HamburgerMenuSheet(
     var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var updateDownloading by remember(userId) { mutableStateOf(false) }
     var pendingInstallPermissionUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
+    var pendingInstallAttemptUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var settingsMainOpenLogged by remember(visible, userId) { mutableStateOf(false) }
     var accountManagementOpenLogged by remember(visible, userId) { mutableStateOf(false) }
     fun performButtonHaptic() {
@@ -342,7 +381,7 @@ internal fun HamburgerMenuSheet(
                         )
                     }
                     if (userTriggered) {
-                        showNotice("当前已是最新版本")
+                        showNotice("当前没有可用更新")
                     }
                 }
             }
@@ -351,9 +390,6 @@ internal fun HamburgerMenuSheet(
     fun startAppUpdate(update: SessionApi.AppUpdateInfo) {
         if (updateDownloading) return
         val appContext = context.applicationContext
-        update.latestVersionCode
-            ?.takeIf { it > 0 }
-            ?.let { context.saveLastPromptedUpdateVersionCode(it) }
         if (!AppUpdateInstaller.canRequestInstallPackages(appContext)) {
             val opened = AppUpdateInstaller.openInstallPermissionSettings(appContext)
             pendingInstallPermissionUpdate = update.takeIf { opened }
@@ -405,6 +441,13 @@ internal fun HamburgerMenuSheet(
                 )
                 showNotice("系统安装页面打开失败，请稍后再试")
             } else {
+                pendingInstallAttemptUpdate = update
+                update.latestVersionCode
+                    ?.takeIf { it > 0 }
+                    ?.let {
+                        context.savePendingInstallAttemptVersionCode(it)
+                        context.saveLastPromptedUpdateVersionCode(it)
+                    }
                 SessionApi.reportClientLog(
                     level = "info",
                     event = "app_update.install_started",
@@ -414,20 +457,72 @@ internal fun HamburgerMenuSheet(
             }
         }
     }
-    DisposableEffect(lifecycleOwner, pendingInstallPermissionUpdate, updateDownloading) {
+    fun reconcilePendingInstallAttempt(showIncompleteNotice: Boolean) {
+        val inMemoryAttempt = pendingInstallAttemptUpdate
+        val targetVersionCode = inMemoryAttempt
+            ?.latestVersionCode
+            ?.takeIf { it > 0 }
+            ?: context.loadPendingInstallAttemptVersionCode()
+        if (targetVersionCode <= 0) {
+            if (inMemoryAttempt != null) {
+                pendingInstallAttemptUpdate = null
+            }
+            return
+        }
+        val installedVersionCode = context.currentInstalledVersionCode()
+        val attrs = (inMemoryAttempt?.let { appUpdateLogAttrs(it, true) } ?: mapOf(
+            "latest_version_code" to targetVersionCode,
+            "persisted_attempt" to true
+        )) + mapOf("installed_version_code" to installedVersionCode)
+        if (installedVersionCode >= targetVersionCode.toLong()) {
+            pendingInstallAttemptUpdate = null
+            context.clearPendingInstallAttemptVersionCode(targetVersionCode)
+            context.saveLastPromptedUpdateVersionCode(targetVersionCode)
+            SessionApi.reportClientLog(
+                level = "info",
+                event = "app_update.install_completed",
+                message = "App update install completed",
+                attrs = attrs
+            )
+        } else {
+            pendingInstallAttemptUpdate = null
+            context.clearPendingInstallAttemptVersionCode(targetVersionCode)
+            context.clearLastPromptedUpdateVersionCode(targetVersionCode)
+            SessionApi.reportClientLog(
+                level = "warn",
+                event = "app_update.install_not_completed",
+                message = "App update install page returned without version change",
+                attrs = attrs
+            )
+            if (showIncompleteNotice) {
+                showNotice("更新未完成，可稍后继续安装")
+            }
+        }
+    }
+    DisposableEffect(lifecycleOwner, pendingInstallPermissionUpdate, pendingInstallAttemptUpdate, updateDownloading) {
         val observer = LifecycleEventObserver { _, event ->
             if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
-            val pendingUpdate = pendingInstallPermissionUpdate ?: return@LifecycleEventObserver
-            if (updateDownloading) return@LifecycleEventObserver
-            if (AppUpdateInstaller.canRequestInstallPackages(context.applicationContext)) {
-                pendingInstallPermissionUpdate = null
-                showNotice("已允许安装，继续下载更新...")
-                startAppUpdate(pendingUpdate)
+            val pendingUpdate = pendingInstallPermissionUpdate
+            if (pendingUpdate != null && !updateDownloading) {
+                if (AppUpdateInstaller.canRequestInstallPackages(context.applicationContext)) {
+                    pendingInstallPermissionUpdate = null
+                    showNotice("已允许安装，继续下载更新...")
+                    startAppUpdate(pendingUpdate)
+                }
             }
+            reconcilePendingInstallAttempt(showIncompleteNotice = true)
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+    LaunchedEffect(userId) {
+        reconcilePendingInstallAttempt(showIncompleteNotice = false)
+    }
+    LaunchedEffect(visible, userId) {
+        if (visible) {
+            reconcilePendingInstallAttempt(showIncompleteNotice = false)
         }
     }
     fun handleBackClick() {
@@ -504,6 +599,7 @@ internal fun HamburgerMenuSheet(
     }
     LaunchedEffect(userId) {
         if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
+        reconcilePendingInstallAttempt(showIncompleteNotice = false)
         delay(1200)
         checkAppUpdate(userTriggered = false)
     }
@@ -856,7 +952,7 @@ private fun HamburgerAppUpdateCard(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "版本更新",
+                text = "发现新版本",
                 color = Color(0xFF111111),
                 fontSize = 20.sp,
                 lineHeight = 27.sp,
@@ -877,6 +973,13 @@ private fun HamburgerAppUpdateCard(
             if (downloading) {
                 Text(
                     text = "正在准备安装包，请稍候。",
+                    color = Color(0xFF6D7178),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            } else {
+                Text(
+                    text = "点击后会打开系统安装确认页，安装完成前不会自动替换当前 App。",
                     color = Color(0xFF6D7178),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -1009,6 +1112,8 @@ private fun appUpdateDownloadFailureText(reason: AppUpdateInstaller.DownloadFail
         AppUpdateInstaller.DownloadFailureReason.Sha256Mismatch,
         AppUpdateInstaller.DownloadFailureReason.PackageInfoMissing,
         AppUpdateInstaller.DownloadFailureReason.PackageNameMismatch,
+        AppUpdateInstaller.DownloadFailureReason.PackageSignatureMissing,
+        AppUpdateInstaller.DownloadFailureReason.PackageSignatureMismatch,
         AppUpdateInstaller.DownloadFailureReason.VersionCodeMismatch,
         AppUpdateInstaller.DownloadFailureReason.VersionCodeNotNewer -> "安装包校验未通过，请稍后再试"
         AppUpdateInstaller.DownloadFailureReason.NonHttpsRedirect,
@@ -1246,41 +1351,16 @@ private fun HamburgerMenuMainPage(
 private fun AppFilingFooter(
     modifier: Modifier = Modifier
 ) {
-    val linkStyle = SpanStyle(
-        color = Color(0xFF767B84),
-        textDecoration = TextDecoration.Underline
-    )
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
-            text = buildAnnotatedString {
-                append("App备案号：")
-                withLink(LinkAnnotation.Url(MIIT_BEIAN_QUERY_URL)) {
-                    withStyle(linkStyle) {
-                        append(APP_ICP_RECORD_NUMBER)
-                    }
-                }
-            },
+            text = "App备案号：$APP_ICP_RECORD_NUMBER",
             color = Color(0xFF8B9098),
             fontSize = 11.5.sp,
             lineHeight = 17.sp,
-            textAlign = TextAlign.Center
-        )
-        Text(
-            text = buildAnnotatedString {
-                append("备案查询：")
-                withLink(LinkAnnotation.Url(MIIT_BEIAN_QUERY_URL)) {
-                    withStyle(linkStyle) {
-                        append("beian.miit.gov.cn")
-                    }
-                }
-            },
-            color = Color(0xFF9AA0A8),
-            fontSize = 11.sp,
-            lineHeight = 16.sp,
             textAlign = TextAlign.Center
         )
     }
@@ -2134,7 +2214,7 @@ private fun HamburgerAccountManagementContent(
             modifier = Modifier.padding(top = 22.dp)
         ) {
             HamburgerAccountActionRow(
-                title = if (cacheCleanupSubmitting) "清理中" else "清理更新与拍照缓存",
+                title = if (cacheCleanupSubmitting) "清理中" else "清理临时缓存",
                 danger = false,
                 onClick = {
                     if (cacheCleanupSubmitting) return@HamburgerAccountActionRow
@@ -2933,22 +3013,25 @@ private fun HamburgerSupportFeedbackPage(
             val (imageUrls, uploadError) = uploadSupportImagesForSend(imageSnapshot)
             if (imageUrls == null) {
                 sending = false
-                sendingHint = null
-                onPendingAction(uploadError ?: "图片上传失败，请稍后再试")
+                val errorText = uploadError ?: "图片上传失败，请稍后再试"
+                sendingHint = errorText
+                onPendingAction(errorText)
                 return@launch
             }
             sendingHint = "正在提交反馈..."
             SessionApi.sendSupportMessage(body = body, images = imageUrls) { nullableResult ->
                 sending = false
-                sendingHint = null
                 val result = nullableResult ?: run {
+                    sendingHint = SUPPORT_SEND_FAILED_HINT
                     onPendingAction(SUPPORT_SEND_FAILED_HINT)
                     return@sendSupportMessage
                 }
                 val sent = result.message ?: run {
+                    sendingHint = SUPPORT_SEND_FAILED_HINT
                     onPendingAction(SUPPORT_SEND_FAILED_HINT)
                     return@sendSupportMessage
                 }
+                sendingHint = null
                 inputValue = TextFieldValue("")
                 selectedImages.removeAll(imageSnapshot.toSet())
                 scope.launch(Dispatchers.IO) {
@@ -2984,6 +3067,9 @@ private fun HamburgerSupportFeedbackPage(
             sending = sending,
             sendingHint = sendingHint,
             onInputChange = { next ->
+                if (!sending && sendingHint != null) {
+                    sendingHint = null
+                }
                 if (next.text.length <= SUPPORT_MESSAGE_MAX_CHARS) {
                     inputValue = next
                 } else {
@@ -3050,8 +3136,8 @@ private fun HamburgerSupportFeedbackContent(
 ) {
     val listState = rememberLazyListState()
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val actionCircleSize = if (screenWidth < 360.dp) 34.dp else 36.dp
-    val addIconSize = if (screenWidth < 360.dp) 24.dp else 26.dp
+    val actionCircleSize = if (screenWidth < 360.dp) 44.dp else 48.dp
+    val addIconSize = if (screenWidth < 360.dp) 26.dp else 28.dp
     val inputText = inputValue.text
     val hasContent = inputText.trim().isNotEmpty() || selectedImages.isNotEmpty()
     val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
@@ -3122,6 +3208,11 @@ private fun HamburgerSupportFeedbackContent(
             ) {
                 when {
                     messages.isNotEmpty() -> {
+                        if (loadFailed) {
+                            item(key = "stale-sync-warning") {
+                                HamburgerSupportInlineSyncWarning(onRetry = onRetry)
+                            }
+                        }
                         itemsIndexed(
                             items = messages,
                             key = { index, message ->
@@ -3334,6 +3425,54 @@ private fun HamburgerSupportEmptyState() {
 }
 
 @Composable
+private fun HamburgerSupportInlineSyncWarning(onRetry: () -> Unit) {
+    Surface(
+        color = Color.White,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "当前显示上次同步内容",
+                color = Color(0xFF4E5661),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Surface(
+                color = Color(0xFF111111),
+                shape = RoundedCornerShape(999.dp),
+                modifier = Modifier
+                    .heightIn(min = 36.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onRetry
+                    )
+            ) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                ) {
+                    Text(
+                        text = "重试",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun HamburgerSupportStatusText(text: String) {
     Text(
         text = text,
@@ -3362,7 +3501,6 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
         else -> Color(0xFF111111)
     }
     val linkColor = if (isUser) Color.White else Color(0xFF111111)
-    val hasLinkCandidate = remember(body) { supportContainsLinkCandidate(body) }
     val linkInteractionListener = remember(context, uriHandler) {
         LinkInteractionListener { link ->
             val url = (link as? LinkAnnotation.Url)?.url ?: return@LinkInteractionListener
@@ -3438,7 +3576,7 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                         horizontal = if (isSystem) 13.dp else 14.dp,
                         vertical = if (isSystem) 9.dp else 10.dp
                     )
-                    if (hasLinkCandidate) {
+                    SelectionContainer {
                         Text(
                             text = renderedBody,
                             color = bodyColor,
@@ -3446,16 +3584,6 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                             lineHeight = if (isSystem) 21.sp else 22.sp,
                             modifier = textModifier
                         )
-                    } else {
-                        SelectionContainer {
-                            Text(
-                                text = renderedBody,
-                                color = bodyColor,
-                                fontSize = if (isSystem) 14.sp else 15.sp,
-                                lineHeight = if (isSystem) 21.sp else 22.sp,
-                                modifier = textModifier
-                            )
-                        }
                     }
                 }
             }
@@ -3657,7 +3785,7 @@ internal fun HamburgerSupportFeedbackPagePreview(
         SessionApi.SupportMessage(
             id = 3,
             senderType = "admin",
-            body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来。",
+            body = "收到，客服已经帮您同步了一次。您重新打开会员中心看看，如果还不对，把截图发过来；官网地址 https://nongjiqiancha.cn 也可以复制后打开。",
             createdAt = now - 18L * 60L * 1000L
         )
     )
@@ -3766,7 +3894,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "将清空聊天记录和记忆摘要，不影响会员、加油包、礼品卡和反馈。操作不可恢复。",
+                text = "将删除当前账号的历史对话和记忆承接，不影响会员、礼品卡和反馈记录。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -4016,7 +4144,7 @@ private fun HamburgerAccountDeletionConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "提交后会退出当前账号。后台会核验注销申请，并在 15 个工作日内按规则处理账号、会员、订单、礼品卡和反馈；依法或因交易核验、安全风控、争议处理需要保留的记录会继续保存或去标识化。",
+                text = "提交后会退出当前账号。后台核验后，会在 15 个工作日内按规则处理账号和相关记录。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -4192,7 +4320,10 @@ private fun HamburgerRedeemCodeContent(
             }
         }
     }
-    Column(modifier = modifier) {
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(18.dp)
+    ) {
         Text(
             text = "礼品卡",
             color = Color(0xFF111111),
@@ -4209,7 +4340,7 @@ private fun HamburgerRedeemCodeContent(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f),
+                .heightIn(min = 360.dp),
             contentAlignment = Alignment.Center
         ) {
             val result = redeemResult

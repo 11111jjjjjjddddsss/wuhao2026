@@ -463,8 +463,8 @@ func TestAdminMonitoringLaunchReadinessManualItemsAreExplicit(t *testing.T) {
 	if appICP.Status != "ready" || appICP.Manual {
 		t.Fatalf("App ICP should be ready and no longer require manual confirmation: %#v", appICP)
 	}
-	if !strings.Contains(appICP.Body, "京ICP备2026031728号-2A") || !strings.Contains(appICP.Body, "工信部备案查询") {
-		t.Fatalf("App ICP launch item should mention the filing number and query link: %#v", appICP)
+	if !strings.Contains(appICP.Body, "京ICP备2026031728号-2A") || strings.Contains(appICP.Body, "工信部备案查询") {
+		t.Fatalf("App ICP launch item should mention the filing number without a query link: %#v", appICP)
 	}
 	manualTitles := []string{
 		"App 公安备案",

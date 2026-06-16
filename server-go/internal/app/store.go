@@ -37,6 +37,8 @@ func (s *Store) AppendSessionRoundComplete(
 	round SessionRound,
 	aWindowRounds int,
 	memoryEveryRounds int,
+	tierAtCompletion Tier,
+	dayCN string,
 	archiveSource string,
 ) (bool, *SessionSnapshot, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -71,19 +73,26 @@ func (s *Store) AppendSessionRoundComplete(
 	}
 
 	nowMs := time.Now().UnixMilli()
-	round.CreatedAt = nowMs
+	roundCreatedAtMs := round.CreatedAt
+	if roundCreatedAtMs <= 0 {
+		roundCreatedAtMs = nowMs
+	}
+	round.CreatedAt = roundCreatedAtMs
 	if _, err := tx.ExecContext(
 		ctx,
 		"INSERT INTO session_round_ledger(user_id, client_msg_id, request_hash, created_at) VALUES (?, ?, ?, ?)",
 		userID,
 		clientMsgID,
 		nullableTrimmed(requestHash),
-		nowMs,
+		roundCreatedAtMs,
 	); err != nil {
 		return false, nil, err
 	}
 
 	if err := s.archiveSessionRoundTx(ctx, tx, userID, clientMsgID, round, archiveSource, nowMs); err != nil {
+		return false, nil, err
+	}
+	if err := s.insertPendingQuotaConsumeOutboxTx(ctx, tx, userID, clientMsgID, tierAtCompletion, dayCN, nowMs); err != nil {
 		return false, nil, err
 	}
 	if err := s.pruneExpiredSessionRoundArchiveTx(ctx, tx, nowMs); err != nil {
@@ -477,7 +486,7 @@ func (s *Store) archiveSessionRoundTx(
 		nullString(strings.TrimSpace(round.Region)),
 		nullString(string(round.RegionSource)),
 		nullString(string(round.RegionReliability)),
-		nowMs,
+		round.CreatedAt,
 		nowMs,
 	); err != nil {
 		return err

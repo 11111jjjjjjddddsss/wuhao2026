@@ -2,6 +2,9 @@ package com.nongjiqianwen
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -43,6 +46,8 @@ object AppUpdateInstaller {
         Sha256Mismatch,
         PackageInfoMissing,
         PackageNameMismatch,
+        PackageSignatureMissing,
+        PackageSignatureMismatch,
         VersionCodeMismatch,
         VersionCodeNotNewer,
         RenameFailed,
@@ -236,6 +241,10 @@ object AppUpdateInstaller {
         if (packageInfo.packageName != context.packageName) {
             return DownloadFailureReason.PackageNameMismatch
         }
+        val signatureFailure = verifyArchiveSignatureFailure(context, apkFile)
+        if (signatureFailure != null) {
+            return signatureFailure
+        }
 
         val apkVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             packageInfo.longVersionCode
@@ -255,6 +264,51 @@ object AppUpdateInstaller {
             return DownloadFailureReason.VersionCodeNotNewer
         }
         return null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun verifyArchiveSignatureFailure(context: Context, apkFile: File): DownloadFailureReason? {
+        val packageManager = context.packageManager
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            PackageManager.GET_SIGNATURES
+        }
+        val currentPackageInfo = try {
+            packageManager.getPackageInfo(context.packageName, flags)
+        } catch (_: Exception) {
+            return DownloadFailureReason.PackageSignatureMissing
+        }
+        val archivePackageInfo = packageManager.getPackageArchiveInfo(apkFile.absolutePath, flags)
+            ?: return DownloadFailureReason.PackageSignatureMissing
+        val currentSignatures = certificateDigestSet(currentPackageInfo)
+        val archiveSignatures = certificateDigestSet(archivePackageInfo)
+        if (currentSignatures.isEmpty() || archiveSignatures.isEmpty()) {
+            return DownloadFailureReason.PackageSignatureMissing
+        }
+        return if (currentSignatures == archiveSignatures) {
+            null
+        } else {
+            DownloadFailureReason.PackageSignatureMismatch
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun certificateDigestSet(packageInfo: PackageInfo): Set<String> {
+        val signatures: Array<Signature> = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            val signingInfo = packageInfo.signingInfo ?: return emptySet()
+            signingInfo.apkContentsSigners ?: emptyArray()
+        } else {
+            packageInfo.signatures ?: emptyArray()
+        }
+        return signatures
+            .map { signature ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                digest.digest(signature.toByteArray()).joinToString("") { byte ->
+                    "%02x".format(byte.toInt() and 0xff)
+                }
+            }
+            .toSet()
     }
 
     private fun normalizeSha256(raw: String?): String? {

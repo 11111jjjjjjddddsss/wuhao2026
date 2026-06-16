@@ -73,7 +73,7 @@ p {
 
 .hero {
   display: grid;
-  grid-template-columns: minmax(0, 1.08fr) minmax(300px, 0.72fr);
+  grid-template-columns: minmax(360px, 1.08fr) minmax(300px, 0.72fr);
   gap: clamp(44px, 6vw, 92px);
   align-items: center;
   width: min(1180px, calc(100vw - 64px));
@@ -119,7 +119,8 @@ h1 {
   font-weight: 880;
   line-height: 1.02;
   letter-spacing: 0;
-  overflow-wrap: anywhere;
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 
 h1 span {
@@ -132,7 +133,8 @@ h1 span {
   color: var(--soft);
   font-size: clamp(18px, 2vw, 24px);
   line-height: 1.75;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .secondary-copy {
@@ -182,7 +184,8 @@ h1 span {
   color: rgba(243, 247, 239, 0.48);
   font-size: 13px;
   line-height: 1.65;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .capability-panel {
@@ -225,7 +228,8 @@ h1 span {
   color: rgba(243, 247, 239, 0.64);
   font-size: 15px;
   line-height: 1.72;
-  overflow-wrap: anywhere;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .site-footer {
@@ -265,7 +269,7 @@ h1 span {
   color: var(--green);
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1040px), (pointer: coarse) {
   .hero {
     grid-template-columns: minmax(0, 1fr);
     gap: 38px;
@@ -302,8 +306,14 @@ h1 span {
   }
 
   .hero {
+    display: block;
     width: min(100%, calc(100vw - 48px));
     padding: 38px 0 30px;
+  }
+
+  .hero-main,
+  .hero-copy-block {
+    width: 100%;
   }
 
   .brand-lockup {
@@ -328,8 +338,8 @@ h1 span {
     font-size: 15px;
     line-height: 1.78;
     white-space: normal;
-    word-break: break-word;
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
   .download-button {
@@ -342,6 +352,7 @@ h1 span {
 
   .capability-panel {
     width: 100%;
+    margin-top: 34px;
     padding: 20px;
   }
 
@@ -358,8 +369,8 @@ h1 span {
     font-size: 14px;
     line-height: 1.78;
     white-space: normal;
-    word-break: break-word;
-    overflow-wrap: anywhere;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
 
   .site-footer {

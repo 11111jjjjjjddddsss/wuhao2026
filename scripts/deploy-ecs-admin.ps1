@@ -251,6 +251,30 @@ nginx_site='/etc/nginx/sites-available/nongjiqiancha-admin'
 nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-admin'
 cert_root='/var/www/certbot'
 cert_dir="/etc/letsencrypt/live/`$domain"
+nginx_site_backup='/tmp/nongjiqiancha-admin.nginx-site.backup'
+nginx_site_backup_state='/tmp/nongjiqiancha-admin.nginx-site.backup-state'
+
+backup_nginx_site() {
+  if [ -f "`$nginx_site" ]; then
+    cp -f "`$nginx_site" "`$nginx_site_backup"
+    echo 'present' > "`$nginx_site_backup_state"
+  else
+    rm -f "`$nginx_site_backup"
+    echo 'missing' > "`$nginx_site_backup_state"
+  fi
+}
+
+restore_nginx_site() {
+  local state
+  state=`$(cat "`$nginx_site_backup_state" 2>/dev/null || echo missing)
+  if [ "`$state" = "present" ] && [ -f "`$nginx_site_backup" ]; then
+    cp -f "`$nginx_site_backup" "`$nginx_site"
+    ln -sfn "`$nginx_site" "`$nginx_enabled"
+  else
+    rm -f "`$nginx_site" "`$nginx_enabled"
+  fi
+  nginx -t && systemctl reload nginx || true
+}
 
 read_active_port() {
   matches=`$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' "`$api_nginx_site" 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | sort -u)
@@ -269,26 +293,13 @@ server {
     listen 80;
     server_name `$domain;
 
-    root `$current_link;
-    index index.html;
-
     location ^~ /.well-known/acme-challenge/ {
         root `$cert_root;
         default_type "text/plain";
     }
 
-    location /admin-api/ {
-        proxy_pass http://127.0.0.1:`$active_port;
-        proxy_http_version 1.1;
-        proxy_set_header Host \`$host;
-        proxy_set_header X-Real-IP \`$remote_addr;
-        proxy_set_header X-Forwarded-For \`$remote_addr;
-        proxy_set_header X-Forwarded-Proto \`$scheme;
-        proxy_read_timeout 60s;
-    }
-
     location / {
-        try_files \`$uri \`$uri/ /index.html;
+        return 404;
     }
 }
 EOF
@@ -369,6 +380,7 @@ ln -sfn "`$release_dir" "`$current_link"
 chown -R www-data:www-data "`$site_base" "`$cert_root"
 
 echo nginx-http
+backup_nginx_site
 write_http_nginx "`$active_port"
 ln -sfn "`$nginx_site" "`$nginx_enabled"
 nginx -t
@@ -378,7 +390,7 @@ echo certbot
 if command -v certbot >/dev/null 2>&1; then
   certbot certonly --webroot -w "`$cert_root" -d "`$domain" --non-interactive --agree-tos --register-unsafely-without-email --keep-until-expiring || true
 else
-  echo 'certbot not found; leaving HTTP admin site enabled' >&2
+  echo 'certbot not found; using existing admin certificate if present' >&2
 fi
 
 if [ -f "`$cert_dir/fullchain.pem" ] && [ -f "`$cert_dir/privkey.pem" ]; then
@@ -387,7 +399,9 @@ if [ -f "`$cert_dir/fullchain.pem" ] && [ -f "`$cert_dir/privkey.pem" ]; then
   nginx -t
   systemctl reload nginx
 else
-  echo 'admin certificate is not available yet; HTTP remains enabled' >&2
+  echo 'admin certificate is not available; refusing to keep admin site or /admin-api over HTTP' >&2
+  restore_nginx_site
+  exit 19
 fi
 
 echo verify
@@ -409,8 +423,8 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_status "admin-https-root" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/"
   expect_status "admin-https-auth-me" "401" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/admin-api/v1/auth/me"
 else
-  expect_status "admin-http-root" "200" -H "Host: `$domain" http://127.0.0.1/
-  expect_status "admin-http-auth-me" "401" -H "Host: `$domain" http://127.0.0.1/admin-api/v1/auth/me
+  echo 'admin certificate missing after deploy' >&2
+  exit 21
 fi
 "@
 

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bufio"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -75,6 +76,17 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	}
 	if got := currentContent[1]["image_url"].(map[string]any)["url"]; got != "https://img/current.jpg" {
 		t.Fatalf("expected current image preserved, got %#v", got)
+	}
+}
+
+func TestReadLimitedSSELineRejectsOversizedLine(t *testing.T) {
+	reader := bufio.NewReader(strings.NewReader("data: " + strings.Repeat("x", 12) + "\n"))
+	line, err := readLimitedSSELine(reader, 8)
+	if err != errSSELineTooLarge {
+		t.Fatalf("err = %v, want errSSELineTooLarge", err)
+	}
+	if line != "" {
+		t.Fatalf("oversized line should not be returned, got %q", line)
 	}
 }
 

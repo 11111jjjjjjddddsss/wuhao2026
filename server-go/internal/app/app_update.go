@@ -105,9 +105,6 @@ func readAndroidUpdateConfig(getenv func(string) string) androidUpdateConfig {
 	latestVersionCode := parsePositiveInt(getenv("APP_ANDROID_LATEST_VERSION_CODE"))
 	apkURL := strings.TrimSpace(getenv("APP_ANDROID_APK_URL"))
 	enabled := parseBoolEnv(getenv("APP_ANDROID_UPDATE_ENABLED"))
-	if !enabled && latestVersionCode > 0 && apkURL != "" {
-		enabled = true
-	}
 	return androidUpdateConfig{
 		Enabled:           enabled,
 		LatestVersionCode: latestVersionCode,

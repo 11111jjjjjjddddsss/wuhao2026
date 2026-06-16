@@ -9,7 +9,7 @@
 ## 当前现状
 
 - RDS MySQL 实例 `rm-2zes3vmj76p85n8g1` 已运行，数据库 `nongjiqiancha` 和应用账号 `nongji_app` 已创建，RDS 白名单当前只放 `192.168.1.237`
-- `server-go` 已从 ECS 通过内网连接 RDS 并完成迁移，当前可见业务表包括 `app_accounts`、`auth_sessions`、`user_id_migrations`、`user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits`、`session_ab`、`session_round_ledger`、`session_round_archive`、`chat_stream_inflight`、`daily_agri_cards`、`orders`、`support_messages`、`support_conversations`、`client_app_logs`、`admin_audit_logs`、`admin_users`、`admin_sessions`、`gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`account_deletion_requests`、`app_release_configs`
+- `server-go` 已从 ECS 通过内网连接 RDS 并完成迁移，当前可见业务表包括 `app_accounts`、`auth_sessions`、`user_id_migrations`、`user_entitlement`、`daily_usage`、`quota_ledger`、`quota_consume_outbox`、`topup_packs`、`upgrade_credits`、`session_ab`、`session_round_ledger`、`session_round_archive`、`chat_stream_inflight`、`daily_agri_cards`、`orders`、`support_messages`、`support_conversations`、`client_app_logs`、`admin_audit_logs`、`admin_users`、`admin_sessions`、`gift_card_batches`、`gift_cards`、`gift_card_redemption_attempts`、`account_deletion_requests`、`app_release_configs`
 - 主规则已明确人工查看优先 DMS；Codex 优先只读查询、迁移脚本、备份脚本
 - 当前已有账号资产归属只读巡检脚本 [check-backend-data-boundaries.ps1](D:/wuhao/scripts/check-backend-data-boundaries.ps1)，用于查表计数和 `acct_...` 归属异常，不查询手机号明文、聊天正文、反馈正文、图片 URL、礼品卡完整码、token 或模型 Key
 

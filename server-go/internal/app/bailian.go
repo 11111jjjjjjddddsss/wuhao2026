@@ -735,6 +735,6 @@ func getDashScopeKeySelectionMode() keySelectionMode {
 	case "fallback", "priority", "primary-first", "primary_fallback":
 		return keySelectionModeFallback
 	default:
-		return keySelectionModeAuto
+		return keySelectionModeFallback
 	}
 }

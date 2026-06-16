@@ -1,6 +1,6 @@
 # App 更新 Runbook
 
-最后更新：2026-06-15
+最后更新：2026-06-17
 
 当前 Android “检查更新”走自有服务器 APK 分发，不走应用商店，也不做静默安装。
 
@@ -11,13 +11,15 @@
 - App 启动进入主界面后，会静默请求一次 `GET /api/app/update`；如果服务端返回了更高版本，且当前设备还没对这个 `latest_version_code` 看过弹窗，App 会自动弹一次“发现新版本”，用户只需点“稍后 / 立即更新”
 - Android 设置页点击“检查更新”
 - App 请求 `GET /api/app/update?platform=android&version_code=<当前versionCode>&version_name=<当前versionName>`
-- 无更新：提示“已是最新版本”
+- 无更新：提示“当前没有可用更新”
 - 有更新：弹“发现新版本”卡片，按钮为“稍后 / 立即更新”
 - 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，并通过 FileProvider 调起 Android 系统安装页；Android 侧优先使用系统包安装器 action，失败时保留通用 APK `ACTION_VIEW` 兜底，降低不同 ROM 安装页兼容风险
 - 客户端也会 fail closed：只有更高 `versionCode`、HTTPS APK、合法 SHA-256 和正数文件大小都齐全时，才会把服务端响应当成可用更新；下载入口若遇到物料缺失 / 非法，也会直接失败并上报 `MissingReleaseMetadata`
 - Android 8+ 如果用户还没允许本 App 安装未知应用，会先打开系统授权页；用户授权后返回 App，会自动继续本次下载 / 安装流程
-- App 会把检查更新关键阶段通过自动日志上报到后台：检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页。日志只包含阶段、版本号、是否强更、是否配置 APK / SHA / 文件大小、失败原因和 HTTP 状态，不上传 APK URL、SHA-256、手机号、token 或其他敏感内容。
-- 如果多次测试更新后本机 cache 里残留旧下载文件，可在设置页“账号管理”点“清理本机缓存”。该入口只清理检查更新下载残留和相机临时文件，不删除登录态、聊天历史、会员权益、礼品卡、帮助反馈或待发送图片。
+- App 会把检查更新关键阶段通过自动日志上报到后台：检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页、安装完成和安装未完成。日志只包含阶段、版本号、是否强更、是否配置 APK / SHA / 文件大小、失败原因、HTTP 状态和已安装版本号，不上传 APK URL、SHA-256、手机号、token 或其他敏感内容。
+- 用户点“稍后”会记录该版本已经提示过，避免同一个版本在每次启动时反复弹窗；用户仍可在设置页手动点“检查更新”再次打开同一版本的更新卡片。
+- 用户点“立即更新”并成功拉起系统安装页后，App 会把正在安装的目标版本落到本地偏好里；如果用户取消安装、返回 App、安装页期间进程被杀或重启后版本仍没变化，客户端会清掉该版本的提示抑制，让后续自动检查仍能再次提醒。同一版本安装成功后才继续保留已提示记录。
+- 如果多次测试更新后本机 cache 里残留旧下载文件，可在设置页“账号管理”点“清理临时缓存”。该入口只清理检查更新下载残留和相机临时文件，不删除登录态、聊天历史、会员权益、礼品卡、帮助反馈或待发送图片。
 
 自动提醒不会变成系统通知，也不会在同一个版本号上反复骚扰用户；只有后台把 `latest_version_code` 提高后，App 才会再对这个新版本自动弹一次。默认只做普通更新，不启用强制更新。
 
@@ -83,11 +85,13 @@ Codex 默认按下面流程处理：
 - `APP_UPDATE_ALLOW_FORCE_UPDATE`：强制更新总开关，默认不设置；当前普通发版和后台发布页都不应启用
 - `APP_ANDROID_FILE_SIZE_BYTES`：必填，APK 字节大小，用于更新卡片展示和下载后校验；缺失或小于等于 0 时，后端不会对外返回可用更新
 - APK 文件大小不能超过 200MB；Android、后端用户接口、后台保存入口和发版校验都按这个上限处理，避免后台保存了一个客户端永远不会下载 / 安装的包
-- `APP_ANDROID_UPDATE_ENABLED`：可选，兼容环境变量开关；未配置时若版本号和 APK URL 都存在，默认视为启用，但仍必须同时具备 SHA-256 和文件大小才会下发
+- `APP_ANDROID_UPDATE_ENABLED`：兼容环境变量开关；只有显式配置为 `true / yes / on / 1` 才会启用环境变量兜底更新。未配置时即使版本号、APK URL、SHA-256 和文件大小都存在，也不会下发更新，避免残留环境变量绕过后台发布开关
 
 管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明和是否对外启用。后台保存后会在同一事务里更新 `app_release_configs` 并追加 `app_release_events` 发布历史，`/api/app/update` 会优先按当前配置对外返回；取消“对外启用更新”并保存，就是停更，也会留下停更记录。发布历史只记录版本、物料状态、操作人、时间和更新说明，不替代 APK 文件上传、真机覆盖安装验收或正式回滚演练。
 
 管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL / 文件大小上限这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和 1 到 200MB 的文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts` 或 `apk_too_large`。
+
+日常 readiness / 公网黑盒按“没有用户口令就不下发新版本”的口径运行：`check-ecs-readiness.ps1` 会拦截 `APP_ANDROID_UPDATE_ENABLED=true` 和 `APP_UPDATE_ALLOW_FORCE_UPDATE=true` 这类误开的环境变量开关；`check-public-blackbox.ps1` 默认要求旧版本探针返回 `has_update=false`。只有用户明确说“发布新版本 / 对外下发 / 配置检查更新”后，才走 `check-app-update-release-match.ps1 -ProbePreviousVersionUpdate` 证明旧包会看到 `has_update=true`。
 
 管理后台“监控面板”已新增“检查更新排障”卡，聚合最近 24 小时 `app_update.*` 自动日志，并提供直达 App 日志筛选按钮。若真机测试更新失败，优先按下面顺序看：
 
@@ -96,6 +100,7 @@ Codex 默认按下面流程处理：
 3. `app_update.download_failed`：下载失败、最终响应非 HTTPS、文件过大、大小不一致、SHA / 包名 / versionCode 校验失败或写入 cache 失败。
 4. `app_update.install_intent_failed`：APK 已下载但系统安装页没有成功打开。
 5. `app_update.install_started`：已成功拉起系统安装页，后续是否确认安装由 Android 系统和用户操作决定。
+6. `app_update.install_not_completed`：系统安装页已拉起，但用户取消、安装失败、进程重启后版本仍未变化，App 会清掉本版本提示抑制，后续可再次提醒。
 
 客户端下载后会在调起系统安装页前做基础校验：
 

@@ -120,7 +120,9 @@ func (s *Server) handleAdminAccountDeletionRequests(w http.ResponseWriter, r *ht
 		Status: normalizeAccountDeletionStatus(r.URL.Query().Get("status")),
 		Limit:  parseAdminLimit(r.URL.Query().Get("limit")),
 	}
-	requests, err := s.store.ListAccountDeletionRequests(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	requests, err := s.store.ListAccountDeletionRequests(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list account deletion requests failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.account_deletion.list", "account_deletion_requests", "", filter.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})

@@ -132,6 +132,7 @@ export interface AdminMonitoringWindow {
   chat_users: number;
   image_chat_rounds: number;
   quota_deductions: number;
+  quota_consume_pending: number;
   app_errors: number;
   app_warns: number;
   auth_failures: number;
@@ -163,6 +164,7 @@ export interface AdminMonitoringQueues {
   gift_card_redeemed: number;
   gift_card_failed_attempts: number;
   audit_failures: number;
+  quota_consume_pending: number;
   app_errors: number;
   auth_failures: number;
   crash_reports: number;
@@ -299,6 +301,7 @@ export interface AdminTodayMetrics {
   chat_users: number;
   image_chat_rounds: number;
   quota_deductions: number;
+  quota_consume_pending: number;
   app_errors: number;
   support_conversations: number;
   support_needs_reply: number;

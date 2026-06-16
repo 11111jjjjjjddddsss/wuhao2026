@@ -406,7 +406,7 @@ if ($failures.Count -eq 0) {
     $settingsLabelLogout = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x767b)$([char]0x5f55)")
     $accountLabelPhone = [regex]::Escape("$([char]0x624b)$([char]0x673a)$([char]0x53f7)")
     $accountLabelClearing = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e2d)")
-    $accountLabelClearCache = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x66f4)$([char]0x65b0)$([char]0x4e0e)$([char]0x62cd)$([char]0x7167)$([char]0x7f13)$([char]0x5b58)")
+    $accountLabelClearCache = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e34)$([char]0x65f6)$([char]0x7f13)$([char]0x5b58)")
     $accountLabelDeleteHistory = [regex]::Escape("$([char]0x5220)$([char]0x9664)$([char]0x5386)$([char]0x53f2)$([char]0x5bf9)$([char]0x8bdd)")
     $accountLabelLoggingOut = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x4e2d)")
     $accountLabelSubmitting = [regex]::Escape("$([char]0x63d0)$([char]0x4ea4)$([char]0x4e2d)")
@@ -420,10 +420,28 @@ if ($failures.Count -eq 0) {
         "Account management page must keep a safe client log so clean-state UI rollback reports are traceable."
     Require-Match $failures $hamburgerMenuSheet 'APP_ICP_RECORD_NUMBER\s*=\s*"京ICP备2026031728号-2A"' `
         "Settings/legal pages must keep the approved App ICP filing number visible in the APK."
-    Require-Match $failures $hamburgerMenuSheet 'MIIT_BEIAN_QUERY_URL\s*=\s*"https://beian\.miit\.gov\.cn/"' `
-        "Settings/legal pages must keep the MIIT filing query link for public verification."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+AppFilingFooter(?s:.*?)APP_ICP_RECORD_NUMBER(?s:.*?)MIIT_BEIAN_QUERY_URL' `
-        "Settings main page must keep a low-noise App ICP filing footer with a query link."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+AppFilingFooter(?s:.*?)App备案号：\$APP_ICP_RECORD_NUMBER' `
+        "Settings main page must keep a low-noise App ICP filing footer with only the approved filing number."
+    Require-NoMatch $failures $hamburgerMenuSheet '备案查询' `
+        "Settings footer must not show a separate filing-query row."
+    Require-Match $failures $hamburgerMenuSheet 'showNotice\("当前没有可用更新"\)' `
+        "Manual app-update checks must use a clear no-available-update notice instead of implying broken release materials are already latest."
+    Require-Match $failures $hamburgerMenuSheet 'text\s*=\s*"发现新版本"' `
+        "App update dialog must keep the mature user-facing title."
+    Require-Match $failures $hamburgerMenuSheet 'saveLastPromptedUpdateVersionCode(?s:.*?)event\s*=\s*"app_update\.install_started"' `
+        "App update must record the install-page attempt so completed or cancelled installs can be reconciled."
+    Require-Match $failures $hamburgerMenuSheet 'APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY\s*=\s*"pending_install_version_code"' `
+        "App update install attempts must persist the target version so process death during the system installer does not suppress the same version forever."
+    Require-Match $failures $hamburgerMenuSheet 'savePendingInstallAttemptVersionCode(?s:.*?)saveLastPromptedUpdateVersionCode(?s:.*?)app_update\.install_started' `
+        "App update must persist the pending install attempt before logging install_started."
+    Require-Match $failures $hamburgerMenuSheet 'clearPendingInstallAttemptVersionCode(?s:.*?)clearLastPromptedUpdateVersionCode(?s:.*?)app_update\.install_not_completed' `
+        "App update must clear prompt suppression if the system installer returns or the process restarts without installing the target version."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("更新未完成提示",\s*"系统安装取消后可继续安装",\s*UiCopyPreviewKind\.AppUpdateInstallNotCompletedHint\)' `
+        "Debug UI copy preview must include the app-update install-not-completed notice."
+    Require-Match $failures $chatScreen 'UiCopyPreviewKind\.AppUpdateInstallNotCompletedHint(?s:.*?)更新未完成，可稍后继续安装' `
+        "Debug UI copy preview must render the actual app-update install-not-completed notice."
+    Require-NoMatch $failures $hamburgerMenuSheet 'fun\s+startAppUpdate\s*\([^{]+\)\s*\{(?s:.*?)val\s+appContext\s*=\s*context\.applicationContext(?s:.*?)update\.latestVersionCode(?s:.*?)saveLastPromptedUpdateVersionCode(?s:.*?)if\s*\(\s*!AppUpdateInstaller\.canRequestInstallPackages' `
+        "App update must not mark a version as prompted before permission, download, and install-intent stages have succeeded."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("礼品卡生效规则",\s*"生成即可兑换，不做预约生效",\s*UiCopyPreviewKind\.HamburgerGiftCardImmediateRule\)' `
         "Debug UI copy preview must show the current gift-card immediate-effect rule."
     Require-Match $failures $chatScreen 'valid_from 只作创建追溯，不作为预约生效门槛' `
@@ -435,7 +453,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
         "Account management defaults must include phone, scoped cache cleanup, history deletion, logout, and account deletion application rows after app data is cleared."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
-    $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)ChatStreamingRenderer"
+    $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)BorderStroke(?s:.*?)TodayAgriNewsItem"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
     $chatScreenTodayAgriImplementationPattern = "private\s+fun\s+TodayAgriNewsText|private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard|toTodayAgriPlainText\s*\("
 
@@ -444,9 +462,15 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $pendingWorker $pendingWorkerPrivacyGatePattern `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
     Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
-        "Today agri rendering must stay in TodayAgriCardUi.kt and reuse the normal assistant text renderer."
+        "Today agri rendering must stay in TodayAgriCardUi.kt and use the framed normal-list item style."
     Require-Match $failures $todayAgriCardUi $todayAgriRenderablePattern `
         "Today agri card display validation must stay near the card UI renderer."
+    Require-Match $failures $todayAgriCardUi 'BorderStroke\s*\(\s*1\.dp,\s*Color\(0xFF111111\)\s*\)' `
+        "Today agri main-chat item must keep the lightweight black frame requested for visibility."
+    Require-Match $failures $todayAgriCardUi 'fontWeight\s*=\s*FontWeight\.SemiBold(?s:.*?)TodayAgriNewsItem' `
+        "Today agri title must stay visually emphasized without becoming a separate card surface."
+    Require-Match $failures $todayAgriCardUi "padStart\s*\(\s*2,\s*'0'\s*\)" `
+        "Today agri item labels must keep the current 01/02/03 compact marker style."
     Require-NoMatch $failures $chatScreen $chatScreenTodayAgriImplementationPattern `
         "ChatScreen must not re-embed today agri UI rendering or preview fixtures; keep UI-only card code isolated."
     $userMessageImageStripPattern = "fun\s+UserMessageImageStrip\b"
@@ -485,16 +509,38 @@ if ($failures.Count -eq 0) {
         "Streaming content must keep the same-frame bottom-anchor SideEffect that prevents the tail from flashing below the workline."
     Require-Match $failures $chatScreen 'STREAM_TYPEWRITER_IDLE_POLL_MS\s*=\s*20L' `
         "Streaming typewriter idle polling must keep the calmer 20ms rhythm."
-    Require-Match $failures $chatScreen 'STREAM_REVEAL_FRAME_BUDGET_MS\s*=\s*48L' `
-        "Streaming reveal frame budget must keep the calmer paced drain."
-    Require-Match $failures $chatScreen 'REMOTE_STREAM_MIN_BALL_MS\s*=\s*2300L' `
-        "Remote streaming waiting ball must stay visible long enough to be seen."
-    Require-Match $failures $chatScreen 'GPT_BALL_PULSE_MS\s*=\s*780' `
-        "GPT-style waiting ball pulse rhythm must stay readable."
-    Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*150L\s*else\s*120L" `
-        "Streaming newlines must keep a readable pause to reduce heading/list reflow popping."
-    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*40L' `
-        "Streaming Chinese text must keep one visible character per readable step."
+    Require-Match $failures $chatScreen 'STREAM_REVEAL_FRAME_BUDGET_MS\s*=\s*40L' `
+        "Streaming reveal frame budget must keep the normal faster drain."
+    Require-Match $failures $chatScreen 'REMOTE_STREAM_MIN_BALL_MS\s*=\s*1800L' `
+        "Remote streaming waiting ball must remain visible without holding the first text too long."
+    Require-Match $failures $chatScreen 'GPT_BALL_PULSE_MS\s*=\s*700' `
+        "GPT-style waiting ball pulse rhythm must stay readable at the current pace."
+    Require-Match $failures $chatScreen 'assistantDisclaimerTextStyle(?s:.*?)fontWeight\s*=\s*FontWeight\.Normal' `
+        "Assistant disclaimer must stay normal-weight gray text, not bold."
+    Require-Match $failures $chatScreen 'val\s+userBubbleColor\s*=\s*Color\(0xFF050505\)' `
+        "User messages must keep the current black bubble surface."
+    Require-Match $failures $chatScreen 'SelectableRenderedUserMessageBubble(?s:.*?)buildPlainLinkedAnnotatedString\(content,\s*linkColor\s*=\s*Color\.White\)(?s:.*?)color\s*=\s*Color\.White' `
+        "User message text and user-link text must remain white inside the black bubble."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("今日农情窄屏",\s*"280dp 下黑框、标题和编号不互挤",\s*UiCopyPreviewKind\.TodayAgriNarrow\)' `
+        "Debug UI copy preview must include a narrow today-agri layout case."
+    Require-Match $failures $chatScreen 'UiCopyPreviewKind\.TodayAgriNarrow(?s:.*?)TodayAgriNewsText\((?s:.*?)horizontalPadding\s*=\s*0\.dp(?s:.*?)maxContentWidth\s*=\s*280\.dp' `
+        "Today agri narrow preview must exercise the 280dp black-frame layout."
+    Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
+        "Message action menu buttons must expose button semantics for accessibility and UI automation."
+    Require-Match $failures $chatComposerPanel 'InputActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
+        "Input action menu buttons must expose button semantics for accessibility and UI automation."
+    Require-Match $failures $chatComposerPanel 'ComposerSendActionButton(?s:.*?)contentDescription\s*=\s*"发送"(?s:.*?)role\s*=\s*Role\.Button' `
+        "Composer send button must expose a hidden button label without adding visible text."
+    Require-Match $failures $chatComposerPanel 'ComposerInlineAddButton(?s:.*?)contentDescription\s*=\s*"添加图片"(?s:.*?)role\s*=\s*Role\.Button' `
+        "Composer add button must expose a hidden attachment label without adding visible text."
+    Require-Match $failures $chatScreen 'IconButton\((?s:.*?)contentDescription\s*=\s*"会员中心"(?s:.*?)MembershipCenterLeafIcon' `
+        "The top-right membership icon must keep a hidden accessibility label on the outer button."
+    Require-Match $failures $chatScreen 'private\s+fun\s+MembershipCenterLeafIcon(?s:.*?)Image\((?s:.*?)contentDescription\s*=\s*null' `
+        "The membership leaf graphic itself must stay decorative and avoid duplicating the outer button label."
+    Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*115L\s*else\s*92L" `
+        "Streaming newlines must keep a short readable pause to reduce heading/list reflow popping."
+    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*28L' `
+        "Streaming Chinese text must keep one visible character per normal-paced step."
     $onAdvanceMatch = [regex]::Match(
         $chatScreen,
         'onAdvance\s*=\s*\{\s*advance\s*->(?s:.*?lastStreamingFreshRevealMs\s*=\s*advance\.lastFreshRevealMs\s*)\}'
@@ -507,7 +553,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatScreen 'verticalArrangement\s*=\s*if\s*\(\s*shouldUseTopArrangementForConversation\s*\(\s*\)\s*\)\s*\{(?s:.*?)Arrangement\.Top(?s:.*?)\}\s*else\s*\{(?s:.*?)Arrangement\.Bottom' `
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `
-        "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list, using assistant-style plain text."
+        "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*selectionEnabled\s*\)\s*\{\s*SelectionContainer\s*\{(?s:.*?)RendererAssistantMarkdownContentImpl' `
         "Assistant settled text must keep the message selection container even when content contains links, so copy/full-copy remains available."
     Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
@@ -522,12 +568,14 @@ if ($failures.Count -eq 0) {
         "Support feedback must clean temporary selected images on page disposal, including interrupted sending states."
     Require-NoMatch $failures $hamburgerMenuSheet 'if\s*\(\s*!\s*sending\s*&&\s*selectedImages\.isNotEmpty\s*\(\s*\)\s*\)' `
         "Support feedback disposal cleanup must not skip temporary images while a send is in progress."
-    Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*lifecycleOwner,\s*pendingInstallPermissionUpdate,\s*updateDownloading\s*\)(?s:.*?)ON_RESUME(?s:.*?)pendingInstallPermissionUpdate\s*\?:\s*return@LifecycleEventObserver(?s:.*?)updateDownloading' `
+    Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*lifecycleOwner,\s*pendingInstallPermissionUpdate,\s*pendingInstallAttemptUpdate,\s*updateDownloading\s*\)(?s:.*?)ON_RESUME(?s:.*?)val\s+pendingUpdate\s*=\s*pendingInstallPermissionUpdate(?s:.*?)startAppUpdate\s*\(\s*pendingUpdate\s*\)' `
         "App update permission resume handling must keep working for automatic update prompts even when settings is not visible."
     Require-NoMatch $failures $hamburgerMenuSheet 'if\s*\(\s*!\s*visible\s*\|\|\s*updateDownloading\s*\)\s*return@LifecycleEventObserver' `
         "App update permission resume handling must not depend on settings sheet visibility."
-    Require-Match $failures $hamburgerMenuSheet 'supportContainsLinkCandidate(?s:.*?)LinkInteractionListener(?s:.*?)ui\.link_open_failed(?s:.*?)SelectionContainer' `
-        "Support feedback links must remain tappable and report only safe link-open failures."
+    Require-Match $failures $hamburgerMenuSheet 'pendingInstallAttemptUpdate(?s:.*?)app_update\.install_completed(?s:.*?)app_update\.install_not_completed' `
+        "App update install attempts must log whether the system install page actually changed the installed version."
+    Require-Match $failures $hamburgerMenuSheet 'buildSupportLinkedText(?s:.*?)LinkInteractionListener(?s:.*?)ui\.link_open_failed(?s:.*?)SelectionContainer' `
+        "Support feedback links must remain tappable, selectable, and report only safe link-open failures."
     $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
     $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
     $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"

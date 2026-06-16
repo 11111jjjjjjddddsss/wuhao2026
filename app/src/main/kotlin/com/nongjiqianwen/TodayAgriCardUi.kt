@@ -1,14 +1,29 @@
 package com.nongjiqianwen
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
     val cardItems = items.orEmpty().take(3)
@@ -26,30 +41,49 @@ fun TodayAgriNewsText(
     maxContentWidth: Dp = 560.dp,
     modifier: Modifier = Modifier
 ) {
-    val content = card.toTodayAgriPlainText()
-    if (content.isBlank()) return
+    val items = card.items.orEmpty().take(3)
+    if (items.size != 3) return
+    val dateText = todayAgriDateText(card.dateCn)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = horizontalPadding, vertical = 8.dp),
         contentAlignment = Alignment.Center
     ) {
-        ChatStreamingRenderer(
-            content = content,
-            renderMode = StreamingRenderMode.Settled,
-            freshSuffixEnabled = false,
-            showWaitingBall = false,
-            streamingFreshStart = -1,
-            streamingFreshEnd = -1,
-            streamingFreshTick = 0,
-            selectionEnabled = true,
-            showDisclaimer = false,
-            onStreamingContentBoundsChanged = null,
-            expandToFullWidth = true,
+        Column(
             modifier = Modifier
                 .widthIn(max = maxContentWidth)
                 .fillMaxWidth()
-        )
+                .border(BorderStroke(1.dp, Color(0xFF111111)), RoundedCornerShape(8.dp))
+                .padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(
+                        text = buildString {
+                            append("今日农情")
+                            if (!dateText.isNullOrBlank()) {
+                                append(" · ")
+                                append(dateText)
+                            }
+                        },
+                        color = Color(0xFF111111),
+                        fontSize = 22.sp,
+                        lineHeight = 30.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    items.forEachIndexed { index, item ->
+                        TodayAgriNewsItem(
+                            index = index,
+                            title = item.title.orEmpty().trim(),
+                            summary = item.summary.orEmpty().trim(),
+                            source = item.source.orEmpty().trim()
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -78,6 +112,69 @@ fun SessionApi.TodayAgriCard.toTodayAgriPlainText(): String {
             if (source.isNotBlank()) {
                 append("\n来源：")
                 append(source)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TodayAgriNewsItem(
+    index: Int,
+    title: String,
+    summary: String,
+    source: String
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.Top,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = 3.dp)
+                .sizeIn(minWidth = 28.dp, minHeight = 22.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color(0xFF111111))
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = (index + 1).toString().padStart(2, '0'),
+                color = Color.White,
+                fontSize = 12.sp,
+                lineHeight = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+        }
+        Column(
+            verticalArrangement = Arrangement.spacedBy(7.dp),
+            modifier = Modifier.weight(1f)
+        ) {
+            if (title.isNotBlank()) {
+                Text(
+                    text = title,
+                    color = Color(0xFF111111),
+                    fontSize = 18.sp,
+                    lineHeight = 25.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+            if (summary.isNotBlank()) {
+                Text(
+                    text = summary,
+                    color = Color(0xFF202124),
+                    fontSize = 17.sp,
+                    lineHeight = 28.sp
+                )
+            }
+            if (source.isNotBlank()) {
+                Text(
+                    text = "来源：$source",
+                    color = Color(0xFF6F747C),
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
             }
         }
     }

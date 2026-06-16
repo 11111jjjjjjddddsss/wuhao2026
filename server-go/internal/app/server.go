@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -53,6 +54,8 @@ type Server struct {
 	internalSecretLimiter rateLimiter
 	adminLoginLimiter     rateLimiter
 	giftCardRedeemLimiter rateLimiter
+	backgroundStop        chan struct{}
+	backgroundStopOnce    sync.Once
 }
 
 type orderRequest struct {
@@ -169,8 +172,10 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		internalSecretLimiter: newInternalSecretRateLimiter(redisClient),
 		adminLoginLimiter:     newAdminLoginRateLimiter(redisClient),
 		giftCardRedeemLimiter: newGiftCardRedeemRateLimiter(redisClient),
+		backgroundStop:        make(chan struct{}),
 	}
 	server.registerRoutes()
+	server.startQuotaConsumeRepairWorker()
 	return server, nil
 }
 
@@ -179,7 +184,15 @@ func (s *Server) Handler() http.Handler {
 }
 
 func (s *Server) Close() error {
-	if s == nil || s.redisClient == nil {
+	if s == nil {
+		return nil
+	}
+	if s.backgroundStop != nil {
+		s.backgroundStopOnce.Do(func() {
+			close(s.backgroundStop)
+		})
+	}
+	if s.redisClient == nil {
 		return nil
 	}
 	return s.redisClient.Close()
@@ -477,7 +490,7 @@ func (s *Server) handleTopupBuy(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			s.logger.Error("buy topup failed", "userId", auth.UserID, "orderId", orderID, "error", err)
-			s.writeError(w, http.StatusInternalServerError, err.Error())
+			s.writeError(w, http.StatusInternalServerError, "internal_error")
 		}
 		return
 	}
@@ -581,7 +594,7 @@ func (s *Server) handleRenewTier(w http.ResponseWriter, r *http.Request, targetT
 				return
 			}
 			s.logger.Error("renew tier failed", "userId", auth.UserID, "orderId", orderID, "targetTier", targetTier, "error", err)
-			s.writeError(w, http.StatusInternalServerError, err.Error())
+			s.writeError(w, http.StatusInternalServerError, "internal_error")
 		}
 		return
 	}
@@ -634,7 +647,7 @@ func (s *Server) handleUpgradePlusToPro(w http.ResponseWriter, r *http.Request) 
 				return
 			}
 			s.logger.Error("upgrade plus to pro failed", "userId", auth.UserID, "orderId", orderID, "error", err)
-			s.writeError(w, http.StatusInternalServerError, err.Error())
+			s.writeError(w, http.StatusInternalServerError, "internal_error")
 		}
 		return
 	}

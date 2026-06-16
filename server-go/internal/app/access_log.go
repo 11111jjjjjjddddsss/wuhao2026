@@ -115,10 +115,64 @@ func accessLogAttrs(r *http.Request, requestID string, auth AuthInfo, recorder *
 	if auth.UserID != "" {
 		attrs = append(attrs, "user_id", truncateRunes(auth.UserID, maxLoggedUserIDRunes))
 	}
-	if userAgent := truncateRunes(strings.TrimSpace(r.UserAgent()), maxLoggedUserAgentRunes); userAgent != "" {
+	if userAgent := sanitizeLoggedUserAgent(r.UserAgent()); userAgent != "" {
 		attrs = append(attrs, "user_agent", userAgent)
 	}
 	return attrs
+}
+
+func sanitizeLoggedUserAgent(raw string) string {
+	value := truncateRunes(strings.TrimSpace(raw), maxLoggedUserAgentRunes)
+	if value == "" {
+		return ""
+	}
+	lower := strings.ToLower(value)
+	for _, marker := range []string{
+		"authorization",
+		"bearer",
+		"token",
+		"accesskey",
+		"access_key",
+		"secret",
+		"password",
+		"session",
+		"cookie",
+		"ltai",
+	} {
+		if strings.Contains(lower, marker) {
+			return "[redacted]"
+		}
+	}
+	if containsLongDigitRun(value, 11) {
+		return "[redacted]"
+	}
+	var b strings.Builder
+	for _, ch := range value {
+		if ch < 0x20 || ch == 0x7f {
+			b.WriteByte(' ')
+			continue
+		}
+		b.WriteRune(ch)
+	}
+	return strings.Join(strings.Fields(b.String()), " ")
+}
+
+func containsLongDigitRun(value string, threshold int) bool {
+	if threshold <= 0 {
+		return false
+	}
+	run := 0
+	for _, ch := range value {
+		if ch >= '0' && ch <= '9' {
+			run++
+			if run >= threshold {
+				return true
+			}
+			continue
+		}
+		run = 0
+	}
+	return false
 }
 
 func accessLogPath(r *http.Request) string {

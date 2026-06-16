@@ -96,6 +96,10 @@ func (s *Store) WasProcessed(ctx context.Context, userID string, clientMsgID str
 }
 
 func (s *Store) ConsumeOnDone(ctx context.Context, userID string, tier Tier, clientMsgID string, dayCN string) (ConsumeResult, error) {
+	return s.consumeOnDoneAt(ctx, userID, tier, clientMsgID, dayCN, time.Now().UnixMilli())
+}
+
+func (s *Store) consumeOnDoneAt(ctx context.Context, userID string, tier Tier, clientMsgID string, dayCN string, now int64) (ConsumeResult, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ConsumeResult{}, err
@@ -131,7 +135,6 @@ func (s *Store) ConsumeOnDone(ctx context.Context, userID string, tier Tier, cli
 		return ConsumeResult{}, err
 	}
 
-	now := time.Now().UnixMilli()
 	var source *QuotaSource
 	if used < tierLimits[tier] {
 		if _, err := tx.ExecContext(
@@ -181,6 +184,129 @@ func (s *Store) ConsumeOnDone(ctx context.Context, userID string, tier Tier, cli
 		Source:   source,
 		Status:   status,
 	}, nil
+}
+
+type QuotaConsumeOutboxJob struct {
+	ID           int64
+	UserID       string
+	ClientMsgID  string
+	DayCN        string
+	Tier         Tier
+	CompletionAt int64
+	Attempts     int
+}
+
+func (s *Store) insertPendingQuotaConsumeOutboxTx(ctx context.Context, tx *sql.Tx, userID string, clientMsgID string, tier Tier, dayCN string, completionAt int64) error {
+	if strings.TrimSpace(userID) == "" || strings.TrimSpace(clientMsgID) == "" || strings.TrimSpace(dayCN) == "" {
+		return nil
+	}
+	if _, ok := tierLimits[tier]; !ok {
+		tier = TierFree
+	}
+	_, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO quota_consume_outbox(
+		   user_id, client_msg_id, day_cn, tier_at_completion, completion_at,
+		   status, attempts, next_attempt_at, created_at, updated_at
+		 )
+		 VALUES (?, ?, ?, ?, ?, 'pending', 0, 0, ?, ?)
+		 ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)`,
+		userID,
+		clientMsgID,
+		dayCN,
+		string(tier),
+		completionAt,
+		completionAt,
+		completionAt,
+	)
+	return err
+}
+
+func (s *Store) MarkQuotaConsumeOutboxDone(ctx context.Context, userID string, clientMsgID string, repairedAt int64) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE quota_consume_outbox
+		 SET status = 'done',
+		     last_error = NULL,
+		     next_attempt_at = 0,
+		     repaired_at = ?,
+		     updated_at = ?
+		 WHERE user_id = ? AND client_msg_id = ?`,
+		repairedAt,
+		repairedAt,
+		userID,
+		clientMsgID,
+	)
+	return err
+}
+
+func (s *Store) MarkQuotaConsumeOutboxFailed(ctx context.Context, userID string, clientMsgID string, lastError string, nextAttemptAt int64, nowMs int64) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE quota_consume_outbox
+		 SET status = 'failed',
+		     attempts = attempts + 1,
+		     last_error = ?,
+		     next_attempt_at = ?,
+		     updated_at = ?
+		 WHERE user_id = ? AND client_msg_id = ? AND status <> 'done'`,
+		truncateRunes(strings.TrimSpace(lastError), 255),
+		nextAttemptAt,
+		nowMs,
+		userID,
+		clientMsgID,
+	)
+	return err
+}
+
+func (s *Store) ListDueQuotaConsumeOutbox(ctx context.Context, limit int, nowMs int64) ([]QuotaConsumeOutboxJob, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at, attempts
+		 FROM quota_consume_outbox
+		 WHERE status IN ('pending','failed') AND next_attempt_at <= ?
+		 ORDER BY id ASC
+		 LIMIT ?`,
+		nowMs,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	jobs := []QuotaConsumeOutboxJob{}
+	for rows.Next() {
+		var job QuotaConsumeOutboxJob
+		var tier string
+		if err := rows.Scan(&job.ID, &job.UserID, &job.ClientMsgID, &job.DayCN, &tier, &job.CompletionAt, &job.Attempts); err != nil {
+			return nil, err
+		}
+		job.Tier = Tier(tier)
+		if _, ok := tierLimits[job.Tier]; !ok {
+			job.Tier = TierFree
+		}
+		jobs = append(jobs, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return jobs, nil
+}
+
+func (s *Store) CountPendingQuotaConsumeOutbox(ctx context.Context) (int64, error) {
+	var count sql.NullInt64
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed')",
+	).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count.Int64, nil
 }
 
 func (s *Store) GetTopupStatus(ctx context.Context, userID string) (int, *int64, error) {
@@ -555,10 +681,11 @@ func (s *Store) consumeOverflowQuota(ctx context.Context, tx *sql.Tx, userID str
 		ctx,
 		`SELECT remaining
 		 FROM upgrade_credits
-		 WHERE user_id = ? AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)
+		 WHERE user_id = ? AND remaining > 0 AND updated_at <= ? AND (expire_at IS NULL OR expire_at > ?)
 		 LIMIT 1
 		 FOR UPDATE`,
 		userID,
+		now,
 		now,
 	).Scan(&upgradeRemaining)
 	if err == nil {
@@ -583,11 +710,12 @@ func (s *Store) consumeOverflowQuota(ctx context.Context, tx *sql.Tx, userID str
 		ctx,
 		`SELECT pack_id, remaining
 		 FROM topup_packs
-		 WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)
+		 WHERE user_id = ? AND status = 'active' AND remaining > 0 AND created_at <= ? AND (expire_at IS NULL OR expire_at > ?)
 		 ORDER BY CASE WHEN expire_at IS NULL THEN 1 ELSE 0 END ASC, expire_at ASC, created_at ASC
 		 LIMIT 1
 		 FOR UPDATE`,
 		userID,
+		now,
 		now,
 	).Scan(&packID, &packRemaining)
 	if err == nil {

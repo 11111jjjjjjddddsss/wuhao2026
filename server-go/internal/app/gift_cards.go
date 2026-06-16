@@ -181,9 +181,12 @@ func (s *Server) handleAdminGiftCardBatches(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	batches, err := s.store.ListGiftCardBatches(r.Context(), parseAdminLimit(r.URL.Query().Get("limit")))
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	batches, err := s.store.ListGiftCardBatches(ctx, parseAdminLimit(r.URL.Query().Get("limit")))
 	if err != nil {
 		s.logger.Error("admin list gift card batches failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.batches", "gift_cards", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -238,9 +241,12 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 		Limit:       parseAdminLimit(r.URL.Query().Get("limit")),
 		IncludeCode: adminCanViewGiftCardCodes(admin.User.Role),
 	}
-	cards, err := s.store.ListGiftCards(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	cards, err := s.store.ListGiftCards(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list gift cards failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.cards", "gift_cards", "", filter.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -257,9 +263,12 @@ func (s *Server) handleAdminGiftCardSummary(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	summary, err := s.store.GetGiftCardSummary(r.Context(), time.Now().UnixMilli())
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	summary, err := s.store.GetGiftCardSummary(ctx, time.Now().UnixMilli())
 	if err != nil {
 		s.logger.Error("admin gift card summary failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.summary", "gift_cards", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -327,9 +336,12 @@ func (s *Server) handleAdminGiftCardAttempts(w http.ResponseWriter, r *http.Requ
 		FailureReason: strings.TrimSpace(r.URL.Query().Get("failure_reason")),
 		Limit:         parseAdminLimit(r.URL.Query().Get("limit")),
 	}
-	attempts, err := s.store.ListGiftCardAttempts(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	attempts, err := s.store.ListGiftCardAttempts(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list gift card attempts failed", "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.attempts", "gift_card_redemption_attempts", "", filter.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
@@ -466,7 +478,7 @@ func (s *Store) CreateGiftCardBatch(ctx context.Context, input GiftCardBatchInpu
 		if _, err := tx.ExecContext(
 			ctx,
 			`INSERT INTO gift_cards(card_id, batch_id, code_hash, code_mask, code_suffix, code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, updated_at, created_at)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)`,
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?)`,
 			cardID,
 			batch.BatchID,
 			codeHash,
