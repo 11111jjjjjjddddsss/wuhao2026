@@ -5,6 +5,8 @@
 
 ## 2026-06-16
 
+- 按“服务器好升级、预防被打”的口径继续做安全复查：线上安全组仍只放 `80 / 443 / ICMP`，ECS 本机 `ssh` inactive / disabled，Go 只监听 `127.0.0.1:3000`，Nginx / 公网黑盒 / readiness 均通过；代码安全扫查未发现 pprof、默认裸 `ListenAndServe`、`InsecureSkipVerify`、前端 `innerHTML/eval/postMessage` 等高危模式。`govulncheck` 发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链，已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并将 `golang.org/x/net` 升到 `v0.53.0`；复查 `govulncheck ./...` 显示当前代码实际调用链 0 漏洞。当前仍不建议直接购买 WAF / 高防，先保留免费 / 低成本防护，等持续 Web 攻击、CC、带宽打满或 DDoS 黑洞等信号出现再升级。
+
 - 按“明天给代理测试、往正式上线标准推进”的口径继续收口 Android / 后端 / 文案：今日农情主聊天展示从带边框资讯卡改成普通 AI 风格文本块，底层仍是 `ChatTimelineItem.TodayAgriCard` 的 UI-only 视觉项，不进入真实 `messages`、远端聊天历史、记忆文档或问诊扣次，也不恢复 overlay / sticky / 关闭动画；`check-android-build-parity.ps1` 和单测同步锁住该口径。`ChatStreamingRenderer` 补充 DONE 收尾兜底，纯 `**` / `*` / 反引号等不可见结构符号不会让本地 reveal buffer 卡住；active streaming 阶段链接只按普通文字显示，完成态链接仍可点击。帮助与反馈消息含 URL 时不再被 `SelectionContainer` 吞成纯文本，打开失败会提示“链接打开失败，请复制后打开”并只上报 scheme / 异常类名。礼品卡同一账号重复提交自己已兑换成功的同一卡码会按幂等成功返回既有结果，避免 App 丢失首次成功响应后误报失败；其他账号重复兑换仍失败。Android 内置服务协议 / 隐私政策、官网协议 / 隐私页和法律 runbook 同步收成正式上线口径：微信 / 支付宝只作为页面支持的官方渠道，未开放入口不发起真实扣费；账号注销是申请核验流程，按 15 个工作日内处理展示；App 自动日志按 30 天低成本排障窗口控制，服务端写入后限频清理超窗记录，巡检阈值同步 30 天；服务器安全 / 性能 / 扩容准备完成一轮复查，新增只读性能快检 `check-server-performance.ps1`，当前不升配、不买 WAF / 高防，扩容路线和安全升级触发线已固化到 runbook；官网清掉旧融合认证 / 一键登录 / 电话状态权限表述。本轮没有修改主对话锚点、记忆提示词、今日农情生成提示词或后端模型输出过滤。
 
 ## 2026-06-15

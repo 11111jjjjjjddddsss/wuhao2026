@@ -1,6 +1,6 @@
 # ECS 发版 Runbook
 
-最后更新：2026-06-15
+最后更新：2026-06-16
 
 ## 目的
 
@@ -12,7 +12,7 @@
 - 2026-05-30 已清理北京区空闲网络资源：删除旧 SAE 自动交换机 `vsw-2ze3elcd2iad6n1madi5g`、空默认交换机 `vsw-2zemrmbor6c886z5rul20` 和空默认 VPC `vpc-2zeceqyrcmnxhoaxxzjks`；当前北京区只保留生产 VPC / 交换机
 - 旧 SAE demo 应用已删除，当前没有 SAE 应用承载后端或对外流量
 - 已初始化服务器用户和目录：系统用户 `nongji`，部署目录 `/opt/nongjiqiancha/server`，运行配置 `/etc/nongjiqiancha/server.env`，上传目录 `/var/lib/nongjiqiancha/uploads`，日志目录 `/var/log/nongjiqiancha`，免费离线 IP 粗定位库目录 `/opt/nongjiqiancha/ip2region`
-- 已安装并启用：Nginx、fail2ban、logrotate、MariaDB client、Go 1.26.2、阿里云云安全中心免费版 agent
+- 已安装并启用：Nginx、fail2ban、logrotate、MariaDB client、Go 1.26.x（仓库 `server-go/go.mod` 通过 `toolchain go1.26.4` 钉住补丁版构建工具链）、阿里云云安全中心免费版 agent
 - `server-go` 当前采用单台 ECS 双端口发版：Nginx 在 `127.0.0.1:3000` 和 `127.0.0.1:3001` 之间切换上游，systemd slot 服务为 `nongji-server-3000.service` / `nongji-server-3001.service`；历史 `nongji-server.service` 仅作为迁移前旧服务名保留，双端口迁移成功后已禁用，旧 slot 会按排空窗口延迟停止，避免打断正在进行的 SSE。不要在生产环境显式配置 `LISTEN_ADDR` 或 `LISTEN_HOST`，否则双端口脚本无法通过 `PORT=3000/3001` 切换监听地址
 - Go HTTP 服务使用显式 `http.Server`，默认 `ReadHeaderTimeout=5s`、`ReadTimeout=15s`、`IdleTimeout=90s`、`MaxHeaderBytes=1MiB`；`WriteTimeout` 默认保持 `0`，避免把正常 SSE 长回答按写超时杀掉。如需调整，可通过 `HTTP_READ_HEADER_TIMEOUT_SECONDS`、`HTTP_READ_TIMEOUT_SECONDS`、`HTTP_WRITE_TIMEOUT_SECONDS`、`HTTP_IDLE_TIMEOUT_SECONDS`、`HTTP_MAX_HEADER_BYTES` 和 `HTTP_SHUTDOWN_TIMEOUT_SECONDS` 配置
 - 模型出站 HTTP client 不设置全局 `Timeout`，避免误杀 SSE 正文流；只限制拨号、TLS 握手、响应头等待和空闲连接，默认 `DASHSCOPE_DIAL_TIMEOUT_SECONDS=10`、`DASHSCOPE_TLS_HANDSHAKE_TIMEOUT_SECONDS=10`、`DASHSCOPE_RESPONSE_HEADER_TIMEOUT_SECONDS=60`、`DASHSCOPE_IDLE_CONN_TIMEOUT_SECONDS=90`。主聊天流另有 `CHAT_STREAM_MAX_DURATION_SECONDS` 兜底，默认 30 分钟；SSE 响应会带 `X-Accel-Buffering: no`，提示 Nginx 不缓冲流式响应
@@ -89,7 +89,7 @@ Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Andr
 
 1. 本地打包 `server-go` 源码、assets、migrations、go.mod、go.sum
 2. 用 ECS Cloud Assistant `SendFile` 分片下发到 `/tmp/nongji-deploy-chunks-<commit>`
-3. ECS 本机用 Go 1.26.2 编译到 `/opt/nongjiqiancha/server/nongji-server`
+3. ECS 本机按 `server-go/go.mod` 的 Go toolchain 声明编译到 `/opt/nongjiqiancha/server/nongji-server`；当前要求 `toolchain go1.26.4`
 4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum
 5. 读取 Nginx 当前上游端口，选择另一个端口作为新 slot
 6. 启动 `nongji-server-3000.service` 或 `nongji-server-3001.service` 中的非当前 slot，并先检查该端口本机 `/healthz`

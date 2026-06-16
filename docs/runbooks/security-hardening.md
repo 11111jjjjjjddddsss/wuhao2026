@@ -26,6 +26,7 @@
 - fail2ban active，云安全中心 agent 在线，SLS 5 条应用告警和云监控 9 条资源水位告警均 ready
 - 近期 Go 日志没有业务 5xx / 429；普通扫描多为 `/`、`/login`、`/mcp`、`/sse` 等路径，当前返回 404，不构成立刻购买 WAF 的理由
 - Nginx error 里有少量 TLS 握手失败和公网扫描噪声，属于公开 HTTPS 服务常见背景流量；后续如果数量持续放大或伴随 5xx / 带宽打满，再升级处理
+- Go 依赖和工具链补丁级安全复查：`govulncheck` 首次扫描发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链；已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并把 `golang.org/x/net` 升到 `v0.53.0`。复查 `govulncheck ./...` 显示“Your code is affected by 0 vulnerabilities”。后续发布必须用该工具链重新编译线上二进制
 
 当前建议：继续免费 / 低成本防护 + 告警观察；不要现在就买 WAF / 高防。先把 App 公安备案、真机回归、AccessKey 最小权限轮换和首封 SLS 告警邮件确认收口。
 
