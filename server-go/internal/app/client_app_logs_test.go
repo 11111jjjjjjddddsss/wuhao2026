@@ -352,6 +352,27 @@ func TestClientAppLogSummaryLimitHonorsSmallerCallerLimit(t *testing.T) {
 	}
 }
 
+func TestShouldPruneClientAppLogsHonorsInterval(t *testing.T) {
+	lastClientAppLogPruneMs.Store(0)
+	t.Cleanup(func() { lastClientAppLogPruneMs.Store(0) })
+
+	if !shouldPruneClientAppLogs(1000, 100*time.Millisecond) {
+		t.Fatalf("first prune should be allowed")
+	}
+	if shouldPruneClientAppLogs(1099, 100*time.Millisecond) {
+		t.Fatalf("prune inside interval should be skipped")
+	}
+	if !shouldPruneClientAppLogs(1100, 100*time.Millisecond) {
+		t.Fatalf("prune at interval boundary should be allowed")
+	}
+}
+
+func TestDefaultClientAppLogRetentionUsesLowCostWindow(t *testing.T) {
+	if defaultClientAppLogRetention != 30*24*time.Hour {
+		t.Fatalf("default client app log retention = %s, want 30d", defaultClientAppLogRetention)
+	}
+}
+
 func TestHandleCreateClientAppLogRejectsOversizedBodyWith413(t *testing.T) {
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	body := `{"level":"warn","event":"chat.failure","message":"` + strings.Repeat("x", clientAppLogMaxBodyBytes) + `"}`

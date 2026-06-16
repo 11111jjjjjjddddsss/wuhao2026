@@ -61,7 +61,7 @@ DASHSCOPE_API_KEYS
 
 ```text
 DASHSCOPE_KEY_SELECTION_MODE=fallback
-# 取值：auto（默认）|fallback|round_robin|rr
+# 取值：fallback（默认）|auto|round_robin|rr
 # fallback 是当前生产口径；下面 auto 阈值保留为可选高峰分流配置，fallback 模式下不生效。
 DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS=200
 DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD=600000

@@ -55,7 +55,7 @@ private data class UserMessageImageSource(
     val remote: String?
 ) {
     val previewFallback: String?
-        get() = remote ?: local
+        get() = local ?: remote
 }
 
 @Composable

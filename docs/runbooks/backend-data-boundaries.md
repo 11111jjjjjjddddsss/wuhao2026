@@ -60,7 +60,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-data-
 
 - 通过 Cloud Assistant 在 ECS 内部只读查询 MySQL，不输出数据库密码、正文、图片 URL、手机号、token 或密钥。
 - 统计 `session_round_archive / client_app_logs / support_messages / admin_audit_logs / session_round_ledger / quota_ledger / orders / gift_card_redemption_attempts / daily_agri_cards` 的行数、最早 / 最新记录时间和表体量。
-- 默认把聊天完整归档超过 31 天、App 自动日志超过 90 天、客服文字 / 后台审计 / 幂等 ledger 超过 365 天或单表超过 1GB 作为 attention；`-FailOnWarning` 可在严格巡检里把 attention 变成失败。
+- 默认把聊天完整归档超过 31 天、App 自动日志超过 30 天、客服文字 / 后台审计 / 幂等 ledger 超过 365 天或单表超过 1GB 作为 attention；`-FailOnWarning` 可在严格巡检里把 attention 变成失败。
 - `check-resource-capacity.ps1 -Strict` 已接入该脚本，和云资源、OSS 生命周期、SLS 低成本护栏一起巡检。
 
 2026-06-15 生产只读结果：

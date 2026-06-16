@@ -1,6 +1,6 @@
 # 扩容预案 Runbook
 
-最后更新：2026-06-10
+最后更新：2026-06-16
 
 ## 目的
 
@@ -16,6 +16,33 @@
 - 记忆文档摘要失败重试标记已经落在 MySQL `session_ab.pending_retry_b`：模型失败、超时、写库失败或旧快照写回过期时都会保留 pending，后续轮次完成后继续补提取；成功写回且 `round_total` 匹配后才清 pending
 - 当前记忆文档摘要的同用户运行中保护仍是单进程 `running` guard，只适合当前单 ECS / 单 active slot 主链；扩多台 ECS 前必须升级为 Redis / MySQL lease，避免多机同时抽取同一用户、重复消耗摘要模型 token 或同一 `round_total` 下非确定性覆盖
 - 部署脚本已支持本机打包后通过 Cloud Assistant 下发，不依赖 ECS 上保存 GitHub 凭据
+
+## 2026-06-16 复查结论
+
+当前不建议立刻升配，也不建议为了“看起来更安全”先买一堆付费防护。
+
+刚跑过的只读巡检结论：
+
+- ECS 2C4G 负载接近 0，可用内存约 2.8GiB，系统盘约 15%
+- RDS 1C2G 磁盘约 5.9%，近 30 分钟 CPU / 内存 / 连接都很低
+- Redis 256MiB 当前内存约 2.2%，连接和 CPU 都很低
+- 公网黑盒、ECS readiness、资源容量严格巡检、SLS 成本守卫、数据留存成本守卫均为 ready
+- Go 侧最近 240 行日志没有业务 5xx 或 429；可见慢请求只有今日农情内部生成，属于模型搜索生成耗时，不是 API 性能瓶颈
+- 公网扫描主要是根路径、`/mcp`、`/sse`、`/login` 等探测，当前返回 404 或被既有限流 / Nginx 规则挡住，没有看到需要马上买 WAF 的信号
+
+当前最值得做的是继续保持低成本监控、真机回归和上线前 AccessKey 轮换；等真实用户量上来后，再按下面路线扩。
+
+## 升级触发线
+
+不要靠感觉升配，先看指标：
+
+- ECS：CPU 或内存连续多个 5 分钟周期超过 70%，或 Go 日志出现持续 5xx / 上游超时 / goroutine 堆积迹象
+- RDS：CPU / 内存 / 连接数 / IOPS 连续高水位，或后台聚合、用户历史、会员 / 礼品卡查询出现慢 SQL
+- Redis：内存超过 70%、连接数或 CPU 持续高水位，且限流 / 验证码链路出现异常
+- 带宽：5Mbps 出口被 APK 下载、图片回看、扫描流量或突发访问打满
+- 攻击：Nginx 429 / 403 / 444、SLS 5xx、云安全中心、DDoS 基础防护黑洞或成本异常持续出现
+
+指标没触发前，不盲目调大 MySQL 连接池、不加全局聊天并发闸、不用模型 `max_tokens` 截断用户体验。
 
 ## 不急着做
 
@@ -40,6 +67,12 @@
 - 根据真实访问量调整 Nginx IP 限流和 `CHAT_RATE_LIMIT_*`
 - 接 SLS 后看 5xx、SSE 中断、上传失败、模型失败
 
+注意：
+
+- 包年包月 ECS 改规格通常需要按阿里云控制台 / OpenAPI 支持的目标规格执行，并安排低峰窗口；涉及停机或重启时，先发公告或至少避开代理集中测试时间
+- 升配前先跑 `check-ecs-readiness.ps1`、`check-resource-capacity.ps1 -Strict`、`check-public-blackbox.ps1` 和 `check-server-performance.ps1`，升配后重复跑同一组脚本
+- 若只是图片 / APK 下行挤占 5Mbps，优先考虑下载域名、OSS / CDN 分流或提高公网带宽，不一定先加 CPU
+
 ### 阶段 2：SLB + 多 ECS
 
 触发条件：
@@ -59,6 +92,8 @@
 - 记忆文档摘要 `running` guard 从本进程 map 升级为 Redis / MySQL lease，lease key 至少包含 `user_id + memory_document`，并记录触发时 `round_total`、过期时间和 owner；抢到 lease 的实例才允许调用摘要模型，写回仍必须保留现有 `round_total` 校验，失败继续保留 `pending_retry_b`
 - 发布脚本支持多实例滚动发布和逐台 healthz 验证
 - SLS 统一采集所有 ECS 的 `nongji-server` 和 Nginx 日志
+- Nginx / SLB 后的真实 IP 链路必须复核：`X-Forwarded-For`、`X-Real-IP`、Go `GetClientIP`、Redis 限流 IP hash、地区推断都要保持取到真实客户端 IP，不能把 SLB 内网 IP 当成所有用户来源
+- 多实例必须保持 `APP_SECRET`、`AUTH_STRICT`、Redis、OSS、MySQL、模型 Key 策略和 `UPLOAD_BASE_URL / BASE_PUBLIC_URL` 一致；`APP_SECRET` 不支持随便轮换，见 `security-hardening.md`
 
 ### 阶段 3：数据库扩容
 
@@ -100,6 +135,15 @@
 3. SLS 日志采集和最小告警
 4. DashScope 多账号 Key 池和成本监控
 5. RDS 慢 SQL / 连接数监控
+
+## 安全升级路线
+
+安全也按信号升级：
+
+1. 当前：安全组只开 80 / 443 / ICMP，SSH 关闭；Nginx + Go + Redis 限流；SLS / 云监控邮件；阿里云基础 DDoS 和云安全中心免费版
+2. 出现持续 Web 扫描、CC、后台登录攻击或明显异常 429 / 5xx：先调 Nginx / Go 限流、加黑名单或更细规则，再评估 WAF
+3. 出现公网带宽被攻击流量打满、DDoS 基础防护黑洞或业务长时间不可用：再考虑 DDoS 高防 / 原生防护企业版
+4. 静态官网、APK 下载或公开资源流量挤占 API 出口：再评估 CDN / OSS 下行分流；私有问诊图片不能直接改成长缓存公开 CDN
 
 ## 给用户的口径
 

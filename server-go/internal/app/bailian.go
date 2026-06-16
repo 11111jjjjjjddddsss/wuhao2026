@@ -726,7 +726,9 @@ func laterTime(left time.Time, right time.Time) time.Time {
 func getDashScopeKeySelectionMode() keySelectionMode {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("DASHSCOPE_KEY_SELECTION_MODE")))
 	switch mode {
-	case "auto", "":
+	case "":
+		return keySelectionModeFallback
+	case "auto":
 		return keySelectionModeAuto
 	case "rr", "roundrobin", "round-robin", "round_robin":
 		return keySelectionModeRoundRobin

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import android.view.HapticFeedbackConstants
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -85,11 +86,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
@@ -162,7 +165,14 @@ private fun trimSupportBareUrlDisplayText(raw: String): String {
     return raw.trimEnd { it in trailingPunctuation }
 }
 
-private fun buildSupportLinkedText(text: String, linkColor: Color): AnnotatedString {
+private fun supportContainsLinkCandidate(text: String): Boolean =
+    supportBareUrlRegex.containsMatchIn(text)
+
+private fun buildSupportLinkedText(
+    text: String,
+    linkColor: Color,
+    linkInteractionListener: LinkInteractionListener? = null
+): AnnotatedString {
     return buildAnnotatedString {
         var index = 0
         while (index < text.length) {
@@ -180,13 +190,36 @@ private fun buildSupportLinkedText(text: String, linkColor: Color): AnnotatedStr
                 index = bareUrl.range.last + 1
                 continue
             }
-            withLink(LinkAnnotation.Url(normalizeSupportLinkTarget(displayText))) {
+            withLink(
+                LinkAnnotation.Url(
+                    url = normalizeSupportLinkTarget(displayText),
+                    linkInteractionListener = linkInteractionListener
+                )
+            ) {
                 withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
                     append(displayText)
                 }
             }
             index = bareUrl.range.first + displayText.length
         }
+    }
+}
+
+private fun Context.cleanupPendingComposerCameraImage(
+    uriString: String?,
+    galleryBacked: Boolean,
+    temporaryFilePath: String?
+) {
+    val uri = uriString
+        ?.takeIf { it.isNotBlank() }
+        ?.let { runCatching { Uri.parse(it) }.getOrNull() }
+    if (uri != null) {
+        revokeComposerCameraUri(uri)
+    }
+    if (galleryBacked && uri != null) {
+        deleteGalleryComposerCameraImage(uri)
+    } else {
+        deleteTemporaryComposerCameraImage(temporaryFilePath)
     }
 }
 
@@ -381,11 +414,11 @@ internal fun HamburgerMenuSheet(
             }
         }
     }
-    DisposableEffect(lifecycleOwner, visible, pendingInstallPermissionUpdate, updateDownloading) {
+    DisposableEffect(lifecycleOwner, pendingInstallPermissionUpdate, updateDownloading) {
         val observer = LifecycleEventObserver { _, event ->
             if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
             val pendingUpdate = pendingInstallPermissionUpdate ?: return@LifecycleEventObserver
-            if (!visible || updateDownloading) return@LifecycleEventObserver
+            if (updateDownloading) return@LifecycleEventObserver
             if (AppUpdateInstaller.canRequestInstallPackages(context.applicationContext)) {
                 pendingInstallPermissionUpdate = null
                 showNotice("已允许安装，继续下载更新...")
@@ -1394,7 +1427,7 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "四、会员、支付、加油包和礼品卡",
-                body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、平台记录、支付渠道结果、兑换结果和法律规定为准。您购买付费服务时，可通过页面支持的微信支付、支付宝等方式完成支付；支付成功不代表权益一定立即到账，最终以平台记录和订单处理结果为准。请不要相信 App 外私下收款、代充、代兑换或非官方客服承诺。"
+                body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、平台记录、支付渠道结果、兑换结果和法律规定为准。您购买付费服务时，应通过 App 页面支持的微信支付、支付宝等官方渠道完成支付；页面标明暂未开放或不可购买的入口不会发起真实扣费。礼品卡兑换属于权益发放方式，不等同于支付订单、退款或对账凭证。请不要相信 App 外私下收款、代充、代兑换或非官方客服承诺。"
             ),
             HamburgerLegalSection(
                 title = "五、农资信息和交易边界",
@@ -1408,7 +1441,7 @@ internal fun HamburgerServiceAgreementContent(
     }
     HamburgerLegalTextPage(
         title = "服务协议",
-        meta = "更新日期：2026年5月25日\n生效日期：2026年5月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+        meta = "更新日期：2026年6月16日\n生效日期：2026年6月16日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
         sections = sections,
         modifier = modifier,
     )
@@ -1474,7 +1507,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年6月1日\n生效日期：2026年6月1日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+            text = "更新日期：2026年6月16日\n生效日期：2026年6月16日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1497,7 +1530,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "五、会员、支付、农资交易和检查更新",
-            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。购买会员、加油包或其他付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果；具体支付方式以页面展示为准。检查更新会使用当前版本号、平台信息和下载的安装包缓存，用于判断是否有新版本并调起系统安装确认页。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。当您通过 App 页面支持的官方渠道购买会员、加油包或其他付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果；页面标明暂未开放或不可购买的入口不会发起真实扣费。检查更新会使用当前版本号、平台信息和下载的安装包缓存，用于判断是否有新版本并调起系统安装确认页。"
         )
         HamburgerAgreementSection(
             title = "六、帮助与反馈",
@@ -1513,7 +1546,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "九、本地缓存和平台保存",
-            body = "App 会在本机保存必要运行缓存，包括本机用户标识、聊天窗口快照、未发送文字草稿、待发送任务、私有图片副本、图片预览缓存和更新安装包缓存。平台会保存会话、记忆摘要、问答记录、权益使用记录、帮助与反馈、今日农情、上传图片地址和必要日志，用于历史恢复、服务质量改进、权益核对和故障排查。除法律法规另有要求外，我们会在实现处理目的所需的合理期限内保存信息。"
+            body = "App 会在本机保存必要运行缓存，包括本机用户标识、聊天窗口快照、未发送文字草稿、待发送任务、私有图片副本、图片预览缓存和更新安装包缓存。平台会保存会话、记忆摘要、问答记录、权益使用记录、帮助与反馈、今日农情、上传图片地址和必要日志，用于历史恢复、权益核对、服务处理和故障排查。问诊上传图片通常 3 天后自动删除，帮助与反馈图片通常 30 天后自动删除，主聊天归档和记忆承接按当前规则滚动保留约 30 天；App 自动日志只保存脱敏事件和安全诊断字段，通常按约 30 天排障窗口控制；SLS 服务端日志通常保留 7 天；订单、额度、礼品卡、审计、安全风控、注销申请和依法需要留存的记录，会按交易、合规和安全需要保存或去标识化处理。"
         )
         HamburgerAgreementSection(
             title = "十、第三方和系统能力清单",
@@ -1525,7 +1558,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十二、您的权利",
-            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。当前“删除所有历史对话”只删除问诊聊天历史和相关记忆，不等于完整账号注销。"
+            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。当前“删除所有历史对话”只删除问诊聊天历史和相关记忆，不等于完整账号注销；账号注销为申请处理流程，我们会在收到有效申请后 15 个工作日内完成账号注销，并删除或匿名化相关个人信息，法律法规另有规定或确有必要用于交易核验、安全风控、争议处理的除外。"
         )
         HamburgerAgreementSection(
             title = "十三、未成年人和敏感信息",
@@ -1533,7 +1566,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十四、安全措施和保存期限",
-            body = "我们会采取访问控制、传输加密、日志审计、最小必要处理等合理措施保护数据安全，并在实现服务目的所需的合理期限内保存信息。但互联网环境无法保证绝对安全，发现异常时请及时联系我们。"
+            body = "我们会采取访问控制、传输加密、日志审计、最小必要处理等合理措施保护数据安全，并按实现处理目的所必要的最短时间保存信息。但互联网环境无法保证绝对安全，发现异常时请及时联系我们。"
         )
         HamburgerAgreementSection(
             title = "十五、政策更新",
@@ -1662,7 +1695,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年6月5日",
+            text = "更新日期：2026年6月16日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1689,7 +1722,7 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "六、支付服务",
-            body = "当您主动购买会员、加油包或其他付费服务时，可能由页面展示的微信支付、支付宝等支付服务商处理支付订单、支付状态、退款状态和必要交易信息。支付完成后的权益发放、退款和售后处理，以平台记录、支付渠道结果、页面规则和法律规定为准。"
+            body = "当 App 页面开放购买且您主动购买会员、加油包或其他付费服务时，可能由页面展示的微信支付、支付宝等支付服务商处理支付订单、支付状态、退款状态和必要交易信息。支付完成后的权益发放、退款和售后处理，以平台记录、支付渠道结果、页面规则和法律规定为准；页面标明暂未开放或不可购买的入口不会发起真实扣费。"
         )
     }
 }
@@ -1733,7 +1766,7 @@ private fun HamburgerPersonalInfoListContent(
     ) {
         HamburgerLegalPageTitle("个人信息收集清单")
         Text(
-            text = "更新日期：2026年6月1日",
+            text = "更新日期：2026年6月16日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1752,7 +1785,7 @@ private fun HamburgerPersonalInfoListContent(
         )
         HamburgerAgreementSection(
             title = "四、会员、支付、礼品卡和更新",
-            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。购买付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果。检查更新会使用当前版本号、平台信息和下载的安装包缓存。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。当您通过 App 页面支持的官方渠道购买付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果；页面标明暂未开放或不可购买的入口不会发起真实扣费。检查更新会使用当前版本号、平台信息和下载的安装包缓存。"
         )
         HamburgerAgreementSection(
             title = "五、帮助与反馈",
@@ -2586,11 +2619,19 @@ private fun HamburgerSupportFeedbackPage(
 
     DisposableEffect(Unit) {
         onDispose {
-            if (selectedImages.isNotEmpty()) {
-                val contextForCleanup = context.applicationContext
-                val imagesForCleanup = selectedImages.toList()
+            val contextForCleanup = context.applicationContext
+            val imagesForCleanup = selectedImages.toList()
+            val pendingCameraUri = pendingCameraImageUriString
+            val pendingCameraGalleryBacked = pendingCameraImageGalleryBacked
+            val pendingCameraTemporaryFilePath = pendingCameraImageTemporaryFilePath
+            if (imagesForCleanup.isNotEmpty() || pendingCameraUri != null) {
                 CoroutineScope(Dispatchers.IO).launch {
                     imagesForCleanup.forEach(contextForCleanup::deleteComposerImageAttachment)
+                    contextForCleanup.cleanupPendingComposerCameraImage(
+                        uriString = pendingCameraUri,
+                        galleryBacked = pendingCameraGalleryBacked,
+                        temporaryFilePath = pendingCameraTemporaryFilePath
+                    )
                 }
             }
         }
@@ -3308,6 +3349,8 @@ private fun HamburgerSupportStatusText(text: String) {
 
 @Composable
 private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val isUser = message.senderType == "user"
     val isSystem = message.senderType == "system"
     val timestamp = formatSupportMessageTime(message.createdAt)
@@ -3319,7 +3362,31 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
         else -> Color(0xFF111111)
     }
     val linkColor = if (isUser) Color.White else Color(0xFF111111)
-    val renderedBody = remember(body, linkColor) { buildSupportLinkedText(body, linkColor) }
+    val hasLinkCandidate = remember(body) { supportContainsLinkCandidate(body) }
+    val linkInteractionListener = remember(context, uriHandler) {
+        LinkInteractionListener { link ->
+            val url = (link as? LinkAnnotation.Url)?.url ?: return@LinkInteractionListener
+            runCatching { uriHandler.openUri(url) }
+                .onFailure { error ->
+                    Toast.makeText(context, "链接打开失败，请复制后打开", Toast.LENGTH_SHORT).show()
+                    SessionApi.reportClientLog(
+                        level = "warn",
+                        event = "ui.link_open_failed",
+                        message = "Support feedback link open failed",
+                        attrs = mapOf(
+                            "source" to "support_feedback",
+                            "scheme" to url.substringBefore(":", missingDelimiterValue = "")
+                                .lowercase()
+                                .take(12),
+                            "exception" to error.javaClass.simpleName
+                        )
+                    )
+                }
+        }
+    }
+    val renderedBody = remember(body, linkColor, linkInteractionListener) {
+        buildSupportLinkedText(body, linkColor, linkInteractionListener)
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = when {
@@ -3367,17 +3434,28 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
                         else -> BorderStroke(0.7.dp, Color(0xFFE1E4E8))
                     }
                 ) {
-                    SelectionContainer {
+                    val textModifier = Modifier.padding(
+                        horizontal = if (isSystem) 13.dp else 14.dp,
+                        vertical = if (isSystem) 9.dp else 10.dp
+                    )
+                    if (hasLinkCandidate) {
                         Text(
                             text = renderedBody,
                             color = bodyColor,
                             fontSize = if (isSystem) 14.sp else 15.sp,
                             lineHeight = if (isSystem) 21.sp else 22.sp,
-                            modifier = Modifier.padding(
-                                horizontal = if (isSystem) 13.dp else 14.dp,
-                                vertical = if (isSystem) 9.dp else 10.dp
-                            )
+                            modifier = textModifier
                         )
+                    } else {
+                        SelectionContainer {
+                            Text(
+                                text = renderedBody,
+                                color = bodyColor,
+                                fontSize = if (isSystem) 14.sp else 15.sp,
+                                lineHeight = if (isSystem) 21.sp else 22.sp,
+                                modifier = textModifier
+                            )
+                        }
                     }
                 }
             }
@@ -3938,7 +4016,7 @@ private fun HamburgerAccountDeletionConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "提交后会退出当前账号。后台会核验并按规则处理账号、会员、订单、礼品卡和反馈。",
+                text = "提交后会退出当前账号。后台会核验注销申请，并在 15 个工作日内按规则处理账号、会员、订单、礼品卡和反馈；依法或因交易核验、安全风控、争议处理需要保留的记录会继续保存或去标识化。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp

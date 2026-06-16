@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-15
+最后更新：2026-06-16
 
 ## 当前定位
 
@@ -15,7 +15,7 @@
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
 - 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。两个查询入口都支持按精确 `event`、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号和等级过滤，精确事件名优先于前缀筛选
 - `client_app_logs` 已补面向后台监控和排障的 `level + created_at`、`event + level + created_at` 索引，便于最近 24 小时错误、登录整组事件、检查更新整组事件和按版本 / 机型筛选；索引只优化查询，不改变日志脱敏和保留边界
-- SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 5 条 AlertHub 最小告警；5 条应用告警已绑定邮件行动策略和最小仪表盘；当前按控成本口径使用：Logstore TTL 7 天，不采完整 Nginx access，不启用短信 / 电话告警，App 自动日志有 8KiB body 上限、脱敏和短期限流。`client_app_logs` 当前按 90 天内排障窗口看守，`scripts/check-data-retention-cost.ps1` 会在最早日志超过 90 天或体量异常时提示 attention；后续仍要补实际自动清理 / 去标识化任务、更细的版本 / 设备 / 地区聚合趋势，以及每天写入量 / 索引量 / 存储量 / 账单阈值提醒，用户量上来后优先考虑采样、清理或缩短保留期，再评估 SLS 资源包
+- SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 5 条 AlertHub 最小告警；5 条应用告警已绑定邮件行动策略和最小仪表盘；当前按控成本口径使用：Logstore TTL 7 天，不采完整 Nginx access，不启用短信 / 电话告警，App 自动日志有 8KiB body 上限、脱敏和短期限流。`client_app_logs` 当前按 30 天内低成本排障窗口控制：服务端写入 App 自动日志成功后会限频清理 30 天前记录，默认每天最多触发一次、每次最多删除 1000 条，可用 `CLIENT_APP_LOG_RETENTION_SECONDS` 和 `CLIENT_APP_LOG_PRUNE_INTERVAL_SECONDS` 调整；`scripts/check-data-retention-cost.ps1` 继续在最早日志超过窗口或体量异常时提示 attention，作为自动清理的只读核验。后续仍要补更细的版本 / 设备 / 地区聚合趋势，以及每天写入量 / 索引量 / 存储量 / 账单阈值提醒，用户量上来后优先考虑采样、缩短保留期或购买 SLS 资源包
 
 ## 当前自动上报事件
 
@@ -76,7 +76,7 @@ Android 只上报结构化错误信息：
 
 服务端也会限制单次请求大小、事件名长度、消息长度和 attrs 大小。
 当前服务端会保存脱敏后的 `masked_ip`，用于排查同一网络出口的异常失败聚集；内部查询只返回 masked IP，不返回完整 IP。
-账号注销、历史删除、自动日志保留天数和批量清理策略仍需在公开运营前明确，不能把这张表当成无限期保存用户运行痕迹的仓库。当前工程目标是保留 90 天内排障所需脱敏事件，超过窗口先由只读巡检提示，再补低峰清理 / 去标识化任务。
+账号注销、历史删除和后台审计 / 客服文字的批量清理策略仍需在公开运营前继续明确，不能把这些表当成无限期保存用户运行痕迹的仓库。App 自动日志当前工程目标是保留 30 天内排障所需脱敏事件，超过窗口由写入路径限频清理，并继续用只读巡检核验是否漂移。
 
 ## 限流参数
 

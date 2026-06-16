@@ -6,6 +6,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -147,6 +148,27 @@ class ChatStreamingRendererTest {
         assertTrue(rendered.hasSpanFor("https://www.natesc.org.cn/") { it.textDecoration == TextDecoration.Underline })
         assertTrue(rendered.hasUrlFor("官网", "https://www.moa.gov.cn"))
         assertTrue(rendered.hasUrlFor("https://www.natesc.org.cn/", "https://www.natesc.org.cn/"))
+    }
+
+    @Test
+    fun linksDisabledKeepsDisplayTextWithoutUrlAnnotations() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "看[官网](www.moa.gov.cn)，或 https://www.natesc.org.cn/。",
+            mode = RendererInlineMode.Streaming,
+            linksEnabled = false
+        )
+
+        assertEquals("看官网，或 https://www.natesc.org.cn/。", rendered.text)
+        assertFalse(rendered.hasUrlFor("官网", "https://www.moa.gov.cn"))
+        assertFalse(rendered.hasUrlFor("https://www.natesc.org.cn/", "https://www.natesc.org.cn/"))
+    }
+
+    @Test
+    fun finishShouldFlushInvisibleStructureMarkers() {
+        assertTrue(shouldForceFlushStreamingRevealBufferForFinish("**"))
+        assertTrue(shouldForceFlushStreamingRevealBufferForFinish("`"))
+        assertFalse(shouldForceFlushStreamingRevealBufferForFinish("控"))
+        assertFalse(shouldForceFlushStreamingRevealBufferForFinish(""))
     }
 
     @Test

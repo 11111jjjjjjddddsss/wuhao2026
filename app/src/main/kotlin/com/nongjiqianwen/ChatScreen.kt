@@ -5086,6 +5086,22 @@ fun ChatScreen() {
             remoteRecoverySourceUserMessageId = null
             val shouldRestoreBottomAnchor = scrollMode != ScrollMode.UserBrowsing
             if (streamingRevealBuffer.isNotEmpty()) {
+                if (shouldForceFlushStreamingRevealBufferForFinish(streamingRevealBuffer)) {
+                    flushStreamingRevealBuffer(
+                        currentMessageId = streamingMessageId,
+                        currentContent = streamingMessageContent,
+                        currentRevealBuffer = streamingRevealBuffer,
+                        anchoredUserMessageId = anchoredUserMessageId,
+                        assistantIdProvider = ::assistantMessageIdForSourceUser,
+                        fallbackIdProvider = { "assistant_${UUID.randomUUID()}" }
+                    )?.let { flushed ->
+                        streamingMessageId = flushed.messageId
+                        streamingMessageContent = flushed.content
+                        streamingRevealBuffer = ""
+                    }
+                }
+            }
+            if (streamingRevealBuffer.isNotEmpty()) {
                 ensureStreamingRevealJob()
                 mainHandler.postDelayed({ finishStreaming() }, STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS)
                 return@post
@@ -6768,10 +6784,10 @@ fun ChatScreen() {
                             )
                         is ChatTimelineItem.Message -> renderConversationMessage(msg.message)
                         is ChatTimelineItem.TodayAgriCard ->
-                            TodayAgriNewsCard(
+                            TodayAgriNewsText(
                                 card = msg.card,
-                                horizontalPadding = (listHorizontalPadding - 6.dp).coerceAtLeast(8.dp),
-                                maxCardWidth = chromeMaxWidth
+                                horizontalPadding = listHorizontalPadding,
+                                maxContentWidth = chromeMaxWidth
                             )
                     }
                 }
@@ -8504,12 +8520,12 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     HamburgerRedeemSuccessCardPreview()
                 }
                 UiCopyPreviewKind.TodayAgriCard -> {
-                    TodayAgriNewsCard(
+                    TodayAgriNewsText(
                         card = uiCopyPreviewTodayAgriCard()
                     )
                 }
                 UiCopyPreviewKind.TodayAgriLongSummaryCard -> {
-                    TodayAgriNewsCard(
+                    TodayAgriNewsText(
                         card = uiCopyPreviewTodayAgriLongSummaryCard()
                     )
                 }

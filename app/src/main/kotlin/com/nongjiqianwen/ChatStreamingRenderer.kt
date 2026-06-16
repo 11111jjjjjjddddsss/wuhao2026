@@ -471,6 +471,11 @@ internal fun flushStreamingRevealBuffer(
     )
 }
 
+internal fun shouldForceFlushStreamingRevealBufferForFinish(buffer: String): Boolean {
+    if (buffer.isEmpty()) return false
+    return buildStreamingRevealBatch(buffer).text.isEmpty()
+}
+
 internal fun splitStreamingBlockState(content: String): StreamingBlockState {
     val logicalLines = splitRendererStreamingLogicalLines(normalizeRendererMarkdownTables(content))
     val completedBlocks = mutableListOf<String>()
@@ -1289,6 +1294,7 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
         RendererAssistantStreamingActiveBlockImpl(
             model = model,
             inlineMode = inlineMode,
+            linksEnabled = false,
             showLeadingSectionDivider = false,
             modifier = Modifier.fillMaxWidth()
         )
@@ -1301,18 +1307,21 @@ private fun RendererStreamingActiveTextImpl(
     style: TextStyle,
     minLineHeight: Dp,
     inlineMode: RendererInlineMode,
+    linksEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     if (text.isEmpty()) {
         Spacer(modifier = modifier.height(minLineHeight))
         return
     }
-    val linkInteractionListener = rememberRendererLinkInteractionListener()
+    val rememberedLinkInteractionListener = rememberRendererLinkInteractionListener()
+    val linkInteractionListener = rememberedLinkInteractionListener.takeIf { linksEnabled }
     val renderedText = remember(text, inlineMode, linkInteractionListener) {
         buildRendererInlineAnnotatedString(
             text = text,
             mode = inlineMode,
-            linkInteractionListener = linkInteractionListener
+            linkInteractionListener = linkInteractionListener,
+            linksEnabled = linksEnabled
         )
     }
     Text(
@@ -1353,9 +1362,10 @@ private fun rememberRendererLinkInteractionListener(): LinkInteractionListener {
 internal fun buildRendererInlineAnnotatedString(
     text: String,
     mode: RendererInlineMode,
-    linkInteractionListener: LinkInteractionListener? = null
+    linkInteractionListener: LinkInteractionListener? = null,
+    linksEnabled: Boolean = true
 ): AnnotatedString {
-    val canUseCache = mode == RendererInlineMode.Settled && linkInteractionListener == null
+    val canUseCache = mode == RendererInlineMode.Settled && linkInteractionListener == null && linksEnabled
     if (canUseCache) {
         synchronized(rendererSettledInlineMarkdownCache) {
             rendererSettledInlineMarkdownCache[text]?.let { return it }
@@ -1392,6 +1402,10 @@ internal fun buildRendererInlineAnnotatedString(
 
         fun appendLinked(displayText: String, url: String) {
             if (displayText.isEmpty()) return
+            if (!linksEnabled) {
+                appendStyled(displayText)
+                return
+            }
             withLink(
                 LinkAnnotation.Url(
                     url = normalizeRendererLinkTarget(url),
@@ -1681,6 +1695,7 @@ private fun RendererMarkdownSectionDividerImpl() {
 private fun RendererAssistantStreamingActiveBlockImpl(
     model: StreamingLineModel,
     inlineMode: RendererInlineMode,
+    linksEnabled: Boolean,
     showLeadingSectionDivider: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -1699,7 +1714,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                         modifier = Modifier.fillMaxWidth(),
                         style = headingStyle,
                         minLineHeight = with(density) { headingStyle.lineHeight.toDp() },
-                        inlineMode = inlineMode
+                        inlineMode = inlineMode,
+                        linksEnabled = linksEnabled
                     )
                 }
             }
@@ -1718,7 +1734,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                             .heightIn(min = paragraphLineHeight),
                         style = bodyStyle,
                         minLineHeight = paragraphLineHeight,
-                        inlineMode = inlineMode
+                        inlineMode = inlineMode,
+                        linksEnabled = linksEnabled
                     )
                 }
             }
@@ -1737,7 +1754,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                             .heightIn(min = paragraphLineHeight),
                         style = bodyStyle,
                         minLineHeight = paragraphLineHeight,
-                        inlineMode = inlineMode
+                        inlineMode = inlineMode,
+                        linksEnabled = linksEnabled
                     )
                 }
             }
@@ -1748,7 +1766,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     modifier = Modifier.fillMaxWidth(),
                     style = quoteStyle,
                     minLineHeight = paragraphLineHeight,
-                    inlineMode = inlineMode
+                    inlineMode = inlineMode,
+                    linksEnabled = linksEnabled
                 )
             }
             is StreamingLineModel.Paragraph -> {
@@ -1757,7 +1776,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     modifier = Modifier.fillMaxWidth(),
                     style = paragraphStyle,
                     minLineHeight = paragraphLineHeight,
-                    inlineMode = inlineMode
+                    inlineMode = inlineMode,
+                    linksEnabled = linksEnabled
                 )
             }
         }
@@ -1794,6 +1814,7 @@ private fun RendererAssistantMarkdownContentImpl(
                 RendererAssistantStreamingActiveBlockImpl(
                     model = model,
                     inlineMode = RendererInlineMode.Settled,
+                    linksEnabled = true,
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = blockModifier
                 )

@@ -793,6 +793,27 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 		return GiftCardRedeemResult{}, err
 	}
 	if card.Status != "active" {
+		if card.Status == "redeemed" && card.RedeemedUserID == userID && card.RedeemedAt != nil && card.MembershipExpireAt != nil {
+			if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, true, "", maskedIP, region, nowMs); err != nil {
+				return GiftCardRedeemResult{}, err
+			}
+			if err := tx.Commit(); err != nil {
+				return GiftCardRedeemResult{}, err
+			}
+			return GiftCardRedeemResult{
+				OK:                 true,
+				CardID:             card.CardID,
+				BatchID:            card.BatchID,
+				Tier:               card.Tier,
+				AppliedTier:        card.Tier,
+				DurationDays:       card.DurationDays,
+				MembershipExpireAt: *card.MembershipExpireAt,
+				RedeemedAt:         *card.RedeemedAt,
+				Region:             card.RedeemedRegion,
+				RegionSource:       card.RedeemedRegionSource,
+				RegionReliability:  card.RedeemedRegionReliability,
+			}, nil
+		}
 		if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, card.Status, maskedIP, region, nowMs); err != nil {
 			return GiftCardRedeemResult{}, err
 		}
@@ -825,7 +846,7 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 		}
 		return GiftCardRedeemResult{}, err
 	}
-	if _, err := tx.ExecContext(
+	updateResult, err := tx.ExecContext(
 		ctx,
 		`UPDATE gift_cards
 		    SET status = 'redeemed',
@@ -847,8 +868,16 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 		expireAt,
 		nowMs,
 		card.CardID,
-	); err != nil {
+	)
+	if err != nil {
 		return GiftCardRedeemResult{}, err
+	}
+	rowsAffected, err := updateResult.RowsAffected()
+	if err != nil {
+		return GiftCardRedeemResult{}, err
+	}
+	if rowsAffected != 1 {
+		return GiftCardRedeemResult{}, errGiftCardInactive
 	}
 	if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, true, "", maskedIP, region, nowMs); err != nil {
 		return GiftCardRedeemResult{}, err

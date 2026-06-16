@@ -33,6 +33,7 @@
 - `/api/chat/stream`、图片上传、会员额度、摘要、今日农情、帮助与反馈、检查更新等接口运维
 - 日志、错误率、模型调用失败、SSE 中断、上传失败、摘要失败、今日农情生成失败排查
 - Go 后端统一请求日志：`X-Request-Id`、`http_request`、`http_request_slow`、`http_request_error`，以及只读脚本 [query-ecs-logs.ps1](D:/wuhao/scripts/query-ecs-logs.ps1)
+- 服务器性能快检：[check-server-performance.ps1](D:/wuhao/scripts/check-server-performance.ps1) 通过 Cloud Assistant 只读查看 ECS 资源、Go / Nginx 进程、systemd 重启数、本机 healthz 延迟、24 小时 Go 错误 / 慢请求 / SSE 数量和 Nginx 429 / 5xx 计数，不读取密钥、不读正文，用于代理测试前后判断是否真的需要升配或调参
 - App 自动日志接收：`POST /api/app/logs`、`client_app_logs`、后台监控面板、SLS 最小日志集和 SLS AlertHub 最小告警接入
 - 回滚、停更、临时降级开关和灰度策略
 

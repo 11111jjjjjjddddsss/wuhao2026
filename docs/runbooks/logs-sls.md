@@ -119,6 +119,22 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 - Nginx error log 尾部
 - Nginx access log 里的 `429 / 5xx`
 
+代理测试前后或怀疑“服务器变慢”时，优先加跑服务器性能快检：
+
+```powershell
+.\scripts\check-server-performance.ps1
+```
+
+该脚本会查看：
+
+- ECS 负载、内存、系统盘
+- Go / Nginx 进程 CPU、内存和 systemd 重启数
+- 本机 `healthz` HTTPS 延迟
+- 24 小时 Go `http_request_error / http_request_slow / http_sse_stream / panic` 计数
+- Nginx access log 里的 `429 / 5xx` 计数
+
+它不读取聊天正文、反馈正文、手机号、token 或密钥；用于区分模型慢、服务器慢、被限流、被扫描，还是资源水位确实接近需要升配。
+
 也可以直接查 SLS 最小采集集：
 
 ```powershell

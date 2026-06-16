@@ -56,6 +56,23 @@ class ChatTimelineItemsTest {
         assertEquals(ChatTimelineItem.Message(second), items[3])
     }
 
+    @Test
+    fun todayAgriCardPlainTextKeepsDateItemsAndSources() {
+        val text = todayAgriCard().toTodayAgriPlainText()
+
+        assertEquals(
+            "今日农情 · 6月15日\n\n" +
+                "1. 病虫监测\n" +
+                "多地提醒加强田间巡查。\n" +
+                "来源：全国农技中心\n\n" +
+                "2. 栽培管理\n" +
+                "雨后注意排水和控旺。\n\n" +
+                "3. 产地流通\n" +
+                "部分蔬菜产区供应恢复。",
+            text
+        )
+    }
+
     private fun userMessage(id: String): ChatMessage =
         ChatMessage(id = id, role = ChatRole.USER, content = "用户问题")
 
@@ -67,7 +84,7 @@ class ChatTimelineItemsTest {
             dateCn = "2026-06-15",
             title = "今日农情",
             items = listOf(
-                SessionApi.TodayAgriCardItem(title = "病虫监测", summary = "多地提醒加强田间巡查。"),
+                SessionApi.TodayAgriCardItem(title = "病虫监测", summary = "多地提醒加强田间巡查。", source = "全国农技中心"),
                 SessionApi.TodayAgriCardItem(title = "栽培管理", summary = "雨后注意排水和控旺。"),
                 SessionApi.TodayAgriCardItem(title = "产地流通", summary = "部分蔬菜产区供应恢复。")
             )

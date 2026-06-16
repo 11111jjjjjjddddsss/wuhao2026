@@ -2,7 +2,7 @@ param(
     [string]$RegionId = "cn-beijing",
     [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
     [int]$ChatArchiveMaxDays = 31,
-    [int]$AppLogMaxDays = 90,
+    [int]$AppLogMaxDays = 30,
     [int]$SupportReviewDays = 365,
     [int]$AuditReviewDays = 365,
     [int]$LedgerReviewDays = 365,
@@ -144,7 +144,7 @@ def env_int(name, default):
         return default
 
 chat_archive_max_days = env_int("CHAT_ARCHIVE_MAX_DAYS", 31)
-app_log_max_days = env_int("APP_LOG_MAX_DAYS", 90)
+app_log_max_days = env_int("APP_LOG_MAX_DAYS", 30)
 support_review_days = env_int("SUPPORT_REVIEW_DAYS", 365)
 audit_review_days = env_int("AUDIT_REVIEW_DAYS", 365)
 ledger_review_days = env_int("LEDGER_REVIEW_DAYS", 365)
@@ -245,7 +245,7 @@ try:
 
     tables = [
         ("session_round_archive", "chat_archive", "hard_30d", chat_archive_max_days),
-        ("client_app_logs", "app_auto_logs", "review_90d", app_log_max_days),
+        ("client_app_logs", "app_auto_logs", "auto_prune_30d", app_log_max_days),
         ("support_messages", "support_text", "manual_review_365d", support_review_days),
         ("admin_audit_logs", "admin_audit", "manual_review_365d", audit_review_days),
         ("session_round_ledger", "idempotency_ledger", "manual_review_365d", ledger_review_days),

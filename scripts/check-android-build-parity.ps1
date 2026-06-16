@@ -411,16 +411,16 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
         "Account management defaults must include phone, cache cleanup, history deletion, logout, and account deletion rows after app data is cleared."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
-    $todayAgriCardPattern = "fun\s+TodayAgriNewsCard\b"
+    $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)ChatStreamingRenderer"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
-    $chatScreenTodayAgriImplementationPattern = "private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard"
+    $chatScreenTodayAgriImplementationPattern = "private\s+fun\s+TodayAgriNewsText|private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard|toTodayAgriPlainText\s*\("
 
     Require-Match $failures $loginScreen $loginSharedTextPattern `
         "Login agreement links must let users read the same service agreement and privacy policy content as settings."
     Require-Match $failures $pendingWorker $pendingWorkerPrivacyGatePattern `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
     Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
-        "Today agri card rendering must stay in TodayAgriCardUi.kt instead of bloating ChatScreen."
+        "Today agri rendering must stay in TodayAgriCardUi.kt and reuse the normal assistant text renderer."
     Require-Match $failures $todayAgriCardUi $todayAgriRenderablePattern `
         "Today agri card display validation must stay near the card UI renderer."
     Require-NoMatch $failures $chatScreen $chatScreenTodayAgriImplementationPattern `
@@ -470,8 +470,8 @@ if ($failures.Count -eq 0) {
     }
     Require-Match $failures $chatScreen 'verticalArrangement\s*=\s*if\s*\(\s*shouldUseTopArrangementForConversation\s*\(\s*\)\s*\)\s*\{(?s:.*?)Arrangement\.Top(?s:.*?)\}\s*else\s*\{(?s:.*?)Arrangement\.Bottom' `
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
-    Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsCard' `
-        "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list."
+    Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `
+        "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list, using assistant-style plain text."
     Require-Match $failures $chatStreamingRenderer 'val\s+selectContent\s*=\s*selectionEnabled\s*&&\s*!rendererContainsLinkCandidate\s*\(\s*content\s*\)' `
         "Assistant settled text must not wrap link candidates in SelectionContainer, otherwise short-tap links can become plain text."
     Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
@@ -482,10 +482,16 @@ if ($failures.Count -eq 0) {
         "Chat offline precheck must reject captive-portal networks instead of treating every INTERNET-capable network as usable."
     Require-Match $failures $hamburgerMenuSheet 'BackHandler\s*\(\s*enabled\s*=\s*visible\s*\)(?s:.*?)handleBackClick\s*\(\s*\)' `
         "Settings shell must let Android back close the main settings page as well as nested pages."
-    Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*Unit\s*\)(?s:.*?)onDispose\s*\{(?s:.*?)if\s*\(\s*selectedImages\.isNotEmpty\s*\(\s*\)\s*\)(?s:.*?)imagesForCleanup\.forEach\s*\(\s*contextForCleanup::deleteComposerImageAttachment\s*\)' `
+    Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*Unit\s*\)(?s:.*?)onDispose\s*\{(?s:.*?)imagesForCleanup\.forEach\s*\(\s*contextForCleanup::deleteComposerImageAttachment\s*\)(?s:.*?)cleanupPendingComposerCameraImage' `
         "Support feedback must clean temporary selected images on page disposal, including interrupted sending states."
     Require-NoMatch $failures $hamburgerMenuSheet 'if\s*\(\s*!\s*sending\s*&&\s*selectedImages\.isNotEmpty\s*\(\s*\)\s*\)' `
         "Support feedback disposal cleanup must not skip temporary images while a send is in progress."
+    Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*lifecycleOwner,\s*pendingInstallPermissionUpdate,\s*updateDownloading\s*\)(?s:.*?)ON_RESUME(?s:.*?)pendingInstallPermissionUpdate\s*\?:\s*return@LifecycleEventObserver(?s:.*?)updateDownloading' `
+        "App update permission resume handling must keep working for automatic update prompts even when settings is not visible."
+    Require-NoMatch $failures $hamburgerMenuSheet 'if\s*\(\s*!\s*visible\s*\|\|\s*updateDownloading\s*\)\s*return@LifecycleEventObserver' `
+        "App update permission resume handling must not depend on settings sheet visibility."
+    Require-Match $failures $hamburgerMenuSheet 'supportContainsLinkCandidate(?s:.*?)LinkInteractionListener(?s:.*?)ui\.link_open_failed(?s:.*?)SelectionContainer' `
+        "Support feedback links must remain tappable and report only safe link-open failures."
     $chatDebugPreviewPattern = "BuildConfig\.DEBUG\s*&&\s*uiCopyPreviewVisible"
     $chatDebugPreviewClickPattern = "Modifier\.clickable\s*\{\s*uiCopyPreviewVisible\s*=\s*true\s*\}"
     $localFakeStreamPattern = "FAKE_STREAM_TEXT|fakeStreamJob|launchLocalFakeStream|recoverStreamingDraftAsCompletedSnapshot|completeStreamingImmediatelyFromBackground|LOCAL_STREAM_|takeTypewriterToken|LocalStreamFeedStep"

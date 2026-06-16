@@ -139,17 +139,17 @@ Android 构建链：
 - 不允许凭印象硬改
 
 今日农情：
-- 今日农情是独立的每日资讯卡片，不是聊天消息，不进入主聊天上下文或记忆文档，不写 `session_ab` / `session_round_archive`，不触发摘要，不扣用户问诊次数
+- 今日农情是独立的每日资讯内容，后端数据结构和接口历史命名仍叫 card，但它不是聊天消息，不进入主聊天上下文或记忆文档，不写 `session_ab` / `session_round_archive`，不触发摘要，不扣用户问诊次数
 - 后端数据真源是 `daily_agri_cards`，按 `day_cn + scope` 唯一保存；当前 scope 固定为 `CN`
 - 用户侧只读接口是 `GET /api/today-agri-card`，需要用户鉴权，只读取已生成缓存，缺失 / pending / failed 时前端静默不展示，不在用户打开 App 时临时触发模型；近 30 天回看接口是 `GET /api/today-agri-cards`，同样只返回可展示的公开内容
 - 内部生成接口是 `POST /internal/jobs/today-agri-card/generate`，只给定时任务 / 运维调用，必须携带 `DAILY_AGRI_JOB_SECRET`；生成前用数据库 lease 防并发。内部探针接口是 `POST /internal/jobs/today-agri-card/probe?runs=3`，只测试模型输出、来源、解析质量和 usage 成本，不写 `daily_agri_cards`，最多 5 次一组，仍只供运维内部使用
 - 生成链路固定使用 `qwen3.5-plus` 的 OpenAI 兼容 `chat/completions` 非流式接口，显式设置 `temperature=0.8`、顶层 `enable_thinking=false`、`enable_search=true`、`search_options.search_strategy=turbo`、`search_options.forced_search=true` 和 `search_options.enable_source=true`；不保留 Flash、qwen-turbo、Responses 或 DashScope `text-generation/generation` 作为今日农情生产候选，不通过环境变量切模型。用户已明确轻量模型、质量不稳模型和即将下线模型不作为今日农情生产候选
 - 今日农情默认不需要结构化 URL 来源列表下发给用户；OpenAI 兼容 Chat 联网链路不依赖结构化 `search_info.search_results`，`enable_source=true` 主要用于辅助模型在正文 JSON 里写短来源名称。公开接口只返回标题、摘要和短来源名称，不下发 URL、source_index 或 published_date，Android 单条农情不可点击跳浏览器。qwen3.5-plus 链不传 `freshness`、`prompt_intervene` 或 `assigned_site_list`，近 7 天、最新优先、种植侧、去重和来源质量全部放进主提示词控制，继续全网宽搜。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和延迟，今日农情默认不使用
 - 今日农情生成最多 2 次，第二次只在首轮解析失败后换检索提示补救，仍走 `turbo`，不切 `agent`。后端只保留展示所需的最低技术兜底：模型响应能解析出 JSON、必须能取到 3 条标题 / 摘要非空的 item 才发布；超过 3 条只展示前 3 条，少于 3 条视为卡片不完整，不对用户发布。这里的“三条”是唯一硬数量要求，不要求模型必须输出 `card_name=今日农情`，也不按重复标题、主题词、发布日期、近 7 天链接、旧卡链接、养殖关键词、广告词、电商域名、社交域名或标题党拦截发布。内部 URL 只做私网 / 本机等不可追溯或危险地址清理，公开响应不下发链接。今日农情只取种植侧，养殖、水产不要；该方向以及广告软文、假新闻、重复事件和标题党主要通过提示词、内部探针、后台运营复核与 SLS 日志观察控制
-- 生成时会读取过去 7 天已 ready 的今日农情卡片，把标题 / 摘要 / 来源域名 / 原文短指纹喂给模型，要求今天不要重复同原文、同标题或同一事件；后端不按历史链接 / 标题或重复标题拦截发布
+- 生成时会读取过去 7 天已 ready 的今日农情内容，把标题 / 摘要 / 来源域名 / 原文短指纹喂给模型，要求今天不要重复同原文、同标题或同一事件；后端不按历史链接 / 标题或重复标题拦截发布
 - 今日农情提示词版本当前为 `2026-06-15-v77`：提示词继续保持通用任务说明，不恢复旧版本长清单。唯一硬数量要求是 3 条；内容方向是中国种植侧新闻，面向普通大众用户，优先近 7 天公开来源、今天或昨天的新进展更优，三条尽量分散地区 / 作物 / 主题。v77 不限制具体作物，不单独排斥某个大田作物；大田作物、经济作物、设施农业、果树、蔬菜、茶叶等都可以，但更优先选择对生产有实际参考价值的内容，例如栽培管理、植保病虫、种子种苗、农资农机、技术推广、苗情墒情、产地流通 / 价格、政策补贴等真实进展。天气、气象、防灾或抢收可以作为其中一个角度，但不要三条都写成天气预报；写这类内容时要说明它对农事安排、防灾减损或田间管理的影响。养殖、水产、畜牧、猪肉 / 生猪、禽蛋、牛羊奶、饲料、兽药、渔业、鱼虾等主体不要。摘要目标约 90-130 个中文字符，写 2-3 句正常新闻短讯，一般不低于 80 字。以上仍是提示词层面的方向控制，不增加后端内容过滤或字数拦截；后端只做 JSON、3 条标题 / 摘要非空和私网 URL 安全兜底，质量继续靠提示词、探针和后台复核观察控制
 - 后端只发布可解析 JSON、3 条标题摘要完整 item 的结果；主题方向、广告软文、假新闻、前端元表达、推荐理由、重复和标题党类内容主要靠提示词控制、探针抽查和后台复核，不靠后端按内容拦截。公开响应只包含 `title / summary / source`，不包含 URL、source_index 或条目日期
-- Android 只把今日农情作为 `ChatTimelineItem.TodayAgriCard` 插入视觉时间线；真实 `messages` 仍只包含用户 / assistant 对话。如果当天卡片加载时没有任何真实消息，卡片作为当天第一条视觉内容排在列表顶部；如果已有真实消息，卡片锚在当时最后一条真实消息后方。用户后续发送文字 / 图片 / 失败态消息时，不再隐藏或播放退出动画，新消息自然追加在卡片后方并把它往上顶，就像一条 UI-only 系统卡片。聊天页按上海日期定期检查跨天，跨天后先清空旧日期卡片，只接受 `date_cn` 等于当前日期的 ready 卡片，避免长时间前台或后台恢复时继续显示昨天内容。卡片不参与本地聊天快照、发送、重试、复制、后端上下文、记忆文档或问诊扣次，也不能作为最新真实消息锚点；卡片右上角不放关闭叉号，不提供手动关闭 / 手动隐藏入口，单条农情不可点击跳外部链接。设置页新增“今日农情”入口，展示最近 30 天已 ready 的标题、摘要和来源名记录
+- Android 只把今日农情作为 `ChatTimelineItem.TodayAgriCard` 插入视觉时间线；真实 `messages` 仍只包含用户 / assistant 对话。主聊天视觉上用普通 AI 文本块展示“今日农情 · 日期 + 3 条编号资讯”，不再做带边框资讯卡、overlay、sticky 尾卡或关闭动画。如果当天内容加载时没有任何真实消息，它作为当天第一条视觉内容排在列表顶部；如果已有真实消息，它锚在当时最后一条真实消息后方。用户后续发送文字 / 图片 / 失败态消息时，新消息自然追加在它后方并把它往上顶。聊天页按上海日期定期检查跨天，跨天后先清空旧日期内容，只接受 `date_cn` 等于当前日期的 ready 内容，避免长时间前台或后台恢复时继续显示昨天内容。今日农情不参与本地聊天快照、发送、重试、复制、后端上下文、记忆文档或问诊扣次，也不能作为最新真实消息锚点；不提供手动关闭 / 手动隐藏入口，单条农情不可点击跳外部链接。设置页“今日农情”入口展示最近 30 天已 ready 的标题、摘要和来源名记录
 
 会员与计费：
 - Free：6 次 / 天
@@ -290,9 +290,9 @@ Clean-State 必做回归的范围：
 - 聊天消息运行时当前只允许有一个主人：正向 `LazyColumn`
 - `ChatRecyclerViewHost.kt` 当前使用：
   - `LazyColumn`
-  - `items = ChatTimelineItem` 展示层；当前可能包含一个 `TodayAgriCard` UI-only 卡片和真实 `messages`
+  - `items = ChatTimelineItem` 展示层；当前可能包含一个 `TodayAgriCard` UI-only 今日农情内容和真实 `messages`
   - 默认 `verticalArrangement = Arrangement.Bottom`，用于正向列表短内容不满一屏时也贴到底部工作线；唯一运行时例外是 `InitialWorklinePhase.TopUnreached / TopAnchoring`：清数据 / 删除历史后的首次真实业务内容尚未碰到 96dp 工作线前，以及触线后等待安全切回同帧底部锚点接住的极短交接内，临时使用 `Arrangement.Top` 让真实消息自然从顶部往下排
-  - `messages` 仍按 oldest -> newest 存储；视觉底部最新真实消息通过 `ChatTimelineItem.Message` 反查 index，不能把今日农情卡片当成最新真实消息锚点；今日农情按加载时机锚在视觉时间线中，没有真实消息时位于顶部，有真实消息时位于当时最后一条真实消息后，后续新消息自然排在其后
+  - `messages` 仍按 oldest -> newest 存储；视觉底部最新真实消息通过 `ChatTimelineItem.Message` 反查 index，不能把今日农情内容当成最新真实消息锚点；今日农情按加载时机锚在视觉时间线中，没有真实消息时位于顶部，有真实消息时位于当时最后一条真实消息后，后续新消息自然排在其后
   - 回到底部 / AutoFollow 使用最新真实消息 index + `FORWARD_LIST_BOTTOM_SCROLL_OFFSET`，依赖 Compose 正向列表里 positive `scrollOffset` 会把 item 继续向上推并在列表末端 clamp 的语义，把最新消息底部压到工作线附近
 - 底部 composer 仍是页面底部的独立 UI 宿主，负责输入、IME、placeholder、发送禁用与收口视觉；**它不是消息运行时主人**
 - `ChatScreen.kt` 当前把消息列表和 composer 作为同一个页面 `Box` 下的兄弟层渲染：列表先铺满消息区域，composer 用 `align(Alignment.BottomCenter)` 固定在底部。composer 不再作为 `SubcomposeLayout` 的 child 参与列表同拍测量，避免 IME 动画每帧拖着列表一起 remeasure；composer 自己继续吃 `imePadding()`，根容器不吃 IME padding，以保持“键盘只移动输入框，不抬升消息工作线”
@@ -341,10 +341,10 @@ Clean-State 必做回归的范围：
 
 - `ChatRecyclerViewHost.kt` 当前已切回正向列表底座；如果后续再调整顺序，必须连同当前 `messages` 的真实存储顺序一起检查，不能只改 `reverseLayout` 或只改 `items` 顺序
 - `ChatScreen.kt` 当前已回到：
-  - `messages` 作为 oldest -> newest 的唯一业务消息数据源；列表显示层可以包一层 `ChatTimelineItem` 承接 UI-only 今日农情卡片，但不再通过 `chatListItems` 派生 streaming block item
+  - `messages` 作为 oldest -> newest 的唯一业务消息数据源；列表显示层可以包一层 `ChatTimelineItem` 承接 UI-only 今日农情内容，但不再通过 `chatListItems` 派生 streaming block item
   - `currentLastMessageContentBottomPx()` 的 fallback 按正向列表使用最新真实消息的 UI index；`InitialWorklinePhase.TopUnreached` 的触线判断另走 `currentInitialDocumentFlowBottomPx()`，按当前业务消息已测 bounds、streaming bottom 和可见消息 item 最大底边判断整段首屏文档流是否碰到工作线，避免首条超长用户消息把 assistant placeholder 挤到未组合区域后漏触发上抬
   - `currentBottomOverflowPx()` 按正向列表单主人口径计算最新消息底边与统一底部目标之间的绝对误差
-- clean-state / 删除所有历史后的首屏体验当前用 `InitialWorklinePhase` 收口，而不是旧“稀疏首屏”方案：`WaitingForFirstSend -> TopUnreached -> TopAnchoring -> WorklineOwned`。只有发送前没有任何真实业务消息时才进入 `TopUnreached`；该阶段真实聊天消息、图片消息、图片上传 pending、失败态、重试态、assistant placeholder 和 streaming 小球都仍在同一个 `LazyColumn` 里，只是临时 `Arrangement.Top`，并 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor。若清数据 / 首屏只有今日农情卡片而没有真实消息，列表同样使用 Top 排列把卡片作为第一条视觉内容显示，但首屏触线判断、工作线交接和最新消息锚点仍只看真实业务消息。当前首屏文档流的最大可测底边到达或超过 96dp 工作线后，如果用户正在拖动、滚动或浏览，直接交给 `WorklineOwned` 且不抢手势；如果用户只是按住 / 触碰但未形成可切换条件，则继续停在 Top 流，不自动切换；如果用户未触碰 / 拖动 / 浏览，则先进入极短 `TopAnchoring`，继续保持 `Arrangement.Top` 并继续 gate 普通自动回底。`TopAnchoring` 只有在列表已经出现正向可滚范围、首屏文档流底边已超过工作线约 56dp、且用户没有触碰 / 拖动 / 浏览时，才同一执行点设置 `WorklineOwned` 并立刻复用现有 `requestProgrammaticForwardListBottomAnchor(force = true)` 接一次底部锚点，避免把锚定和 arrangement 切换拆到两帧造成“先掉一下再上抬”。后续发送若首屏文档流已经触线，发送入口不得降回 `TopUnreached`，必须继续走正常工作线锚点。`HandoffPending` 已从运行时状态机删除，不允许再作为 Top 布局和底部锚点之间的持续交接态；`ChatTimelineItem.SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer、反向列表、overlay、raw delta 都仍是废弃旧方案，不允许并存恢复
+- clean-state / 删除所有历史后的首屏体验当前用 `InitialWorklinePhase` 收口，而不是旧“稀疏首屏”方案：`WaitingForFirstSend -> TopUnreached -> TopAnchoring -> WorklineOwned`。只有发送前没有任何真实业务消息时才进入 `TopUnreached`；该阶段真实聊天消息、图片消息、图片上传 pending、失败态、重试态、assistant placeholder 和 streaming 小球都仍在同一个 `LazyColumn` 里，只是临时 `Arrangement.Top`，并 gate 普通回底 / AutoFollow 预锚 / sendStart bottom anchor。若清数据 / 首屏只有今日农情内容而没有真实消息，列表同样使用 Top 排列把它作为第一条视觉内容显示，但首屏触线判断、工作线交接和最新消息锚点仍只看真实业务消息。当前首屏文档流的最大可测底边到达或超过 96dp 工作线后，如果用户正在拖动、滚动或浏览，直接交给 `WorklineOwned` 且不抢手势；如果用户只是按住 / 触碰但未形成可切换条件，则继续停在 Top 流，不自动切换；如果用户未触碰 / 拖动 / 浏览，则先进入极短 `TopAnchoring`，继续保持 `Arrangement.Top` 并继续 gate 普通自动回底。`TopAnchoring` 只有在列表已经出现正向可滚范围、首屏文档流底边已超过工作线约 56dp、且用户没有触碰 / 拖动 / 浏览时，才同一执行点设置 `WorklineOwned` 并立刻复用现有 `requestProgrammaticForwardListBottomAnchor(force = true)` 接一次底部锚点，避免把锚定和 arrangement 切换拆到两帧造成“先掉一下再上抬”。后续发送若首屏文档流已经触线，发送入口不得降回 `TopUnreached`，必须继续走正常工作线锚点。`HandoffPending` 已从运行时状态机删除，不允许再作为 Top 布局和底部锚点之间的持续交接态；`ChatTimelineItem.SparseBottomSpacer`、`cleanStateSparseLayoutActive`、动态稀疏 padding / spacer、反向列表、overlay、raw delta 都仍是废弃旧方案，不允许并存恢复
 - 用户清除 App 数据 / 缓存不是极端操作，必须作为常规回归路径：固定 UI 默认样式、设置页入口、登录页和主聊天基础布局必须来自当前 APK 代码；手机号账号、会员、额度、礼品卡、反馈、聊天历史和今日农情等业务数据登录后从后端恢复；本地缓存只用于加速和离线过渡，不能成为新 UI 是否存在、设置项是否出现、启动是否贴底的唯一来源。
 - 发送起步当前保留的旧保护只有两样：
   - `lockedConversationBottomPaddingPx / sendStartBottomPaddingLockActive`

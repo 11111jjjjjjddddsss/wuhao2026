@@ -24,7 +24,7 @@
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
 - 云安全中心：2026-06-14 只读巡检曾看到 1 条提醒级事件 `云产品威胁检测-OSS可疑访问行为`，类型不是资源水位告警，关联 OSS 读取 Bucket 加密配置类操作；核对后与本次 CLI / ossutil 做 OSS 配置巡检或开启服务端加密的运维行为一致，已在云安全中心按“我已手工处理”收口，未创建长期白名单，待处理列表为空。聊天和仓库文档不记录 AK、IP、UserAgent 或其它敏感字段；后续若出现来源不明、写操作、删除操作、失败调用或越权类告警，不能静默忽略，应按安全事件处理并优先轮换相关凭证。
 - 普通短信服务：已购买国内通用短信套餐包，新 Android 登录消耗普通短信余量；DYPNS / 融合认证统计只作为历史兼容观察。`check-sms-usage.ps1` 会额外调用费用中心有效资源包 API 做交叉检查，但 2026-06-15 当前只返回百炼推理资源包和 OSS 存储包，没有返回短信类套餐包；因此短信套餐包余额、到期、余量预警和自动复购仍需以短信服务控制台为准
-- 数据留存与文字表成本：2026-06-15 新增 `scripts/check-data-retention-cost.ps1` 并接入 `check-resource-capacity.ps1`。该脚本只读统计重点文字 / 日志 / 账本表的行数、最早 / 最新时间和表体量，默认守护聊天归档 31 天、App 自动日志 90 天、客服文字 / 审计 / 幂等 ledger 365 天复核窗口、单表 1GB、重点表合计 10GB。当前生产实测重点表合计约 0.828MB，`warnings=0 / errors=0 / status=ready`；因此当前成本很低，但公开运营前仍需补 App 日志、客服文字和审计的自动清理 / 去标识化策略
+- 数据留存与文字表成本：2026-06-15 新增 `scripts/check-data-retention-cost.ps1` 并接入 `check-resource-capacity.ps1`。该脚本只读统计重点文字 / 日志 / 账本表的行数、最早 / 最新时间和表体量，默认守护聊天归档 31 天、App 自动日志 30 天、客服文字 / 审计 / 幂等 ledger 365 天复核窗口、单表 1GB、重点表合计 10GB。当前生产实测重点表合计约 0.828MB，`warnings=0 / errors=0 / status=ready`；因此当前成本很低。App 自动日志已按低成本窗口在写入路径限频清理，公开运营前仍需继续补客服文字、后台审计和注销联动的自动清理 / 去标识化策略
 - 费用中心账单巡检：2026-06-15 新增 `scripts/check-aliyun-costs.ps1`，通过阿里云费用中心 BSS OpenAPI 只读查询账户余额、当月 / 上月产品账单、当前月明细、百炼每日走势、有效资源包和有效实例；脚本会重试费用中心偶发超时，统一脱敏请求签名和账号字段，不买资源、不续费、不退订、不释放实例。当前实测账户可用余额约 `628.35` 元；2026-06 当月产品账单税前合计约 `130.1225` 元，其中百炼约 `60.2716` 元、短信套餐包 `35` 元、DYPNS / 融合认证套餐 `34.85` 元、SLS 约 `0.0009` 元。百炼成本主要来自 2026-06-08 到 2026-06-10 的提示词 / 探针集中测试，最近 5 天百炼税前合计约 `0.357` 元、均值约 `0.0714` 元 / 天；`qwen-plus` 推理资源包剩余 `11,489,501 / 12,000,000 tokens`，OSS 标准存储包剩余 `100 / 100GB`。DYPNS / 融合认证已按已购沉没成本处理，新 Android 不再使用；当前两个融合认证包均为 `ManualRenewal`，不是自动续费，其中 2026-05-31 包实付 `0` 元、2026-06-06 包实付约 `34.85` 元；CLI 安全询价 `InquiryPriceRefundInstance` 对两个包均返回 `CommodityNotSupported`，不走 CLI 退订。脚本只在 DYPNS / 融合认证出现自动续费或新增购买等情况时提醒；短信套餐包在资源包 API 中不可见、百炼节省计划临近到期等仍列为 attention，这是经营成本提醒，不等同于服务故障。当前建议是保留低价 ECS / RDS / Redis / OSS / 域名 / 短信套餐，不升配；百炼按真实用户量再买资源包或节省计划。
 
 统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-14 起，云监控规则若返回 `INSUFFICIENT_DATA` 也会输出 warning / attention，避免 ECS 内存等操作系统指标无数据时假绿；2026-06-15 起，OSS 生命周期不再只用文本包含关系粗看，而是解析生命周期 XML 并确认 `uploads/`、`support/` 前缀各自对应正确过期天数和 1 天未完成分片清理；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
@@ -34,6 +34,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 ```
 
 当前脚本汇总状态以实时输出为准。ECS / RDS 当前是包年包月，释放保护不适用，脚本会以 `not_applicable_prepaid` 表达；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。2026-06-15 严格巡检输出 `warnings=0 / errors=0 / status=ready`。
+
+代理测试或疑似卡顿前后，可加跑服务器性能快检：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-server-performance.ps1
+```
+
+该脚本只读查看 ECS 资源、Go / Nginx 进程、systemd 重启数、本机 healthz 延迟、24 小时 Go 错误 / 慢请求 / SSE 数量和 Nginx 429 / 5xx 计数，用来判断是否真是服务器性能问题。2026-06-16 实测 Go 进程 RSS 约 15MB、CPU 约 0，Nginx 与 Go 24 小时无 5xx / 429，只有 1 条今日农情内部生成慢请求，说明当前瓶颈不在 Go 运行性能。
 
 费用中心账单、资源包和模型日成本只读巡检：
 

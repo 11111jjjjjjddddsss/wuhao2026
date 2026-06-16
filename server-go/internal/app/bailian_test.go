@@ -235,6 +235,13 @@ func TestOpenStreamPrefersPrimaryKeyWhileHealthy(t *testing.T) {
 	}
 }
 
+func TestDashScopeKeySelectionDefaultsToFallback(t *testing.T) {
+	t.Setenv("DASHSCOPE_KEY_SELECTION_MODE", "")
+	if got := getDashScopeKeySelectionMode(); got != keySelectionModeFallback {
+		t.Fatalf("default key selection mode = %v, want fallback", got)
+	}
+}
+
 func TestOpenStreamUsesRoundRobinInSmoothMode(t *testing.T) {
 	authHeaders := []string{}
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

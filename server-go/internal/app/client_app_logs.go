@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 
@@ -25,11 +26,16 @@ const (
 	defaultClientAppLogRateLimitWindow        = 10 * time.Minute
 	defaultClientAppLogRateLimitMaxHits       = 60
 	defaultClientAppLogRateLimitPruneInterval = 10 * time.Minute
+	defaultClientAppLogRetention              = 30 * 24 * time.Hour
+	defaultClientAppLogPruneInterval          = 24 * time.Hour
+	defaultClientAppLogPruneBatchLimit        = 1000
 
 	defaultClientAppLogInternalListLimit = 100
 	maxClientAppLogInternalListLimit     = 200
 	clientAppLogInternalSummaryLimit     = 50
 )
+
+var lastClientAppLogPruneMs atomic.Int64
 
 type clientAppLogRequest struct {
 	Level          string         `json:"level"`
@@ -861,7 +867,51 @@ func (s *Store) CreateClientAppLog(ctx context.Context, input ClientAppLogInput)
 		input.CreatedAt,
 		nullableTrimmed(input.MaskedIP),
 	)
-	return err
+	if err != nil {
+		return err
+	}
+	s.maybePruneExpiredClientAppLogs(ctx, input.CreatedAt)
+	return nil
+}
+
+func (s *Store) maybePruneExpiredClientAppLogs(ctx context.Context, nowMs int64) {
+	retention := envDurationWithDefault("CLIENT_APP_LOG_RETENTION_SECONDS", defaultClientAppLogRetention)
+	if retention <= 0 {
+		return
+	}
+	interval := envDurationWithDefault("CLIENT_APP_LOG_PRUNE_INTERVAL_SECONDS", defaultClientAppLogPruneInterval)
+	if interval <= 0 {
+		interval = defaultClientAppLogPruneInterval
+	}
+	if !shouldPruneClientAppLogs(nowMs, interval) {
+		return
+	}
+	cutoffMs := nowMs - int64(retention/time.Millisecond)
+	if cutoffMs <= 0 {
+		return
+	}
+	_, _ = s.db.ExecContext(
+		ctx,
+		"DELETE FROM client_app_logs WHERE created_at < ? LIMIT ?",
+		cutoffMs,
+		defaultClientAppLogPruneBatchLimit,
+	)
+}
+
+func shouldPruneClientAppLogs(nowMs int64, interval time.Duration) bool {
+	intervalMs := int64(interval / time.Millisecond)
+	if intervalMs <= 0 {
+		intervalMs = int64(defaultClientAppLogPruneInterval / time.Millisecond)
+	}
+	for {
+		last := lastClientAppLogPruneMs.Load()
+		if last > 0 && nowMs-last < intervalMs {
+			return false
+		}
+		if lastClientAppLogPruneMs.CompareAndSwap(last, nowMs) {
+			return true
+		}
+	}
 }
 
 func nullableString(value sql.NullString) any {
