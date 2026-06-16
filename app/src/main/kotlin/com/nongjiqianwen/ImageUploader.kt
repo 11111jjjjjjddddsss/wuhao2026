@@ -50,6 +50,7 @@ object ImageUploader {
     
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
     const val DECODE_FAIL_MESSAGE = "图片无法读取，请重新选择"
+    private const val UPLOAD_FAIL_MESSAGE = "图片上传失败，请稍后重试"
 
     enum class UploadPurpose(val formValue: String?) {
         Chat(null),
@@ -196,7 +197,7 @@ object ImageUploader {
                 compressedSize = compressedBytes.size
             )
         } catch (e: Exception) {
-            Log.e(TAG, "图片压缩失败", e)
+            Log.e(TAG, "图片压缩失败：${e.javaClass.simpleName}")
             null
         }
     }
@@ -337,13 +338,13 @@ object ImageUploader {
                     
                     // 冻结协议：成功 200 仅认根级 url；失败 !=200 仅认根级 error
                     if (!response.isSuccessful) {
-                        val errorMsg = try {
+                        val errorCode = try {
                             val json = com.google.gson.JsonParser.parseString(bodyStr).asJsonObject
                             json.get("error")?.takeIf { it.isJsonPrimitive }?.asString ?: "HTTP $code"
                         } catch (_: Exception) {
                             "HTTP $code"
                         }
-                        Log.e(TAG, "上传失败：HTTP状态码=$code, error=$errorMsg")
+                        Log.e(TAG, "上传失败：HTTP状态码=$code, error_code_present=${errorCode.isNotBlank()}")
                         SessionApi.reportClientLog(
                             level = "warn",
                             event = "image.upload_failed",
@@ -354,7 +355,7 @@ object ImageUploader {
                                 "purpose" to purpose.name.lowercase()
                             )
                         )
-                        onError(errorMsg)
+                        onError(UPLOAD_FAIL_MESSAGE)
                         return@use
                     }
                     
@@ -379,12 +380,11 @@ object ImageUploader {
                                 "purpose" to purpose.name.lowercase()
                             )
                         )
-                        onError("上传失败：响应格式错误")
+                        onError(UPLOAD_FAIL_MESSAGE)
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "上传异常", e)
-                Log.e(TAG, "上传失败：异常=${e.message}")
+                Log.e(TAG, "上传异常：${e.javaClass.simpleName}")
                 SessionApi.reportClientLog(
                     level = "warn",
                     event = "image.upload_failed",
@@ -396,7 +396,7 @@ object ImageUploader {
                         "purpose" to purpose.name.lowercase()
                     )
                 )
-                onError("上传异常: ${e.message}")
+                onError(UPLOAD_FAIL_MESSAGE)
             } finally {
                 tempFile?.delete()
             }
@@ -443,14 +443,14 @@ object ImageUploader {
                         },
                         purpose = purpose,
                         onError = { error ->
-                            Log.e(TAG, "图片[$index] 上传失败: $error")
+                            Log.e(TAG, "图片[$index] 上传失败")
                             errorRef.set(error)
                             latch.countDown()
                         }
                     )
                 } catch (e: Exception) {
-                    Log.e(TAG, "图片[$index] 上传异常", e)
-                    errorRef.set(e.message)
+                    Log.e(TAG, "图片[$index] 上传异常：${e.javaClass.simpleName}")
+                    errorRef.set(UPLOAD_FAIL_MESSAGE)
                     latch.countDown()
                 }
             }.start()
@@ -461,7 +461,7 @@ object ImageUploader {
         
         val orderedUrls = urls.filterNotNull()
         if (errorRef.get() != null || orderedUrls.size != imageBytesList.size) {
-            Log.e(TAG, "图片上传失败: ${errorRef.get()}, 成功: ${orderedUrls.size}/${imageBytesList.size}")
+            Log.e(TAG, "图片上传失败: 成功 ${orderedUrls.size}/${imageBytesList.size}")
             return null
         }
         

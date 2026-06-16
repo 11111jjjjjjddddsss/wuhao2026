@@ -162,7 +162,7 @@ expectAdminPattern("support handled action is not phrased as already replied", /
 expectAdminPattern("support handled action requires note", /status === "replied" && !note/);
 rejectAdminPattern("support action must not say 标已回复", /标已回复/);
 expectServerPattern("support handled status has note-required API guard", /support_status_note_required/);
-expectAdminPattern("gift card generation emphasizes real entitlement", /这里不是假测试/);
+expectAdminPattern("gift card generation emphasizes real entitlement", /生成后将产生真实可兑换权益/);
 expectAdminPattern("gift card generation requires typed quantity confirmation", /请输入 \$\{quantity\} 确认生成真实礼品卡/);
 expectAdminPattern("app update enable confirm shows sha256", /SHA-256: \$\{apkSHA256\}/);
 expectAdminPattern("app update enable confirm shows file size", /文件大小: \$\{fileSizeBytes\} bytes/);

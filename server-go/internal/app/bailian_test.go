@@ -594,6 +594,9 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
 	}
+	if _, ok := captured["max_tokens"]; ok {
+		t.Fatalf("daily agri should not hard-cap model output tokens: %#v", captured["max_tokens"])
+	}
 	if got := captured["enable_search"]; got != true {
 		t.Fatalf("enable_search mismatch: %#v", got)
 	}

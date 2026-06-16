@@ -61,6 +61,9 @@ func TestExtractSummaryUsesFixedQwenPlusWithoutThinking(t *testing.T) {
 	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
 		t.Fatalf("temperature = %#v, want %v", captured["temperature"], unifiedModelTemperature)
 	}
+	if _, ok := captured["max_tokens"]; ok {
+		t.Fatalf("memory document should not hard-cap model output tokens: %#v", captured["max_tokens"])
+	}
 	messages, ok := captured["messages"].([]any)
 	if !ok || len(messages) != 2 {
 		t.Fatalf("messages mismatch: %#v", captured["messages"])

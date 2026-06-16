@@ -367,7 +367,7 @@ private fun MembershipPurchaseSuccessCard(
                 verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 Text(
-                    text = "订购成功",
+                    text = "权益已生效",
                     color = Color.White,
                     fontSize = 18.sp,
                     lineHeight = 24.sp,
@@ -826,7 +826,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "加油包暂未开放。开放后仅 Plus / Pro 用户可购买，永久有效，用完再续。",
+                text = "加油包暂未开放。开放后仅 Plus / Pro 用户可购买；有效期、使用规则和续购方式以页面展示为准。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp

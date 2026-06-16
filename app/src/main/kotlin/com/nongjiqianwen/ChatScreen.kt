@@ -4164,8 +4164,7 @@ fun ChatScreen() {
                 "auth",
                 "bad_request",
                 "model_unavailable",
-                "stale_session",
-                "stream_in_progress"
+                "stale_session"
             )
 
     fun shouldShowInterruptedAssistantRetry(reason: String): Boolean =
@@ -5345,7 +5344,8 @@ fun ChatScreen() {
 
     fun stageUserMessageForImageUpload(
         text: String,
-        previewImageUris: List<String>
+        previewImageUris: List<String>,
+        sessionGeneration: Int?
     ): String? {
         if ((text.isEmpty() && previewImageUris.isEmpty()) || isStreaming || sendUiSettling) return null
         val shouldUseInitialTopFlow = shouldUseInitialTopFlowForSend()
@@ -5416,7 +5416,7 @@ fun ChatScreen() {
                     userMessageId = userId,
                     text = text,
                     imageUris = previewImageUris,
-                    sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                    sessionGeneration = sessionGeneration,
                     region = region?.region,
                     regionSource = region?.source,
                     regionReliability = region?.reliability
@@ -5436,7 +5436,8 @@ fun ChatScreen() {
         uploadedImageUrls: List<String> = emptyList(),
         previewImageUris: List<String> = emptyList(),
         existingUserMessageId: String? = null,
-        collapseComposer: Boolean = true
+        collapseComposer: Boolean = true,
+        sessionGeneration: Int? = SessionApi.currentSessionGenerationOrNull()
     ) {
         if ((text.isEmpty() && uploadedImageUrls.isEmpty()) || isStreaming || sendUiSettling) return
         val shouldUseInitialTopFlow = shouldUseInitialTopFlowForSend()
@@ -5473,6 +5474,7 @@ fun ChatScreen() {
             }
         }
         val userId = existingUserMessageId ?: "user_${UUID.randomUUID()}"
+        val streamSessionGeneration = sessionGeneration
         clearStaleFailureAffordancesForNewSend(userId)
         failedUserMessageStates.remove(userId)
         clearFailedAssistantStateForUser(userId)
@@ -5630,6 +5632,7 @@ fun ChatScreen() {
                             clientMsgId = userId,
                             text = text,
                             images = uploadedImageUrls,
+                            sessionGeneration = streamSessionGeneration,
                             region = clientRegion?.region,
                             regionSource = clientRegion?.source,
                             regionReliability = clientRegion?.reliability
@@ -6036,6 +6039,7 @@ fun ChatScreen() {
                     showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
                     return
                 }
+                val retrySessionGeneration = SessionApi.currentSessionGenerationOrNull()
                 if (hasRemoteHistorySource) {
                     val region = currentClientRegionForSend()
                     PendingChatSendRuntime.markActive(failedMessage.id)
@@ -6046,7 +6050,7 @@ fun ChatScreen() {
                             userMessageId = failedMessage.id,
                             text = failedMessage.content,
                             imageUris = previewImageUris,
-                            sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                            sessionGeneration = retrySessionGeneration,
                             region = region?.region,
                             regionSource = region?.source,
                             regionReliability = region?.reliability
@@ -6102,7 +6106,8 @@ fun ChatScreen() {
                             uploadedImageUrls = uploadedUrls,
                             previewImageUris = previewImageUris,
                             existingUserMessageId = failedMessage.id,
-                            collapseComposer = false
+                            collapseComposer = false,
+                            sessionGeneration = retrySessionGeneration
                         )
                     } finally {
                         if (imageSendGeneration == uploadGeneration) {
@@ -6142,6 +6147,7 @@ fun ChatScreen() {
                     showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
                     return
                 }
+                val retrySessionGeneration = SessionApi.currentSessionGenerationOrNull()
                 if (hasRemoteHistorySource) {
                     val region = currentClientRegionForSend()
                     PendingChatSendRuntime.markActive(sourceUserMessage.id)
@@ -6152,7 +6158,7 @@ fun ChatScreen() {
                             userMessageId = sourceUserMessage.id,
                             text = sourceUserMessage.content,
                             imageUris = previewImageUris,
-                            sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                            sessionGeneration = retrySessionGeneration,
                             region = region?.region,
                             regionSource = region?.source,
                             regionReliability = region?.reliability
@@ -6213,7 +6219,8 @@ fun ChatScreen() {
                             uploadedImageUrls = retryUploadedUrls,
                             previewImageUris = previewImageUris,
                             existingUserMessageId = sourceUserMessage.id,
-                            collapseComposer = false
+                            collapseComposer = false,
+                            sessionGeneration = retrySessionGeneration
                         )
                     } finally {
                         if (imageSendGeneration == uploadGeneration) {
@@ -6230,6 +6237,7 @@ fun ChatScreen() {
             if (existingAssistantIndex >= 0) {
                 messages.removeAt(existingAssistantIndex)
             }
+            val retrySessionGeneration = SessionApi.currentSessionGenerationOrNull()
             if (hasRemoteHistorySource && uploadedImageUrls.isNotEmpty()) {
                 val region = currentClientRegionForSend()
                 PendingChatSendRuntime.markActive(sourceUserMessage.id)
@@ -6241,7 +6249,7 @@ fun ChatScreen() {
                         text = sourceUserMessage.content,
                         imageUris = previewImageUris,
                         imageUrls = uploadedImageUrls,
-                        sessionGeneration = SessionApi.currentSessionGenerationOrNull(),
+                        sessionGeneration = retrySessionGeneration,
                         region = region?.region,
                         regionSource = region?.source,
                         regionReliability = region?.reliability
@@ -6253,7 +6261,8 @@ fun ChatScreen() {
                 uploadedImageUrls = uploadedImageUrls,
                 previewImageUris = previewImageUris,
                 existingUserMessageId = sourceUserMessage.id,
-                collapseComposer = false
+                collapseComposer = false,
+                sessionGeneration = retrySessionGeneration
             )
         }
         fun performSendMessage(
@@ -6292,9 +6301,11 @@ fun ChatScreen() {
                 return
             }
             val previewImageUris = imageSnapshot.map { it.uri }
+            val imageSendSessionGeneration = SessionApi.currentSessionGenerationOrNull()
             val stagedUserMessageId = stageUserMessageForImageUpload(
                 text = trimmedText,
-                previewImageUris = previewImageUris
+                previewImageUris = previewImageUris,
+                sessionGeneration = imageSendSessionGeneration
             ) ?: return
             imageSendInProgress = true
             val uploadClearEpoch = chatHistoryClearEpoch
@@ -6347,7 +6358,8 @@ fun ChatScreen() {
                             uploadedImageUrls = uploadedUrls,
                             previewImageUris = previewImageUris,
                             existingUserMessageId = stagedUserMessageId,
-                            collapseComposer = false
+                            collapseComposer = false,
+                            sessionGeneration = imageSendSessionGeneration
                         )
                     }
                 } finally {
@@ -7730,7 +7742,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
-                    UiCopyPreviewItem("未来支付成功样式", "支付未开放，仅预览后续权益生效卡片", UiCopyPreviewKind.MembershipPurchaseSuccess),
+                    UiCopyPreviewItem("权益生效提示", "支付未开放，仅预览后续权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
                 )
             ),
@@ -7757,7 +7769,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("应用权限", "定位、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
                     UiCopyPreviewItem("礼品卡成功样式", "展示真实档位、30天、每日次数和到期时间", UiCopyPreviewKind.HamburgerGiftCardSuccess),
-                    UiCopyPreviewItem("礼品卡重复兑换", "本人重复提交时提示权益已生效", UiCopyPreviewKind.HamburgerGiftCardReplay)
+                    UiCopyPreviewItem("礼品卡重复兑换", "同一账号重复提交时提示权益已生效", UiCopyPreviewKind.HamburgerGiftCardReplay)
                 )
             ),
             UiCopyPreviewGroup(

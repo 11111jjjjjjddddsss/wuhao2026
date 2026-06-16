@@ -81,6 +81,7 @@ $chatScrollCoordinatorFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongji
 $chatStreamingRendererFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatStreamingRenderer.kt"
 $chatComposerCoordinatorFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatComposerCoordinator.kt"
 $chatComposerPanelFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatComposerPanel.kt"
+$imageUploaderFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ImageUploader.kt"
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $hamburgerMenuSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
@@ -89,7 +90,7 @@ $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_s
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -116,6 +117,7 @@ if ($failures.Count -eq 0) {
     $chatStreamingRenderer = Read-SourceFile $chatStreamingRendererFile
     $chatComposerCoordinator = Read-SourceFile $chatComposerCoordinatorFile
     $chatComposerPanel = Read-SourceFile $chatComposerPanelFile
+    $imageUploader = Read-SourceFile $imageUploaderFile
     $loginScreen = Read-SourceFile $loginScreenFile
     $chatScreen = Read-SourceFile $chatScreenFile
     $hamburgerMenuSheet = Read-SourceFile $hamburgerMenuSheetFile
@@ -376,6 +378,24 @@ if ($failures.Count -eq 0) {
         "Session snapshot fetch must callback when a stale failure arrives after a runtime reset."
     Require-Match $failures $sessionApi 'fun\s+getSnapshot\b(?s:.*?)postDelayed\s*\(\s*\{(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return@postDelayed\s*\}' `
         "Session snapshot delayed retry must callback when a reset happens before retry execution."
+    Require-NoMatch $failures $chatScreen 'fun\s+canAttemptRemoteAssistantRecovery\s*\(\s*reason:\s*String\s*\):\s*Boolean(?s:(?!\n\s*fun\s+).)*"stream_in_progress"' `
+        "Stream-in-progress interruptions must enter remote snapshot recovery instead of being dropped as an unrecoverable foreground failure."
+    Require-Match $failures $chatScreen 'SessionApi\.streamChat\s*\(\s*options\s*=\s*SessionApi\.StreamOptions\s*\((?s:.*?)sessionGeneration\s*=\s*streamSessionGeneration' `
+        "Foreground chat streams must pass the captured session generation explicitly, matching pending image-send recovery."
+    Require-NoMatch $failures $imageUploader 'Log\.e\s*\(\s*TAG\s*,\s*"[^"]*"\s*,\s*e\s*\)|e\.message|error=\$errorMsg|上传异常:\s*\$\{e\.message\}' `
+        "Image upload/compression logs must not print raw exception messages, stack traces, backend errors, image URLs, or other sensitive details."
+    Require-Match $failures $chatScreen 'private\s+fun\s+Context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId:\s*String\s*\)(?s:.*?)remove\("\$CHAT_CACHE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_STREAM_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_COMPOSER_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)commit\s*\(\s*\)' `
+        "Chat clean-state reset must synchronously remove local window, stream draft, composer draft and today-agri anchors."
+    Require-Match $failures $chatScreen 'fun\s+applyChatHistoryCleared\s*\(\s*\)(?s:.*?)SessionApi\.resetUiRuntimeForCleanState\s*\(\s*\)(?s:.*?)advanceChatHistoryClearEpoch\s*\(\s*\)(?s:.*?)context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId\s*\)(?s:.*?)todayAgriCardAnchorDay\s*=\s*""(?s:.*?)todayAgriCardAnchorMessageId\s*=\s*""(?s:.*?)messages\.clear\s*\(\s*\)(?s:.*?)initialBottomSnapDone\s*=\s*false' `
+        "Chat history clear must invalidate in-flight runtime, advance clear epoch, clear local state and restart bottom calibration."
+    Require-Match $failures $chatScreen 'LocalChatWindowSnapshotPayload\s*\((?s:.*?)sessionGeneration\s*=\s*SessionApi\.currentSessionGenerationOrNull\s*\(\s*\)' `
+        "Local chat window snapshots must be stamped with the current backend session generation."
+    Require-Match $failures $chatScreen 'if\s*\(\s*!\s*isStoredSessionGenerationCurrent\s*\(\s*payload\?\.sessionGeneration\s*\)\s*\)\s*\{\s*return@runCatching\s+LocalChatWindowSnapshot\s*\(\s*\)\s*\}' `
+        "Local chat window snapshots from an old session generation must be ignored on startup."
+    Require-Match $failures $chatScreen 'LaunchedEffect\s*\(\s*uiRuntimeResetKey\s*\)\s*\{(?s:.*?)mainHandler\.removeCallbacksAndMessages\s*\(\s*null\s*\)(?s:.*?)streamRevealJob\?\.cancel\s*\(\s*\)(?s:.*?)remoteRecoveryJob\?\.cancel\s*\(\s*\)(?s:.*?)SessionApi\.resetUiRuntimeForCleanState\s*\(\s*\)' `
+        "Chat runtime reset must cancel pending UI callbacks and stale network callbacks when the UI runtime key changes."
+    Require-Match $failures $chatScreen 'DisposableEffect\s*\(\s*uiRuntimeResetKey\s*\)\s*\{\s*onDispose\s*\{(?s:.*?)mainHandler\.removeCallbacksAndMessages\s*\(\s*null\s*\)(?s:.*?)streamRevealJob\?\.cancel\s*\(\s*\)(?s:.*?)remoteRecoveryJob\?\.cancel\s*\(\s*\)(?s:.*?)SessionApi\.resetUiRuntimeForCleanState\s*\(\s*\)' `
+        "Chat runtime disposal must cancel stale callbacks and reset SessionApi generation."
     $settingsLabelMembership = [regex]::Escape("$([char]0x4f1a)$([char]0x5458)$([char]0x4e2d)$([char]0x5fc3)")
     $settingsLabelAccount = [regex]::Escape("$([char]0x8d26)$([char]0x53f7)$([char]0x7ba1)$([char]0x7406)")
     $settingsLabelSupport = [regex]::Escape("$([char]0x5e2e)$([char]0x52a9)$([char]0x4e0e)$([char]0x53cd)$([char]0x9988)")

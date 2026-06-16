@@ -93,7 +93,7 @@
 - 发布脚本支持多实例滚动发布和逐台 healthz 验证
 - SLS 统一采集所有 ECS 的 `nongji-server` 和 Nginx 日志
 - Nginx / SLB 后的真实 IP 链路必须复核：当前单 ECS 直连公网阶段，Nginx 覆盖 `X-Real-IP $remote_addr` 和 `X-Forwarded-For $remote_addr`，不把客户端自带 XFF 链传给 Go；Go `GetClientIP` 只信任本机 / 内网代理来源的转发头。后续接 SLB / ALB / CDN / WAF 时，必须先配置可信上游 `real_ip_header` / `set_real_ip_from` 并重新验证 `X-Forwarded-For`、`X-Real-IP`、Go `GetClientIP`、Redis 限流 IP hash、地区推断都取到真实客户端 IP，不能把 SLB 内网 IP 当成所有用户来源，也不能重新信任公网客户端伪造的 XFF
-- 多实例必须保持 `APP_SECRET`、`AUTH_STRICT`、Redis、OSS、MySQL、模型 Key 策略和 `UPLOAD_BASE_URL / BASE_PUBLIC_URL` 一致；`APP_SECRET` 不支持随便轮换，见 `security-hardening.md`
+- 多实例必须保持 `APP_SECRET`、`AUTH_STRICT`、Redis、OSS、MySQL、模型 Key 策略和 `UPLOAD_BASE_URL / BASE_PUBLIC_URL` 一致；`APP_SECRET` 不支持随意轮换，见 `security-hardening.md`
 
 ### 阶段 3：数据库扩容
 

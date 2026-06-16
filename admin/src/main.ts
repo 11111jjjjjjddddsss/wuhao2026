@@ -185,8 +185,8 @@ function renderLogin(message = ""): void {
       <section class="login-aside">
         <h2>运营、排障、审计集中在一个正式工作台。</h2>
         <p class="muted" style="max-width:540px;line-height:1.8">
-          所有业务真相来自 Go 管理 API；用户、会员、订单、反馈、日志和今日农情只做后端授权后的只读或受控操作。
-          未接入模块会明确展示规划态，不显示伪造成功数据。
+          所有业务数据以后台服务记录为准；用户、会员、订单、反馈、日志和今日农情只在授权后展示或执行受控操作。
+          未开放模块会明确标注当前状态，不展示模拟成功数据。
         </p>
       </section>
     </main>
@@ -390,7 +390,7 @@ async function monitoringPage(): Promise<string> {
   const today = report.windows.find((item) => item.key === "today") || report.windows[0];
   const day24 = report.windows.find((item) => item.key === "24h") || report.windows[0];
   return `
-    ${pageHead("监控面板", "看现在能不能继续上线、哪里要处理、该打开哪个页面。", "monitoring")}
+    ${pageHead("监控面板", "查看上线准备状态、待处理事项和对应处理入口。", "monitoring")}
     ${monitoringHero(report)}
     ${monitoringReadinessSummary(report)}
     ${monitoringOperatorGuide(report)}
@@ -398,7 +398,7 @@ async function monitoringPage(): Promise<string> {
     ${monitoringManualCheckStrip(report)}
     ${monitoringDecisionGrid(report, today, day24)}
     <section class="card" style="margin-bottom:12px">
-      <div class="card-head"><div class="card-title">模型链路说明</div><span class="small muted">当前后端实际怎么调用模型</span></div>
+      <div class="card-head"><div class="card-title">智能问诊链路</div><span class="small muted">当前后台服务调用智能分析能力的规则</span></div>
       <div class="card-body">${modelUsagePolicyBlock(report.model_usage_policy || [])}</div>
     </section>
     <section class="card" style="margin-bottom:12px">
@@ -406,12 +406,12 @@ async function monitoringPage(): Promise<string> {
       <div class="card-body">${monitoringRegressionChecklist(report)}</div>
     </section>
     <section class="card" style="margin-bottom:12px">
-      <div class="card-head"><div class="card-title">正式上架检查</div><span class="small muted">还能继续 / 需要确认 / 先别上架</span></div>
+      <div class="card-head"><div class="card-title">正式上架检查</div><span class="small muted">可继续 / 需确认 / 暂缓上架</span></div>
       <div class="card-body">${launchReadinessGrid(report.launch_readiness || [])}</div>
     </section>
     ${monitoringShortcutBar()}
     <section class="grid kpi">
-      ${kpi("核心服务问题", report.queues.unready_dependency_count, "模型 / 登录 / Redis / OSS")}
+      ${kpi("核心服务问题", report.queues.unready_dependency_count, "智能问诊 / 登录 / 缓存 / 图片存储")}
       ${kpi("App异常", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
       ${kpi("登录问题", report.queues.auth_failures ?? 0, `最近24小时，闪退补报 ${report.queues.crash_reports ?? 0} 条`)}
       ${kpi("待回复反馈", report.queues.support_needs_reply, report.queues.support_oldest_pending_at ? `最早 ${formatTime(report.queues.support_oldest_pending_at)}` : "当前无等待")}
@@ -503,7 +503,7 @@ async function usersPage(): Promise<string> {
 async function entitlementsPage(): Promise<string> {
   return userScopedPage({
     title: "会员额度",
-    desc: "先看整体会员盘子，再按账号ID查单人权益、额度、加油包和补偿。",
+    desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包和补偿。",
     formID: "entitlements-form",
     inputName: "user_id",
     value: pageState.entitlementUserID,
@@ -569,8 +569,8 @@ async function ordersPage(): Promise<string> {
           ${kpi("金额合计", summary.amountText, "仅按当前返回记录粗略合计")}
         </div>
         <div class="grid two" style="margin-top:12px">
-          ${notice("支付未接入", "真实微信 / 支付宝支付、回调、退款、对账和自动补发权益仍未完成；这里不会伪造支付成功，也没有手动发放按钮。", "warn")}
-          ${notice("当前用途", "用于查看开发期订单 / 会员变更记录，辅助核查账号权益来源。支付接入后再扩展渠道订单号、回调状态和退款记录。", "info")}
+          ${notice("支付未接入", "真实微信 / 支付宝支付、回调、退款、对账和自动发放权益尚未接入；当前页面仅展示已有记录，不提供支付成功模拟或手动发放入口。", "warn")}
+          ${notice("当前用途", "用于查看现有订单 / 会员变更记录，辅助核查账号权益来源。支付接入后再扩展渠道订单号、回调状态和退款记录。", "info")}
         </div>
         <section class="card">
           <div class="card-head"><div class="card-title">${userID ? "用户订单" : "最近订单"}</div><span class="small muted">${orders.length} 条</span></div>
@@ -618,7 +618,7 @@ async function giftCardsPage(): Promise<string> {
       ${kpi("完整卡码", canViewCodes ? "财务可见" : "仅财务可见", lastGiftCardCodes.length ? "本次新生成在下方" : canViewCodes ? "列表可直接复制" : "当前角色只看尾号/脱敏码")}
     </section>
     <div class="grid two" style="margin-top:12px">
-      ${notice("正式权益提醒", "这里不是假测试。生成后的礼品卡可兑换真实会员权益；需要测试时只生成 1 张，并在 Android 设置里的“礼品卡”入口兑换后回到本页追溯。", "warn")}
+      ${notice("正式权益提醒", "生成后将产生真实可兑换权益。测试时请仅生成 1 张，并在 Android 设置里的“礼品卡”入口兑换后回到本页追溯。", "warn")}
       ${notice("当前口径", `当前“可兑换卡”只统计已经生效且未过期的 active 卡；全量 active 卡共 ${summary.active_count} 张。完整卡码不要写进备注、作废原因、审计说明或导出文件。`, "warn")}
     </div>
     <section class="card">
@@ -952,7 +952,7 @@ async function insightsPage(): Promise<string> {
         <div class="card-head"><div class="card-title">下一步洞察能力</div></div>
         <div class="card-body">
           ${notice("后续增强", "再补产品洞察日报、人工标签、处理状态、代表短摘和来源数量；代表短摘也必须先脱敏，不直接铺完整聊天或反馈正文。", "info")}
-          ${day30 ? notice("30天盘子", `最近30天 ${day30.chat_rounds} 轮问诊、${day30.support_messages} 条用户反馈、${day30.auth_failures} 条登录排障信号。`, "info") : ""}
+          ${day30 ? notice("近30天概况", `最近30天 ${day30.chat_rounds} 轮问诊、${day30.support_messages} 条用户反馈、${day30.auth_failures} 条登录排障信号。`, "info") : ""}
         </div>
       </section>
     </div>
@@ -974,7 +974,7 @@ async function healthPage(): Promise<string> {
         `)
         .join("")}
     </div>
-    <div style="margin-top:12px">${planningNotice("SLS / 云监控巡检", "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘，资源水位另走云监控邮件；本页不实时读取阿里云告警规则，剩余重点是首封 SLS 告警邮件送达确认和更细趋势。")}</div>
+    <div style="margin-top:12px">${planningNotice("服务告警巡检", "服务 5xx、慢请求、网关异常、今日农情失败和智能问诊 / 认证配置错误按最近严格脚本巡检接入告警规则、邮件行动策略和最小仪表盘，资源水位另走云监控邮件；本页不实时读取阿里云告警规则，剩余重点是首封告警邮件送达确认和更细趋势。")}</div>
   `;
 }
 
@@ -1734,7 +1734,7 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
   const legacyMembers = summary.legacy_member_users || 0;
   const memberSubtitle =
     legacyMembers > 0
-      ? `当前会员 ${summary.member_users}（账号 ${accountMembers} / 老ID ${legacyMembers}）`
+      ? `当前会员 ${summary.member_users}（账号 ${accountMembers} / 迁移期旧身份记录 ${legacyMembers}）`
       : `当前会员 ${summary.member_users}`;
   return `
     <section class="grid kpi" style="margin-top:12px">
@@ -1753,7 +1753,7 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
             <tbody>
               ${metricRow("当前会员总数", summary.member_users)}
               ${metricRow("已收敛账号会员", accountMembers)}
-              ${metricRow("迁移期老ID会员", legacyMembers)}
+              ${metricRow("迁移期旧身份记录会员", legacyMembers)}
               ${metricRow("今日基础额度用满", summary.daily_limit_exhausted_users)}
               ${metricRow("有加油包余额", summary.topup_active_users)}
               ${metricRow("有升级补偿", summary.upgrade_credit_users)}
@@ -1767,7 +1767,7 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
           ${notice("会员有效期", "Plus / Pro 只统计当前仍在有效期内的用户；过期后自动按 Free 计算。", "info")}
           ${
             legacyMembers > 0
-              ? notice("账号ID收敛中", `还有 ${legacyMembers} 个当前会员仍挂在迁移前老ID 下，所以“账号用户”“账号内会员”和“当前会员总数”暂时不会完全一一对应。`, "warn")
+              ? notice("账号ID收敛中", `还有 ${legacyMembers} 个当前会员仍归属迁移期旧身份记录，因此“账号用户”“账号内会员”和“当前会员总数”暂时不会完全一一对应。`, "warn")
               : ""
           }
           ${notice("额度耗尽", "这里统计的是“今日基础额度用满”的账号数，不代表加油包和升级补偿也已经同时用完。", "info")}
@@ -1799,7 +1799,7 @@ function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
 }
 
 function ordersTable(rows: AdminOrderEntry[]): string {
-  if (!rows.length) return emptyState("没有订单数据", "支付未正式接入，或当前筛选范围内没有开发期订单 / 会员变更记录。");
+  if (!rows.length) return emptyState("没有订单数据", "支付未正式接入，或当前筛选范围内没有现有订单 / 会员变更记录。");
   return `
     <table class="table">
       <thead><tr><th>订单</th><th>账号ID</th><th>类型</th><th>金额</th><th>状态</th><th>创建时间</th><th>结果</th></tr></thead>
@@ -3265,21 +3265,21 @@ function monitoringOperatorGuide(report: AdminMonitoring): string {
   const primaryRoute = primaryMonitoringActionRoute(report, worst) || (readiness.blocked > 0 ? "monitoring" : "app-logs");
   const firstText =
     worst === "bad"
-      ? "红色代表先处理，通常是服务、App异常或后台操作失败。"
+      ? "红色表示需要优先处理，通常对应服务异常、App 异常或后台操作失败。"
       : worst === "warn" || readiness.programAttention > 0 || readiness.manualAttention > 0 || readiness.blocked > 0
-        ? "黄色代表可以继续推进，但要分清程序状态和人工确认。"
-        : "绿色代表当前后台没有明显异常，可以继续按上线清单往前走。";
+        ? "黄色表示可以继续推进，但需要区分程序待处理项和人工确认项。"
+        : "绿色表示当前后台未发现明显异常，可以继续按照上线清单推进。";
   return `
     <section class="operator-guide">
       <div class="operator-guide-copy">
         <span class="small muted">处理顺序</span>
-        <strong>先看颜色，再点入口，不需要先读完整张表。</strong>
+        <strong>请先查看状态颜色，再进入对应处理入口。</strong>
         <p>${escapeHTML(firstText)} 当前还有 ${actionCount} 个先处理事项、${readiness.blocked} 个上架阻塞项、${readiness.programAttention} 个程序需处理、${readiness.manualAttention} 个人工确认。</p>
       </div>
       <div class="operator-guide-steps">
-        ${operatorGuideStep("1", "当前结论", "看最上面的状态和下一步；红色先处理，黄色先确认，绿色继续测。", routeActionButton(primaryRoute, "打开重点项"))}
-        ${operatorGuideStep("2", "先处理事项", "只看有数量的队列：登录、闪退、反馈、注销、礼品卡、检查更新。", "")}
-        ${operatorGuideStep("3", "真机回归", "每测完一项，回来看 App 日志、服务健康和使用量有没有新增异常。", `${routeActionButton("app-logs", "App 日志")}${routeActionButton("health", "服务健康")}`)}
+        ${operatorGuideStep("1", "当前结论", "查看顶部状态和下一步建议；红色优先处理，黄色优先确认，绿色继续回归。", routeActionButton(primaryRoute, "打开重点项"))}
+        ${operatorGuideStep("2", "待处理事项", "优先查看有数量的队列：登录、闪退、反馈、注销、礼品卡、检查更新。", "")}
+        ${operatorGuideStep("3", "真机回归", "每完成一项回归后，复查 App 日志、服务健康和使用量是否出现新增异常。", `${routeActionButton("app-logs", "App 日志")}${routeActionButton("health", "服务健康")}`)}
       </div>
     </section>
   `;
@@ -3308,7 +3308,7 @@ function monitoringManualCheckStrip(report: AdminMonitoring): string {
       <div class="manual-check-head">
         <div>
           <strong>上线人工确认项</strong>
-          <p>这些不是程序崩了，而是正式上架前必须有人确认。</p>
+          <p>这些不是系统故障，而是正式上架前需要人工确认的事项。</p>
         </div>
         <span class="small muted">${rows.length} 项待确认</span>
       </div>
