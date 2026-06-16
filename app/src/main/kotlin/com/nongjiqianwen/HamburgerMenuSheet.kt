@@ -4152,11 +4152,13 @@ private fun HamburgerRedeemCodeContent(
     onPendingAction: (String) -> Unit,
     onRedeemSuccess: () -> Unit = {},
     modifier: Modifier = Modifier,
-    initialCode: String = ""
+    initialCode: String = "",
+    initialError: String? = null
 ) {
     var redeemCode by remember(initialCode) { mutableStateOf(initialCode) }
     var redeeming by remember { mutableStateOf(false) }
     var redeemResult by remember { mutableStateOf<SessionApi.GiftCardRedeemResult?>(null) }
+    var redeemError by remember(initialCode, initialError) { mutableStateOf(initialError?.takeIf { it.isNotBlank() }) }
     fun submitRedeem() {
         val code = normalizeGiftCardCodeInput(redeemCode)
         if (redeemCode != code) {
@@ -4164,15 +4166,18 @@ private fun HamburgerRedeemCodeContent(
         }
         if (redeeming) return
         if (code.isBlank()) {
-            onPendingAction("请输入礼品卡码")
+            redeemError = "请输入礼品卡码"
+            onPendingAction(redeemError.orEmpty())
             return
         }
+        redeemError = null
         redeeming = true
         SessionApi.redeemGiftCard(code) { result, error ->
             redeeming = false
             if (result?.ok == true) {
                 redeemResult = result
                 redeemCode = ""
+                redeemError = null
                 onRedeemSuccess()
                 onPendingAction(
                     if (result.replay) {
@@ -4182,7 +4187,8 @@ private fun HamburgerRedeemCodeContent(
                     }
                 )
             } else {
-                onPendingAction(error ?: "兑换失败，请稍后再试")
+                redeemError = error ?: "兑换失败，请稍后再试"
+                onPendingAction(redeemError.orEmpty())
             }
         }
     }
@@ -4246,6 +4252,9 @@ private fun HamburgerRedeemCodeContent(
                                 value = redeemCode,
                                 onValueChange = { next ->
                                     redeemCode = normalizeGiftCardCodeInput(next)
+                                    if (redeemError != null) {
+                                        redeemError = null
+                                    }
                                 },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(
@@ -4282,6 +4291,16 @@ private fun HamburgerRedeemCodeContent(
                                 }
                             )
                         }
+                    }
+                    redeemError?.takeIf { it.isNotBlank() }?.let { errorText ->
+                        Text(
+                            text = errorText,
+                            color = Color(0xFFB3261E),
+                            fontSize = 13.sp,
+                            lineHeight = 18.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                     val canSubmit = redeemCode.isNotBlank() && !redeeming
                     Surface(
@@ -4383,6 +4402,24 @@ internal fun HamburgerRedeemCodePagePreview() {
         HamburgerRedeemCodeContent(
             onPendingAction = {},
             initialCode = "NJQW2026",
+            modifier = Modifier
+                .padding(14.dp)
+                .heightIn(max = 560.dp)
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerRedeemFailurePagePreview() {
+    Surface(
+        color = Color(0xFFF8F9FA),
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
+    ) {
+        HamburgerRedeemCodeContent(
+            onPendingAction = {},
+            initialCode = "NJQW2026",
+            initialError = "礼品卡码不正确，请核对后重试",
             modifier = Modifier
                 .padding(14.dp)
                 .heightIn(max = 560.dp)

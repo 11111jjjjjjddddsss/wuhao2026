@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
@@ -69,6 +70,25 @@ func TestGiftCardTextLooksSensitiveAllowsOperationalNotes(t *testing.T) {
 		if giftCardTextLooksSensitive(text) {
 			t.Fatalf("expected operational note to be allowed: %q", text)
 		}
+	}
+}
+
+func TestNormalizeGiftCardBatchInputUsesImmediateValidFrom(t *testing.T) {
+	now := time.Date(2026, 6, 16, 10, 30, 0, 0, time.UTC)
+	input, reason := normalizeGiftCardBatchInput(adminGiftCardCreateBatchRequest{
+		Name:         "代理测试卡",
+		Tier:         "plus",
+		DurationDays: 30,
+		Quantity:     1,
+	}, "owner", now)
+	if reason != "" {
+		t.Fatalf("normalizeGiftCardBatchInput reason = %q, want empty", reason)
+	}
+	if input.ValidFrom != now.UnixMilli() {
+		t.Fatalf("valid_from = %d, want now %d", input.ValidFrom, now.UnixMilli())
+	}
+	if input.ValidUntil == nil || *input.ValidUntil <= input.ValidFrom {
+		t.Fatalf("valid_until = %v, want after valid_from %d", input.ValidUntil, input.ValidFrom)
 	}
 }
 

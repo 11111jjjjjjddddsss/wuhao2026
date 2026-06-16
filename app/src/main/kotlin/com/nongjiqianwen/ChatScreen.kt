@@ -7761,6 +7761,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
                     UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
+                    UiCopyPreviewItem("礼品卡失败提示", "失败原因停留在兑换页内", UiCopyPreviewKind.HamburgerGiftCardFailure),
                     UiCopyPreviewItem("服务协议目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
                     UiCopyPreviewItem("服务协议", "本地内置服务协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
@@ -8065,6 +8066,7 @@ private enum class UiCopyPreviewKind {
     HamburgerAppUpdateDownloading,
     AppUpdateInstallPermissionHint,
     HamburgerGiftCardPage,
+    HamburgerGiftCardFailure,
     HamburgerLegalHubPage,
     HamburgerServiceAgreementPage,
     HamburgerPrivacyPolicyPage,
@@ -8513,6 +8515,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
+                }
+                UiCopyPreviewKind.HamburgerGiftCardFailure -> {
+                    HamburgerRedeemFailurePagePreview()
                 }
                 UiCopyPreviewKind.HamburgerLegalHubPage -> {
                     HamburgerLegalHubPagePreview()
