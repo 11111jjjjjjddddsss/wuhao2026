@@ -237,6 +237,20 @@ Invoke-HttpProbe -Name "site_www_gongan_icon" -Url "https://www.nongjiqiancha.cn
 Invoke-HttpProbe -Name "admin_https_root" -Url "https://admin.nongjiqiancha.cn/" -ExpectedStatus @(200) -RequiredBodyMarkers @('id="app"', "/assets/")
 Invoke-AdminAssetProbe
 Invoke-HttpProbe -Name "admin_https_auth_me" -Url "https://admin.nongjiqiancha.cn/admin-api/v1/auth/me" -ExpectedStatus @(401)
+foreach ($adminPath in @(
+    "/admin-api/v1/monitoring",
+    "/admin-api/v1/users",
+    "/admin-api/v1/app-logs",
+    "/admin-api/v1/audit-logs",
+    "/admin-api/v1/support/conversations",
+    "/admin-api/v1/gift-cards/summary",
+    "/admin-api/v1/today-agri/cards"
+)) {
+    $probeName = "admin_protected_" + (
+        $adminPath.Trim("/") -replace "^admin-api/v1/", "" -replace "[^A-Za-z0-9]+", "_"
+    ).Trim("_")
+    Invoke-HttpProbe -Name $probeName -Url "https://admin.nongjiqiancha.cn$adminPath" -ExpectedStatus @(401, 403)
+}
 
 if (-not $SkipSecurityHeaderChecks) {
     $baseSecurityHeaders = @{

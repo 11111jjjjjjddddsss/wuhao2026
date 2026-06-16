@@ -522,7 +522,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("控", advanced?.content)
-        assertTrue((advanced?.delayMs ?: 0L) >= 30L)
+        assertTrue((advanced?.delayMs ?: 0L) >= 40L)
     }
 
     @Test

@@ -2,15 +2,20 @@ package app
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type summaryStore interface {
@@ -19,26 +24,39 @@ type summaryStore interface {
 }
 
 type SummaryService struct {
-	store   summaryStore
-	prompts *PromptLoader
-	bailian *BailianClient
-	logger  *slog.Logger
-	running sync.Map
+	store       summaryStore
+	prompts     *PromptLoader
+	bailian     *BailianClient
+	logger      *slog.Logger
+	redisClient *redis.Client
+	running     sync.Map
 }
 
-const summaryResponseLimit = 64 * 1024
+const (
+	summaryResponseLimit              = 64 * 1024
+	summaryRedisLeasePrefix           = "nj:summary:lease:"
+	defaultSummaryRedisLeaseTTL       = 2 * time.Minute
+	defaultSummaryRedisLeaseOpTimeout = time.Second
+	summaryRedisLeaseReleaseScript    = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`
+)
 
 var summaryExtractionTimeout = 60 * time.Second
 
-func NewSummaryService(store *Store, prompts *PromptLoader, bailian *BailianClient, logger *slog.Logger) *SummaryService {
+func NewSummaryService(store *Store, prompts *PromptLoader, bailian *BailianClient, logger *slog.Logger, redisClient *redis.Client) *SummaryService {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &SummaryService{
-		store:   store,
-		prompts: prompts,
-		bailian: bailian,
-		logger:  logger,
+		store:       store,
+		prompts:     prompts,
+		bailian:     bailian,
+		logger:      logger,
+		redisClient: redisClient,
 	}
 }
 
@@ -65,6 +83,12 @@ func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *Sessio
 		return
 	}
 	defer s.finish(userID)
+	releaseLease, acquired := s.tryAcquireRemoteLease(context.Background(), userID)
+	if !acquired {
+		s.log().Info("summary extraction skipped: remote lease unavailable", "userId", userID, "roundTotal", snapshot.RoundTotal)
+		return
+	}
+	defer releaseLease()
 	if s.bailian == nil || !s.bailian.HasKeyConfigured() {
 		s.log().Warn("summary extraction skipped: model backend unavailable", "userId", userID)
 		return
@@ -111,6 +135,58 @@ func (s *SummaryService) tryStart(userID string) bool {
 func (s *SummaryService) finish(userID string) {
 	key := userID + ":summary"
 	s.running.Delete(key)
+}
+
+func (s *SummaryService) tryAcquireRemoteLease(ctx context.Context, userID string) (func(), bool) {
+	if s == nil || s.redisClient == nil {
+		return func() {}, true
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	token := newSummaryLeaseToken()
+	key := summaryRedisLeasePrefix + rateLimitHash(userID, os.Getenv("APP_SECRET"))
+	opCtx, cancel := context.WithTimeout(ctx, summaryRedisLeaseOpTimeout())
+	acquired, err := s.redisClient.SetNX(opCtx, key, token, summaryRedisLeaseTTL()).Result()
+	cancel()
+	if err != nil {
+		s.log().Warn("summary extraction remote lease failed", "userId", userID, "error", err)
+		return func() {}, false
+	}
+	if !acquired {
+		return func() {}, false
+	}
+	return func() {
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), summaryRedisLeaseOpTimeout())
+		defer releaseCancel()
+		if err := s.redisClient.Eval(releaseCtx, summaryRedisLeaseReleaseScript, []string{key}, token).Err(); err != nil {
+			s.log().Warn("summary extraction remote lease release failed", "userId", userID, "error", err)
+		}
+	}, true
+}
+
+func newSummaryLeaseToken() string {
+	var bytes [16]byte
+	if _, err := rand.Read(bytes[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(bytes[:])
+}
+
+func summaryRedisLeaseTTL() time.Duration {
+	ttl := envDurationWithDefault("SUMMARY_REDIS_LEASE_TTL_SECONDS", defaultSummaryRedisLeaseTTL)
+	if ttl <= 0 {
+		return defaultSummaryRedisLeaseTTL
+	}
+	return ttl
+}
+
+func summaryRedisLeaseOpTimeout() time.Duration {
+	timeout := envDurationWithDefault("REDIS_SUMMARY_LEASE_TIMEOUT_SECONDS", defaultSummaryRedisLeaseOpTimeout)
+	if timeout <= 0 {
+		return defaultSummaryRedisLeaseOpTimeout
+	}
+	return timeout
 }
 
 func (s *SummaryService) keepPending(ctx context.Context, userID string, snapshot *SessionSnapshot) {

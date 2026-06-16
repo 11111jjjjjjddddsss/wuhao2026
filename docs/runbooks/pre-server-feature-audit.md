@@ -70,7 +70,7 @@
 - 如果要多实例，图片必须先接 OSS 或等价共享对象存储，并用 OSS 生命周期策略处理图片保存周期。
 - 多实例前不要让多个后端实例首次启动同时跑迁移；数据库迁移应改成单独发布步骤，或至少加迁移锁。
 - 主聊天 SSE 仍需要后续评估“单轮最大生成时长”，避免上游极端卡住长期占用 goroutine 和 inflight；不要用全局 `http.Client.Timeout` 直接砍流式请求。
-- 记忆文档摘要的 `running` guard 和模型 Key 冷却仍是本进程级；多实例下可能重复摘要或各实例独立冷却 Key。主聊天用户级限流已支持 Redis，写回已有 `round_total` 校验，所以主要风险是成本和抗刷，不是旧摘要覆盖新轮次。
+- 记忆文档摘要已有本进程 `running` guard；配置 Redis 时还会使用带 TTL 的 `nj:summary:lease:*` 分布式租约，多实例下同一用户不会多台机器同时提取摘要。模型 Key 冷却仍在进程内观测和处理；主聊天用户级限流已支持 Redis，写回已有 `round_total` 校验，所以主要风险从旧的重复摘要转为真实模型 Key 额度 / 账号级限流观察。
 - 归档成功后、扣次前如果进程崩溃且短重试也失败，仍可能漏记一次成本；正式上线后要靠日志和对账巡检兜底。
 
 买服务器后用真实指标决定：
@@ -78,7 +78,7 @@
 - ECS 实例规格和后端实例数。
 - RDS MySQL 规格、最大连接数、连接池参数、慢查询和索引调整。
 - 是否把更多本地保护迁到 Redis / 网关级保护。
-- 是否为记忆文档摘要加数据库 claim / lease，避免多实例重复调用摘要模型。
+- 记忆文档摘要 Redis lease 已接入；扩多实例前仍需在预发或灰度环境观察 Redis 租约、pending 重试和 `round_total` 写回保护是否符合预期。
 - 是否补持久化模型调用 attempt / status 表，进一步压低极端重复开流或漏扣成本。
 
 建议上线观察指标：
@@ -272,7 +272,7 @@
 - 决定图片是否首版接 OSS；如果接 OSS，补上传改造、访问策略、生命周期、图片删除策略和 SLS 监控。
 - 配置并验证 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`、HTTPS 证书、模型公网拉图、`/upload`、`/uploads/`、`/api/chat/stream` 全链路。
 - 用真机跑弱网、多图、图片上传中杀 App、上传成功但流式未完成时杀 App、后台 WorkManager 恢复、删除历史时活跃流 409、冷启动 snapshot 恢复等回归。
-- 多实例前仍需把记忆文档摘要 running guard 升级为数据库 lease / Redis / 网关级保护；聊天用户级限流已支持 Redis，主聊天同用户单流已由 MySQL `GET_LOCK` + `chat_stream_inflight` 跨进程控制。
+- 多实例前已把记忆文档摘要 running guard 补成“本进程保护 + Redis TTL 租约”；聊天用户级限流已支持 Redis，主聊天同用户单流已由 MySQL `GET_LOCK` + `chat_stream_inflight` 跨进程控制。
 - 观察 `append session round after stream failed`、`quota consume on DONE failed`、`summary extraction failed`、图片上传失败、图片 URL 404、前台 SSE 中断率和上游 429 / 5xx。
 
 ### 8. 记忆文档与模型调用
@@ -297,13 +297,13 @@
 
 上线前必须注意：
 
-- 多后端实例前，记忆文档摘要的 `running` guard 仍是进程内保护；同一用户可能被多个实例同时提取，主要风险是重复调用摘要模型和同一 `round_total` 下最后写入者覆盖，通常不是用户会话数据错乱。
+- 多后端实例前，记忆文档摘要已有 Redis TTL 租约兜住同一用户重复提取；写回仍按 `round_total` 防旧快照覆盖，主要剩余风险是 Redis 短时不可用导致本轮异步摘要跳过并保留 pending。
 - `pending_retry_b` 只会在后续轮次完成后继续被处理；如果用户长期不再发问，失败摘要不会自己定时补账。
 - 记忆文档质量最终取决于提示词和真实问诊内容，当前代码只能保证不丢账、不旧快照覆盖新轮次，不能保证每次抽取得完美。
 
 买服务器后必须补：
 
-- 多实例部署前，为记忆文档摘要增加数据库 claim / lease，或确认首版 ECS 单台运行。
+- 多实例部署前，灰度验证记忆文档摘要 Redis 租约不会误阻塞 pending 重试；首版 ECS 单台仍可继续按现状运行。
 - 在 SLS 中监控 `summary extraction failed`、`summary extraction skipped: already running`、`memory document write skipped: snapshot is stale`。
 - 增加运维只读查询：按 `user_id` 查看 `round_total`、`pending_retry_b`、`b_summary` / `memory_document`、最近归档轮次和最近摘要错误日志。
 - 上线后抽查真实用户的记忆文档输出，确认它不吸收一次性病例、通用农技知识或具体剂量配方；必要时只调提示词，不先改主链。

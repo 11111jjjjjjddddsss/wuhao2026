@@ -5,6 +5,8 @@
 
 ## 2026-06-16
 
+- 继续按“APP 全部往成熟 App 标准做 / 滚动渲染和首屏再细查 / 低成本安全别买高防”的要求收口：Android 主聊天仍保持边生成边渲染，只把节奏调到更正常，远端 waiting 小球最短展示从约 1.8 秒拉到约 2.3 秒，呼吸周期从 720ms 调到 780ms，中文单字、英文 token、标点和换行停顿整体放慢，DONE 后尾段继续按打字节奏排完；`check-android-build-parity.ps1` 已锁住这些节奏和主聊天正向 `LazyColumn` / 同帧底部锚定 / 今日农情普通列表项口径。后端管理后台读接口统一加 `adminDashboardTimeout` context，避免后台列表慢查询无限占连接；记忆文档摘要在原本进程内 running guard 外新增 Redis TTL 租约，扩多实例时同一用户不会重复烧摘要模型；公网黑盒补多个后台受保护接口未登录必须 401 / 403 的探针。安全策略仍是免费 / 低成本优先：安全组、Nginx / Go / Redis 限流、HTTPS、安全头、fail2ban、云安全中心免费版、SLS / 云监控和备份先跑稳，不买上万元高防；WAF / CDN / 高防等到真实攻击、静态下载流量或带宽问题出现再评估。本轮没有修改主对话锚点、记忆提示词、今日农情提示词、官网首页文案、模型输出过滤或主聊天滚动主方案；本机无在线 adb 设备，真机首屏 / 清数据 / 连续发送 / 弱网仍需新包回归。
+
 - 按“主界面所有功能 / 滚动渲染 / 代理测试前再深查”的要求继续收口：主聊天仍保持单个正向 `LazyColumn`、同帧 streaming 底部锚定和普通 AI 文本式今日农情，不恢复反向列表、overlay、raw delta、`scrollBy` 或 split streaming item。并行只读巡检后修了两处低风险实 bug：`stream_in_progress` 不再被排除在远端 snapshot 恢复之外，前台收到同一条消息 409 时会进入长窗口恢复；带图发送前台流和 WorkManager pending 现在使用同一个捕获的 `sessionGeneration`，降低清历史 / 清数据竞态下前后台代际不一致风险。`ImageUploader` 上传失败日志不再打印原始异常 message、堆栈或后端错误体，只保留状态码、错误码是否存在和异常类名，用户侧统一提示“图片上传失败，请稍后重试”。`check-android-build-parity.ps1` 已把 clean-state、409 恢复、显式 sessionGeneration、图片上传日志脱敏、主聊天滚动主链和今日农情普通列表项纳入门禁；后端单测锁住主对话、记忆文档、今日农情请求体都不设置 `max_tokens`。图片直接视觉上下文口径按用户视角统一为“发图本轮 + 下一轮追问”两轮。本轮不修改三份提示词、不新增后端模型输出硬限制、不接真实支付、不改变主聊天滚动主方案；本机无在线 adb 设备，真机仍需装新包验证清数据、连续发两条、弱网带图和今日农情主界面展示。
 
 - `AGENTS.md` 补长期耐用的个性化协作规则：全局提示词 / 仓库规则只沉淀不易过期的工作方式，动态项目事实继续放项目记忆、ADR 和 runbook；明确用户默认不需要懂代码，Codex 要承担技术负责人收口职责；主对话锚点、记忆文档提示词、今日农情提示词、官网首页定稿文案、主聊天滚动主方案和模型输出只靠提示词控制等拍板项，后续窗口必须先讨论再改；代理建议必须由主窗口核验取舍。
@@ -568,7 +570,7 @@
 
 - 只读复查手机号一键登录链路：未发现 Android 旧 `SESSION_API_TOKEN` 绕过登录、客户端模型直连或 `/api/auth/fusion/verify` 半程接口误签发账号 token；半程 verify-only 只返回 `ok / phone_mask`，最终 `onVerifySuccess` 才调用 `/api/auth/fusion/login` 换账号 session token。仍需真机重点确认阿里融合认证 verify token 半程校验后，最终 login 是否允许再次校验同一 token；如果出现半程成功但最终失败，再按 SDK 语义调整。
 
-- 历史归档：曾复查过旧分层记忆重写和失败重试机制；该方案已被当前“一份记忆文档 + `pending_retry_b` + `qwen-plus`”替代。多实例前仍需把本进程运行中保护升级为 Redis / MySQL lease，避免重复抽取和非确定性覆盖。
+- 历史归档：曾复查过旧分层记忆重写和失败重试机制；该方案已被当前“一份记忆文档 + `pending_retry_b` + `qwen-plus`”替代。后续又已把本进程运行中保护补成 Redis TTL 租约，用于降低多实例重复抽取和非确定性覆盖风险。
 
 - 继续复查云资源 / CDN / OSS 生命周期：阿里云官方口径确认 CDN 不是纯免费资源，基础按下行流量 / 带宽等计费，HTTPS 静态请求虽有月度免费额度但超出仍会计费；当前早期不启用 CDN，不把问诊私有图片改成 CDN 长缓存，仍走后端 `/uploads/` 中转 + OSS 生命周期。CLI 复查 `nongjiqiancha-prod` lifecycle 确认 `uploads/` 3 天自动删除、`support/` 30 天自动删除、未完成分片 1 天清理均为 Enabled；最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 被限流拦截。同步校正 ECS 到期口径为 CLI 当前显示的 `2027-06-01T16:00Z`。
 
@@ -799,7 +801,7 @@
 
 - 历史归档：当时巡检“今日农情”时记录的是早期 `qwen3.5-plus + search_strategy=max + 严格 3 条 + https` 方案。该条只保留为历史过程，已被当前 `qwen3.5-plus + OpenAI兼容 chat/completions + turbo + forced_search=true`、正好 3 条、来源只做内部追溯、用户侧只展示标题摘要的方案替代；用户侧仍只读 ready 缓存，不在用户打开 App 时临时触发模型。
 
-- 历史归档：曾巡检过旧分层记忆与模型调用链路。当前已被“一份记忆文档”替代，Android 没有摘要模型直连，旧完成接口仍不是主链；多实例前仍需补摘要数据库 claim / lease、SLS 观察项和只读查询项。
+- 历史归档：曾巡检过旧分层记忆与模型调用链路。当前已被“一份记忆文档”替代，Android 没有摘要模型直连，旧完成接口仍不是主链；后续已补摘要 Redis TTL 租约，SLS 观察项和只读查询项继续按运维节奏完善。
 
 - 巡检“主聊天与图片发送”主链：确认 Android 端仍只通过后端 `/api/chat/stream` 发起文字 / 图片 / 图文混合问诊，图片先进入 App 私有 `composer_images` 稳定副本并经 `/upload` 换成同一公开基地址下的 `https /uploads/*.jpg`，后端再次校验图片 URL 后才进模型；带图发送的唯一 WorkManager 兜底、后端 `chat_stream_inflight` 同用户活跃流约束、归档成功后才发 `[DONE]` 和扣次、`/api/session/snapshot` 历史恢复、`/api/session/clear` 删除历史 409 防活跃流都和当前口径一致。没有发现旧 Android 直连模型、旧 `/api/session/round_complete` 主链、旧 active-zone、旧图片手势或旧上传通道并存；本轮只把 `ImageUploader.kt` 里“上传 OSS”的过期注释改为当前真实“上传后端 /upload，未来 OSS 只能由后端接入”，并把买服务器后必须验证公网 https 图片链、单实例 / OSS、弱网多图、后台恢复和 SLS 指标写入 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)。
 

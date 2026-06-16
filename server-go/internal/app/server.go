@@ -147,7 +147,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		store:                 store,
 		prompts:               prompts,
 		bailian:               bailian,
-		summary:               NewSummaryService(store, prompts, bailian, logger),
+		summary:               NewSummaryService(store, prompts, bailian, logger, redisClient),
 		dailyAgri:             NewDailyAgriCardService(store, bailian, logger, shanghai),
 		dypns:                 dypns,
 		sms:                   sms,

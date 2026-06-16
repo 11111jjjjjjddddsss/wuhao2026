@@ -479,6 +479,18 @@ if ($failures.Count -eq 0) {
         "ChatRecyclerViewHost must not opt into reverseLayout."
     Require-Match $failures $chatScreen 'shouldAnchorStreamingBottomThisFrame(?s:.*?)SideEffect\s*\{\s*requestForwardListBottomAnchor\s*\(\s*\)\s*\}' `
         "Streaming content must keep the same-frame bottom-anchor SideEffect that prevents the tail from flashing below the workline."
+    Require-Match $failures $chatScreen 'STREAM_TYPEWRITER_IDLE_POLL_MS\s*=\s*20L' `
+        "Streaming typewriter idle polling must keep the calmer 20ms rhythm."
+    Require-Match $failures $chatScreen 'STREAM_REVEAL_FRAME_BUDGET_MS\s*=\s*48L' `
+        "Streaming reveal frame budget must keep the calmer paced drain."
+    Require-Match $failures $chatScreen 'REMOTE_STREAM_MIN_BALL_MS\s*=\s*2300L' `
+        "Remote streaming waiting ball must stay visible long enough to be seen."
+    Require-Match $failures $chatScreen 'GPT_BALL_PULSE_MS\s*=\s*780' `
+        "GPT-style waiting ball pulse rhythm must stay readable."
+    Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*150L\s*else\s*120L" `
+        "Streaming newlines must keep a readable pause to reduce heading/list reflow popping."
+    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*40L' `
+        "Streaming Chinese text must keep one visible character per readable step."
     $onAdvanceMatch = [regex]::Match(
         $chatScreen,
         'onAdvance\s*=\s*\{\s*advance\s*->(?s:.*?lastStreamingFreshRevealMs\s*=\s*advance\.lastFreshRevealMs\s*)\}'

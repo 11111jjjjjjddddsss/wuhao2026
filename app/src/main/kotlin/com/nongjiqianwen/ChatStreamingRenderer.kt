@@ -822,15 +822,15 @@ private fun resolveRendererTypewriterDelay(token: String, nextHasStructuralMarkd
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
     val lastCodePoint = token.codePointBefore(token.length)
     val baseDelay = when {
-        lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 92L else 72L
-        lastChar.isRendererStrongPausePunctuation() -> 52L
-        lastChar.isRendererWeakPausePunctuation() -> 34L
-        lastCodePoint.isRendererCjkUnifiedIdeographCodePoint() -> 30L
-        token.length >= 7 -> 28L
-        token.length >= 5 -> 26L
-        token.length >= 3 -> 24L
-        token.length == 2 -> 26L
-        else -> 24L
+        lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 150L else 120L
+        lastChar.isRendererStrongPausePunctuation() -> 92L
+        lastChar.isRendererWeakPausePunctuation() -> 56L
+        lastCodePoint.isRendererCjkUnifiedIdeographCodePoint() -> 40L
+        token.length >= 7 -> 42L
+        token.length >= 5 -> 40L
+        token.length >= 3 -> 36L
+        token.length == 2 -> 38L
+        else -> 36L
     }
     return scaleRendererStreamingDelay(baseDelay)
 }

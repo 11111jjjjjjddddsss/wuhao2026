@@ -447,16 +447,16 @@ private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
 private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 2200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
-internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 16L
-private const val STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS = 24L
-internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 36L
+internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 20L
+private const val STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS = 40L
+internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 48L
 internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
 internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
 internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
 internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
 internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
 internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
-private const val REMOTE_STREAM_MIN_BALL_MS = 1800L
+private const val REMOTE_STREAM_MIN_BALL_MS = 2300L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
@@ -469,7 +469,7 @@ private const val COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE = 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
-internal const val GPT_BALL_PULSE_MS = 720
+internal const val GPT_BALL_PULSE_MS = 780
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 220
 private val STREAM_VISIBLE_BOTTOM_GAP = 96.dp
@@ -7786,7 +7786,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "今日农情",
                 items = listOf(
-                    UiCopyPreviewItem("今日农情", "主聊天里的 3 条种植侧资讯卡片", UiCopyPreviewKind.TodayAgriCard),
+                    UiCopyPreviewItem("今日农情", "主聊天里的 3 条种植侧普通 AI 文本", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)

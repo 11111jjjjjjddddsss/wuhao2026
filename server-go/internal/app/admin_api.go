@@ -583,7 +583,9 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		SinceMs:            time.Now().Add(-24 * time.Hour).UnixMilli(),
 		IncludePhoneNumber: adminCanViewAccountPhone(admin.User.Role),
 	}
-	users, err := s.store.ListAdminUsers(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	users, err := s.store.ListAdminUsers(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list users failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -600,7 +602,9 @@ func (s *Server) handleAdminEntitlementSummary(w http.ResponseWriter, r *http.Re
 		return
 	}
 	nowMs := time.Now().UnixMilli()
-	summary, err := s.store.ReadAdminEntitlementSummary(r.Context(), GetTodayKeyCN(s.shanghai, time.Now()), nowMs)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	summary, err := s.store.ReadAdminEntitlementSummary(ctx, GetTodayKeyCN(s.shanghai, time.Now()), nowMs)
 	if err != nil {
 		s.logger.Error("admin entitlement summary failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.entitlements.summary", "user_entitlement", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -623,7 +627,9 @@ func (s *Server) handleAdminOrders(w http.ResponseWriter, r *http.Request) {
 		UserID: normalizeUserID(r.URL.Query().Get("user_id")),
 		Limit:  parseAdminLimit(r.URL.Query().Get("limit")),
 	}
-	orders, err := s.store.ListAdminOrders(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	orders, err := s.store.ListAdminOrders(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list orders failed", "userId", filter.UserID, "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders", "orders", "", filter.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -650,7 +656,9 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	phoneNumberVisible := adminCanViewAccountPhone(admin.User.Role)
 	giftCardCodeVisible := adminCanViewGiftCardCodes(admin.User.Role)
-	detail, err := s.store.GetAdminUserDetail(r.Context(), userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible, giftCardCodeVisible)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	detail, err := s.store.GetAdminUserDetail(ctx, userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible, giftCardCodeVisible)
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "internal_error"
@@ -684,7 +692,9 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	conversations, err := s.store.ListSupportConversations(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	conversations, err := s.store.ListSupportConversations(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list support conversations failed", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -730,7 +740,9 @@ func (s *Server) handleAdminSupportMessages(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusBadRequest, "user_id_required")
 		return
 	}
-	messages, err := s.store.ListSupportMessages(r.Context(), userID, supportMessageListLimit)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	messages, err := s.store.ListSupportMessages(ctx, userID, supportMessageListLimit)
 	if err != nil {
 		s.logger.Error("admin list support messages failed", "userId", userID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -848,13 +860,15 @@ func (s *Server) handleAdminAppLogs(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	logs, err := s.store.ListClientAppLogs(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	logs, err := s.store.ListClientAppLogs(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list app logs failed", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	summary, err := s.store.SummarizeClientAppLogs(r.Context(), filter)
+	summary, err := s.store.SummarizeClientAppLogs(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin summarize app logs failed", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -886,7 +900,9 @@ func (s *Server) handleAdminAuditLogs(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	logs, err := s.store.ListAdminAuditLogs(r.Context(), filter)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	logs, err := s.store.ListAdminAuditLogs(ctx, filter)
 	if err != nil {
 		s.logger.Error("admin list audit logs failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.audit_logs.list", "admin_audit_logs", "", filter.TargetUserID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -906,7 +922,9 @@ func (s *Server) handleAdminTodayAgriCards(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	limit := parseAdminLimit(r.URL.Query().Get("limit"))
-	cards, err := s.store.ListAdminDailyAgriCards(r.Context(), dailyAgriDefaultScope, limit)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	cards, err := s.store.ListAdminDailyAgriCards(ctx, dailyAgriDefaultScope, limit)
 	if err != nil {
 		s.logger.Error("admin list daily agri cards failed", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -955,7 +973,9 @@ func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	record, err := s.store.ReadAndroidUpdateConfigRecord(r.Context())
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	record, err := s.store.ReadAndroidUpdateConfigRecord(ctx)
 	if err != nil {
 		s.logger.Error("admin app update read failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.read", "app_update", "android", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
@@ -973,7 +993,9 @@ func (s *Server) handleAdminAppUpdateAndroidEvents(w http.ResponseWriter, r *htt
 		return
 	}
 	limit := parseAdminLimit(r.URL.Query().Get("limit"))
-	events, err := s.store.ListAndroidUpdateEvents(r.Context(), limit)
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	events, err := s.store.ListAndroidUpdateEvents(ctx, limit)
 	if err != nil {
 		s.logger.Error("admin app update events read failed", "error", err)
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.events", "app_update", "android", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
