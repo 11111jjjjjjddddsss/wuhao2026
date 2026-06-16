@@ -134,6 +134,39 @@ if [ -f "$admin_nginx_site" ]; then
 fi
 
 echo
+echo '== nginx proxy headers =='
+check_proxy_headers() {
+  site="$1"
+  label="$2"
+  if [ ! -f "$site" ]; then
+    echo "${label}=missing"
+    return 0
+  fi
+  real_ip_count=$(grep -Ec '^[[:space:]]*proxy_set_header[[:space:]]+X-Real-IP[[:space:]]+\$remote_addr[[:space:]]*;' "$site" || true)
+  xff_remote_count=$(grep -Ec '^[[:space:]]*proxy_set_header[[:space:]]+X-Forwarded-For[[:space:]]+\$remote_addr[[:space:]]*;' "$site" || true)
+  xff_append_count=$(grep -Ec '^[[:space:]]*proxy_set_header[[:space:]]+X-Forwarded-For[[:space:]]+\$proxy_add_x_forwarded_for[[:space:]]*;' "$site" || true)
+  echo "${label}_x_real_ip_remote_addr=$real_ip_count"
+  echo "${label}_x_forwarded_for_remote_addr=$xff_remote_count"
+  echo "${label}_x_forwarded_for_append=$xff_append_count"
+  if [ "$real_ip_count" -lt 1 ]; then
+    echo "${label} missing proxy_set_header X-Real-IP \$remote_addr" >&2
+    exit 18
+  fi
+  if [ "$xff_remote_count" -lt 1 ]; then
+    echo "${label} missing proxy_set_header X-Forwarded-For \$remote_addr" >&2
+    exit 18
+  fi
+  if [ "$xff_append_count" -ne 0 ]; then
+    echo "${label} must not use proxy_add_x_forwarded_for in current single-ECS direct-public topology" >&2
+    exit 18
+  fi
+}
+check_proxy_headers "$nginx_site" "api"
+if [ -f "$admin_nginx_site" ]; then
+  check_proxy_headers "$admin_nginx_site" "admin"
+fi
+
+echo
 echo '== healthz =='
 health_body='/tmp/nongji-readiness-health.json'
 health_status=$(curl -sS --resolve api.nongjiqiancha.cn:443:127.0.0.1 -o "$health_body" -w '%{http_code}' https://api.nongjiqiancha.cn/healthz || true)

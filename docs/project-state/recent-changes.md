@@ -5,6 +5,8 @@
 
 ## 2026-06-16
 
+- 继续按“被刷接口 / 真实 IP / 未来上负载均衡”的角度收口：线上 API / 后台 Nginx 已从 `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for` 改为 `proxy_set_header X-Forwarded-For $remote_addr`，并继续覆盖 `X-Real-IP $remote_addr`，避免当前单 ECS 直连公网阶段把客户端伪造的 XFF 链传给 Go；`deploy-ecs-admin.ps1` 模板和 `harden-ecs-security.ps1` 同步该口径，`check-ecs-readiness.ps1` 新增 API / 后台代理头门禁，发现 `$proxy_add_x_forwarded_for` 回潮会直接失败。公网伪造 `X-Real-IP: 1.2.3.4` / `X-Forwarded-For: 5.6.7.8` 访问不存在路径后，Go 日志里的 `masked_ip` 未采用伪造 IP。后续若接 SLB / WAF / CDN，必须重新显式配置 Nginx `real_ip_header` / `set_real_ip_from`，不能直接沿用当前单机直连假设。
+
 - 继续按“预防被打、低成本防护别漂”的角度补公网黑盒门禁：`check-public-blackbox.ps1` 新增安全响应头检查，API / 官网 / www / 后台都校验 HSTS、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 和 Referrer Policy；官网 / www / 后台额外校验 CSP 与 Permissions Policy，后台 CSP 还校验 `connect-src 'self'` 和 `form-action 'self'`。当前公网实测通过，仍保留 HTTP 跳 HTTPS、后台未登录 401、官网备案 marker、后台静态资源等原有检查。该改动只增强只读门禁和安全 runbook，不改 Android、后端业务逻辑、三份提示词、支付真实接入或主聊天滚动链。
 
 - 继续按“服务器安全、预防被打”的口径做供应链复查：`npm audit --audit-level=high` 发现 `admin` 和 `site` 的 Vite 6.4.3 通过 esbuild 命中高危构建链告警；该风险主要影响本机 / CI 构建链，不是用户访问线上页面时直接触发的运行时漏洞，但正式上线前不应保留。已将两个前端的 Vite 升到 `8.0.16` 并更新 `package-lock.json`，本机 Node `v24.12.0` 满足新版本要求；`admin npm run build`、`site npm run build`、两边 `npm audit --audit-level=high` 均通过且高危 audit 为 0。该改动只动管理后台 / 官网构建依赖，不修改 Android、Go 后端业务逻辑、三份提示词、支付真实接入或主聊天滚动链。

@@ -28,6 +28,7 @@
 - Nginx error 里有少量 TLS 握手失败和公网扫描噪声，属于公开 HTTPS 服务常见背景流量；后续如果数量持续放大或伴随 5xx / 带宽打满，再升级处理
 - Go 依赖和工具链补丁级安全复查：`govulncheck` 首次扫描发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链；已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并把 `golang.org/x/net` 升到 `v0.53.0`。复查 `govulncheck ./...` 显示“Your code is affected by 0 vulnerabilities”。后续发布必须用该工具链重新编译线上二进制
 - 公网黑盒巡检已把安全响应头纳入门禁：API / 官网 / www / 后台都要求 `Strict-Transport-Security`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 和 `Referrer-Policy`；官网 / www / 后台额外要求 `Permissions-Policy` 和 CSP，后台 CSP 还要求 `connect-src 'self'` 与 `form-action 'self'`。后续如果 Nginx、部署脚本、证书或静态站配置漂移，`check-public-blackbox.ps1` 会直接报错
+- 真实 IP 链路已按当前“单 ECS 直连公网”拓扑收口：Nginx 站点里 `X-Real-IP` 和 `X-Forwarded-For` 都覆盖为 `$remote_addr`，不使用 `$proxy_add_x_forwarded_for`，避免把外部客户端伪造的 XFF 链传给 Go。Go `GetClientIP` 仍只信任来自本机 / 内网代理的转发头。`check-ecs-readiness.ps1` 会校验 API / 后台代理头；`harden-ecs-security.ps1` 会把线上 Nginx 站点规范化到该口径
 
 当前建议：继续免费 / 低成本防护 + 告警观察；不要现在就买 WAF / 高防。先把 App 公安备案、真机回归、AccessKey 最小权限轮换和首封 SLS 告警邮件确认收口。
 
@@ -141,6 +142,7 @@ tail -n 120 /var/log/nginx/error.log
 - 关闭公网 SSH 不等于服务器不会被攻击；它只是减少最常见入口
 - 当前 SSH 服务已停用；若后续确需临时 SSH，先通过 Cloud Assistant 启动 `ssh`，再按固定来源 IP 临时放通安全组，用完必须关闭
 - HTTPS 对外开放是业务必须入口，HTTP 80 只用于 ACME challenge 和 HTTPS 跳转；仍需要 Nginx / Go / Redis 限流和日志观察
+- 当前覆盖式 `X-Forwarded-For $remote_addr` 只适合单 ECS 直接暴露公网 IP 的阶段；后续如果把 SLB / ALB / CDN / WAF 放到 Nginx 前面，必须先配置可信上游 `real_ip_header` / `set_real_ip_from`，并重新跑伪造头验证，避免把负载均衡内网 IP 当成所有用户来源
 - 同行恶意刷接口时，优先看 Nginx 429、Go 侧限流日志、模型调用量和 DYPNS / OSS / RDS 成本曲线
 - 真正大流量 DDoS 超过基础防护能力时，免费策略无法保证持续可用，需要临时购买高防或让云厂商清洗
 - 管理后台已完成后台域名 / Nginx / bootstrap 验收；后续继续保持账号、权限、审计和限流，不能把内部 secret 暴露给浏览器前端

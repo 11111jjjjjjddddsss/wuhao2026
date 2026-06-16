@@ -132,6 +132,12 @@ add_header Referrer-Policy strict-origin-when-cross-origin always;
 add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
 EOF
 
+for site in /etc/nginx/sites-available/nongjiqiancha-api /etc/nginx/sites-available/nongjiqiancha-admin; do
+  if [ -f "$site" ]; then
+    sed -i -E 's#proxy_set_header[[:space:]]+X-Forwarded-For[[:space:]]+\$proxy_add_x_forwarded_for;#proxy_set_header X-Forwarded-For $remote_addr;#g' "$site"
+  fi
+done
+
 nginx -t
 systemctl reload nginx
 
@@ -140,6 +146,17 @@ systemctl disable --now ssh 2>/dev/null || systemctl disable --now sshd 2>/dev/n
 echo
 echo '== nginx security conf =='
 cat /etc/nginx/conf.d/nongjiqiancha-security.conf
+
+echo
+echo '== nginx proxy headers =='
+for site in /etc/nginx/sites-available/nongjiqiancha-api /etc/nginx/sites-available/nongjiqiancha-admin; do
+  echo "-- $site"
+  if [ -f "$site" ]; then
+    grep -nE 'proxy_set_header X-Real-IP|proxy_set_header X-Forwarded-For|proxy_add_x_forwarded_for' "$site" || true
+  else
+    echo missing
+  fi
+done
 
 echo
 echo '== fail2ban =='
