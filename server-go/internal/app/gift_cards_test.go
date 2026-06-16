@@ -247,6 +247,89 @@ func TestRedeemGiftCardRequiresSingleActiveStatusUpdate(t *testing.T) {
 	}
 }
 
+func TestApplyGiftCardTierPlusToProCreatesUpgradeCredit(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	userID := "acct_gift_upgrade"
+	shanghai := time.FixedZone("Asia/Shanghai", 8*60*60)
+	store.shanghai = shanghai
+	now := time.Date(2026, 6, 16, 10, 0, 0, 0, shanghai)
+	nowMs := now.UnixMilli()
+	currentExpireAt := now.AddDate(0, 0, 2).UnixMilli()
+	newExpireAt := now.AddDate(0, 0, 30).UnixMilli()
+	dayCN := GetTodayKeyCN(shanghai, time.Now())
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierPlus), currentExpireAt))
+	mock.ExpectExec("INSERT INTO daily_usage").
+		WithArgs(userID, dayCN).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT used FROM daily_usage WHERE user_id = ? AND day_cn = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID, dayCN).
+		WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(7))
+	mock.ExpectExec("INSERT INTO upgrade_credits").
+		WithArgs(userID, 68, nil, nowMs).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO user_entitlement").
+		WithArgs(userID, string(TierPro), newExpireAt, nowMs).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	tx, err := store.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	appliedTier, membershipExpireAt, err := store.applyGiftCardTierTx(context.Background(), tx, userID, TierPro, 30, nowMs)
+	if err != nil {
+		t.Fatalf("applyGiftCardTierTx plus->pro failed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("commit tx: %v", err)
+	}
+	if appliedTier != TierPro {
+		t.Fatalf("applied tier = %s, want pro", appliedTier)
+	}
+	if membershipExpireAt != newExpireAt {
+		t.Fatalf("membership expire = %d, want %d", membershipExpireAt, newExpireAt)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestApplyGiftCardTierRejectsLowerTierCard(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	userID := "acct_gift_lower_tier"
+	nowMs := int64(1_700_000_010_000)
+	currentExpireAt := nowMs + int64(30*24*time.Hour/time.Millisecond)
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierPro), currentExpireAt))
+	mock.ExpectRollback()
+
+	tx, err := store.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("begin tx: %v", err)
+	}
+	_, _, err = store.applyGiftCardTierTx(context.Background(), tx, userID, TierPlus, 30, nowMs)
+	if !errors.Is(err, errGiftCardLowerTier) {
+		t.Fatalf("apply lower-tier gift card err = %v, want errGiftCardLowerTier", err)
+	}
+	if rollbackErr := tx.Rollback(); rollbackErr != nil {
+		t.Fatalf("rollback tx: %v", rollbackErr)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 type giftCardTestScanner []any
 
 func (s giftCardTestScanner) Scan(dest ...any) error {

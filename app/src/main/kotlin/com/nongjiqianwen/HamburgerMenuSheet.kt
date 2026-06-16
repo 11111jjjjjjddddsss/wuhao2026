@@ -2134,7 +2134,7 @@ private fun HamburgerAccountManagementContent(
             modifier = Modifier.padding(top = 22.dp)
         ) {
             HamburgerAccountActionRow(
-                title = if (cacheCleanupSubmitting) "清理中" else "清理临时缓存",
+                title = if (cacheCleanupSubmitting) "清理中" else "清理更新与拍照缓存",
                 danger = false,
                 onClick = {
                     if (cacheCleanupSubmitting) return@HamburgerAccountActionRow
@@ -2143,7 +2143,7 @@ private fun HamburgerAccountManagementContent(
                     scope.launch {
                         val ok = LocalAppCacheCleaner.clearTemporaryCaches(appContext)
                         cacheCleanupSubmitting = false
-                        onPendingAction(if (ok) "临时缓存已清理" else "清理失败，请稍后重试")
+                        onPendingAction(if (ok) "临时文件已清理" else "清理失败，请稍后重试")
                     }
                 }
             )
@@ -2170,7 +2170,7 @@ private fun HamburgerAccountManagementContent(
             modifier = Modifier.padding(top = 18.dp)
         ) {
             HamburgerAccountActionRow(
-                title = if (accountDeletionSubmitting) "提交中" else "注销账号",
+                title = if (accountDeletionSubmitting) "提交中" else "申请注销账号",
                 enabled = phoneMask != null && !accountDeletionSubmitting,
                 danger = true,
                 trailingText = if (phoneMask == null) "请先登录" else null,
@@ -4009,7 +4009,7 @@ private fun HamburgerAccountDeletionConfirmCard(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
-                text = "确认注销账号",
+                text = "提交注销申请？",
                 color = Color(0xFF111111),
                 fontSize = 20.sp,
                 lineHeight = 27.sp,
@@ -4063,7 +4063,7 @@ private fun HamburgerAccountDeletionConfirmCard(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = if (submitting) "提交中" else "提交并退出",
+                            text = if (submitting) "提交中" else "提交申请",
                             color = if (submitting) Color(0xFF777B82) else Color.White,
                             fontSize = 15.sp,
                             lineHeight = 20.sp,

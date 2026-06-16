@@ -1,6 +1,6 @@
 # 支付与会员订单 Runbook
 
-最后更新：2026-06-15
+最后更新：2026-06-16
 
 ## 目的
 
@@ -20,7 +20,7 @@
 - 生产 readiness 会硬拦 `ALLOW_DEV_ORDER_ENDPOINTS=true`，避免公开环境误开开发期直改会员接口。
 - 当前 `orders` 表只记录开发期成功结果，字段包括 `order_id / user_id / type / amount / created_at / status / result_json`；它不是正式支付订单表。
 - 管理后台已接只读订单核查：`GET /admin-api/v1/orders` 可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录，用来辅助核查权益来源；该页面不提供补发、退款、对账或手动改权益。
-- 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android 购买 / 加油包入口仍关闭、Android 没有调用开发期订单接口、后端开发期订单接口有 `PAYMENT_NOT_CONFIGURED` 防线、支付回调 URL 已写入 runbook，并探测公网 `/healthz` 的 `dev_order_endpoints=false`。脚本还会只检查本机环境变量是否具备支付宝沙箱和微信 App 支付联调所需前置项，只输出缺少哪一类配置，不打印任何密钥值。该脚本只证明“当前未开放收费时是安全占位”，不代表真实支付已接入。
+- 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android 购买 / 加油包入口仍关闭、Android 没有调用开发期订单接口、后端开发期订单接口有 `PAYMENT_NOT_CONFIGURED` 防线、支付回调 URL 已写入 runbook，并探测公网 `/healthz` 的 `dev_order_endpoints=false`。脚本还会检查后台订单页保持只读文案、没有补发 / 退款 / 手动改权益 / 模拟支付成功按钮，且服务端只注册 `GET /admin-api/v1/orders`、没有订单写路由。脚本还会只检查本机环境变量是否具备支付宝沙箱和微信 App 支付联调所需前置项，只输出缺少哪一类配置，不打印任何密钥值。该脚本只证明“当前未开放收费时是安全占位”，不代表真实支付已接入。
 
 ## 申请前准备
 

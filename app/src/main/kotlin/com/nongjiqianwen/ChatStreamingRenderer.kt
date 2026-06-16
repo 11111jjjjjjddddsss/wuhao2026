@@ -210,10 +210,6 @@ internal enum class RendererInlineMode {
     Settled
 }
 
-private fun rendererContainsLinkCandidate(text: String): Boolean {
-    return rendererMarkdownLinkRegex.containsMatchIn(text) || rendererBareUrlRegex.containsMatchIn(text)
-}
-
 private fun splitRendererMarkdownTableCells(line: String): List<String> {
     val trimmed = line.trim().removePrefix("|").removeSuffix("|")
     if (trimmed.isBlank()) return emptyList()
@@ -1047,8 +1043,7 @@ private fun RendererAssistantMessageContentImpl(
                 )
             }
         } else {
-            val selectContent = selectionEnabled && !rendererContainsLinkCandidate(content)
-            if (selectContent) {
+            if (selectionEnabled) {
                 SelectionContainer {
                     RendererAssistantMarkdownContentImpl(
                         content = content,

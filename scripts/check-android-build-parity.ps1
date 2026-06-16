@@ -406,11 +406,11 @@ if ($failures.Count -eq 0) {
     $settingsLabelLogout = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x767b)$([char]0x5f55)")
     $accountLabelPhone = [regex]::Escape("$([char]0x624b)$([char]0x673a)$([char]0x53f7)")
     $accountLabelClearing = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e2d)")
-    $accountLabelClearCache = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e34)$([char]0x65f6)$([char]0x7f13)$([char]0x5b58)")
+    $accountLabelClearCache = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x66f4)$([char]0x65b0)$([char]0x4e0e)$([char]0x62cd)$([char]0x7167)$([char]0x7f13)$([char]0x5b58)")
     $accountLabelDeleteHistory = [regex]::Escape("$([char]0x5220)$([char]0x9664)$([char]0x5386)$([char]0x53f2)$([char]0x5bf9)$([char]0x8bdd)")
     $accountLabelLoggingOut = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x4e2d)")
     $accountLabelSubmitting = [regex]::Escape("$([char]0x63d0)$([char]0x4ea4)$([char]0x4e2d)")
-    $accountLabelDeleteAccount = [regex]::Escape("$([char]0x6ce8)$([char]0x9500)$([char]0x8d26)$([char]0x53f7)")
+    $accountLabelDeleteAccount = [regex]::Escape("$([char]0x7533)$([char]0x8bf7)$([char]0x6ce8)$([char]0x9500)$([char]0x8d26)$([char]0x53f7)")
 
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)HamburgerMenuIcon\.Logout(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"(?s:.*?)destructive\s*=\s*true') `
         "Settings main page must keep the default logout row in code, not depend on cached UI state."
@@ -429,7 +429,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"') `
         "Account management page must keep its logout row in the default code path."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
-        "Account management defaults must include phone, cache cleanup, history deletion, logout, and account deletion rows after app data is cleared."
+        "Account management defaults must include phone, scoped cache cleanup, history deletion, logout, and account deletion application rows after app data is cleared."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)ChatStreamingRenderer"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
@@ -504,8 +504,8 @@ if ($failures.Count -eq 0) {
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `
         "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list, using assistant-style plain text."
-    Require-Match $failures $chatStreamingRenderer 'val\s+selectContent\s*=\s*selectionEnabled\s*&&\s*!rendererContainsLinkCandidate\s*\(\s*content\s*\)' `
-        "Assistant settled text must not wrap link candidates in SelectionContainer, otherwise short-tap links can become plain text."
+    Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*selectionEnabled\s*\)\s*\{\s*SelectionContainer\s*\{(?s:.*?)RendererAssistantMarkdownContentImpl' `
+        "Assistant settled text must keep the message selection container even when content contains links, so copy/full-copy remains available."
     Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
         "Assistant Markdown links and bare URLs must keep real URL annotations that open through the system URI handler."
     Require-Match $failures $chatStreamingRenderer 'ui\.link_open_failed(?s:.*?)substringBefore\(":"(?s:.*?)exception' `

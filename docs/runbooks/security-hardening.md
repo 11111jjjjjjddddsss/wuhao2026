@@ -26,7 +26,7 @@
 - fail2ban active，云安全中心 agent 在线，SLS 5 条应用告警和云监控 9 条资源水位告警均 ready
 - 近期 Go 日志没有业务 5xx / 429；普通扫描多为 `/`、`/login`、`/mcp`、`/sse` 等路径，当前返回 404，不构成立刻购买 WAF 的理由
 - Nginx error 里有少量 TLS 握手失败和公网扫描噪声，属于公开 HTTPS 服务常见背景流量；后续如果数量持续放大或伴随 5xx / 带宽打满，再升级处理
-- Go 依赖和工具链补丁级安全复查：`govulncheck` 首次扫描发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链；已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并把 `golang.org/x/net` 升到 `v0.53.0`。复查 `govulncheck ./...` 显示“Your code is affected by 0 vulnerabilities”。后续发布必须用该工具链重新编译线上二进制
+- Go 依赖和工具链补丁级安全复查：`govulncheck` 首次扫描发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链；已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并把 `golang.org/x/net` 升到 `v0.53.0`。`server-go/Dockerfile` 也同步到 `golang:1.26.4-alpine`，GitHub server CI 已增加 `govulncheck ./...`。复查 `govulncheck ./...` 显示“Your code is affected by 0 vulnerabilities”。后续发布必须用该工具链重新编译线上二进制
 - 公网黑盒巡检已把安全响应头纳入门禁：API / 官网 / www / 后台都要求 `Strict-Transport-Security`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 和 `Referrer-Policy`；官网 / www / 后台额外要求 `Permissions-Policy` 和 CSP，后台 CSP 还要求 `connect-src 'self'` 与 `form-action 'self'`。后续如果 Nginx、部署脚本、证书或静态站配置漂移，`check-public-blackbox.ps1` 会直接报错
 - 真实 IP 链路已按当前“单 ECS 直连公网”拓扑收口：Nginx 站点里 `X-Real-IP` 和 `X-Forwarded-For` 都覆盖为 `$remote_addr`，不使用 `$proxy_add_x_forwarded_for`，避免把外部客户端伪造的 XFF 链传给 Go。Go `GetClientIP` 仍只信任来自本机 / 内网代理的转发头。`check-ecs-readiness.ps1` 会校验 API / 后台代理头；`harden-ecs-security.ps1` 会把线上 Nginx 站点规范化到该口径
 
