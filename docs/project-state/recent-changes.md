@@ -5,6 +5,8 @@
 
 ## 2026-06-16
 
+- 继续按“预防被打、低成本防护别漂”的角度补公网黑盒门禁：`check-public-blackbox.ps1` 新增安全响应头检查，API / 官网 / www / 后台都校验 HSTS、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 和 Referrer Policy；官网 / www / 后台额外校验 CSP 与 Permissions Policy，后台 CSP 还校验 `connect-src 'self'` 和 `form-action 'self'`。当前公网实测通过，仍保留 HTTP 跳 HTTPS、后台未登录 401、官网备案 marker、后台静态资源等原有检查。该改动只增强只读门禁和安全 runbook，不改 Android、后端业务逻辑、三份提示词、支付真实接入或主聊天滚动链。
+
 - 继续按“服务器安全、预防被打”的口径做供应链复查：`npm audit --audit-level=high` 发现 `admin` 和 `site` 的 Vite 6.4.3 通过 esbuild 命中高危构建链告警；该风险主要影响本机 / CI 构建链，不是用户访问线上页面时直接触发的运行时漏洞，但正式上线前不应保留。已将两个前端的 Vite 升到 `8.0.16` 并更新 `package-lock.json`，本机 Node `v24.12.0` 满足新版本要求；`admin npm run build`、`site npm run build`、两边 `npm audit --audit-level=high` 均通过且高危 audit 为 0。该改动只动管理后台 / 官网构建依赖，不修改 Android、Go 后端业务逻辑、三份提示词、支付真实接入或主聊天滚动链。
 
 - 按“服务器好升级、预防被打”的口径继续做安全复查：线上安全组仍只放 `80 / 443 / ICMP`，ECS 本机 `ssh` inactive / disabled，Go 只监听本机回环端口，Nginx / 公网黑盒 / readiness 均通过；代码安全扫查未发现 pprof、默认裸 `ListenAndServe`、`InsecureSkipVerify`、前端 `innerHTML/eval/postMessage` 等高危模式。`govulncheck` 发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链，已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并将 `golang.org/x/net` 升到 `v0.53.0`；复查 `govulncheck ./...` 显示当前代码实际调用链 0 漏洞。该提交已部署到 ECS，远端部署过程下载 Go 1.26.4、运行 `go test ./...` 并重新编译后切到 active upstream `3001`；上线后 readiness、公网黑盒和服务器性能快检均通过，Go / Nginx 24 小时 5xx / 429 仍为 0。当前仍不建议直接购买 WAF / 高防，先保留免费 / 低成本防护，等持续 Web 攻击、CC、带宽打满或 DDoS 黑洞等信号出现再升级。

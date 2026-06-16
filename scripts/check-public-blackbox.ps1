@@ -1,6 +1,7 @@
 param(
     [int]$TimeoutSec = 12,
-    [switch]$SkipHttpRedirectChecks
+    [switch]$SkipHttpRedirectChecks,
+    [switch]$SkipSecurityHeaderChecks
 )
 
 $ErrorActionPreference = "Stop"
@@ -116,6 +117,85 @@ function Invoke-AdminAssetProbe {
     }
 }
 
+function Test-HeaderValueContains {
+    param(
+        [System.Net.Http.Headers.HttpResponseHeaders]$Headers,
+        [System.Net.Http.Headers.HttpContentHeaders]$ContentHeaders,
+        [string]$HeaderName,
+        [string[]]$RequiredMarkers
+    )
+
+    $values = New-Object System.Collections.Generic.List[string]
+    $headerValues = $null
+    if ($Headers.TryGetValues($HeaderName, [ref]$headerValues)) {
+        foreach ($value in $headerValues) {
+            $values.Add([string]$value) | Out-Null
+        }
+    }
+    $contentHeaderValues = $null
+    if ($ContentHeaders.TryGetValues($HeaderName, [ref]$contentHeaderValues)) {
+        foreach ($value in $contentHeaderValues) {
+            $values.Add([string]$value) | Out-Null
+        }
+    }
+
+    $joined = [string]::Join(", ", $values)
+    if ([string]::IsNullOrWhiteSpace($joined)) {
+        return [pscustomobject]@{
+            Ok = $false
+            Value = "<missing>"
+            Missing = $RequiredMarkers -join "|"
+        }
+    }
+
+    $missingMarkers = New-Object System.Collections.Generic.List[string]
+    foreach ($marker in $RequiredMarkers) {
+        if ($joined.IndexOf($marker, [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+            $missingMarkers.Add($marker) | Out-Null
+        }
+    }
+
+    return [pscustomobject]@{
+        Ok = ($missingMarkers.Count -eq 0)
+        Value = $joined
+        Missing = ($missingMarkers -join "|")
+    }
+}
+
+function Invoke-SecurityHeaderProbe {
+    param(
+        [string]$Name,
+        [string]$Url,
+        [hashtable]$RequiredHeaders
+    )
+
+    $client = $null
+    try {
+        $client = New-HttpClient -AllowRedirect:$true
+        $request = New-Object System.Net.Http.HttpRequestMessage([System.Net.Http.HttpMethod]::Head, $Url)
+        $response = $client.SendAsync($request).GetAwaiter().GetResult()
+        $status = [int]$response.StatusCode
+        Write-Host "probe=$Name status=$status"
+        if ($status -lt 200 -or $status -ge 400) {
+            Add-ErrorItem "$Name expected_2xx_or_3xx actual=$status"
+            return
+        }
+        foreach ($headerName in ($RequiredHeaders.Keys | Sort-Object)) {
+            $markers = [string[]]$RequiredHeaders[$headerName]
+            $result = Test-HeaderValueContains -Headers $response.Headers -ContentHeaders $response.Content.Headers -HeaderName $headerName -RequiredMarkers $markers
+            if (-not $result.Ok) {
+                Add-ErrorItem "$Name header=$headerName missing_marker=$($result.Missing) actual=$($result.Value)"
+            }
+        }
+    } catch {
+        Add-ErrorItem "$Name request_failed=$($_.Exception.Message)"
+    } finally {
+        if ($null -ne $client) {
+            $client.Dispose()
+        }
+    }
+}
+
 Write-Host "== public blackbox =="
 
 Invoke-HttpProbe `
@@ -157,6 +237,25 @@ Invoke-HttpProbe -Name "site_www_gongan_icon" -Url "https://www.nongjiqiancha.cn
 Invoke-HttpProbe -Name "admin_https_root" -Url "https://admin.nongjiqiancha.cn/" -ExpectedStatus @(200) -RequiredBodyMarkers @('id="app"', "/assets/")
 Invoke-AdminAssetProbe
 Invoke-HttpProbe -Name "admin_https_auth_me" -Url "https://admin.nongjiqiancha.cn/admin-api/v1/auth/me" -ExpectedStatus @(401)
+
+if (-not $SkipSecurityHeaderChecks) {
+    $baseSecurityHeaders = @{
+        "Strict-Transport-Security" = @("max-age=", "includeSubDomains")
+        "X-Content-Type-Options" = @("nosniff")
+        "X-Frame-Options" = @("DENY")
+        "Referrer-Policy" = @("strict-origin-when-cross-origin")
+    }
+    $staticSiteSecurityHeaders = $baseSecurityHeaders.Clone()
+    $staticSiteSecurityHeaders["Permissions-Policy"] = @("camera=()", "microphone=()", "payment=()")
+    $staticSiteSecurityHeaders["Content-Security-Policy"] = @("default-src 'self'", "script-src 'self'", "object-src 'none'", "frame-ancestors 'none'")
+    $adminSecurityHeaders = $staticSiteSecurityHeaders.Clone()
+    $adminSecurityHeaders["Content-Security-Policy"] = @("default-src 'self'", "connect-src 'self'", "script-src 'self'", "object-src 'none'", "frame-ancestors 'none'", "form-action 'self'")
+
+    Invoke-SecurityHeaderProbe -Name "api_security_headers" -Url "https://api.nongjiqiancha.cn/healthz" -RequiredHeaders $baseSecurityHeaders
+    Invoke-SecurityHeaderProbe -Name "site_security_headers" -Url "https://nongjiqiancha.cn/" -RequiredHeaders $staticSiteSecurityHeaders
+    Invoke-SecurityHeaderProbe -Name "site_www_security_headers" -Url "https://www.nongjiqiancha.cn/" -RequiredHeaders $staticSiteSecurityHeaders
+    Invoke-SecurityHeaderProbe -Name "admin_security_headers" -Url "https://admin.nongjiqiancha.cn/" -RequiredHeaders $adminSecurityHeaders
+}
 
 if (-not $SkipHttpRedirectChecks) {
     Invoke-HttpProbe -Name "api_http_redirect" -Url "http://api.nongjiqiancha.cn/healthz" -ExpectedStatus @(301, 302, 307, 308) -NoRedirect -ExpectedLocationPrefix "https://api.nongjiqiancha.cn/"

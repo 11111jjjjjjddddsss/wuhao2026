@@ -27,6 +27,7 @@
 - 近期 Go 日志没有业务 5xx / 429；普通扫描多为 `/`、`/login`、`/mcp`、`/sse` 等路径，当前返回 404，不构成立刻购买 WAF 的理由
 - Nginx error 里有少量 TLS 握手失败和公网扫描噪声，属于公开 HTTPS 服务常见背景流量；后续如果数量持续放大或伴随 5xx / 带宽打满，再升级处理
 - Go 依赖和工具链补丁级安全复查：`govulncheck` 首次扫描发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链；已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并把 `golang.org/x/net` 升到 `v0.53.0`。复查 `govulncheck ./...` 显示“Your code is affected by 0 vulnerabilities”。后续发布必须用该工具链重新编译线上二进制
+- 公网黑盒巡检已把安全响应头纳入门禁：API / 官网 / www / 后台都要求 `Strict-Transport-Security`、`X-Content-Type-Options: nosniff`、`X-Frame-Options: DENY` 和 `Referrer-Policy`；官网 / www / 后台额外要求 `Permissions-Policy` 和 CSP，后台 CSP 还要求 `connect-src 'self'` 与 `form-action 'self'`。后续如果 Nginx、部署脚本、证书或静态站配置漂移，`check-public-blackbox.ps1` 会直接报错
 
 当前建议：继续免费 / 低成本防护 + 告警观察；不要现在就买 WAF / 高防。先把 App 公安备案、真机回归、AccessKey 最小权限轮换和首封 SLS 告警邮件确认收口。
 
@@ -119,6 +120,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\harden-ecs-
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-public-blackbox.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\harden-ecs-security.ps1
 ```
 
