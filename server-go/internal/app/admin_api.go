@@ -1396,7 +1396,7 @@ func (s *Store) buildAdminInsightQualitySignals(ctx context.Context, dayCN strin
 	signals.AppUpdateReady = androidUpdateConfigValid(updateCfg) && androidUpdateDownloadArtifactsComplete(updateCfg)
 	signals.AppUpdateVersionCode = updateCfg.LatestVersionCode
 	signals.AppUpdateVersionName = updateCfg.LatestVersionName
-	if signals.GiftCardRedeemable, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active' AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)", []any{nowMs, nowMs}); err != nil {
+	if signals.GiftCardRedeemable, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active' AND (valid_until IS NULL OR valid_until > ?)", []any{nowMs}); err != nil {
 		return signals, err
 	}
 	if signals.GiftCardFailedAttempts, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 0", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
@@ -1620,7 +1620,7 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if queues.GiftCardTotal, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards", nil); err != nil {
 		return queues, err
 	}
-	if queues.GiftCardActive, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active' AND valid_from <= ? AND (valid_until IS NULL OR valid_until > ?)", []any{nowMs, nowMs}); err != nil {
+	if queues.GiftCardActive, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'active' AND (valid_until IS NULL OR valid_until > ?)", []any{nowMs}); err != nil {
 		return queues, err
 	}
 	if queues.GiftCardRedeemed, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_cards WHERE status = 'redeemed'", nil); err != nil {
@@ -2083,7 +2083,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	} else if queues.GiftCardActive == 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "没有可兑换礼品卡",
-			Body:  "已有礼品卡记录，但当前没有生效且未过期的 active 卡；测试兑换前需要新生成或检查有效期。",
+			Body:  "已有礼品卡记录，但当前没有未过期的 active 卡；测试兑换前需要新生成或检查有效期。",
 			Level: "warn",
 			Route: "gift-cards",
 			Count: queues.GiftCardTotal,
@@ -2194,7 +2194,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		giftBody = "生产库还没有生成礼品卡；先在后台生成正式卡，才能支撑权益发放。"
 	} else if queues.GiftCardActive == 0 {
 		giftStatus = "blocked"
-		giftBody = "已有礼品卡记录，但当前没有生效且未过期的 active 卡；先生成或检查有效期。"
+		giftBody = "已有礼品卡记录，但当前没有未过期的 active 卡；先生成或检查有效期。"
 	} else if queues.GiftCardFailedAttempts > 0 {
 		giftStatus = "attention"
 		giftBody = "已有可兑换卡，但最近 24 小时存在失败尝试；先看尾号和失败原因。"

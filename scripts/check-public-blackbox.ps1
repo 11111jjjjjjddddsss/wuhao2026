@@ -211,6 +211,18 @@ Invoke-HttpProbe `
         '"redis":"ok"',
         '"upload_storage":"oss"'
     )
+Invoke-HttpProbe `
+    -Name "api_app_update_public_probe" `
+    -Url "https://api.nongjiqiancha.cn/api/app/update?platform=android&version_code=0&version_name=blackbox" `
+    -ExpectedStatus @(200) `
+    -RequiredBodyMarkers @(
+        '"platform":"android"',
+        '"has_update":false'
+    )
+Invoke-HttpProbe `
+    -Name "api_upload_missing_file_probe" `
+    -Url "https://api.nongjiqiancha.cn/uploads/blackbox-missing-file.jpg" `
+    -ExpectedStatus @(404)
 
 Invoke-HttpProbe `
     -Name "site_https_root" `

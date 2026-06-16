@@ -247,6 +247,80 @@ func TestRedeemGiftCardRequiresSingleActiveStatusUpdate(t *testing.T) {
 	}
 }
 
+func TestRedeemGiftCardIgnoresFutureValidFromAndAppliesImmediately(t *testing.T) {
+	t.Setenv("APP_SECRET", "unit-test-secret")
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	code := "NQ-M7AB-CD23-EF45-GH67"
+	userID := "acct_gift_immediate"
+	nowMs := int64(1_700_000_010_000)
+	futureValidFrom := nowMs + int64(24*time.Hour/time.Millisecond)
+	region := RegionContext{
+		Region:      "河南省 周口市",
+		Source:      RegionSourceGPS,
+		Reliability: RegionReliable,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(giftCardForUpdateQueryPattern()).
+		WithArgs(giftCardCodeHash(code)).
+		WillReturnRows(giftCardSQLRows().AddRow(
+			"gcc_immediate",
+			"gcb_immediate",
+			"NQ-M7AB-****-GH67",
+			"GH67",
+			nil,
+			string(TierPlus),
+			30,
+			"active",
+			futureValidFrom,
+			nil,
+			"owner",
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			int64(1_700_000_000_000),
+			int64(1_700_000_000_000),
+		))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT phone_mask FROM app_accounts WHERE user_id = ? LIMIT 1")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"phone_mask"}).AddRow("138****8000"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}))
+	mock.ExpectExec("INSERT INTO user_entitlement").
+		WithArgs(userID, string(TierPlus), sqlmock.AnyArg(), nowMs).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE gift_cards").
+		WithArgs(userID, "138****8000", region.Region, string(region.Source), string(region.Reliability), nowMs, sqlmock.AnyArg(), nowMs, "gcc_immediate").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO gift_card_redemption_attempts").
+		WithArgs(sqlmock.AnyArg(), userID, 1, nil, "1.2.*.*", region.Region, string(region.Source), string(region.Reliability), nowMs).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	result, err := store.RedeemGiftCard(context.Background(), code, userID, region, "1.2.*.*", nowMs)
+	if err != nil {
+		t.Fatalf("RedeemGiftCard immediate apply failed: %v", err)
+	}
+	if !result.OK || result.CardID != "gcc_immediate" || result.RedeemedAt != nowMs || result.AppliedTier != TierPlus {
+		t.Fatalf("immediate result mismatch: %#v", result)
+	}
+	if result.MembershipExpireAt <= nowMs {
+		t.Fatalf("membership expire = %d, want after now %d", result.MembershipExpireAt, nowMs)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 func TestApplyGiftCardTierPlusToProCreatesUpgradeCredit(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()
@@ -258,7 +332,7 @@ func TestApplyGiftCardTierPlusToProCreatesUpgradeCredit(t *testing.T) {
 	nowMs := now.UnixMilli()
 	currentExpireAt := now.AddDate(0, 0, 2).UnixMilli()
 	newExpireAt := now.AddDate(0, 0, 30).UnixMilli()
-	dayCN := GetTodayKeyCN(shanghai, time.Now())
+	dayCN := GetTodayKeyCN(shanghai, now)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE")).

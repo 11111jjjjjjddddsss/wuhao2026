@@ -25,6 +25,11 @@ function Read-SourceFile {
     return Get-Content -LiteralPath $Path -Raw -Encoding UTF8
 }
 
+function Text-FromUtf8Base64 {
+    param([string]$Value)
+    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
+}
+
 function Require-Match {
     param(
         [string]$Name,
@@ -104,16 +109,27 @@ Require-Match -Name "android_topup_action_disabled" -Content $membership -Patter
 Require-NoMatch -Name "android_no_dev_order_api_calls" -Content $membership -Pattern "/api/(tier/renew_plus|tier/renew_pro|tier/upgrade_plus_to_pro|topup/buy)"
 Require-Match -Name "android_chat_membership_payment_click_log" -Content $chatScreen -Pattern "payment\.unavailable_clicked(?s:.*?)chat_membership_sheet"
 Require-Match -Name "android_settings_membership_payment_click_log" -Content $hamburgerMenu -Pattern "payment\.unavailable_clicked(?s:.*?)settings_membership_page"
-Require-Match -Name "admin_orders_read_only_copy" -Content $adminMain -Pattern "订单只做只读核查(?s:.*?)不提供补发、退款或手动改权益"
-Require-Match -Name "admin_orders_no_payment_simulation_copy" -Content $adminMain -Pattern "不提供支付成功模拟或手动发放入口"
-Require-NoMatch -Name "admin_orders_no_write_buttons" -Content $adminMain -Pattern '<button[^>]*>\s*(补发|手动改权益|模拟支付成功|确认退款|发放权益)'
+$adminOrdersReadOnlyPrefix = [regex]::Escape((Text-FromUtf8Base64 "6K6i5Y2V5Y+q5YGa5Y+q6K+75qC45p+l"))
+$adminOrdersNoManualGrant = [regex]::Escape((Text-FromUtf8Base64 "5LiN5o+Q5L6b6KGl5Y+R44CB6YCA5qy+5oiW5omL5Yqo5pS55p2D55uK"))
+$adminOrdersNoPaymentSimulation = [regex]::Escape((Text-FromUtf8Base64 "5LiN5o+Q5L6b5pSv5LuY5oiQ5Yqf5qih5ouf5oiW5omL5Yqo5Y+R5pS+5YWl5Y+j"))
+$adminOrderForbiddenButtons = @(
+    "6KGl5Y+R",
+    "5omL5Yqo5pS55p2D55uK",
+    "5qih5ouf5pSv5LuY5oiQ5Yqf",
+    "56Gu6K6k6YCA5qy+",
+    "5Y+R5pS+5p2D55uK"
+) | ForEach-Object { [regex]::Escape((Text-FromUtf8Base64 $_)) }
+Require-Match -Name "admin_orders_read_only_copy" -Content $adminMain -Pattern "$adminOrdersReadOnlyPrefix(?s:.*?)$adminOrdersNoManualGrant"
+Require-Match -Name "admin_orders_no_payment_simulation_copy" -Content $adminMain -Pattern $adminOrdersNoPaymentSimulation
+Require-NoMatch -Name "admin_orders_no_write_buttons" -Content $adminMain -Pattern ("<button[^>]*>\s*(" + ($adminOrderForbiddenButtons -join "|") + ")")
 
 Require-Match -Name "server_dev_order_guard" -Content $server -Pattern "func\s+\(s \*Server\)\s+allowDevOrderEndpoint"
 Require-Match -Name "server_payment_not_configured" -Content $server -Pattern "PAYMENT_NOT_CONFIGURED"
 Require-Match -Name "server_dev_order_explicit_env" -Content $server -Pattern "ALLOW_DEV_ORDER_ENDPOINTS"
 Require-Match -Name "server_dev_order_requires_dev_env" -Content $server -Pattern "env == ""local"" \|\| env == ""dev"" \|\| env == ""development"" \|\| env == ""test"""
 Require-Match -Name "server_admin_orders_get_only" -Content $server -Pattern 's\.mux\.HandleFunc\("GET /admin-api/v1/orders",\s*s\.handleAdminOrders\)'
-Require-NoMatch -Name "server_admin_orders_no_write_routes" -Content $server -Pattern 's\.mux\.HandleFunc\("(POST|PUT|PATCH|DELETE) /admin-api/v1/orders'
+$serverAdminOrdersWritePattern = [regex]::Escape('s.mux.HandleFunc("') + '(POST|PUT|PATCH|DELETE)' + [regex]::Escape(' /admin-api/v1/orders')
+Require-NoMatch -Name "server_admin_orders_no_write_routes" -Content $server -Pattern $serverAdminOrdersWritePattern
 
 Require-Match -Name "runbook_wechat_notify_url" -Content $paymentsRunbook -Pattern "https://api\.nongjiqiancha\.cn/api/payments/wechat/notify"
 Require-Match -Name "runbook_alipay_notify_url" -Content $paymentsRunbook -Pattern "https://api\.nongjiqiancha\.cn/api/payments/alipay/notify"

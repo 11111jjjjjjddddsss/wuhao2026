@@ -167,6 +167,44 @@ if [ -f "$admin_nginx_site" ]; then
 fi
 
 echo
+echo '== nginx traffic guards =='
+rate_conf='/etc/nginx/conf.d/nongjiqiancha-rate-limit.conf'
+require_nginx_pattern() {
+  file="$1"
+  label="$2"
+  pattern="$3"
+  if [ ! -f "$file" ]; then
+    echo "${label}=missing_file:$file" >&2
+    exit 19
+  fi
+  count=$(grep -Ec "$pattern" "$file" || true)
+  echo "${label}=$count"
+  if [ "$count" -lt 1 ]; then
+    echo "${label} missing expected nginx guard pattern: $pattern" >&2
+    exit 19
+  fi
+}
+require_nginx_pattern "$rate_conf" "nginx_rate_zone_api_60rpm" 'limit_req_zone[[:space:]]+\$binary_remote_addr[[:space:]]+zone=nongji_api:10m[[:space:]]+rate=60r/m;'
+require_nginx_pattern "$rate_conf" "nginx_rate_zone_chat_60rpm" 'limit_req_zone[[:space:]]+\$binary_remote_addr[[:space:]]+zone=nongji_chat:10m[[:space:]]+rate=60r/m;'
+require_nginx_pattern "$rate_conf" "nginx_rate_zone_upload_20rpm" 'limit_req_zone[[:space:]]+\$binary_remote_addr[[:space:]]+zone=nongji_upload:10m[[:space:]]+rate=20r/m;'
+require_nginx_pattern "$rate_conf" "nginx_conn_zone" 'limit_conn_zone[[:space:]]+\$binary_remote_addr[[:space:]]+zone=nongji_conn:10m;'
+require_nginx_pattern "$nginx_site" "nginx_client_max_body_2m" 'client_max_body_size[[:space:]]+2m;'
+require_nginx_pattern "$nginx_site" "nginx_chat_limit_req" 'limit_req[[:space:]]+zone=nongji_chat[[:space:]]+burst=80[[:space:]]+nodelay;'
+require_nginx_pattern "$nginx_site" "nginx_upload_limit_req" 'limit_req[[:space:]]+zone=nongji_upload[[:space:]]+burst=8[[:space:]]+nodelay;'
+require_nginx_pattern "$nginx_site" "nginx_upload_limit_conn" 'limit_conn[[:space:]]+nongji_conn[[:space:]]+4;'
+require_nginx_pattern "$nginx_site" "nginx_api_limit_req" 'limit_req[[:space:]]+zone=nongji_api[[:space:]]+burst=80[[:space:]]+nodelay;'
+require_nginx_pattern "$nginx_site" "nginx_api_limit_conn" 'limit_conn[[:space:]]+nongji_conn[[:space:]]+20;'
+require_nginx_pattern "$nginx_site" "nginx_chat_proxy_buffering_off" 'proxy_buffering[[:space:]]+off;'
+require_nginx_pattern "$nginx_site" "nginx_chat_read_timeout_600s" 'proxy_read_timeout[[:space:]]+600s;'
+chat_block=$(awk '/^[[:space:]]*location[[:space:]]+\/api\/chat\/stream[[:space:]]*\{/{flag=1} flag{print} flag && /^[[:space:]]*\}/{exit}' "$nginx_site" 2>/dev/null || true)
+chat_limit_conn_count=$(printf '%s\n' "$chat_block" | grep -Ec 'limit_conn[[:space:]]+' || true)
+echo "nginx_chat_limit_conn_count=$chat_limit_conn_count"
+if [ "$chat_limit_conn_count" -ne 0 ]; then
+  echo 'chat stream location must not use limit_conn in current shared-network friendly policy' >&2
+  exit 19
+fi
+
+echo
 echo '== healthz =='
 health_body='/tmp/nongji-readiness-health.json'
 health_status=$(curl -sS --resolve api.nongjiqiancha.cn:443:127.0.0.1 -o "$health_body" -w '%{http_code}' https://api.nongjiqiancha.cn/healthz || true)

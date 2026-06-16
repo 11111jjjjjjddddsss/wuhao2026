@@ -611,7 +611,7 @@ async function giftCardsPage(): Promise<string> {
     ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；完整卡码仅 owner / finance_ops 可见。", "gift-cards")}
     <section class="grid kpi">
       ${kpi("可兑换卡", summary.redeemable_count, "当前可兑换")}
-      ${kpi("已兑换", summary.redeemed_count, "全量已激活")}
+      ${kpi("已兑换", summary.redeemed_count, "权益已发放")}
       ${kpi("已作废", summary.void_count, "全量")}
       ${kpi("失败尝试", summary.failed_attempts_24h, "最近24小时")}
       ${kpi("批次数", summary.batch_count, "全量批次")}
@@ -619,7 +619,7 @@ async function giftCardsPage(): Promise<string> {
     </section>
     <div class="grid two" style="margin-top:12px">
       ${notice("正式权益提醒", "生成后将产生真实可兑换权益。测试时请仅生成 1 张，并在 Android 设置里的“礼品卡”入口兑换后回到本页追溯。", "warn")}
-      ${notice("当前口径", `当前“可兑换卡”只统计已经生效且未过期的 active 卡；全量 active 卡共 ${summary.active_count} 张。完整卡码不要写进备注、作废原因、审计说明或导出文件。`, "warn")}
+      ${notice("当前口径", `礼品卡生成后就是 active 可兑换卡，用户兑换成功后权益立即发放；“可兑换卡”只排除已过期的 active 卡。全量 active 卡共 ${summary.active_count} 张。完整卡码不要写进备注、作废原因、审计说明或导出文件。`, "warn")}
     </div>
     <section class="card">
       <div class="card-head">
@@ -641,7 +641,7 @@ async function giftCardsPage(): Promise<string> {
                 <label>张数<input name="quantity" type="number" min="1" max="200" value="1" /></label>
                 <label>天数<input name="duration_days" type="number" min="1" max="366" value="30" /></label>
                 <label>备注<input name="note" placeholder="发放对象或用途，可为空" /></label>
-                <button class="button primary" type="submit">生成</button>
+                <button class="button primary" type="submit">生成真实可兑换卡</button>
               </form>
               ${createdGiftCardCodesBlock(lastGiftCardCodes)}
             `
@@ -1372,6 +1372,12 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
   if (!window.confirm(confirmText)) {
     return;
   }
+  const typedConfirmation = window.prompt(enabled ? `请输入 ${latestVersionCode} 确认对外启用这次更新。` : "请输入 停更 确认保存为停更状态。");
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== (enabled ? String(latestVersionCode) : "停更")) {
+    window.alert(enabled ? "输入的 versionCode 不一致，已取消发布。" : "未输入“停更”，已取消保存。");
+    return;
+  }
   const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
   if (button) button.disabled = true;
   try {
@@ -1405,6 +1411,12 @@ async function disableAppUpdate(button: HTMLElement): Promise<void> {
   const releaseNotes = button.dataset.releaseNotes || "";
   const fileSizeBytes = Number(button.dataset.fileSizeBytes || "0");
   if (!window.confirm("确认停掉当前更新？停更后，用户点“检查更新”将不会再拿到这个新包。")) {
+    return;
+  }
+  const typedConfirmation = window.prompt("请输入 停更 确认关闭当前更新。");
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== "停更") {
+    window.alert("未输入“停更”，已取消操作。");
     return;
   }
   await withButtonBusy(button, "停更中", async () => {
@@ -2175,7 +2187,7 @@ function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
   if (!rows.length) return emptyState("没有礼品卡批次", "还没有创建礼品卡批次。");
   return `
     <table class="table">
-      <thead><tr><th>批次</th><th>档位</th><th>天数</th><th>总数</th><th>active（未兑）</th><th>已兑</th><th>作废</th><th>有效期</th><th>创建</th></tr></thead>
+      <thead><tr><th>批次</th><th>档位</th><th>天数</th><th>总数</th><th>active（未兑）</th><th>已兑</th><th>作废</th><th>可兑换至</th><th>创建</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -2183,7 +2195,7 @@ function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
               <tr>
                 <td><div>${escapeHTML(row.name || row.batch_id)}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
                 <td>${statusPill(row.tier)}</td><td>${row.duration_days}</td><td>${row.quantity}</td><td>${row.active_count}</td><td>${row.redeemed_count}</td><td>${row.void_count}</td>
-                <td>${formatTime(row.valid_from)}<div class="small muted">至 ${formatTime(row.valid_until)}</div></td><td>${formatTime(row.created_at)}</td>
+                <td>${formatTime(row.valid_until)}</td><td>${formatTime(row.created_at)}</td>
               </tr>
             `,
           )
@@ -2199,7 +2211,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
   const canViewCodes = canViewGiftCardCodes();
   return `
     <table class="table">
-      <thead><tr><th>卡</th><th>完整卡码</th><th>档位</th><th>状态</th><th>激活账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
+      <thead><tr><th>卡</th><th>完整卡码</th><th>档位</th><th>状态</th><th>兑换账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -2322,7 +2334,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
               <span>后台回复</span>
               <textarea class="textarea" name="body" placeholder="只写必要的客服回复，不包含密钥、手机号全文或内部排障细节。"></textarea>
             </label>
-            <button class="button primary" type="submit">发送回复</button>
+            <button class="button primary" type="submit">发送给用户（生产）</button>
           </form>
         `
         : notice("只读会话", "当前角色只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
@@ -2521,12 +2533,14 @@ function auditTable(rows: AdminAuditLogEntry[]): string {
 }
 
 function appUpdateConfig(config: AdminAppUpdateConfig): string {
+  const updateWillShip = config.enabled && config.config_valid && config.download_artifacts_complete;
   return `
     <dl class="kv">
-      <dt>发布状态</dt><dd>${config.enabled ? statusPill("已启用", "ok") : statusPill("已停更", "warn")}</dd>
+      <dt>发布开关</dt><dd>${config.enabled ? statusPill("开关已开", "ok") : statusPill("开关已关", "warn")}</dd>
+      <dt>是否会下发</dt><dd>${updateWillShip ? statusPill("会下发", "ok") : statusPill("不会下发", "warn")}</dd>
       <dt>配置来源</dt><dd>${escapeHTML(config.source || "env")}</dd>
-      <dt>versionCode</dt><dd>${config.latest_version_code || "未配置"}</dd>
-      <dt>versionName</dt><dd>${escapeHTML(config.latest_version_name || "未配置")}</dd>
+      <dt>内部版本号 versionCode</dt><dd>${config.latest_version_code || "未配置"}</dd>
+      <dt>展示版本 versionName</dt><dd>${escapeHTML(config.latest_version_name || "未配置")}</dd>
       <dt>APK URL</dt><dd>${escapeHTML(config.apk_url || "未配置")}</dd>
       <dt>SHA-256</dt><dd>${escapeHTML(config.apk_sha256 || "未配置")}</dd>
       <dt>文件大小</dt><dd>${formatBytes(config.file_size_bytes)}</dd>
@@ -2536,7 +2550,7 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
       <dt>APK URL 状态</dt><dd>${config.has_apk_url ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
       <dt>SHA-256 状态</dt><dd>${config.has_sha256 ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
       <dt>文件大小状态</dt><dd>${config.has_file_size ? statusPill("已配置", "ok") : statusPill("未配置", "warn")}</dd>
-      <dt>release notes</dt><dd>${escapeHTML(config.release_notes || "未配置")}</dd>
+      <dt>更新说明</dt><dd>${escapeHTML(config.release_notes || "未配置")}</dd>
       <dt>最后更新</dt><dd>${formatTime(config.updated_at)}${config.updated_by ? ` · ${escapeHTML(config.updated_by)}` : ""}</dd>
     </dl>
   `;
@@ -2548,11 +2562,11 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
       ${notice("怎么发新包", "填 versionCode、HTTPS APK、SHA-256 和文件大小；勾上“对外启用更新”后保存，旧版 App 启动后会静默检查，用户也可手动检查。取消勾选并保存，就是停更。", "info")}
       ${notice("不是系统推送", "当前没有通知权限和推送服务；默认只做普通更新，每个版本最多自动提醒一次。更新说明可以留空，App 会显示默认文案。", "warn")}
       <label class="field">
-        <span>versionCode</span>
+        <span>内部版本号 versionCode</span>
         <input class="input" name="latest_version_code" type="number" min="0" step="1" value="${escapeAttr(String(config.latest_version_code || ""))}" placeholder="例如 10023" />
       </label>
       <label class="field">
-        <span>versionName</span>
+        <span>展示版本 versionName</span>
         <input class="input" name="latest_version_name" value="${escapeAttr(config.latest_version_name || "")}" placeholder="例如 1.0.23" />
       </label>
       <label class="field">
@@ -3587,13 +3601,13 @@ function decisionCard(title: string, value: string, body: string, level: "ok" | 
 function monitoringShortcutBar(): string {
   return `
     <div class="shortcut-bar">
-      ${shortcutButton("gift-cards", "生成礼品卡")}
+      ${shortcutButton("gift-cards", "礼品卡追溯")}
       ${shortcutButton("users", "查用户")}
       ${shortcutButton("app-logs", "看 App 错误")}
-      ${shortcutButton("support", "处理反馈")}
+      ${shortcutButton("support", "查看反馈队列")}
       ${shortcutButton("account-deletion", "看注销申请")}
       ${shortcutButton("today-agri", "看今日农情")}
-      ${shortcutButton("app-update", "检查更新")}
+      ${shortcutButton("app-update", "更新配置")}
       ${shortcutButton("health", "服务健康")}
     </div>
   `;

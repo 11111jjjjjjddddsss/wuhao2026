@@ -671,9 +671,7 @@ func (s *Store) GetGiftCardSummary(ctx context.Context, nowMs int64) (AdminGiftC
 		`SELECT COUNT(*)
 		   FROM gift_cards
 		  WHERE status = 'active'
-		    AND valid_from <= ?
 		    AND (valid_until IS NULL OR valid_until > ?)`,
-		nowMs,
 		nowMs,
 	).Scan(&summary.RedeemableCount); err != nil {
 		return summary, err
@@ -824,7 +822,7 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 		}
 		return GiftCardRedeemResult{}, errGiftCardInactive
 	}
-	if card.ValidFrom > nowMs || (card.ValidUntil != nil && *card.ValidUntil <= nowMs) {
+	if card.ValidUntil != nil && *card.ValidUntil <= nowMs {
 		if err := insertGiftCardAttempt(ctx, tx, codeSuffix, userID, false, "expired", maskedIP, region, nowMs); err != nil {
 			return GiftCardRedeemResult{}, err
 		}
@@ -980,7 +978,7 @@ func (s *Store) applyGiftCardTierTx(ctx context.Context, tx *sql.Tx, userID stri
 	}
 	newExpire := time.UnixMilli(base).AddDate(0, 0, durationDays).UnixMilli()
 	if currentTier == TierPlus && cardTier == TierPro {
-		dayCN := GetTodayKeyCN(s.shanghai, time.Now())
+		dayCN := GetTodayKeyCN(s.shanghai, time.UnixMilli(nowMs))
 		usedToday, err := s.getOrCreateDailyUsage(ctx, tx, userID, dayCN)
 		if err != nil {
 			return "", 0, err

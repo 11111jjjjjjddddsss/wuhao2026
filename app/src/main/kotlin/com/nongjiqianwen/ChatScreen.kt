@@ -7769,7 +7769,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
                     UiCopyPreviewItem("应用权限", "定位、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
-                    UiCopyPreviewItem("礼品卡成功样式", "展示真实档位、30天、每日次数和到期时间", UiCopyPreviewKind.HamburgerGiftCardSuccess),
+                    UiCopyPreviewItem("礼品卡成功样式", "兑换成功立即发放权益", UiCopyPreviewKind.HamburgerGiftCardSuccess),
+                    UiCopyPreviewItem("礼品卡生效规则", "生成即可兑换，不做预约生效", UiCopyPreviewKind.HamburgerGiftCardImmediateRule),
                     UiCopyPreviewItem("礼品卡重复兑换", "同一账号重复提交时提示权益已生效", UiCopyPreviewKind.HamburgerGiftCardReplay)
                 )
             ),
@@ -8075,6 +8076,7 @@ private enum class UiCopyPreviewKind {
     HamburgerPermissionListPage,
     HamburgerRiskNoticePage,
     HamburgerGiftCardSuccess,
+    HamburgerGiftCardImmediateRule,
     HamburgerGiftCardReplay,
     TodayAgriCard,
     TodayAgriLongSummaryCard,
@@ -8542,6 +8544,16 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.HamburgerGiftCardSuccess -> {
                     HamburgerRedeemSuccessCardPreview()
+                }
+                UiCopyPreviewKind.HamburgerGiftCardImmediateRule -> {
+                    UiCopyPreviewPlainText(
+                        listOf(
+                            "礼品卡生成后即可兑换",
+                            "兑换成功后会员权益立即发放",
+                            "valid_from 只作创建追溯，不作为预约生效门槛",
+                            "兑换失败原因会停留在礼品卡页内"
+                        )
+                    )
                 }
                 UiCopyPreviewKind.HamburgerGiftCardReplay -> {
                     HamburgerRedeemReplayCardPreview()

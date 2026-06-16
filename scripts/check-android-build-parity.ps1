@@ -424,6 +424,10 @@ if ($failures.Count -eq 0) {
         "Settings/legal pages must keep the MIIT filing query link for public verification."
     Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+AppFilingFooter(?s:.*?)APP_ICP_RECORD_NUMBER(?s:.*?)MIIT_BEIAN_QUERY_URL' `
         "Settings main page must keep a low-noise App ICP filing footer with a query link."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("礼品卡生效规则",\s*"生成即可兑换，不做预约生效",\s*UiCopyPreviewKind\.HamburgerGiftCardImmediateRule\)' `
+        "Debug UI copy preview must show the current gift-card immediate-effect rule."
+    Require-Match $failures $chatScreen 'valid_from 只作创建追溯，不作为预约生效门槛' `
+        "Debug UI copy preview must explain that gift-card valid_from is not a future activation gate."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
         "Settings main page defaults must include every production row after app data is cleared."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"') `
