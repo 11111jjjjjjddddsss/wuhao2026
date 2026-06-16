@@ -1,9 +1,14 @@
 package app
 
 import (
+	"context"
 	"database/sql"
+	"errors"
+	"regexp"
 	"testing"
 	"time"
+
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestQuotaBusinessConstantsMatchCurrentRules(t *testing.T) {
@@ -139,5 +144,38 @@ func TestTopupPackStatusAfterConsumeUsesRemainingBeforeConsume(t *testing.T) {
 	}
 	if got := topupPackStatusAfterConsume(1); got != "used_up" {
 		t.Fatalf("1 remaining should become used_up after one consume, got %s", got)
+	}
+}
+
+func TestReadOrderReplayReturnsConflictForOtherUserOrderID(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	mock.ExpectBegin()
+	tx, err := store.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("BeginTx failed: %v", err)
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT user_id, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs("order_shared").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "result_json"}).AddRow("acct_other", `{"tier":"plus","tier_expire_at":1700000000000}`))
+
+	replay, payload, err := store.readOrderReplay(context.Background(), tx, "order_shared", "acct_current")
+	if !errors.Is(err, ErrOrderIDConflict) {
+		t.Fatalf("readOrderReplay err = %v, want ErrOrderIDConflict", err)
+	}
+	if replay {
+		t.Fatal("cross-user order should not be treated as replay")
+	}
+	if payload != nil {
+		t.Fatalf("cross-user conflict payload = %#v, want nil", payload)
+	}
+	mock.ExpectRollback()
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
 	}
 }

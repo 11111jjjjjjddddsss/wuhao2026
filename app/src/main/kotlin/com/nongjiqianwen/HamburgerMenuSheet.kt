@@ -1833,7 +1833,7 @@ private fun HamburgerPermissionListContent(
     ) {
         HamburgerLegalPageTitle("应用权限")
         Text(
-            text = "更新日期：2026年6月1日",
+            text = "更新日期：2026年6月16日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -4101,10 +4101,15 @@ private fun giftCardRedeemSuccessText(result: SessionApi.GiftCardRedeemResult): 
         }.format(Date(millis))
     }
     val quota = dailyCount?.let { "，每日 ${it} 次" }.orEmpty()
-    return if (expire.isNullOrBlank()) {
+    val detail = if (expire.isNullOrBlank()) {
         "$tier $days 已生效$quota"
     } else {
         "$tier $days 已生效$quota，到期 $expire"
+    }
+    return if (result.replay) {
+        "该礼品卡已兑换成功，会员权益已生效，无需重复兑换。$detail"
+    } else {
+        detail
     }
 }
 
@@ -4169,7 +4174,13 @@ private fun HamburgerRedeemCodeContent(
                 redeemResult = result
                 redeemCode = ""
                 onRedeemSuccess()
-                onPendingAction("兑换成功，会员权益已更新")
+                onPendingAction(
+                    if (result.replay) {
+                        "该礼品卡已兑换成功，权益已生效"
+                    } else {
+                        "兑换成功，会员权益已更新"
+                    }
+                )
             } else {
                 onPendingAction(error ?: "兑换失败，请稍后再试")
             }
@@ -4320,7 +4331,7 @@ private fun HamburgerRedeemSuccessCard(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             Text(
-                text = "兑换成功",
+                text = if (result?.replay == true) "权益已生效" else "兑换成功",
                 color = Color.White,
                 fontSize = 18.sp,
                 lineHeight = 24.sp,
@@ -4395,6 +4406,30 @@ internal fun HamburgerRedeemSuccessCardPreview() {
                 durationDays = 30,
                 membershipExpireAt = System.currentTimeMillis() + 30L * 24L * 60L * 60L * 1000L,
                 redeemedAt = System.currentTimeMillis()
+            ),
+            onConfirm = {},
+            modifier = Modifier.padding(horizontal = 18.dp)
+        )
+    }
+}
+
+@Composable
+internal fun HamburgerRedeemReplayCardPreview() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 136.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        HamburgerRedeemSuccessCard(
+            result = SessionApi.GiftCardRedeemResult(
+                ok = true,
+                replay = true,
+                tier = "plus",
+                appliedTier = "plus",
+                durationDays = 30,
+                membershipExpireAt = System.currentTimeMillis() + 24L * 24L * 60L * 60L * 1000L,
+                redeemedAt = System.currentTimeMillis() - 6L * 24L * 60L * 60L * 1000L
             ),
             onConfirm = {},
             modifier = Modifier.padding(horizontal = 18.dp)

@@ -472,6 +472,10 @@ func (s *Server) handleTopupBuy(w http.ResponseWriter, r *http.Request) {
 		case "TOPUP_LIMIT_REACHED":
 			s.writeError(w, http.StatusConflict, err.Error())
 		default:
+			if errors.Is(err, ErrOrderIDConflict) {
+				s.writeError(w, http.StatusConflict, "ORDER_ID_CONFLICT")
+				return
+			}
 			s.logger.Error("buy topup failed", "userId", auth.UserID, "orderId", orderID, "error", err)
 			s.writeError(w, http.StatusInternalServerError, err.Error())
 		}
@@ -572,6 +576,10 @@ func (s *Server) handleRenewTier(w http.ResponseWriter, r *http.Request, targetT
 		case "USE_UPGRADE_PLUS_TO_PRO":
 			s.writeError(w, http.StatusConflict, err.Error())
 		default:
+			if errors.Is(err, ErrOrderIDConflict) {
+				s.writeError(w, http.StatusConflict, "ORDER_ID_CONFLICT")
+				return
+			}
 			s.logger.Error("renew tier failed", "userId", auth.UserID, "orderId", orderID, "targetTier", targetTier, "error", err)
 			s.writeError(w, http.StatusInternalServerError, err.Error())
 		}
@@ -621,6 +629,10 @@ func (s *Server) handleUpgradePlusToPro(w http.ResponseWriter, r *http.Request) 
 		case "FORBIDDEN_TIER":
 			s.writeError(w, http.StatusForbidden, err.Error())
 		default:
+			if errors.Is(err, ErrOrderIDConflict) {
+				s.writeError(w, http.StatusConflict, "ORDER_ID_CONFLICT")
+				return
+			}
 			s.logger.Error("upgrade plus to pro failed", "userId", auth.UserID, "orderId", orderID, "error", err)
 			s.writeError(w, http.StatusInternalServerError, err.Error())
 		}

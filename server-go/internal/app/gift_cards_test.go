@@ -1,11 +1,15 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
+
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestGiftCardCodeCipherRoundTrip(t *testing.T) {
@@ -93,6 +97,136 @@ func TestScanGiftCardEntryOnlyDecryptsWhenAllowed(t *testing.T) {
 	}
 }
 
+func TestRedeemGiftCardSameUserReplayDoesNotExtendEntitlement(t *testing.T) {
+	t.Setenv("APP_SECRET", "unit-test-secret")
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	code := "NQ-M7AB-CD23-EF45-GH67"
+	userID := "acct_gift_replay"
+	redeemedAt := int64(1_700_000_001_000)
+	expireAt := int64(1_702_592_001_000)
+	nowMs := redeemedAt + 10_000
+	region := RegionContext{
+		Region:      "河南省 周口市",
+		Source:      RegionSourceGPS,
+		Reliability: RegionReliable,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(giftCardForUpdateQueryPattern()).
+		WithArgs(giftCardCodeHash(code)).
+		WillReturnRows(giftCardSQLRows().AddRow(
+			"gcc_replay",
+			"gcb_replay",
+			"NQ-M7AB-****-GH67",
+			"GH67",
+			nil,
+			string(TierPlus),
+			30,
+			"redeemed",
+			int64(1_700_000_000_000),
+			nil,
+			"owner",
+			nil,
+			userID,
+			"138****8000",
+			"河南省 周口市",
+			string(RegionSourceGPS),
+			string(RegionReliable),
+			redeemedAt,
+			expireAt,
+			nil,
+			int64(1_700_000_000_000),
+			redeemedAt,
+		))
+	mock.ExpectExec("INSERT INTO gift_card_redemption_attempts").
+		WithArgs(sqlmock.AnyArg(), userID, 1, nil, "1.2.*.*", region.Region, string(region.Source), string(region.Reliability), nowMs).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectCommit()
+
+	result, err := store.RedeemGiftCard(context.Background(), code, userID, region, "1.2.*.*", nowMs)
+	if err != nil {
+		t.Fatalf("RedeemGiftCard replay failed: %v", err)
+	}
+	if !result.OK || result.CardID != "gcc_replay" || result.MembershipExpireAt != expireAt || result.RedeemedAt != redeemedAt {
+		t.Fatalf("replay result mismatch: %#v", result)
+	}
+	if !result.Replay {
+		t.Fatal("same-user replay should be marked as replay")
+	}
+	if result.AppliedTier != TierPlus {
+		t.Fatalf("replay applied tier = %s, want plus", result.AppliedTier)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestRedeemGiftCardRequiresSingleActiveStatusUpdate(t *testing.T) {
+	t.Setenv("APP_SECRET", "unit-test-secret")
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	code := "NQ-M7AB-CD23-EF45-GH67"
+	userID := "acct_gift_conflict"
+	nowMs := int64(1_700_000_010_000)
+	region := RegionContext{
+		Region:      "河南省 周口市",
+		Source:      RegionSourceGPS,
+		Reliability: RegionReliable,
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(giftCardForUpdateQueryPattern()).
+		WithArgs(giftCardCodeHash(code)).
+		WillReturnRows(giftCardSQLRows().AddRow(
+			"gcc_conflict",
+			"gcb_conflict",
+			"NQ-M7AB-****-GH67",
+			"GH67",
+			nil,
+			string(TierPlus),
+			30,
+			"active",
+			int64(1_700_000_000_000),
+			nil,
+			"owner",
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+			int64(1_700_000_000_000),
+			int64(1_700_000_000_000),
+		))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT phone_mask FROM app_accounts WHERE user_id = ? LIMIT 1")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"phone_mask"}).AddRow("138****8000"))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}))
+	mock.ExpectExec("INSERT INTO user_entitlement").
+		WithArgs(userID, string(TierPlus), sqlmock.AnyArg(), nowMs).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("UPDATE gift_cards").
+		WithArgs(userID, "138****8000", region.Region, string(region.Source), string(region.Reliability), nowMs, sqlmock.AnyArg(), nowMs, "gcc_conflict").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	_, err := store.RedeemGiftCard(context.Background(), code, userID, region, "1.2.*.*", nowMs)
+	if !errors.Is(err, errGiftCardInactive) {
+		t.Fatalf("RedeemGiftCard update conflict err = %v, want errGiftCardInactive", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 type giftCardTestScanner []any
 
 func (s giftCardTestScanner) Scan(dest ...any) error {
@@ -143,4 +277,49 @@ func giftCardScannerFixture(ciphertext string) giftCardTestScanner {
 		int64(1700000000000),
 		int64(1700000000000),
 	}
+}
+
+func newGiftCardSQLMock(t *testing.T) (*Store, sqlmock.Sqlmock, func()) {
+	t.Helper()
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	return &Store{db: db}, mock, func() {
+		mock.ExpectClose()
+		if err := db.Close(); err != nil {
+			t.Fatalf("close sqlmock db: %v", err)
+		}
+	}
+}
+
+func giftCardForUpdateQueryPattern() string {
+	return `(?s)SELECT card_id, batch_id, code_mask, code_suffix, NULL AS code_ciphertext, tier, duration_days, status, valid_from, valid_until, created_by, note, redeemed_user_id, redeemed_phone_mask, redeemed_region, redeemed_region_source, redeemed_region_reliability, redeemed_at, membership_expire_at, voided_at, created_at, updated_at\s+FROM gift_cards\s+WHERE code_hash = \? LIMIT 1 FOR UPDATE`
+}
+
+func giftCardSQLRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"card_id",
+		"batch_id",
+		"code_mask",
+		"code_suffix",
+		"code_ciphertext",
+		"tier",
+		"duration_days",
+		"status",
+		"valid_from",
+		"valid_until",
+		"created_by",
+		"note",
+		"redeemed_user_id",
+		"redeemed_phone_mask",
+		"redeemed_region",
+		"redeemed_region_source",
+		"redeemed_region_reliability",
+		"redeemed_at",
+		"membership_expire_at",
+		"voided_at",
+		"created_at",
+		"updated_at",
+	})
 }

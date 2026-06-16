@@ -205,6 +205,7 @@ object SessionApi {
 
     data class GiftCardRedeemResult(
         val ok: Boolean = false,
+        val replay: Boolean = false,
         @SerializedName("card_id") val cardId: String? = null,
         @SerializedName("batch_id") val batchId: String? = null,
         val tier: String? = null,
@@ -2176,8 +2177,8 @@ object SessionApi {
                 .orEmpty()
         }.getOrDefault("")
         return when (code) {
-            "gift_card_invalid_code", "gift_card_not_found" -> "卡码不正确，请核对后再试"
-            "gift_card_inactive" -> "这张礼品卡已使用或已作废"
+            "gift_card_invalid_code", "gift_card_not_found" -> "礼品卡码不正确，请核对后重试"
+            "gift_card_inactive" -> "这张礼品卡已被兑换或已作废"
             "gift_card_expired" -> "这张礼品卡已过期"
             "gift_card_lower_tier" -> "当前会员档位更高，不能兑换较低档位礼品卡"
             "gift_card_not_configured" -> "礼品卡服务暂未配置"

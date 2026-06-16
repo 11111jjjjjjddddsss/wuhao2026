@@ -7721,7 +7721,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("会员同步失败", "保留旧权益并给重试入口", UiCopyPreviewKind.MembershipFailedSummary),
                     UiCopyPreviewItem("套餐区：待同步", "无权益数据时才置灰", UiCopyPreviewKind.MembershipPlanUnknown),
                     UiCopyPreviewItem("套餐区：Free", "Plus / Pro 都显示“暂未开放”", UiCopyPreviewKind.MembershipPlanFree),
-                    UiCopyPreviewItem("套餐区：Plus", "Plus 显示当前套餐，Pro 仍为“暂未开放”", UiCopyPreviewKind.MembershipPlanPlus),
+                    UiCopyPreviewItem("套餐区：Plus", "Plus 显示当前套餐，Pro 显示支付升级暂未开放", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Plus 显示当前为 Pro", UiCopyPreviewKind.MembershipPlanPro),
                     UiCopyPreviewItem("套餐区：窄屏挤压", "280dp 下标题、胶囊和价格不互撞", UiCopyPreviewKind.MembershipPlanNarrow),
                     UiCopyPreviewItem("加油包：Free不可订购", "Plus / Pro 可订购置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
@@ -7730,7 +7730,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
-                    UiCopyPreviewItem("支付成功卡片", "支付完成后的权益生效提示样式", UiCopyPreviewKind.MembershipPurchaseSuccess),
+                    UiCopyPreviewItem("未来支付成功样式", "支付未开放，仅预览后续权益生效卡片", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序", UiCopyPreviewKind.MembershipRules)
                 )
             ),
@@ -7741,12 +7741,13 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
                     UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号 / 缓存 / 历史 / 退出 / 注销", UiCopyPreviewKind.HamburgerAccountPage),
+                    UiCopyPreviewItem("退出登录确认", "退出当前设备，不删除资产", UiCopyPreviewKind.HamburgerLogoutConfirm),
                     UiCopyPreviewItem("删除历史对话确认", "二次确认，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("注销账号确认", "提交申请并退出登录", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "普通更新弹窗，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
-                    UiCopyPreviewItem("更新权限提示", "授权后返回 App 自动继续", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
+                    UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("服务协议目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
                     UiCopyPreviewItem("服务协议", "本地内置服务协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
@@ -7755,7 +7756,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
                     UiCopyPreviewItem("应用权限", "定位、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
                     UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
-                    UiCopyPreviewItem("礼品卡成功样式", "展示真实档位、30天、每日次数和到期时间", UiCopyPreviewKind.HamburgerGiftCardSuccess)
+                    UiCopyPreviewItem("礼品卡成功样式", "展示真实档位、30天、每日次数和到期时间", UiCopyPreviewKind.HamburgerGiftCardSuccess),
+                    UiCopyPreviewItem("礼品卡重复兑换", "本人重复提交时提示权益已生效", UiCopyPreviewKind.HamburgerGiftCardReplay)
                 )
             ),
             UiCopyPreviewGroup(
@@ -8038,6 +8040,7 @@ private enum class UiCopyPreviewKind {
     HamburgerMenuShell,
     HamburgerMembershipPage,
     HamburgerAccountPage,
+    HamburgerLogoutConfirm,
     HamburgerDeleteHistoryConfirm,
     HamburgerAccountDeletionConfirm,
     HamburgerSupportPage,
@@ -8058,6 +8061,7 @@ private enum class UiCopyPreviewKind {
     HamburgerPermissionListPage,
     HamburgerRiskNoticePage,
     HamburgerGiftCardSuccess,
+    HamburgerGiftCardReplay,
     TodayAgriCard,
     TodayAgriLongSummaryCard,
     HamburgerTodayAgriHistoryPage,
@@ -8459,6 +8463,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerAccountPage -> {
                     HamburgerAccountManagementPagePreview()
                 }
+                UiCopyPreviewKind.HamburgerLogoutConfirm -> {
+                    HamburgerLogoutConfirmPreview()
+                }
                 UiCopyPreviewKind.HamburgerDeleteHistoryConfirm -> {
                     HamburgerDeleteHistoryConfirmPreview()
                 }
@@ -8490,7 +8497,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     HamburgerAppUpdateDialogPreview(downloading = true)
                 }
                 UiCopyPreviewKind.AppUpdateInstallPermissionHint -> {
-                    UiCopyPreviewHint("允许安装未知应用后，返回 App 会自动继续下载 / 安装本次更新")
+                    UiCopyPreviewHint("允许安装未知应用后，返回本页继续更新")
                 }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
@@ -8518,6 +8525,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.HamburgerGiftCardSuccess -> {
                     HamburgerRedeemSuccessCardPreview()
+                }
+                UiCopyPreviewKind.HamburgerGiftCardReplay -> {
+                    HamburgerRedeemReplayCardPreview()
                 }
                 UiCopyPreviewKind.TodayAgriCard -> {
                     TodayAgriNewsText(

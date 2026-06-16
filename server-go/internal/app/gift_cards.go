@@ -141,6 +141,7 @@ type giftCardRedeemRequest struct {
 
 type GiftCardRedeemResult struct {
 	OK                 bool              `json:"ok"`
+	Replay             bool              `json:"replay"`
 	CardID             string            `json:"card_id"`
 	BatchID            string            `json:"batch_id"`
 	Tier               Tier              `json:"tier"`
@@ -370,7 +371,7 @@ func (s *Server) handleGiftCardRedeem(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, status, code)
 		return
 	}
-	s.recordAdminAuditLog(r, "app_user:"+auth.UserID, "gift_card.redeem", "gift_cards", result.CardID, auth.UserID, true, http.StatusOK, map[string]any{"tier": string(result.Tier), "applied_tier": string(result.AppliedTier), "duration_days": result.DurationDays})
+	s.recordAdminAuditLog(r, "app_user:"+auth.UserID, "gift_card.redeem", "gift_cards", result.CardID, auth.UserID, true, http.StatusOK, map[string]any{"tier": string(result.Tier), "applied_tier": string(result.AppliedTier), "duration_days": result.DurationDays, "replay": result.Replay})
 	s.writeJSON(w, http.StatusOK, result)
 }
 
@@ -802,6 +803,7 @@ func (s *Store) RedeemGiftCard(ctx context.Context, rawCode string, userID strin
 			}
 			return GiftCardRedeemResult{
 				OK:                 true,
+				Replay:             true,
 				CardID:             card.CardID,
 				BatchID:            card.BatchID,
 				Tier:               card.Tier,

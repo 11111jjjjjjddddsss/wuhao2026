@@ -25,6 +25,8 @@ var tierLimits = map[Tier]int{
 	TierPro:  40,
 }
 
+var ErrOrderIDConflict = errors.New("order id already belongs to another user")
+
 type sqlExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
 	QueryRowContext(context.Context, string, ...any) *sql.Row
@@ -643,19 +645,21 @@ func (s *Store) getOrCreateDailyUsage(ctx context.Context, tx *sql.Tx, userID st
 }
 
 func (s *Store) readOrderReplay(ctx context.Context, tx *sql.Tx, orderID string, userID string) (bool, map[string]any, error) {
-	var existingOrderID sql.NullString
+	var existingUserID sql.NullString
 	var resultJSON sql.NullString
 	err := tx.QueryRowContext(
 		ctx,
-		"SELECT order_id, result_json FROM orders WHERE order_id = ? AND user_id = ? LIMIT 1 FOR UPDATE",
+		"SELECT user_id, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE",
 		orderID,
-		userID,
-	).Scan(&existingOrderID, &resultJSON)
+	).Scan(&existingUserID, &resultJSON)
 	if err == sql.ErrNoRows {
 		return false, nil, nil
 	}
 	if err != nil {
 		return false, nil, err
+	}
+	if existingUserID.Valid && strings.TrimSpace(existingUserID.String) != strings.TrimSpace(userID) {
+		return false, nil, ErrOrderIDConflict
 	}
 
 	payload := map[string]any{}

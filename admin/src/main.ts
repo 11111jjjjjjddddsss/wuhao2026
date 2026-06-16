@@ -1933,7 +1933,7 @@ function giftCardTraceFilterForm(): string {
           ${selectOption("failed", "失败", pageState.giftCardAttemptSuccess)}
         </select>
       </label>
-      <label>失败原因<input name="failure_reason" value="${escapeAttr(pageState.giftCardAttemptReason)}" placeholder="gift_card_not_found" /></label>
+      <label>失败原因<input name="failure_reason" value="${escapeAttr(pageState.giftCardAttemptReason)}" placeholder="invalid_code / not_found / expired / lower_tier / redeemed / void" /></label>
       <button class="button primary" type="submit">查询</button>
       <button class="button" type="button" data-action="clear-gift-card-filter">清空</button>
     </form>

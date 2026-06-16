@@ -592,7 +592,7 @@ private fun MembershipPlanSection(
     }
     val proActionText = when (activeTier) {
         "unknown" -> "同步后开通"
-        "plus" -> "暂未开放"
+        "plus" -> "支付升级暂未开放"
         "pro" -> "当前套餐"
         else -> "暂未开放"
     }
@@ -620,7 +620,7 @@ private fun MembershipPlanSection(
             highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = proActionText,
             actionEnabled = false,
-            actionClickableWhenDisabled = proActionText == "暂未开放" || proActionText == "同步后开通",
+            actionClickableWhenDisabled = proActionText == "暂未开放" || proActionText == "支付升级暂未开放" || proActionText == "同步后开通",
             onActionClick = onPaymentUnavailable
         )
     }
@@ -635,7 +635,7 @@ private fun MembershipUnavailableNotice() {
         modifier = Modifier.fillMaxWidth()
     ) {
         Text(
-            text = "会员购买暂未开放；当前页面只展示套餐规则，不会发起扣费或变更权益。",
+            text = "会员购买和支付升级暂未开放；当前页面只展示套餐规则，不会发起扣费。礼品卡仍可按规则开通或升级会员。",
             color = Color(0xFF4E5661),
             fontSize = 13.sp,
             lineHeight = 19.sp,

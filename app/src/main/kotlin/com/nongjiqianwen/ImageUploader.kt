@@ -338,7 +338,7 @@ object ImageUploader {
                     // 冻结协议：成功 200 仅认根级 url；失败 !=200 仅认根级 error
                     if (!response.isSuccessful) {
                         val errorMsg = try {
-                            val json = com.google.gson.JsonParser().parse(bodyStr).asJsonObject
+                            val json = com.google.gson.JsonParser.parseString(bodyStr).asJsonObject
                             json.get("error")?.takeIf { it.isJsonPrimitive }?.asString ?: "HTTP $code"
                         } catch (_: Exception) {
                             "HTTP $code"
@@ -359,7 +359,7 @@ object ImageUploader {
                     }
                     
                     // 只解析根级 url，不兼容 data.url 等其他字段
-                    val json = com.google.gson.JsonParser().parse(bodyStr).asJsonObject
+                    val json = com.google.gson.JsonParser.parseString(bodyStr).asJsonObject
                     val url = json.get("url")?.takeIf { it.isJsonPrimitive }?.asString
                     
                     if (!url.isNullOrBlank() && url.startsWith("https://")) {
