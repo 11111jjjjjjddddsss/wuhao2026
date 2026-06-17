@@ -9,14 +9,15 @@ const (
 )
 
 type ChatStreamRequest struct {
-	UserID            string   `json:"user_id,omitempty"`
-	ClientMsgID       string   `json:"client_msg_id"`
-	Text              string   `json:"text"`
-	Images            []string `json:"images,omitempty"`
-	SessionGeneration *int     `json:"session_generation,omitempty"`
-	Region            string   `json:"region,omitempty"`
-	RegionSource      string   `json:"region_source,omitempty"`
-	RegionReliability string   `json:"region_reliability,omitempty"`
+	UserID              string   `json:"user_id,omitempty"`
+	ClientMsgID         string   `json:"client_msg_id"`
+	Text                string   `json:"text"`
+	Images              []string `json:"images,omitempty"`
+	SessionGeneration   *int     `json:"session_generation,omitempty"`
+	Region              string   `json:"region,omitempty"`
+	RegionSource        string   `json:"region_source,omitempty"`
+	RegionReliability   string   `json:"region_reliability,omitempty"`
+	TodayAgriContextDay string   `json:"today_agri_context_day,omitempty"`
 }
 
 type BailianMessage struct {

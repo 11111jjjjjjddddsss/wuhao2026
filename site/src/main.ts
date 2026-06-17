@@ -5,6 +5,15 @@ const downloadLinks = document.querySelectorAll<HTMLAnchorElement>('[data-downlo
 
 const isValidApkUrl = (value: string): boolean => {
   try {
+    const normalized = value.toLowerCase();
+    if (
+      normalized.includes('test-apks') ||
+      normalized.includes('debug') ||
+      normalized.includes('internal') ||
+      normalized.includes('staging')
+    ) {
+      return false;
+    }
     const url = new URL(value);
     return url.protocol === 'https:' && url.pathname.toLowerCase().endsWith('.apk');
   } catch {

@@ -368,6 +368,12 @@ if ($failures.Count -eq 0) {
         "Chat startup must log when the today agri main card is loaded for diagnostics."
     Require-Match $failures $chatScreen 'today_agri\.main_card_visible' `
         "Chat startup must log when the today agri main card is inserted into the visible timeline."
+    Require-Match $failures $chatScreen 'val\s+hasOnlyTodayAgriVisualTimeline\s*=\s*(?s:.*?)messages\.isEmpty\(\)\s*&&\s*hasTodayAgriCard\s*&&\s*!\s*isStreaming\s*&&\s*!\s*hasStreamingItem(?s:.*?)initialBottomSnapDone\s*=\s*true' `
+        "A timeline containing only today agri must reveal at the top instead of being forced through startup history bottom snapping."
+    Require-Match $failures $chatScreen 'fun\s+bottomAnchorIndexOrMinusOne\s*\(\s*\)\s*:\s*Int\s*=\s*(?s:.*?)if\s*\(\s*isStreaming\s*\|\|\s*hasStreamingItem\s*\)(?s:.*?)latestMessageIndexOrMinusOne\(\)(?s:.*?)latestVisualTailIndexOrMinusOne\(\)' `
+        "When not streaming, bottom anchoring must target the visual tail so today agri can participate in back-to-bottom behavior when it follows real messages."
+    Require-Match $failures $chatScreen 'fun\s+currentVisualTailContentBottomPx\s*\(\s*\)\s*:\s*Int(?s:.*?)ChatTimelineItem\.TodayAgriCard(?s:.*?)currentLastMessageContentBottomPx\(\)' `
+        "Static bottom tolerance must measure a trailing today agri item as visual tail, while falling back to real messages when it is absent."
     Require-Match $failures $sessionApi 'fun\s+getTodayAgriCard\b(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return@use\s*\}' `
         "Today agri fetch must always invoke its callback when a reset makes the in-flight request stale."
     Require-Match $failures $sessionApi 'fun\s+getSnapshot\b(?s:.*?)fun\s+attempt\s*\(\s*networkRetry:\s*Int\s*\)\s*\{(?s:.*?)if\s*\(\s*isRuntimeStale\(\)\s*\)\s*\{\s*onResult\s*\(\s*null\s*\)\s*return\s*\}' `
@@ -453,24 +459,42 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
         "Account management defaults must include phone, scoped cache cleanup, history deletion, logout, and account deletion application rows after app data is cleared."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
-    $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)BorderStroke(?s:.*?)TodayAgriNewsItem"
+    $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)SelectionContainer(?s:.*?)TodayAgriNewsItem"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
-    $chatScreenTodayAgriImplementationPattern = "private\s+fun\s+TodayAgriNewsText|private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard|toTodayAgriPlainText\s*\("
+    $chatScreenTodayAgriImplementationPattern = "private\s+fun\s+TodayAgriNewsText|private\s+fun\s+TodayAgriNewsCard|private\s+fun\s+TodayAgriNewsItem|private\s+fun\s+todayAgriDateText|private\s+fun\s+uiCopyPreviewTodayAgriCard"
 
     Require-Match $failures $loginScreen $loginSharedTextPattern `
         "Login agreement links must let users read the same service agreement and privacy policy content as settings."
     Require-Match $failures $pendingWorker $pendingWorkerPrivacyGatePattern `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
     Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
-        "Today agri rendering must stay in TodayAgriCardUi.kt and use the framed normal-list item style."
+        "Today agri rendering must stay in TodayAgriCardUi.kt and use the ordinary selectable text style."
     Require-Match $failures $todayAgriCardUi $todayAgriRenderablePattern `
         "Today agri card display validation must stay near the card UI renderer."
-    Require-Match $failures $todayAgriCardUi 'BorderStroke\s*\(\s*1\.dp,\s*Color\(0xFF111111\)\s*\)' `
-        "Today agri main-chat item must keep the lightweight black frame requested for visibility."
+    Require-NoMatch $failures $todayAgriCardUi 'BorderStroke\s*\(' `
+        "Today agri main-chat item must stay as ordinary text, not a framed card."
     Require-Match $failures $todayAgriCardUi 'fontWeight\s*=\s*FontWeight\.SemiBold(?s:.*?)TodayAgriNewsItem' `
         "Today agri title must stay visually emphasized without becoming a separate card surface."
-    Require-Match $failures $todayAgriCardUi "padStart\s*\(\s*2,\s*'0'\s*\)" `
-        "Today agri item labels must keep the current 01/02/03 compact marker style."
+    Require-Match $failures $todayAgriCardUi '"一、"(?s:.*?)"二、"(?s:.*?)"三、"' `
+        "Today agri item labels must keep the current Chinese sequence marker style."
+    Require-Match $failures $todayAgriCardUi 'LocalTextToolbar\s+provides\s+textToolbar' `
+        "Today agri selection must be able to use the same copy/full-copy toolbar as assistant text."
+    Require-Match $failures $todayAgriCardUi 'fun\s+SessionApi\.TodayAgriCard\.toTodayAgriPlainText\b' `
+        "Today agri full-copy text must stay with the isolated today-agri renderer."
+    Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)buildMessageSelectionTextToolbar(?s:.*?)TodayAgriNewsText' `
+        "Today agri main-chat copy menu must stay aligned with assistant text copy/full-copy behavior."
+    Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
+        "Today agri context must be scoped to the next three user sends after its visual timeline anchor."
+    Require-Match $failures $chatScreen 'todayAgriContextDayForNextSend(?s:.*?)remoteConfirmedDay\s*=\s*todayAgriRemoteConfirmedDay' `
+        "Today agri temporary context must wait for same-day remote confirmation; cached visual content alone must not enter model context."
+    Require-Match $failures $chatScreen 'awaitTodayAgriCard\(\)(?s:.*?)todayAgriRemoteConfirmedDay\s*=\s*refreshDayKey' `
+        "Today agri remote confirmation day must be set only after the backend returns a same-day renderable card."
+    Require-Match $failures $chatScreen 'todayAgriCardAnchorMessageId\s*==\s*TODAY_AGRI_CARD_ANCHOR_START(?s:.*?)latestMessageAnchorId\s*!=\s*null(?s:.*?)!hasStartedConversation' `
+        "Today agri START anchor must not migrate after the user has started sending, otherwise the item can jump below the first answer."
+    Require-NoMatch $failures $chatScreen 'persistedTodayAgriContextDayForUserMessage(?s:.*?)takeIf\s*\{\s*it\s*==\s*currentDay\s*\}' `
+        "Persisted today_agri_context_day for an existing client_msg_id must be reused across midnight to keep replay request hashes stable."
+    Require-Match $failures ($chatScreen + "`n" + $sessionApi + "`n" + $pendingWorker) 'today_agri_context_day|todayAgriContextDay' `
+        "Today agri temporary context day must be carried explicitly through Android stream and pending-send paths."
     Require-NoMatch $failures $chatScreen $chatScreenTodayAgriImplementationPattern `
         "ChatScreen must not re-embed today agri UI rendering or preview fixtures; keep UI-only card code isolated."
     $userMessageImageStripPattern = "fun\s+UserMessageImageStrip\b"
@@ -521,10 +545,12 @@ if ($failures.Count -eq 0) {
         "User messages must keep the current black bubble surface."
     Require-Match $failures $chatScreen 'SelectableRenderedUserMessageBubble(?s:.*?)buildPlainLinkedAnnotatedString\(content,\s*linkColor\s*=\s*Color\.White\)(?s:.*?)color\s*=\s*Color\.White' `
         "User message text and user-link text must remain white inside the black bubble."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("今日农情窄屏",\s*"280dp 下黑框、标题和编号不互挤",\s*UiCopyPreviewKind\.TodayAgriNarrow\)' `
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("今日农情窄屏",\s*"280dp 下标题、正文和来源不互挤",\s*UiCopyPreviewKind\.TodayAgriNarrow\)' `
         "Debug UI copy preview must include a narrow today-agri layout case."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.TodayAgriNarrow(?s:.*?)TodayAgriNewsText\((?s:.*?)horizontalPadding\s*=\s*0\.dp(?s:.*?)maxContentWidth\s*=\s*280\.dp' `
-        "Today agri narrow preview must exercise the 280dp black-frame layout."
+        "Today agri narrow preview must exercise the 280dp ordinary-text layout."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"仅后三轮临时参考，不进记忆",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
+        "Debug UI copy preview must include the today-agri two-round temporary context rule."
     Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
         "Message action menu buttons must expose button semantics for accessibility and UI automation."
     Require-Match $failures $chatComposerPanel 'InputActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
@@ -537,9 +563,9 @@ if ($failures.Count -eq 0) {
         "The top-right membership icon must keep a hidden accessibility label on the outer button."
     Require-Match $failures $chatScreen 'private\s+fun\s+MembershipCenterLeafIcon(?s:.*?)Image\((?s:.*?)contentDescription\s*=\s*null' `
         "The membership leaf graphic itself must stay decorative and avoid duplicating the outer button label."
-    Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*115L\s*else\s*92L" `
+    Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*92L\s*else\s*72L" `
         "Streaming newlines must keep a short readable pause to reduce heading/list reflow popping."
-    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*28L' `
+    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*22L' `
         "Streaming Chinese text must keep one visible character per normal-paced step."
     $onAdvanceMatch = [regex]::Match(
         $chatScreen,

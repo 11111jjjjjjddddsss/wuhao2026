@@ -470,7 +470,7 @@ Write-Host
 Write-Host "== interpretation =="
 Write-Host "cost_note=Prepaid ECS/RDS/Redis/domain/OSS/SMS/DYPNS packages are mostly sunk or renewal costs; DYPNS/fusion is no longer used by new Android and is treated as sunk cost unless auto-renew or new purchase appears; current monthly attention should focus on model usage, SMS PayAsYouGo, SLS growth, snapshots, and real renewal decisions."
 Write-Host "model_note=Early prompt tests can create spikes. Use recent daily average and resource package remaining tokens before buying more plans."
-Write-Host "storage_note=Ask images stay in OSS uploads/ for 3 days and support images in support/ for 30 days; current storage cost should stay tiny unless traffic or model image analysis grows."
+Write-Host "storage_note=Ask images stay in OSS uploads/ for 3 days, support images in support/ for 30 days, and internal test APKs in test-apks/ for 3 days; current storage cost should stay tiny unless traffic or model image analysis grows."
 
 Write-Host
 Write-Host "summary warnings=$($warnings.Count) errors=$($errors.Count)"

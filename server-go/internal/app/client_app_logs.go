@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"os"
@@ -374,7 +375,9 @@ func containsSensitiveClientLogText(value string) bool {
 		"https://",
 		"bearer ",
 		"authorization",
-		"token",
+		"token=",
+		"token:",
+		"token ",
 		"api_key",
 		"access_key",
 		"accesskey",
@@ -456,7 +459,7 @@ func isCrashDiagnosticClientLogAttrKey(key string) bool {
 
 func normalizeCrashDiagnosticClientLogAttrValue(value any) (any, bool) {
 	text := truncateRunes(strings.TrimSpace(fmt.Sprint(value)), 160)
-	if text == "" || strings.Contains(strings.ToLower(text), "http://") || strings.Contains(strings.ToLower(text), "https://") {
+	if text == "" || containsSensitiveCrashDiagnosticClientLogText(text) {
 		return nil, false
 	}
 	var builder strings.Builder
@@ -478,6 +481,43 @@ func normalizeCrashDiagnosticClientLogAttrValue(value any) (any, bool) {
 		return nil, false
 	}
 	return cleaned, true
+}
+
+func containsSensitiveCrashDiagnosticClientLogText(value string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	for _, marker := range []string{
+		"http://",
+		"https://",
+		"bearer ",
+		"authorization",
+		"token=",
+		"token:",
+		"token ",
+		"api_key",
+		"access_key",
+		"accesskey",
+		"secret",
+		"password",
+	} {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	if textContainsSeparatedMainlandPhone(value) {
+		return true
+	}
+	digits := 0
+	for _, r := range normalized {
+		if r >= '0' && r <= '9' {
+			digits++
+			if digits >= 11 {
+				return true
+			}
+		} else {
+			digits = 0
+		}
+	}
+	return false
 }
 
 func isSensitiveClientLogAttrKey(key string) bool {
@@ -521,12 +561,24 @@ func normalizeClientLogAttrValue(value any) (any, bool) {
 	case bool:
 		return v, true
 	case float64:
+		if isSensitiveClientLogNumber(v) {
+			return nil, false
+		}
 		return v, true
 	case float32:
+		if isSensitiveClientLogNumber(float64(v)) {
+			return nil, false
+		}
 		return v, true
 	case int:
+		if isSensitiveClientLogInteger(int64(v)) {
+			return nil, false
+		}
 		return v, true
 	case int64:
+		if isSensitiveClientLogInteger(v) {
+			return nil, false
+		}
 		return v, true
 	case json.Number:
 		text := truncateRunes(strings.TrimSpace(v.String()), 160)
@@ -549,6 +601,23 @@ func normalizeClientLogAttrValue(value any) (any, bool) {
 		}
 		return text, true
 	}
+}
+
+func isSensitiveClientLogNumber(value float64) bool {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return true
+	}
+	if math.Trunc(value) != value {
+		return false
+	}
+	return isSensitiveClientLogInteger(int64(value))
+}
+
+func isSensitiveClientLogInteger(value int64) bool {
+	if value < 0 {
+		value = -value
+	}
+	return value >= 10_000_000_000
 }
 
 func (input ClientAppLogInput) AppVersionCodeValue() any {

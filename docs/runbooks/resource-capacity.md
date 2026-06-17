@@ -1,6 +1,6 @@
 # 云资源容量与续费巡检
 
-最后更新：2026-06-15
+最后更新：2026-06-17
 
 ## 目的
 
@@ -10,7 +10,7 @@
 
 ## 2026-06-14 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 5 条应用日志告警为 `ready`。巡检脚本会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。2026-06-15 已按阿里云官方文档复核释放保护口径：ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 均为包年包月，脚本会显示 `deletion_protection=not_applicable_prepaid`，不要把旧输出里的 `False` 误读成缺少保护。同日，资源巡检已收紧 OSS 生命周期校验，会按 XML 逐条确认 `uploads/` 3 天、`support/` 30 天和未完成分片 1 天在同一条启用规则里成立，避免前缀和天数分属不同规则时假绿。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 5 条应用日志告警为 `ready`。巡检脚本会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。2026-06-15 已按阿里云官方文档复核释放保护口径：ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 均为包年包月，脚本会显示 `deletion_protection=not_applicable_prepaid`，不要把旧输出里的 `False` 误读成缺少保护。2026-06-17 资源巡检已收紧 OSS 生命周期校验，会按 XML 逐条确认 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天和未完成分片 1 天在同一条启用规则里成立，避免前缀和天数分属不同规则时假绿。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
 - ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 12 GiB（16%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
@@ -18,7 +18,7 @@
 - RDS MySQL 是包年包月 `Prepaid`，阿里云 RDS MySQL 释放保护只适用于按量付费或 Serverless 实例，脚本输出为 `deletion_protection=not_applicable_prepaid`
 - RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 2.98 GiB（约 5.97%）；近 30 分钟 QPS/TPS 峰值约 10.03、IOPS 约 5.93、内存 / CPU 指标约 11.76%、连接约 4；备份保留 7 天，日志备份已启用
 - Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.39 MiB / 256 MiB（约 2.11%），CPU 峰值约 0.13%，连接使用约 0.04%；释放保护已开启
-- OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS，当前对象数 1、占用约 0.20 MB；生命周期仍为 `uploads/` 3 天、`support/` 30 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`；2026-06-15 起 `check-resource-capacity.ps1` 会解析生命周期 XML 并逐前缀输出 `lifecycle prefix=... status=... expiration_days=... abort_multipart_days=...`
+- OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS；生命周期为 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`；2026-06-17 起 `check-resource-capacity.ps1` 会解析生命周期 XML 并逐前缀输出 `lifecycle prefix=... status=... expiration_days=... abort_multipart_days=...`
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。ECS 已补装 CloudMonitor C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；本轮严格巡检里 ECS 内存规则已回到 `OK`。若未来云监控返回 `INSUFFICIENT_DATA`，严格巡检会以 warning / attention 提醒。该组用于资源不足提前邮件提醒，不走短信 / 电话
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
@@ -27,7 +27,7 @@
 - 数据留存与文字表成本：2026-06-15 新增 `scripts/check-data-retention-cost.ps1` 并接入 `check-resource-capacity.ps1`。该脚本只读统计重点文字 / 日志 / 账本表的行数、最早 / 最新时间和表体量，默认守护聊天归档 31 天、App 自动日志 30 天、客服文字 / 审计 / 幂等 ledger 365 天复核窗口、单表 1GB、重点表合计 10GB。当前生产实测重点表合计约 0.828MB，`warnings=0 / errors=0 / status=ready`；因此当前成本很低。App 自动日志已按低成本窗口在写入路径限频清理，公开运营前仍需继续补客服文字、后台审计和注销联动的自动清理 / 去标识化策略
 - 费用中心账单巡检：2026-06-15 新增 `scripts/check-aliyun-costs.ps1`，通过阿里云费用中心 BSS OpenAPI 只读查询账户余额、当月 / 上月产品账单、当前月明细、百炼每日走势、有效资源包和有效实例；脚本会重试费用中心偶发超时，统一脱敏请求签名和账号字段，不买资源、不续费、不退订、不释放实例。当前实测账户可用余额约 `628.35` 元；2026-06 当月产品账单税前合计约 `130.1225` 元，其中百炼约 `60.2716` 元、短信套餐包 `35` 元、DYPNS / 融合认证套餐 `34.85` 元、SLS 约 `0.0009` 元。百炼成本主要来自 2026-06-08 到 2026-06-10 的提示词 / 探针集中测试，最近 5 天百炼税前合计约 `0.357` 元、均值约 `0.0714` 元 / 天；`qwen-plus` 推理资源包剩余 `11,489,501 / 12,000,000 tokens`，OSS 标准存储包剩余 `100 / 100GB`。DYPNS / 融合认证已按已购沉没成本处理，新 Android 不再使用；当前两个融合认证包均为 `ManualRenewal`，不是自动续费，其中 2026-05-31 包实付 `0` 元、2026-06-06 包实付约 `34.85` 元；CLI 安全询价 `InquiryPriceRefundInstance` 对两个包均返回 `CommodityNotSupported`，不走 CLI 退订。脚本只在 DYPNS / 融合认证出现自动续费或新增购买等情况时提醒；短信套餐包在资源包 API 中不可见、百炼节省计划临近到期等仍列为 attention，这是经营成本提醒，不等同于服务故障。当前建议是保留低价 ECS / RDS / Redis / OSS / 域名 / 短信套餐，不升配；百炼按真实用户量再买资源包或节省计划。
 
-统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-14 起，云监控规则若返回 `INSUFFICIENT_DATA` 也会输出 warning / attention，避免 ECS 内存等操作系统指标无数据时假绿；2026-06-15 起，OSS 生命周期不再只用文本包含关系粗看，而是解析生命周期 XML 并确认 `uploads/`、`support/` 前缀各自对应正确过期天数和 1 天未完成分片清理；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
+统一只读资源巡检脚本会复查容量、到期、证书、OSS、云监控规则、SLS 告警和认证用量，输出会脱敏，不打印密钥。2026-06-12 起，云监控 9 条规则不只看是否存在，还会校验资源实例、warn / critical 阈值、连续周期和统计周期，避免“规则名存在但挂错资源 / 阈值飘了”的假绿；2026-06-14 起，云监控规则若返回 `INSUFFICIENT_DATA` 也会输出 warning / attention，避免 ECS 内存等操作系统指标无数据时假绿；2026-06-17 起，OSS 生命周期不再只用文本包含关系粗看，而是解析生命周期 XML 并确认 `uploads/`、`support/`、`test-apks/` 前缀各自对应正确过期天数和 1 天未完成分片清理；2026-06-13 起，SLS 规则查询、严重级别、触发条件、重复提醒、行动策略或仪表盘出现漂移时，默认资源巡检会输出 attention，不再吞成 ready：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resource-capacity.ps1
@@ -95,7 +95,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 - ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；CLI 显示实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 5.0 GiB（7%），无 OOM 记录
 - RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。CLI 显示磁盘使用约 3.0 GiB（约 6%）；近 15 分钟 CPU 约 0.7%，内存约 11%，IOPS 约 5，连接约 0 到 1
 - Redis：256 MiB 标准主备，到期 `2027-05-30T16:00:00Z`。CLI 显示实例 Normal、连接上限 10000、QPS 规格 100000；近 10 分钟监控内存约 4.4 MiB / 256 MiB（约 1.7%）、CPU 0 到 0.4%、连接使用约 0.03% 到 0.05%
-- OSS：`nongjiqiancha-prod` 当前 `du` 为 0 MB，100 GiB 标准-本地冗余资源包足够；`uploads/` 3 天、`support/` 30 天生命周期仍是控制成本的关键
+- OSS：`nongjiqiancha-prod` 当前用量很低，100 GiB 标准-本地冗余资源包足够；`uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天生命周期仍是控制成本的关键
 - CDN：当前未启用，也不是早期必需项。阿里云 CDN 不是纯免费资源，按官方口径会产生下行流量 / 带宽等基础费用，HTTPS 静态请求有月度免费额度但超出仍计费；早期问诊图片继续走后端 `/uploads/` 中转 + OSS 生命周期，不把私有问诊图片直接改成 CDN 长缓存。若后续 APK 下载、官网静态资源或公开图片流量明显挤占 5 Mbps ECS 出口，再评估 CDN / OSS 下行分流 / 带宽升级
 - 普通短信服务：上线后重点看短信套餐包余量、发送成功率、失败码和异常手机号 / IP 请求；历史 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 仍可辅助查询旧 DYPNS / 融合认证统计，但新 Android 不再消耗融合认证
 - API / 官网：2026-06-06 巡检时发现一次 502，根因不是资源不足，而是双端口发布的多个 drain-stop 定时任务叠加，把当前 slot 也停掉；已启动当前 active slot 恢复 `https://api.nongjiqiancha.cn/healthz` 200，并修复部署 / 回滚脚本以清理旧 drain 任务，就绪检查脚本也改成 HTTPS healthz 非 200 或 active slot inactive 时直接失败。后续复查最近 6 小时 Go 服务未见业务错误，Nginx error log 主要是公网扫描 `.env / phpinfo / json key` 等探测请求被限流拦截，未见新的 API 5xx 计数；API HTTP 80 已改为 ACME challenge + 301 HTTPS 跳转，不再直接反代业务 API

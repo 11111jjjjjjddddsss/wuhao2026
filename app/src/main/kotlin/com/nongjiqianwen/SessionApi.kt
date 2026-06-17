@@ -57,7 +57,8 @@ object SessionApi {
         val sessionGeneration: Int? = null,
         val region: String? = null,
         val regionSource: String? = null,
-        val regionReliability: String? = null
+        val regionReliability: String? = null,
+        val todayAgriContextDay: String? = null
     )
 
     enum class StreamCompletionStatus {
@@ -91,6 +92,7 @@ object SessionApi {
         putTrimmedStreamField(streamBody, "region", options.region, maxLength = 96)
         putTrimmedStreamField(streamBody, "region_source", options.regionSource, maxLength = 32)
         putTrimmedStreamField(streamBody, "region_reliability", options.regionReliability, maxLength = 32)
+        putTrimmedStreamField(streamBody, "today_agri_context_day", options.todayAgriContextDay, maxLength = 16)
         return gson.toJson(streamBody)
     }
 

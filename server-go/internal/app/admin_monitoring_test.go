@@ -628,6 +628,11 @@ func TestAndroidUpdateConfigValidityContract(t *testing.T) {
 			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "http://download.example.com/app.apk"},
 			wantValid: false,
 		},
+		{
+			name:      "internal test apk is invalid",
+			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "https://download.example.com/test-apks/debug/app-internal.apk"},
+			wantValid: false,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

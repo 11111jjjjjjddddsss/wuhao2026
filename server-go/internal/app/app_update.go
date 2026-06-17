@@ -161,7 +161,7 @@ func androidUpdateIgnoredReason(cfg androidUpdateConfig) string {
 	if strings.TrimSpace(cfg.APKURL) == "" {
 		return "missing_apk_url"
 	}
-	if !isHTTPSURL(cfg.APKURL) {
+	if !isOfficialAndroidAPKURL(cfg.APKURL) {
 		return "invalid_apk_url"
 	}
 	if strings.TrimSpace(cfg.APKChecksumSHA256) == "" || cfg.FileSizeBytes <= 0 {
@@ -178,7 +178,7 @@ func androidUpdateConfigValid(cfg androidUpdateConfig) bool {
 		return true
 	}
 	return cfg.LatestVersionCode > 0 &&
-		(strings.TrimSpace(cfg.APKURL) == "" || isHTTPSURL(cfg.APKURL)) &&
+		(strings.TrimSpace(cfg.APKURL) == "" || isOfficialAndroidAPKURL(cfg.APKURL)) &&
 		cfg.FileSizeBytes <= maxAndroidAPKBytes
 }
 
@@ -194,10 +194,29 @@ func androidUpdateConfigEmpty(cfg androidUpdateConfig) bool {
 
 func androidUpdateDownloadArtifactsComplete(cfg androidUpdateConfig) bool {
 	return strings.TrimSpace(cfg.APKURL) != "" &&
-		isHTTPSURL(cfg.APKURL) &&
+		isOfficialAndroidAPKURL(cfg.APKURL) &&
 		strings.TrimSpace(cfg.APKChecksumSHA256) != "" &&
 		cfg.FileSizeBytes > 0 &&
 		cfg.FileSizeBytes <= maxAndroidAPKBytes
+}
+
+func isOfficialAndroidAPKURL(raw string) bool {
+	if !isHTTPSURL(raw) {
+		return false
+	}
+	lower := strings.ToLower(raw)
+	if parsed, err := url.Parse(raw); err == nil {
+		if decodedPath, pathErr := url.PathUnescape(parsed.EscapedPath()); pathErr == nil {
+			lower += " " + strings.ToLower(decodedPath)
+		}
+		if decodedRaw, rawErr := url.QueryUnescape(raw); rawErr == nil {
+			lower += " " + strings.ToLower(decodedRaw)
+		}
+	}
+	return !strings.Contains(lower, "test-apks") &&
+		!strings.Contains(lower, "debug") &&
+		!strings.Contains(lower, "internal") &&
+		!strings.Contains(lower, "staging")
 }
 
 func isHTTPSURL(raw string) bool {

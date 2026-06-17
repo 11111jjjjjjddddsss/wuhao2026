@@ -62,14 +62,106 @@ class ChatTimelineItemsTest {
 
         assertEquals(
             "今日农情 · 6月15日\n\n" +
-                "1. 病虫监测\n" +
+                "一、病虫监测\n" +
                 "多地提醒加强田间巡查。\n" +
                 "来源：全国农技中心\n\n" +
-                "2. 栽培管理\n" +
+                "二、栽培管理\n" +
                 "雨后注意排水和控旺。\n\n" +
-                "3. 产地流通\n" +
+                "三、产地流通\n" +
                 "部分蔬菜产区供应恢复。",
             text
+        )
+    }
+
+    @Test
+    fun todayAgriContextDayOnlyAppliesToThreeUserMessagesAfterCard() {
+        val items = listOf(
+            ChatTimelineItem.TodayAgriCard(todayAgriCard()),
+            ChatTimelineItem.Message(userMessage("u1")),
+            ChatTimelineItem.Message(assistantMessage("a1")),
+            ChatTimelineItem.Message(userMessage("u2")),
+            ChatTimelineItem.Message(assistantMessage("a2")),
+            ChatTimelineItem.Message(userMessage("u3")),
+            ChatTimelineItem.Message(assistantMessage("a3")),
+            ChatTimelineItem.Message(userMessage("u4"))
+        )
+
+        assertEquals(
+            "20260615",
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items.take(1),
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615"
+            )
+        )
+        assertEquals(
+            "20260615",
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items.take(4),
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615"
+            )
+        )
+        assertEquals(
+            "20260615",
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items.take(5),
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615"
+            )
+        )
+        assertEquals(
+            null,
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items,
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615"
+            )
+        )
+    }
+
+    @Test
+    fun todayAgriContextDayKeepsRetryAndRequiresRemoteConfirmation() {
+        val items = listOf(
+            ChatTimelineItem.TodayAgriCard(todayAgriCard()),
+            ChatTimelineItem.Message(userMessage("u1")),
+            ChatTimelineItem.Message(assistantMessage("a1")),
+            ChatTimelineItem.Message(userMessage("u2"))
+        )
+
+        assertEquals(
+            "20260615",
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items,
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615",
+                existingUserMessageId = "u1"
+            )
+        )
+        assertEquals(
+            null,
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items,
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = null,
+                existingUserMessageId = "u1"
+            )
+        )
+        assertEquals(
+            null,
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items,
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260616",
+                remoteConfirmedDay = "20260615",
+                existingUserMessageId = "u1"
+            )
         )
     }
 

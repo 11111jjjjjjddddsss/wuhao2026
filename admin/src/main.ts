@@ -1404,6 +1404,10 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     window.alert("APK URL 必须是 https:// 开头。");
     return;
   }
+  if (apkURL && isInternalTestApkURL(apkURL)) {
+    window.alert("这是内部测试包链接，不能配置到正式检查更新。测试包请走临时下载链接。");
+    return;
+  }
   if (apkSHA256 && !/^[0-9a-fA-F]{64}$/.test(apkSHA256.replace(/:/g, ""))) {
     window.alert("SHA-256 必须是 64 位十六进制。");
     return;
@@ -1417,12 +1421,12 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     return;
   }
   const confirmText = enabled
-    ? `确认对外启用普通检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\nSHA-256: ${apkSHA256}\n文件大小: ${fileSizeBytes} bytes\n\n请先跑 check-app-update-release-match.ps1 核对 APK 包名、签名、versionCode、SHA-256 和文件大小。保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。更新说明留空时默认显示“修复已知问题，优化使用体验。”`
+    ? `确认对外启用普通检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\nSHA-256: ${apkSHA256}\n文件大小: ${fileSizeBytes} bytes\n\n请确认已经获得业务负责人正式发版口令，并已跑 check-app-update-release-match.ps1 核对 APK 包名、签名、versionCode、SHA-256 和文件大小。保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。更新说明留空时默认显示“修复已知问题，优化使用体验。”`
     : "确认保存为停更状态？停更后，App 启动静默检查和用户手动检查都不会拿到新包。";
   if (!window.confirm(confirmText)) {
     return;
   }
-  const typedConfirmation = window.prompt(enabled ? `请输入 ${latestVersionCode} 确认对外启用这次更新。` : "请输入 停更 确认保存为停更状态。");
+  const typedConfirmation = window.prompt(enabled ? `请输入 ${latestVersionCode} 确认已获正式发版口令，并对外启用这次更新。` : "请输入 停更 确认保存为停更状态。");
   if (typedConfirmation === null) return;
   if (typedConfirmation.trim() !== (enabled ? String(latestVersionCode) : "停更")) {
     window.alert(enabled ? "输入的 versionCode 不一致，已取消发布。" : "未输入“停更”，已取消保存。");
@@ -2628,22 +2632,22 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
 function appUpdateEditForm(config: AdminAppUpdateConfig): string {
   return `
     <form id="app-update-form" class="stack">
-      ${notice("怎么发新包", "填 versionCode、HTTPS APK、SHA-256 和文件大小；勾上“对外启用更新”后保存，旧版 App 启动后会静默检查，用户也可手动检查。取消勾选并保存，就是停更。", "info")}
+      ${notice("怎么发新包", "填内部版本号、安装包下载链接、安装包校验码和文件大小；勾上“对外启用更新”后保存，旧版 App 启动后会静默检查，用户也可手动检查。取消勾选并保存，就是停更。", "info")}
       ${notice("不是系统推送", "当前没有通知权限和推送服务；默认只做普通更新，每个版本最多自动提醒一次。更新说明可以留空，App 会显示默认文案。", "warn")}
       <label class="field">
-        <span>内部版本号 versionCode</span>
+        <span>内部版本号（versionCode）</span>
         <input class="input" name="latest_version_code" type="number" min="0" step="1" value="${escapeAttr(String(config.latest_version_code || ""))}" placeholder="例如 10023" />
       </label>
       <label class="field">
-        <span>展示版本 versionName</span>
+        <span>展示版本（versionName）</span>
         <input class="input" name="latest_version_name" value="${escapeAttr(config.latest_version_name || "")}" placeholder="例如 1.0.23" />
       </label>
       <label class="field">
-        <span>APK URL</span>
+        <span>安装包下载链接（APK URL）</span>
         <input class="input" name="apk_url" value="${escapeAttr(config.apk_url || "")}" placeholder="https://..." />
       </label>
       <label class="field">
-        <span>SHA-256</span>
+        <span>安装包校验码（SHA-256）</span>
         <input class="input" name="apk_sha256" value="${escapeAttr(config.apk_sha256 || "")}" placeholder="64位十六进制" />
       </label>
       <label class="field">
@@ -2838,6 +2842,19 @@ function openAppLogsWithFilter(filter: { userID?: string; event?: string; eventP
 
 function formValue(form: HTMLFormElement, key: string): string {
   return String(new FormData(form).get(key) || "").trim();
+}
+
+function isInternalTestApkURL(value: string): boolean {
+  let normalized = value.trim().toLowerCase();
+  try {
+    normalized = `${normalized} ${decodeURIComponent(value).toLowerCase()}`;
+  } catch {
+    // Keep the raw-string check if the URL is not safely decodable.
+  }
+  return normalized.includes("test-apks") ||
+    normalized.includes("debug") ||
+    normalized.includes("internal") ||
+    normalized.includes("staging");
 }
 
 function sinceFromWindow(value: string): number {

@@ -1,26 +1,23 @@
 package com.nongjiqianwen
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.border
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalTextToolbar
+import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -39,6 +36,8 @@ fun TodayAgriNewsText(
     card: SessionApi.TodayAgriCard,
     horizontalPadding: Dp = 18.dp,
     maxContentWidth: Dp = 560.dp,
+    textSelectionColors: TextSelectionColors? = null,
+    textToolbar: TextToolbar? = null,
     modifier: Modifier = Modifier
 ) {
     val items = card.items.orEmpty().take(3)
@@ -54,12 +53,11 @@ fun TodayAgriNewsText(
             modifier = Modifier
                 .widthIn(max = maxContentWidth)
                 .fillMaxWidth()
-                .border(BorderStroke(1.dp, Color(0xFF111111)), RoundedCornerShape(8.dp))
-                .padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 2.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            SelectionContainer {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            val content: @Composable () -> Unit = {
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
                     Text(
                         text = buildString {
                             append("今日农情")
@@ -83,6 +81,24 @@ fun TodayAgriNewsText(
                     }
                 }
             }
+            if (textSelectionColors != null && textToolbar != null) {
+                CompositionLocalProvider(
+                    LocalTextSelectionColors provides textSelectionColors,
+                    LocalTextToolbar provides textToolbar
+                ) {
+                    SelectionContainer { content() }
+                }
+            } else if (textSelectionColors != null) {
+                CompositionLocalProvider(LocalTextSelectionColors provides textSelectionColors) {
+                    SelectionContainer { content() }
+                }
+            } else if (textToolbar != null) {
+                CompositionLocalProvider(LocalTextToolbar provides textToolbar) {
+                    SelectionContainer { content() }
+                }
+            } else {
+                SelectionContainer { content() }
+            }
         }
     }
 }
@@ -102,10 +118,8 @@ fun SessionApi.TodayAgriCard.toTodayAgriPlainText(): String {
             val summary = item.summary.orEmpty().trim()
             val source = item.source.orEmpty().trim()
             append("\n\n")
-            append(index + 1)
-            append(". ")
             if (title.isNotBlank()) {
-                append(title)
+                append(todayAgriItemTitle(index, title))
                 append("\n")
             }
             append(summary)
@@ -124,60 +138,46 @@ private fun TodayAgriNewsItem(
     summary: String,
     source: String
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top,
+    Column(
+        verticalArrangement = Arrangement.spacedBy(7.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
-            modifier = Modifier
-                .padding(top = 3.dp)
-                .sizeIn(minWidth = 28.dp, minHeight = 22.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color(0xFF111111))
-                .padding(horizontal = 8.dp, vertical = 3.dp),
-            contentAlignment = Alignment.Center
-        ) {
+        if (title.isNotBlank()) {
             Text(
-                text = (index + 1).toString().padStart(2, '0'),
-                color = Color.White,
-                fontSize = 12.sp,
-                lineHeight = 14.sp,
+                text = todayAgriItemTitle(index, title),
+                color = Color(0xFF111111),
+                fontSize = 18.sp,
+                lineHeight = 25.sp,
                 fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center
             )
         }
-        Column(
-            verticalArrangement = Arrangement.spacedBy(7.dp),
-            modifier = Modifier.weight(1f)
-        ) {
-            if (title.isNotBlank()) {
-                Text(
-                    text = title,
-                    color = Color(0xFF111111),
-                    fontSize = 18.sp,
-                    lineHeight = 25.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-            if (summary.isNotBlank()) {
-                Text(
-                    text = summary,
-                    color = Color(0xFF202124),
-                    fontSize = 17.sp,
-                    lineHeight = 28.sp
-                )
-            }
-            if (source.isNotBlank()) {
-                Text(
-                    text = "来源：$source",
-                    color = Color(0xFF6F747C),
-                    fontSize = 14.sp,
-                    lineHeight = 20.sp
-                )
-            }
+        if (summary.isNotBlank()) {
+            Text(
+                text = summary,
+                color = Color(0xFF202124),
+                fontSize = 17.sp,
+                lineHeight = 28.sp
+            )
+        }
+        if (source.isNotBlank()) {
+            Text(
+                text = "来源：$source",
+                color = Color(0xFF6F747C),
+                fontSize = 14.sp,
+                lineHeight = 20.sp
+            )
         }
     }
+}
+
+private fun todayAgriItemTitle(index: Int, title: String): String {
+    val prefix = when (index) {
+        0 -> "一、"
+        1 -> "二、"
+        2 -> "三、"
+        else -> "${index + 1}. "
+    }
+    return "$prefix$title"
 }
 
 fun uiCopyPreviewTodayAgriCard(): SessionApi.TodayAgriCard =

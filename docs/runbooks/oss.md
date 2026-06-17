@@ -1,6 +1,6 @@
 # OSS 图片存储 Runbook
 
-最后更新：2026-06-15
+最后更新：2026-06-17
 
 ## 目的
 
@@ -22,8 +22,9 @@
 - 2026-05-31 已配置生命周期：
   - `uploads/`：问诊上传图 3 天自动删除
   - `support/`：帮助与反馈图片 30 天自动删除
+  - `test-apks/`：内部 debug 测试包 3 天自动删除
   - 未完成分片上传：1 天自动清理
-- 2026-06-15 起，[check-resource-capacity.ps1](D:/wuhao/scripts/check-resource-capacity.ps1) 会解析 OSS 生命周期 XML，逐条确认 `uploads/`、`support/` 前缀规则均为 `Enabled`，且各自过期天数和未完成分片 1 天清理配置在同一条规则里成立，避免后续控制台误改后巡检假绿
+- 2026-06-17 起，[check-resource-capacity.ps1](D:/wuhao/scripts/check-resource-capacity.ps1) 会解析 OSS 生命周期 XML，逐条确认 `uploads/`、`support/`、`test-apks/` 前缀规则均为 `Enabled`，且各自过期天数和未完成分片 1 天清理配置在同一条规则里成立，避免后续控制台误改后巡检假绿
 - `server-go` 已新增 OSS 上传存储后端。2026-05-31 已创建最小权限 RAM 子账号 / 策略、完成上传 / 下载 / 删除冒烟测试，并把生产 ECS 配置为 `UPLOAD_STORAGE_BACKEND=oss`、`OSS_BUCKET=nongjiqiancha-prod`、`OSS_ENDPOINT=https://oss-cn-beijing-internal.aliyuncs.com` 和 OSS 凭证；2026-06-13 已把该 RAM 策略默认版本更新到 v3，仅放行 Bucket 本体、`uploads/*` 和 `support/*` 所需对象操作，避免帮助与反馈图片切到 `support/` 后生产上传失败。当前 `/healthz` 返回 `upload_storage=oss`，`/upload` 写私有 OSS，且默认按 `user_id + IP` 做 10 分钟 120 次短期限流，防异常客户端循环刷上传成本。App、模型和历史 URL 仍走本后端 `https://api.nongjiqiancha.cn/uploads/<file>.jpg` 或 `https://api.nongjiqiancha.cn/uploads/support/<file>.jpg`，不把 OSS AK/SK 下发 Android。未配置 OSS 的其他环境仍可回退 ECS 本机 `/var/lib/nongjiqiancha/uploads`
 - 2026-06-13 起，帮助与反馈图片仍复用后端 `/upload` 接口，但 Android 会先按主聊天同一压缩链把图片压成 `<=1MiB` JPEG，再额外传 `purpose=support`；后端写入 OSS `support/` 前缀并返回 `/uploads/support/<file>.jpg`，按 30 天生命周期删除。普通问诊图片不传 purpose，继续写入 `uploads/` 并按 3 天删除。主聊天接口只接受普通 `/uploads/<file>.jpg`，不接受 `/uploads/support/<file>.jpg`，避免客服截图误进主模型图片链
 
@@ -61,6 +62,7 @@
 - 后端是上传和访问控制唯一入口
 - 多台 ECS 或回到 SAE 多实例前，生产环境已满足共享对象存储前置条件，且 `api.nongjiqiancha.cn` HTTPS 已就绪；仍需在模型 Key 配好后用真实 App 链路验证 `/upload`、`/uploads/` 和模型拉图链路
 - 若 APK 分发也放 OSS，应单独配置下载域名、HTTPS、文件大小和 SHA-256，不建议让 Go 后端动态服务大 APK
+- 内部测试包可以临时上传到私有 OSS `test-apks/debug/...` 并生成限时签名链接；它不是正式分发路径，不能写入官网正式下载按钮或 App 检查更新配置。
 
 ## 当前阻塞
 

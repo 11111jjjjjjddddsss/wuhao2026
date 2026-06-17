@@ -5,7 +5,8 @@ param(
     [string]$WwwDomain = "www.nongjiqiancha.cn",
     [string]$EcsIp = "39.106.1.151",
     [int]$ChunkSize = 20000,
-    [switch]$PackageOnly
+    [switch]$PackageOnly,
+    [switch]$AllowOfficialDownloadUrl
 )
 
 $ErrorActionPreference = "Stop"
@@ -159,11 +160,76 @@ function Sync-ARecord {
     Write-Host "DNS A record ${Rr}.${Domain} already points to ${Value}"
 }
 
+function Test-OfficialAndroidApkUrl {
+    param([string]$Url)
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $false
+    }
+    $parsed = $null
+    if (-not [System.Uri]::TryCreate($Url.Trim(), [System.UriKind]::Absolute, [ref]$parsed)) {
+        return $false
+    }
+    if ($parsed.Scheme -ne "https") {
+        return $false
+    }
+    return $parsed.AbsolutePath.ToLowerInvariant().EndsWith(".apk")
+}
+
+function Test-InternalAndroidApkUrlMarker {
+    param([string]$Url)
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $false
+    }
+    $lower = $Url.ToLowerInvariant()
+    try {
+        $decoded = [System.Uri]::UnescapeDataString($Url).ToLowerInvariant()
+        $lower = "$lower $decoded"
+    } catch {
+        # Keep the raw-string check if the URL is not safely decodable.
+    }
+    return $lower -match "test-apks|debug|internal|staging"
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $siteDir = Join-Path $repoRoot "site"
 $distDir = Join-Path $siteDir "dist"
 $tmpDir = Join-Path $repoRoot "tmp"
 New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
+
+$configuredApkUrl = [string]$env:VITE_ANDROID_APK_URL
+$siteEnvFiles = @(
+    Get-ChildItem -LiteralPath $siteDir -Force -File -Filter ".env*" -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notin @(".env.example", ".env.sample", ".env.template") }
+)
+if ($siteEnvFiles.Count -gt 0) {
+    foreach ($envFile in $siteEnvFiles) {
+        $envText = Get-Content -LiteralPath $envFile.FullName -Raw -ErrorAction Stop
+        if ($envText -match '(?m)^\s*VITE_ANDROID_APK_URL\s*=') {
+            if (-not $AllowOfficialDownloadUrl) {
+                throw "site $($envFile.Name) contains VITE_ANDROID_APK_URL, but official download URLs are disabled by default for site deploy. Pass -AllowOfficialDownloadUrl only for a confirmed official release."
+            }
+            $envApkLine = ($envText -split "`r?`n" | Where-Object { $_ -match '^\s*VITE_ANDROID_APK_URL\s*=' } | Select-Object -First 1)
+            $envApkUrl = (($envApkLine -split "=", 2)[1]).Trim().Trim('"').Trim("'")
+            if (Test-InternalAndroidApkUrlMarker $envApkUrl) {
+                throw "site $($envFile.Name) contains an internal test APK URL; do not publish test packages on the official website."
+            }
+            if (-not (Test-OfficialAndroidApkUrl $envApkUrl)) {
+                throw "site $($envFile.Name) contains VITE_ANDROID_APK_URL, but it is not a valid https .apk URL."
+            }
+        }
+    }
+}
+if (-not [string]::IsNullOrWhiteSpace($configuredApkUrl)) {
+    if (-not $AllowOfficialDownloadUrl) {
+        throw "VITE_ANDROID_APK_URL is set, but official download URLs are disabled by default for site deploy. Pass -AllowOfficialDownloadUrl only for a confirmed official release."
+    }
+    if (Test-InternalAndroidApkUrlMarker $configuredApkUrl) {
+        throw "VITE_ANDROID_APK_URL looks like an internal test APK URL; do not publish test packages on the official website."
+    }
+    if (-not (Test-OfficialAndroidApkUrl $configuredApkUrl)) {
+        throw "VITE_ANDROID_APK_URL must be a valid https .apk URL when official downloads are explicitly enabled."
+    }
+}
 
 Push-Location $siteDir
 try {

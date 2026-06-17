@@ -1085,7 +1085,7 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		s.writeError(w, http.StatusBadRequest, "force_update_disabled")
 		return
 	}
-	if cfg.APKURL != "" && !isHTTPSURL(cfg.APKURL) {
+	if cfg.APKURL != "" && !isOfficialAndroidAPKURL(cfg.APKURL) {
 		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, "invalid_apk_url")
 		s.writeError(w, http.StatusBadRequest, "invalid_apk_url")
 		return

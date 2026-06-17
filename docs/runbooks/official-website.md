@@ -67,7 +67,9 @@ $env:VITE_ANDROID_APK_URL="https://your-download-host/nongjiqiancha.apk"
 npm run build
 ```
 
-未设置时下载按钮保持不可点击，不展示“准备中”或备案 / 回归等内部流程。只有 `VITE_ANDROID_APK_URL` 是合法 `https://...apk` 时，页面才启用下载按钮；首版不要在 App 备案、公安备案和真机回归完成前写死不存在或未验证的 APK 链接。
+未设置时下载按钮保持不可点击，不展示“准备中”或备案 / 回归等内部流程。只有 `VITE_ANDROID_APK_URL` 是合法 `https://...apk`，且原始或 URL 编码后的地址都不包含 `test-apks`、`debug`、`internal`、`staging` 等测试包标记时，页面才启用下载按钮；首版不要在 App 公安备案、真机回归和正式发版口令完成前写死不存在或未验证的 APK 链接。
+
+[deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 默认不允许带 `VITE_ANDROID_APK_URL` 部署官网；脚本会同时检查当前环境变量和 `site/.env*` 文件，避免本机残留环境文件把 APK 链接带进正式站。只有用户明确要求发布正式下载入口时，才允许传 `-AllowOfficialDownloadUrl`，且脚本仍会拒绝测试包路径和编码后的测试包标记。代理测试 / 管理层试用的 debug 包只走 [android-test-package.md](D:/wuhao/docs/runbooks/android-test-package.md)，不要放到官网正式下载按钮。
 
 APK 发布仍以 [app-update.md](D:/wuhao/docs/runbooks/app-update.md) 为准：APK 必须是固定 release 签名、包名 `com.nongjiqiancha`、versionCode 递增，并记录文件大小和 SHA-256。
 

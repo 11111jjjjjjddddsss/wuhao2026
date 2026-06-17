@@ -275,6 +275,10 @@ if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
     Add-Failure $failures "admin APK URL must be an absolute https URL"
 } else {
     Write-Host ("admin_apk_url_host={0}" -f $parsedApkUrl.Host)
+    $apkUrlText = $adminApkUrl.ToLowerInvariant()
+    if ($apkUrlText -match "test-apks|debug|internal|staging") {
+        Add-Failure $failures "admin APK URL looks like an internal test APK URL; do not configure debug/internal/staging/test-apks links for app update"
+    }
     if (-not $parsedApkUrl.AbsolutePath.ToLowerInvariant().EndsWith(".apk")) {
         Add-Failure $failures "admin APK URL path should end with .apk"
     }

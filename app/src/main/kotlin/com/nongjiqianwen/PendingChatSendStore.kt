@@ -15,6 +15,7 @@ internal data class PendingChatSend(
     val region: String? = null,
     val regionSource: String? = null,
     val regionReliability: String? = null,
+    val todayAgriContextDay: String? = null,
     val createdAtMs: Long = System.currentTimeMillis(),
     val updatedAtMs: Long = System.currentTimeMillis(),
     val remoteStartedAtMs: Long = 0L,

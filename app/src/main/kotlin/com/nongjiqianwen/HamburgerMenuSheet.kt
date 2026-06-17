@@ -1678,7 +1678,7 @@ private fun HamburgerRiskNoticeContent(
     ) {
         HamburgerLegalPageTitle("风险提示")
         Text(
-            text = "更新日期：2026年5月25日\n生效日期：2026年5月25日",
+            text = "更新日期：2026年6月16日\n生效日期：2026年6月16日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -2564,48 +2564,27 @@ private fun HamburgerTodayAgriEmptyState() {
 @Composable
 private fun HamburgerTodayAgriHistoryCard(card: SessionApi.TodayAgriCard) {
     val dateText = hamburgerTodayAgriDateText(card.dateCn)
-    Surface(
-        color = Color.White,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(0.8.dp, Color.Black),
-        modifier = Modifier.fillMaxWidth()
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Surface(
-                    color = Color(0xFF111111),
-                    shape = RoundedCornerShape(999.dp)
-                ) {
-                    Text(
-                        text = "今日农情",
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        lineHeight = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
-                    )
-                }
+        Text(
+            text = buildString {
+                append("今日农情")
                 if (dateText.isNotEmpty()) {
-                    Text(
-                        text = dateText,
-                        color = Color(0xFF7B7F87),
-                        fontSize = 12.5.sp,
-                        lineHeight = 17.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+                    append(" · ")
+                    append(dateText)
                 }
-            }
-            card.items.orEmpty().take(3).forEachIndexed { index, item ->
-                HamburgerTodayAgriHistoryItem(item = item, index = index)
-            }
+            },
+            color = Color(0xFF111111),
+            fontSize = 18.sp,
+            lineHeight = 25.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        card.items.orEmpty().take(3).forEachIndexed { index, item ->
+            HamburgerTodayAgriHistoryItem(item = item, index = index)
         }
     }
 }
@@ -2618,57 +2597,46 @@ private fun HamburgerTodayAgriHistoryItem(
     val title = item.title.orEmpty().trim()
     val summary = item.summary.orEmpty().trim()
     val source = item.source.orEmpty().trim()
-    Row(
+    Column(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.Top
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        Surface(
-            color = Color(0xFFF1F2F4),
-            shape = CircleShape,
-            modifier = Modifier.size(22.dp)
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = (index + 1).toString(),
-                    color = Color(0xFF111111),
-                    fontSize = 11.sp,
-                    lineHeight = 13.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
+        if (title.isNotEmpty()) {
             Text(
-                text = title,
+                text = hamburgerTodayAgriItemTitle(index, title),
                 color = Color(0xFF111111),
-                fontSize = 15.sp,
-                lineHeight = 20.sp,
-                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.5.sp,
+                lineHeight = 21.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Text(
+            text = summary,
+            color = Color(0xFF4F535A),
+            fontSize = 13.5.sp,
+            lineHeight = 20.sp
+        )
+        if (source.isNotEmpty()) {
+            Text(
+                text = "来源：$source",
+                color = Color(0xFF868B91),
+                fontSize = 11.5.sp,
+                lineHeight = 15.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = summary,
-                color = Color(0xFF4F535A),
-                fontSize = 13.sp,
-                lineHeight = 19.sp
-            )
-            if (source.isNotEmpty()) {
-                Text(
-                    text = "来源：$source",
-                    color = Color(0xFF868B91),
-                    fontSize = 11.5.sp,
-                    lineHeight = 15.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
         }
     }
+}
+
+private fun hamburgerTodayAgriItemTitle(index: Int, title: String): String {
+    val prefix = when (index) {
+        0 -> "一、"
+        1 -> "二、"
+        2 -> "三、"
+        else -> "${index + 1}. "
+    }
+    return "$prefix$title"
 }
 
 @Composable

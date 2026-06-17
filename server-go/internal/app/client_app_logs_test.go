@@ -126,6 +126,70 @@ func TestNormalizeClientAppLogPayloadKeepsCrashDiagnostics(t *testing.T) {
 	}
 }
 
+func TestNormalizeClientAppLogPayloadDropsSensitiveCrashDiagnostics(t *testing.T) {
+	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
+		Level:   "error",
+		Event:   "app.crash",
+		Message: "app.crash",
+		Attrs: map[string]any{
+			"exception":   "Bearer token abc 13800138000",
+			"cause":       "java.lang.IllegalStateException",
+			"stack_top":   "com.example.Screen#render:42",
+			"stack_next":  "Authorization secret",
+			"stack_third": "13800138000",
+		},
+	}, 123)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	attrs, ok := input.AttrsJSON.(string)
+	if !ok {
+		t.Fatalf("attrs json = %#v, want string", input.AttrsJSON)
+	}
+	for _, allowed := range []string{"java.lang.IllegalStateException", "com.example.Screen#render:42"} {
+		if !strings.Contains(attrs, allowed) {
+			t.Fatalf("attrs = %q, want safe crash diagnostic %q", attrs, allowed)
+		}
+	}
+	for _, forbidden := range []string{"Bearer", "token", "13800138000", "Authorization", "secret", "exception", "stack_next", "stack_third"} {
+		if strings.Contains(attrs, forbidden) {
+			t.Fatalf("attrs leaked sensitive crash diagnostic %q: %s", forbidden, attrs)
+		}
+	}
+}
+
+func TestNormalizeClientAppLogPayloadDropsSensitiveNumericAttrs(t *testing.T) {
+	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
+		Level:   "warn",
+		Event:   "chat.stream_interrupted",
+		Message: "safe",
+		Attrs: map[string]any{
+			"status_code":  float64(502),
+			"duration_ms":  int64(1234),
+			"top_line":     "450",
+			"numeric_leak": float64(13800138000),
+			"long_int":     int64(13800138000),
+		},
+	}, 123)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	attrs, ok := input.AttrsJSON.(string)
+	if !ok {
+		t.Fatalf("attrs json = %#v, want string", input.AttrsJSON)
+	}
+	for _, allowed := range []string{"status_code", "duration_ms", "top_line"} {
+		if !strings.Contains(attrs, allowed) {
+			t.Fatalf("attrs = %q, want safe numeric attr %q", attrs, allowed)
+		}
+	}
+	for _, forbidden := range []string{"numeric_leak", "long_int", "13800138000"} {
+		if strings.Contains(attrs, forbidden) {
+			t.Fatalf("attrs leaked sensitive numeric attr %q: %s", forbidden, attrs)
+		}
+	}
+}
+
 func TestNormalizeClientAppLogPayloadSanitizesSensitiveMessage(t *testing.T) {
 	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
 		Level:   "error",

@@ -114,6 +114,51 @@ func TestBuildAndroidUpdateInfoRejectsNonHTTPSAPKURL(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoRejectsInternalTestAPKURL(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.example.com/test-apks/debug/nongjiqiancha-debug-internal.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	}
+	info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+	if info.HasUpdate {
+		t.Fatalf("expected internal test apk url to disable update, got %#v", info)
+	}
+	if info.APKURL != "" {
+		t.Fatalf("apk url = %q, want empty", info.APKURL)
+	}
+	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+	if androidUpdateConfigValid(cfg) {
+		t.Fatalf("internal test apk config must be invalid")
+	}
+	if androidUpdateDownloadArtifactsComplete(cfg) {
+		t.Fatalf("internal test apk must not count as complete release artifact")
+	}
+}
+
+func TestBuildAndroidUpdateInfoRejectsEscapedInternalTestAPKURL(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.example.com/test-apks/%64ebug/nongjiqiancha-%69nternal.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	}
+	info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+	if info.HasUpdate {
+		t.Fatalf("expected escaped internal test apk url to disable update, got %#v", info)
+	}
+	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+}
+
 func TestBuildAndroidUpdateInfoRequiresDownloadArtifacts(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
 		Enabled:           true,

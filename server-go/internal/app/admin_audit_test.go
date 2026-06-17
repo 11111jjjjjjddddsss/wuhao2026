@@ -60,6 +60,21 @@ func TestAdminAuditDetailsJSONDropsSensitiveFields(t *testing.T) {
 	}
 }
 
+func TestNormalizeAdminAuditUserAgentRedactsSensitiveText(t *testing.T) {
+	for _, raw := range []string{
+		"Mozilla Bearer token abc",
+		"curl/8.0 13800138000",
+		"client secret value",
+	} {
+		if got := normalizeAdminAuditUserAgent(raw); got != "[redacted]" {
+			t.Fatalf("normalizeAdminAuditUserAgent(%q) = %q, want [redacted]", raw, got)
+		}
+	}
+	if got := normalizeAdminAuditUserAgent("Mozilla/5.0 NongjiAdmin"); got != "Mozilla/5.0 NongjiAdmin" {
+		t.Fatalf("safe user agent = %q", got)
+	}
+}
+
 func TestParseAdminAuditLogQueryNormalizesAndCapsLimit(t *testing.T) {
 	filter, validationError := parseAdminAuditLogQuery(url.Values{
 		"action":         {" Internal.App.Logs.List "},

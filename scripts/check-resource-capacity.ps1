@@ -449,7 +449,8 @@ if ($null -eq $ossLifecycleDoc) {
     $rules = @($ossLifecycleDoc.LifecycleConfiguration.Rule)
     $expectedLifecycleRules = @(
         [pscustomobject]@{ Prefix = "uploads/"; ExpirationDays = 3; ExpirationWarning = "oss_uploads_lifecycle_not_3_days"; AbortWarning = "oss_uploads_abort_multipart_not_1_day" },
-        [pscustomobject]@{ Prefix = "support/"; ExpirationDays = 30; ExpirationWarning = "oss_support_lifecycle_not_30_days"; AbortWarning = "oss_support_abort_multipart_not_1_day" }
+        [pscustomobject]@{ Prefix = "support/"; ExpirationDays = 30; ExpirationWarning = "oss_support_lifecycle_not_30_days"; AbortWarning = "oss_support_abort_multipart_not_1_day" },
+        [pscustomobject]@{ Prefix = "test-apks/"; ExpirationDays = 3; ExpirationWarning = "oss_test_apks_lifecycle_not_3_days"; AbortWarning = "oss_test_apks_abort_multipart_not_1_day" }
     )
     foreach ($expectedRule in $expectedLifecycleRules) {
         $rule = @($rules | Where-Object {

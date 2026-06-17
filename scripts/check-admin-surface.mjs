@@ -187,11 +187,14 @@ rejectServerPattern("admin gift card monitoring must not gate on future valid_fr
 rejectServerPattern("admin gift card monitoring text must not imply activation gate", /生效且未过期/);
 expectAdminPattern("app update separates switch from delivery", /是否会下发/);
 expectAdminPattern("app update labels switch as switch", /发布开关/);
-expectAdminPattern("app update enable requires typed versionCode", /请输入 \$\{latestVersionCode\} 确认对外启用这次更新/);
+expectAdminPattern("app update enable requires typed versionCode and release command", /请输入 \$\{latestVersionCode\} 确认已获正式发版口令，并对外启用这次更新/);
 expectAdminPattern("app update disable requires typed confirmation", /请输入 停更 确认关闭当前更新/);
 expectAdminPattern("app update enable confirm shows sha256", /SHA-256: \$\{apkSHA256\}/);
 expectAdminPattern("app update enable confirm shows file size", /文件大小: \$\{fileSizeBytes\} bytes/);
 expectAdminPattern("app update enable confirm points to release-match script", /check-app-update-release-match\.ps1/);
+expectAdminPattern("app update rejects internal test apk url", /内部测试包链接，不能配置到正式检查更新/);
+expectAdminPattern("app update rejects escaped internal test apk url", /decodeURIComponent\(value\)/);
+expectServerPattern("app update API rejects internal test apk url", /isOfficialAndroidAPKURL/);
 expectAdminPattern("support reply button says production user send", /发送给用户（生产）/);
 [
   "auth.login_network_failed",

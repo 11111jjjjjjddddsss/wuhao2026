@@ -144,7 +144,7 @@ func (s *Server) recordAdminAuditLog(r *http.Request, fallbackActor string, acti
 		StatusCode:   statusCode,
 		DetailsJSON:  detailsJSON,
 		MaskedIP:     maskIP(GetClientIP(r)),
-		UserAgent:    truncateRunes(strings.TrimSpace(r.UserAgent()), 255),
+		UserAgent:    normalizeAdminAuditUserAgent(r.UserAgent()),
 		CreatedAt:    time.Now().UnixMilli(),
 	}
 	if input.Action == "" || input.TargetType == "" {
@@ -153,6 +153,10 @@ func (s *Server) recordAdminAuditLog(r *http.Request, fallbackActor string, acti
 	if err := s.store.CreateAdminAuditLog(ctx, input); err != nil {
 		s.logger.Warn("create admin audit log failed", "action", input.Action, "error", err)
 	}
+}
+
+func normalizeAdminAuditUserAgent(raw string) string {
+	return sanitizeLoggedUserAgent(raw)
 }
 
 func adminActorFromRequest(r *http.Request, fallback string) string {

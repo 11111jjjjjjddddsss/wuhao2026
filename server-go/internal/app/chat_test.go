@@ -37,6 +37,7 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		"current",
 		[]string{"https://img/current.jpg"},
 		"context",
+		"",
 	)
 
 	if usedCount != 2 {
@@ -121,6 +122,7 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 		"hello",
 		nil,
 		"context",
+		"",
 	)
 
 	if usedCount != 0 {
@@ -145,6 +147,94 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	}
 	if messages[3].Content != "hello" {
 		t.Fatalf("expected current text-only user message, got %#v", messages[3].Content)
+	}
+}
+
+func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+	todayAgriContext := "今日农情界面上下文（来自 App 主界面最近展示的当天资讯；不是用户地块、症状、诊断、长期记忆或账户信息。）\n今日农情 · 6月17日\n\n一、病虫监测"
+
+	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
+		&SessionSnapshot{UserID: "u1"},
+		6,
+		"刚才第二条什么意思",
+		nil,
+		"context",
+		todayAgriContext,
+	)
+
+	if usedCount != 0 {
+		t.Fatalf("expected no historical rounds, got %d", usedCount)
+	}
+	if hasMemoryDocument {
+		t.Fatalf("expected no memory document")
+	}
+	if len(messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(messages))
+	}
+	if messages[2].Role != "system" || messages[2].Content != todayAgriContext {
+		t.Fatalf("expected today agri context as the last system message before user input, got %#v", messages[2])
+	}
+	if messages[3].Role != "user" || messages[3].Content != "刚才第二条什么意思" {
+		t.Fatalf("expected current user message after today agri context, got %#v", messages[3])
+	}
+}
+
+func TestFormatTodayAgriChatContextKeepsBoundaryAndReadableItems(t *testing.T) {
+	context := formatTodayAgriChatContext(&DailyAgriCard{
+		DateCN: "20260617",
+		Items: []DailyAgriCardItem{
+			{Title: "病虫监测", Summary: "多地提醒加强田间巡查。", Source: "全国农技中心", URL: "https://example.com/a"},
+			{Title: "栽培管理", Summary: "雨后注意排水。", Source: "农业农村部"},
+			{Title: "产地流通", Summary: "部分蔬菜产区供应恢复。"},
+		},
+	})
+
+	for _, want := range []string{
+		"今日农情界面上下文",
+		"不是用户地块、症状、诊断、长期记忆或账户信息",
+		"今日农情 · 6月17日",
+		"一、病虫监测",
+		"二、栽培管理",
+		"三、产地流通",
+		"来源：全国农技中心",
+	} {
+		if !strings.Contains(context, want) {
+			t.Fatalf("expected context to contain %q, got %q", want, context)
+		}
+	}
+	if strings.Contains(context, "https://example.com") {
+		t.Fatalf("today agri chat context must not expose raw source URLs: %q", context)
+	}
+}
+
+func TestNormalizeTodayAgriContextDay(t *testing.T) {
+	cases := map[string]string{
+		"20260617":   "20260617",
+		"2026-06-17": "20260617",
+		" 20260617 ": "20260617",
+		"2026061":    "",
+		"202606170":  "",
+		"today":      "",
+	}
+	for input, want := range cases {
+		if got := normalizeTodayAgriContextDay(input); got != want {
+			t.Fatalf("normalizeTodayAgriContextDay(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestChatStreamRequestHashIncludesTodayAgriContextDay(t *testing.T) {
+	base := chatStreamRequestHash("hello", nil, "")
+	withDashedDay := chatStreamRequestHash("hello", nil, "2026-06-17")
+	withCompactDay := chatStreamRequestHash("hello", nil, "20260617")
+	if base == withCompactDay {
+		t.Fatalf("expected today agri context day to affect request hash")
+	}
+	if withDashedDay != withCompactDay {
+		t.Fatalf("expected normalized today agri context day to keep stable hash")
 	}
 }
 
@@ -177,6 +267,7 @@ func TestBuildPromptMessagesIncludesHistoricalRoundTimeWhenAvailable(t *testing.
 		"今天又黄了",
 		nil,
 		"context",
+		"",
 	)
 
 	if usedCount != 1 {
