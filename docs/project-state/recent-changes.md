@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 按用户真机反馈“表格一闪后变成长段、分割线刚有又没、远端拉回别把渲染搞砸”收口聊天 renderer：标准 Markdown 表格现在在 streaming / 完成态 / 远端 snapshot 历史回放里都走同一个轻量表格组件，横向可滑并带“复制”按钮，复制为 TSV；2 列、3 列、4 列及更多列都能接住，行缺列补空单元格，普通 `A | B` 句子不被误藏。生成中未确认成标准表格前按普通文字显示，表头分隔线到达后再整体切成表格组件；完成态 / 远端历史回放也不隐藏不完整表格行，只按原文普通文字显示。标题轻分割线仍不乱加到普通编号 / 表格 / 段落，只补稳 `# / ## / ###`、独立短加粗标题和 `一、...` 中文章节标题，保证生成现场和历史回放口径一致。今日农情在有远端历史源时等待 remote snapshot hydrate 后再进入 timeline，避免本地缓存先露出、远端历史回来又消失；已经进入本次可见 timeline 的农情继续保留。本轮同步更新 debug-only 文本渲染预览，不修改三份提示词、不新增模型输出硬限制、不改变主聊天正向滚动主方案、不发布正式包。
+
 - 最后一轮收尾代理复查结果：Android 主界面、Android 设置 / 会员 / 礼品卡、后端 stream / 会员 / 礼品卡、发布 / 下载 / 运维四个方向均未发现 P0/P1。代理确认 `5a863bf7` 不影响“后端已有完整答案自动恢复”，因为远端 snapshot 完整答案优先于本地 streaming draft 兜底；后端模型流使用独立超时上下文，客户端断开不会必然取消后端生成，已归档答案仍可通过 snapshot 恢复。只修了一处旧巡检文档漂移：`pre-server-feature-audit.md` 不再建议补并行 `app_releases` 主表或把强更写成当前默认能力，改为当前 `app_release_configs + app_release_events` 主链、普通更新默认口径。本轮不改代码、不改三份提示词、不发布正式包、不部署。
 
 - 拉满代理做收尾前全盘复查后，修掉一个主界面冷启动恢复边角：本地保存的 streaming draft 被恢复成“回复未完成”尾巴时，只使用已经显示过的 `content`，不再把尚未按打字节奏 reveal 的 `revealBuffer` 一次性拼进可见正文；正常 `[DONE]` 后尾段仍按原 drain 节奏吐字。新增单测和 `check-android-build-parity.ps1` 门禁，防止恢复路径再次把未显示缓冲吐出来。同步校准项目文档：当前设置页不再包含“当前账号”入口，礼品卡输入是有占位提示、空白归一化和 64 字符长度上限；上线手册明确检查更新日常发布以后台 `app_release_configs` / 发布历史为主，`APP_ANDROID_*` 只作无数据库记录时兜底。本轮不修改三份提示词、不发布正式包、不部署后端或官网。
@@ -197,7 +199,7 @@
 
 - 修复 GitHub Android CI 最近两次红灯：失败提交不是 Android 编译或业务代码问题，而是 CI 干净 runner 在执行 `scripts/check-android-build-parity.ps1` 前只生成 manifest，没有显式生成 debug / release `BuildConfig.java`，导致 parity 脚本找不到生成产物。本次把 `.github/workflows/ci.yml` 的预生成步骤扩展为同时执行 `:app:generateDebugBuildConfig` 和 `:app:generateReleaseBuildConfig`，让 GitHub Actions 与本机验证前置条件一致；不改变 App 运行逻辑、滚动链、提示词、后端接口或正式 / 测试包口径。
 
-- 按用户视频反馈和仓库记忆深查主聊天 streaming 渲染 / 滚动：继续保留单一正向 `LazyColumn`、`SideEffect` 同帧底部锚定、96dp 工作线和两阶段 finalize，不恢复 overlay、反向列表、小分割或 raw delta。`ChatScrollCoordinator.kt` 收窄 streaming 期间 `isScrollInProgress` 的归因，只有真实拖动或已经进入 `UserBrowsing` 的惯性 / 浏览才暂停 AutoFollow，避免同帧锚定 / 内部 remeasure 被误判成用户浏览后出现“生成中先往下掉、再上去”的体感；`ChatStreamingRenderer.kt` 新增 streaming-aware inline Markdown 子集，加粗、斜体、行内代码、Markdown 链接和裸 URL 在生成中尽量实时渲染，标准表格继续降级成手机可读项目行，后端 DONE 后本地 reveal buffer 继续按打字节奏 drain 完再 finalize，不再把尾段一口气全吐出来。同步新增 renderer / scroll coordinator 单元测试和聊天 UI 回归 runbook 口径；本次不改三份提示词、不加后端内容过滤、不改变今日农情正常列表项身份。
+- 历史记录：按用户视频反馈和仓库记忆深查主聊天 streaming 渲染 / 滚动：继续保留单一正向 `LazyColumn`、`SideEffect` 同帧底部锚定、96dp 工作线和两阶段 finalize，不恢复 overlay、反向列表、小分割或 raw delta。`ChatScrollCoordinator.kt` 收窄 streaming 期间 `isScrollInProgress` 的归因，只有真实拖动或已经进入 `UserBrowsing` 的惯性 / 浏览才暂停 AutoFollow，避免同帧锚定 / 内部 remeasure 被误判成用户浏览后出现“生成中先往下掉、再上去”的体感；当时 `ChatStreamingRenderer.kt` 新增 streaming-aware inline Markdown 子集，加粗、斜体、行内代码、Markdown 链接和裸 URL 在生成中尽量实时渲染，并把标准表格降级成手机可读项目行；该表格降级口径已在 2026-06-17 被“横向可滑轻量表格 + 复制按钮”替代。后端 DONE 后本地 reveal buffer 继续按打字节奏 drain 完再 finalize，不再把尾段一口气全吐出来。同步新增 renderer / scroll coordinator 单元测试和聊天 UI 回归 runbook 口径；本次不改三份提示词、不加后端内容过滤、不改变今日农情正常列表项身份。
 
 - 按“测试包除了预览面板其他都要和正式包一样”的上线口径，补强 Android parity 门禁：`scripts/check-android-build-parity.ps1` 不再只扫源码模式，还会读取 Gradle 实际生成的 debug / release `BuildConfig.java` 和 packaged manifest，确认实际产物同包名 `com.nongjiqiancha`、同生产 HTTPS 后端、同 `USE_BACKEND_AB=true`、release 不带 `android:debuggable=true`、debug / release 权限集合一致；debug 只允许保留 Android Studio 诊断所需的 debuggable 属性。该改动只加强自动检查，不改 App 运行代码、滚动链、提示词或后端接口。
 
@@ -1197,7 +1199,7 @@
 
 - `server-go` 为历史轮次补入模型可用时间 / 地点上下文：`SessionRound` 新增 `created_at / region / region_source / region_reliability`，成功完成轮次写入 A 层滑窗和 30 天归档时使用后端服务器时间与当前轮地点；`/api/session/snapshot` 返回的 A 层 / UI 归档轮次也会携带这些字段。主对话本来已经每轮注入当前时间 + 用户地点，本次新增的是历史轮次进入模型上下文时附加“历史轮次时间：...（Asia/Shanghai）”和“历史轮次地点：...；地点可信度：...”前缀，让模型能判断这次问诊和上一轮隔了多久、当时大概在哪里。前端 `ARound` 只做兼容解析，不把每条消息时间戳 / 地点显示给用户。
 - 新增 `docs/adr/ADR-0003-forward-chat-ui-stable-main-chain.md`，把当前已稳定的正向聊天 UI 主链正式沉淀：单一正向 `LazyColumn` 主人、96dp 工作线、小球锚点依赖稳定折叠 reserve + 发送锁 + 底部锚定、`SideEffect` 同帧锚定、两阶段 finalize、composer/IME 与列表解耦，以及禁止恢复反向列表 / overlay / active-zone / 小分割 / raw delta 的原因。
-- `ChatScreen.kt` / `ChatStreamingRenderer.kt` 对 streaming 渲染做小范围体验收口：把 reveal batch 从 4 个 token / 40ms 收到 2 个 token / 28ms，让中文通常 1 到 2 个字一拍，减少“几个字一坨蹦出来”的呆感，同时避免每个汉字都单独重组导致长回复压力过大；聊天列表左右 padding 小幅加大，让不同宽度手机上正文边缘有更多呼吸感；同时在 renderer 内增加标准 Markdown 表格兜底降级，把 `| header |` 这类表格转成普通项目行文本，避免模型偶发输出表格时撑乱布局。滚动链、96dp 工作线、SideEffect 同帧锚定、两阶段 finalize 均未改动。
+- 历史记录：`ChatScreen.kt` / `ChatStreamingRenderer.kt` 对 streaming 渲染做小范围体验收口：把 reveal batch 从 4 个 token / 40ms 收到 2 个 token / 28ms，让中文通常 1 到 2 个字一拍，减少“几个字一坨蹦出来”的呆感，同时避免每个汉字都单独重组导致长回复压力过大；聊天列表左右 padding 小幅加大，让不同宽度手机上正文边缘有更多呼吸感；当时 renderer 内增加的是标准 Markdown 表格兜底降级，会把 `| header |` 这类表格转成普通项目行文本，避免模型偶发输出表格时撑乱布局。该表格降级口径已在 2026-06-17 被“横向可滑轻量表格 + 复制按钮”替代。滚动链、96dp 工作线、SideEffect 同帧锚定、两阶段 finalize 均未改动。
 - `docs/runbooks/chat-ui-regression.md` 从 4 月 19 日旧热点文档更新为当前正向列表基线回归入口：补齐禁改旧链、首屏 / streaming / 用户滚动 / IME / Markdown 表格 / clean-state 回归项，以及后续模拟器跨机型矩阵（小屏、常规屏、大屏、字体缩放、导航模式、Android 版本、输入法）。外部会诊默认对象也同步改为小米 / MiMo。
 - `server-go` 新增 `session_round_archive` 归档表：成功完成的问答轮次会在 `Store.AppendSessionRoundComplete(...)` 同事务写入归档，按 30 天滚动保留；`/api/session/snapshot` 的 `a_rounds_for_ui` 优先返回 30 天内最近 30 轮归档，A/B/C 主上下文仍保持原来的短窗口和摘要，不把归档内容每轮喂给模型。
 - 同步明确“清数据”和“换机恢复”的边界：本地 UI 缓存 / 草稿 / 旧视口不允许通过 Android 备份恢复；但如果用户有稳定账号 / 后端身份，后端返回最近 30 轮业务聊天记录属于账号级恢复，不是 UI 回退。匿名本机 UUID 清数据后仍是 clean-state，新身份不会拿到旧记录。

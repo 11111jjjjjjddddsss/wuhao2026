@@ -172,12 +172,108 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun markdownTableDegradesToPhoneFriendlyBulletRows() {
+    fun markdownTableRendersAsTableBlock() {
         val state = splitStreamingBlockState(
             "|项目|建议|\n|---|---|\n|水分|控水|\n"
         )
+        val model = classifyStreamingLine(state.completedBlocks.first())
 
-        assertEquals(listOf("- 项目：水分；建议：控水"), state.completedBlocks)
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+        assertEquals("项目\t建议\n水分\t控水", table.toPlainCopyText())
+    }
+
+    @Test
+    fun markdownTableKeepsFourColumnsAndRaggedRows() {
+        val state = splitStreamingBlockState(
+            "|维度|成品肥|自配方案|销售提示|\n" +
+                "|---|---|---|---|\n" +
+                "|便利性|高|中|需要讲清配比|\n" +
+                "|灵活性|固定|可调整|\n"
+        )
+        val model = classifyStreamingLine(state.completedBlocks.first())
+
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(listOf("维度", "成品肥", "自配方案", "销售提示"), table.headers)
+        assertEquals(listOf("灵活性", "固定", "可调整", ""), table.rows[1])
+        assertEquals(
+            "维度\t成品肥\t自配方案\t销售提示\n" +
+                "便利性\t高\t中\t需要讲清配比\n" +
+                "灵活性\t固定\t可调整",
+            table.toPlainCopyText()
+        )
+    }
+
+    @Test
+    fun partialMarkdownTableHeaderStaysVisibleAsTextBeforeSeparator() {
+        val state = splitStreamingBlockState("|维度|成品|自配|")
+
+        assertEquals(emptyList<String>(), state.completedBlocks)
+        assertEquals("|维度|成品|自配|", state.activeBlock)
+    }
+
+    @Test
+    fun inlinePipeParagraphDoesNotWaitAsPartialTable() {
+        val state = splitStreamingBlockState("A | B")
+
+        assertEquals(emptyList<String>(), state.completedBlocks)
+        assertEquals("A | B", state.activeBlock)
+    }
+
+    @Test
+    fun markdownTableShellAppearsAsSoonAsSeparatorArrives() {
+        val state = splitStreamingBlockState("|维度|成品|自配|\n|---|---|---|")
+        val model = classifyActiveStreamingLine(state.activeBlock.orEmpty())
+
+        assertTrue(model is StreamingLineModel.Table)
+        assertEquals(
+            listOf("维度", "成品", "自配"),
+            (model as StreamingLineModel.Table).table.headers
+        )
+    }
+
+    @Test
+    fun standaloneBoldHeadingDividerSurvivesStreamingToSettled() {
+        val streamingState = splitStreamingBlockState("先说清楚。\n\n**处理建议")
+        val streamingModels = streamingState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(streamingState.activeBlock?.let(::classifyActiveStreamingLine))
+        assertTrue(streamingModels[1] is StreamingLineModel.Heading)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = streamingModels[0],
+                current = streamingModels[1]
+            )
+        )
+
+        val settledState = splitStreamingBlockState("先说清楚。\n\n**处理建议**\n\n继续观察。")
+        val settledModels = settledState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(settledState.activeBlock?.let(::classifyStreamingLine))
+        assertTrue(settledModels[1] is StreamingLineModel.Heading)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = settledModels[0],
+                current = settledModels[1]
+            )
+        )
+    }
+
+    @Test
+    fun chineseSectionHeadingKeepsDividerInSettledHistory() {
+        val state = splitStreamingBlockState("先说清楚。\n\n一、成品含腐植酸尿素 vs. 自配方案\n\n继续观察。")
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertTrue(models[1] is StreamingLineModel.Heading)
+        assertEquals("一、成品含腐植酸尿素 vs. 自配方案", (models[1] as StreamingLineModel.Heading).text)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = models[0],
+                current = models[1]
+            )
+        )
     }
 
     @Test

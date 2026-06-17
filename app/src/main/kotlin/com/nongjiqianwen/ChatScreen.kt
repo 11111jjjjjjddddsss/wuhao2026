@@ -404,6 +404,15 @@ internal fun shouldShowTodayAgriMainCard(
         (shownThisRuntime || shownDayKey != cardDay)
 }
 
+internal fun shouldRenderTodayAgriMainCardInTimeline(
+    shouldShowTodayAgriCard: Boolean,
+    shouldHydrateRemoteHistory: Boolean,
+    remoteSnapshotHydrationComplete: Boolean,
+    shownThisRuntime: Boolean
+): Boolean =
+    shouldShowTodayAgriCard &&
+        (!shouldHydrateRemoteHistory || remoteSnapshotHydrationComplete || shownThisRuntime)
+
 internal fun shouldRevealChatMessageList(
     startupHydrationBarrierSatisfied: Boolean,
     historyHydrationComplete: Boolean,
@@ -2430,18 +2439,20 @@ fun ChatScreen() {
     val initialTodayAgriCardIsRenderable = remember(
         initialTodayAgriCard,
         initialTodayAgriMainShownDay,
-        initialLocalMessages
+        initialLocalMessages,
+        hasRemoteHistorySource
     ) {
-        shouldShowTodayAgriMainCard(
-            card = initialTodayAgriCard,
-            currentDayKey = currentChinaDateKey(),
-            shownDayKey = initialTodayAgriMainShownDay,
-            shownThisRuntime = false,
-            hasAssistantAnswerTail = hasCompletedAssistantAnswerTail(
-                initialLocalMessages,
-                initialLocalSnapshot.failedAssistantMessageStates.keys
+        !hasRemoteHistorySource &&
+            shouldShowTodayAgriMainCard(
+                card = initialTodayAgriCard,
+                currentDayKey = currentChinaDateKey(),
+                shownDayKey = initialTodayAgriMainShownDay,
+                shownThisRuntime = false,
+                hasAssistantAnswerTail = hasCompletedAssistantAnswerTail(
+                    initialLocalMessages,
+                    initialLocalSnapshot.failedAssistantMessageStates.keys
+                )
             )
-        )
     }
     val uiRuntimeResetKey = remember(chatScopeId, initialLocalSnapshot, hasRemoteHistorySource) {
         buildString {
@@ -2463,6 +2474,12 @@ fun ChatScreen() {
     var imageSendInProgress by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val shouldHydrateRemoteHistory = remember(chatScopeId, hasRemoteHistorySource) {
         hasRemoteHistorySource
+    }
+    var historyHydrationComplete by remember(uiRuntimeResetKey) {
+        mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
+    }
+    var remoteSnapshotHydrationComplete by remember(uiRuntimeResetKey) {
+        mutableStateOf(!shouldHydrateRemoteHistory)
     }
     var startupRecoverableUserMessageId by remember(uiRuntimeResetKey) {
         mutableStateOf(
@@ -2685,6 +2702,21 @@ fun ChatScreen() {
             )
         }
     }
+    val shouldRenderTodayAgriCardInTimeline by remember(
+        shouldShowTodayAgriCard,
+        shouldHydrateRemoteHistory,
+        remoteSnapshotHydrationComplete,
+        todayAgriShownThisRuntime
+    ) {
+        derivedStateOf {
+            shouldRenderTodayAgriMainCardInTimeline(
+                shouldShowTodayAgriCard = shouldShowTodayAgriCard,
+                shouldHydrateRemoteHistory = shouldHydrateRemoteHistory,
+                remoteSnapshotHydrationComplete = remoteSnapshotHydrationComplete,
+                shownThisRuntime = todayAgriShownThisRuntime
+            )
+        }
+    }
     val currentTodayAgriCardHasSavedAnchor by remember(
         todayAgriCardAnchorDay,
         todayAgriCardAnchorMessageId,
@@ -2716,14 +2748,14 @@ fun ChatScreen() {
     }
     val chatListItems by remember(
         todayAgriCard,
-        shouldShowTodayAgriCard,
+        shouldRenderTodayAgriCardInTimeline,
         todayAgriCardAnchorForRender,
         hiddenRemoteRoundCount,
         messages
     ) {
         derivedStateOf {
             val visibleTodayAgriCard = todayAgriCard.takeIf {
-                shouldShowTodayAgriCard
+                shouldRenderTodayAgriCardInTimeline
             }
             buildChatTimelineItems(
                 messages = messages,
@@ -2740,7 +2772,7 @@ fun ChatScreen() {
         }
     }
     fun todayAgriContextDayForNextSend(existingUserMessageId: String? = null): String? {
-        if (!hasTodayAgriCard || !shouldShowTodayAgriCard) return null
+        if (!hasTodayAgriCard || !shouldRenderTodayAgriCardInTimeline) return null
         return resolveTodayAgriContextDayForTimeline(
             chatListItems = chatListItems,
             currentTodayAgriCardDay = currentTodayAgriCardDay,
@@ -3186,12 +3218,6 @@ fun ChatScreen() {
     var measuredComposerHostHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val startupBottomReserveReady by remember {
         derivedStateOf { measuredComposerHostHeightPx > 0 }
-    }
-    var historyHydrationComplete by remember(uiRuntimeResetKey) {
-        mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
-    }
-    var remoteSnapshotHydrationComplete by remember(uiRuntimeResetKey) {
-        mutableStateOf(!shouldHydrateRemoteHistory)
     }
     var chatHistoryClearEpoch by remember(uiRuntimeResetKey) {
         mutableIntStateOf(0)
@@ -8232,7 +8258,7 @@ private fun UiCopyPreviewOverlay(
                 title = "文本渲染",
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
-                    UiCopyPreviewItem("AI 简单表格", "Markdown 表格转为手机友好的条目", UiCopyPreviewKind.AssistantTableSample),
+                    UiCopyPreviewItem("AI 表格", "Markdown 表格横向可滑，并带复制按钮", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
             ),
@@ -8445,11 +8471,11 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
         "官方查询可看 https://www.moa.gov.cn/，或 [植保中心](https://www.natesc.org.cn/)。"
 
 private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
-    "| 名称 | 符号 | 说明 |\n" +
+    "| 维度 | 成品含腐植酸尿素 | 普通尿素 + 矿源黄腐酸钾 |\n" +
         "| --- | --- | --- |\n" +
-        "| 普通竖线 | A\\|B | 单元格里的竖线保留 |\n" +
-        "| 比例 | 1:800 | 冒号不影响表格 |\n" +
-        "| 括号 | [A](B) | 普通括号按文本显示 |"
+        "| 便利性 | 开袋即用，省工省力。 | 需要按场景混配，适合做方案。 |\n" +
+        "| 含量透明度 | 具体添加量不一定公开。 | 用量自己掌握，客户更容易算账。 |\n" +
+        "| 灵活性 | 配比固定，难按地块调整。 | 可按高温、弱根、盐碱等情况增减。 |"
 
 private enum class UiCopyPreviewKind {
     AppTitle,

@@ -320,6 +320,36 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriCardWaitsForRemoteHydrationBeforeTimelineRender() {
+        assertFalse(
+            shouldRenderTodayAgriMainCardInTimeline(
+                shouldShowTodayAgriCard = true,
+                shouldHydrateRemoteHistory = true,
+                remoteSnapshotHydrationComplete = false,
+                shownThisRuntime = false
+            )
+        )
+
+        assertTrue(
+            shouldRenderTodayAgriMainCardInTimeline(
+                shouldShowTodayAgriCard = true,
+                shouldHydrateRemoteHistory = true,
+                remoteSnapshotHydrationComplete = true,
+                shownThisRuntime = false
+            )
+        )
+
+        assertTrue(
+            shouldRenderTodayAgriMainCardInTimeline(
+                shouldShowTodayAgriCard = true,
+                shouldHydrateRemoteHistory = true,
+                remoteSnapshotHydrationComplete = false,
+                shownThisRuntime = true
+            )
+        )
+    }
+
+    @Test
     fun startupRevealWaitsOnlyWhileRemoteHistoryHasNoVisualContent() {
         assertFalse(
             shouldRevealChatMessageList(
