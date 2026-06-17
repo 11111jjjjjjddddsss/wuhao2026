@@ -15,10 +15,10 @@
 
 ## 生成测试包
 
-测试包只走：
+测试包默认走 OSS 自有下载域名签名链：
 
 ```powershell
-.\scripts\publish-android-test-apk.ps1 -UseOssSignedDownload
+.\scripts\publish-android-test-apk.ps1
 ```
 
 脚本会执行：
@@ -35,7 +35,7 @@
 
 如果只是本机已构建好的 APK，可传 `-NoBuild -ApkPath <path>`，但脚本仍会读取 APK 本体确认它是 debuggable debug 包，并比对固定 release 证书指纹；release APK 不能通过这个脚本发给用户或代理。如果确实要发布未提交工作区的临时包，必须显式传 `-AllowDirty`，并在对外说明中标注这是未提交测试包。日常不要这样做。若临时需要多保留几个云端测试包，可显式传 `-KeepNewestRemote <1-10>`，默认不要改。
 
-只有内部 staging 或排查云端对象时才可显式传 `-SkipEcsDownloadPublish`。这种情况下脚本只输出 `test_apk_status=staged_only` 和 `test_apk_url=none`，不会给出可发给用户的公网下载链接。若下载域名临时异常，才允许不带 `-UseOssSignedDownload` 回退到 ECS 官网 `/test-apks/` 路径。
+只有内部 staging 或排查云端对象时才可显式传 `-SkipEcsDownloadPublish`。这种情况下脚本只输出 `test_apk_status=staged_only` 和 `test_apk_url=none`，不会给出可发给用户的公网下载链接。若下载域名临时异常，才允许显式传 `-UseEcsDownloadFallback` 回退到 ECS 官网 `/test-apks/` 路径；不要裸跑出旧 ECS 直链。
 
 ## 云端测试包清理
 

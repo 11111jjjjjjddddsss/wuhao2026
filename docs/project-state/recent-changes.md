@@ -5,9 +5,17 @@
 
 ## 2026-06-17
 
+- 按用户“到底啥时间出现合适 / 用户刚发送完消息突然弹今日农情突兀”的最终口径，把主聊天今日农情从“每天可见就插入”收成“后端清晨生成，用户当天第一次进入主聊天时展示一次，且只在未打断当前问诊的空闲窗口插入”：有历史记录时跟在历史后，没有真实聊天消息时欢迎语仍是空态兜底且不会被今日农情压掉；今日农情一旦插入可见 timeline，Android 会写入本地已展示日期，同日关闭重开不再反复插入主聊天；如果用户先开始发送 / 生成且今日农情还没显示，本次运行抑制自动插入，不写已展示日期，避免刚发送完消息时突然弹出。当前运行时仍保持 `ChatTimelineItem.TodayAgriCard` 普通视觉文本项，不写入真实 `messages`、远端聊天历史、记忆、归档或扣次；设置页“今日农情”历史入口仍可查看最近记录。`ChatTimelineItemsTest` 新增“一天一次但本轮不消失 / 已开始问诊则本次不插入”单测，`check-android-build-parity.ps1` 新增 shown-day 和 suppress 门禁；本轮不修改三份提示词、不新增模型输出限制、不改变正向 `LazyColumn` 滚动主方案。
+
 - 跑通并固化低成本 Android 下载链路：`download.nongjiqiancha.cn` 已 CNAME 到 OSS Bucket 并绑定 HTTPS，测试包发布脚本现在可用 `-UseOssSignedDownload` 生成自有下载域名签名链接，不再推荐走 ECS 5Mbps `/test-apks/` 路径；发布脚本会让 OSS `test-apks/debug/` 只保留最新内部测试包，并在走 OSS 签名下载时清掉 ECS 旧测试包镜像。新增 `check-android-download-domain.ps1`、`sign-oss-cname-url.py` 和 `sync-oss-download-certificate.ps1`，用于检查下载域名、生成 CNAME 签名 URL、以及 Let’s Encrypt 证书续期后同步 OSS CNAME 证书；本机也创建了每周续费 / 证书巡检自动化，只巡检和必要同步证书，不购买、不续费、不退订、不删除付费资源。正式发版仍等用户口令，且不能把 72 小时测试签名链接写进检查更新。
 
 - 修复内部测试包发布脚本两处收尾问题：`publish-android-test-apk.ps1` 的 Git commit / clean tree 读取改为显式数组参数，避免 PowerShell 把 `status --porcelain` 当成单个 git 子命令；ECS 旧测试包镜像清理和备用 ECS 发布脚本改用 POSIX `sh` 兼容的 `set -eu`，避免阿里云 Cloud Assistant 默认 shell 不支持 `pipefail` 导致测试包已上传但收尾报失败。该修复只影响 debug/internal 测试包发布脚本稳定性，不改变正式发版口令、检查更新、官网正式下载、应用商店或 release APK 保留策略。
+
+- 继续按代理复查发现的下载安全风险收口：测试包发布脚本现在裸跑默认走 `download.nongjiqiancha.cn + OSS` 签名下载，只有显式 `-UseEcsDownloadFallback` 才允许临时回退旧 ECS `/test-apks/` 路径；`-SkipEcsDownloadPublish` 保持纯 staging 语义，只上传 OSS 对象，不生成可发给用户的公网下载链接。`OssPrefix / 下载域名 / OSS endpoint / ECS 测试包根目录` 等运维参数加白名单，下载域名固定为 `download.nongjiqiancha.cn`，拒绝把 OSS 默认 endpoint 当用户下载域名。旧 OSS CNAME 证书同步脚本曾把下载域名私钥放进 Cloud Assistant 输出，已强制重签 `download.nongjiqiancha.cn` 免费证书并把同步脚本改成一次性 RSA 公钥 + AES 加密 payload 回传，Cloud Assistant 输出不再包含明文私钥；新证书已重新同步到 OSS，下载域名探测 ready。正式检查更新的后端 URL 校验和 `check-app-update-release-match.ps1` 也新增短签名参数拦截，拒绝带 `Expires / Signature / OSSAccessKeyId / security-token / x-oss-expires / x-oss-signature / x-oss-credential / x-oss-security-token` 等参数的 APK URL，避免把短期签名链接当正式 release 地址。
+
+- 继续按主界面冷启动全链路复查修正两个边角：今日农情 `START` 锚点不再在重开 App 后迁移到最新真实消息，确保它仍像第一段普通文本一样在后续消息前方自然上移；远端 `/api/session/snapshot` 成功返回空历史时，会清掉本地已完成旧窗口，而不是因为远端为空就保留旧 UI。若清空后只剩当天今日农情视觉项，启动工作线相位会重新按 `TopUnreached` 文档流处理，不沿用旧历史的底部贴底标记。今日农情锚点保存新增 `remoteSnapshotHydrationComplete` 门，显示本地旧窗口可以先快，但保存锚点必须等远端快照成功完成；远端失败只做本地兜底展示、不落盘新锚点，避免锚到即将被替换的本地尾巴；启动日志也新增 `remote_snapshot_hydrated` 字段。`ChatTimelineItemsTest` 和 `check-android-build-parity.ps1` 已锁住 START 锚点、空远端快照替换、hydrate 后工作线相位重置和锚点等待远端快照；仍不修改主聊天正向列表、三份提示词、官网文案、真实支付或模型输出硬限制。
+
+- 按用户“有历史拉历史、没有历史欢迎语兜底、今日农情放最后”的口径继续简化主界面空态：`shouldShowChatWelcomePlaceholder(...)` 不再因为今日农情存在而隐藏欢迎语；今日农情仍是同一个正向列表里的普通附加文本项，不当欢迎语、不当真实消息。单测覆盖“无真实消息 + 有今日农情”仍显示欢迎语，`check-android-build-parity.ps1` 也新增门禁，防止今日农情再次压掉开机欢迎语。本轮不修改今日农情提示词、主对话锚点、记忆文档提示词、滚动主方案或后端模型输出限制。
 
 - 修复礼品卡后台生成确认链路漂移：服务端创建批次确认字段从只校验张数，收紧为“张数 + 档位 + 天数”，例如 `3 Pro 30`；后台前端 prompt 和 `check-admin-surface.mjs` 同步检查同一口径，单测覆盖错误天数、错误档位和空格归一化，降低管理层试用时误点真实 Plus / Pro 卡的风险。订单表“金额”列也改成“开发期金额”，避免支付未接入阶段被误读成真实收入。
 

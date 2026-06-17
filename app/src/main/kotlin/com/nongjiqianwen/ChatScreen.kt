@@ -282,6 +282,21 @@ private fun restoredInitialWorklinePhase(
         else -> InitialWorklinePhase.WorklineOwned
     }
 
+private fun restoredStartupWorklinePhase(
+    messageCount: Int,
+    hasTodayAgriVisualContent: Boolean,
+    persistedInitialWorklineOwned: Boolean?
+): InitialWorklinePhase =
+    restoredInitialWorklinePhase(
+        hasStaticVisualContent = messageCount > 0 || hasTodayAgriVisualContent,
+        hasStreamingDraft = false,
+        initialWorklineOwned = when {
+            messageCount > 0 -> persistedInitialWorklineOwned
+            hasTodayAgriVisualContent -> false
+            else -> null
+        }
+    )
+
 private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
     role == ChatRole.USER &&
         imageUris.orEmpty().isNotEmpty() &&
@@ -349,6 +364,22 @@ internal fun resolveTodayAgriContextDayForTimeline(
     return day.takeIf { userMessagesAfterAnchor < 3 }
 }
 
+internal fun shouldShowTodayAgriMainCard(
+    card: SessionApi.TodayAgriCard?,
+    currentDayKey: String,
+    shownDayKey: String,
+    shownThisRuntime: Boolean,
+    suppressedThisRuntime: Boolean = false
+): Boolean {
+    val normalizedCurrentDay = normalizeTodayAgriCardDayKey(currentDayKey)
+    val cardDay = normalizeTodayAgriCardDayKey(card?.dateCn.orEmpty())
+    return card?.isRenderableTodayAgriCard() == true &&
+        cardDay.isNotBlank() &&
+        cardDay == normalizedCurrentDay &&
+        (!suppressedThisRuntime || shownThisRuntime) &&
+        (shownThisRuntime || shownDayKey != cardDay)
+}
+
 internal fun shouldRevealChatMessageList(
     startupHydrationBarrierSatisfied: Boolean,
     historyHydrationComplete: Boolean,
@@ -386,7 +417,6 @@ internal fun shouldShowChatWelcomePlaceholder(
     messageCount: Int
 ): Boolean =
     messageCount == 0 &&
-        !hasTodayAgriCard &&
         !hasStreamingItem &&
         (startupHydrationBarrierSatisfied || !hasStartedConversation)
 
@@ -507,6 +537,7 @@ private const val TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX = "today_agri_card_ancho
 private const val TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX = "today_agri_card_anchor_message_"
 private const val TODAY_AGRI_CARD_CACHE_DAY_KEY_PREFIX = "today_agri_card_cache_day_"
 private const val TODAY_AGRI_CARD_CACHE_KEY_PREFIX = "today_agri_card_cache_"
+private const val TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX = "today_agri_main_shown_day_"
 internal const val TODAY_AGRI_CARD_ANCHOR_START = "__today_agri_card_timeline_start__"
 private const val TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS = 5_000L
 private const val TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS = 15 * 60 * 1000L
@@ -1778,6 +1809,27 @@ private fun Context.saveTodayAgriCardAnchorSync(
     }
 }
 
+private fun Context.loadTodayAgriMainShownDaySync(chatScopeId: String): String =
+    normalizeTodayAgriCardDayKey(
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .getString("$TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX$chatScopeId", null)
+            .orEmpty()
+    )
+
+private fun Context.saveTodayAgriMainShownDaySync(
+    chatScopeId: String,
+    dayKey: String
+) {
+    val normalizedDay = normalizeTodayAgriCardDayKey(dayKey)
+    if (normalizedDay.isBlank()) return
+    synchronized(chatCacheWriteLock) {
+        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putString("$TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX$chatScopeId", normalizedDay)
+            .commit()
+    }
+}
+
 private fun Context.loadTodayAgriCardCacheSync(chatScopeId: String): SessionApi.TodayAgriCard? {
     val prefs = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
     val currentDay = currentChinaDateKey()
@@ -2145,11 +2197,10 @@ private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
     }
 }
 
-private fun shouldReplaceHydratedMessages(
+internal fun shouldReplaceHydratedMessages(
     currentMessages: List<ChatMessage>,
     remoteMessages: List<ChatMessage>
 ): Boolean {
-    if (remoteMessages.isEmpty()) return false
     val trimmedCurrent = sanitizeMessageWindow(currentMessages)
     val trimmedRemote = sanitizeMessageWindow(remoteMessages)
     if (trimmedCurrent.size != trimmedRemote.size) return true
@@ -2344,8 +2395,19 @@ fun ChatScreen() {
     val initialComposerDraftText = remember(chatScopeId) {
         context.loadLocalComposerDraftSync(chatScopeId)
     }
+    val initialTodayAgriMainShownDay = remember(chatScopeId) {
+        context.loadTodayAgriMainShownDaySync(chatScopeId)
+    }
     val initialTodayAgriCard = remember(chatScopeId) {
         context.loadTodayAgriCardCacheSync(chatScopeId)
+    }
+    val initialTodayAgriCardIsRenderable = remember(initialTodayAgriCard, initialTodayAgriMainShownDay) {
+        shouldShowTodayAgriMainCard(
+            card = initialTodayAgriCard,
+            currentDayKey = currentChinaDateKey(),
+            shownDayKey = initialTodayAgriMainShownDay,
+            shownThisRuntime = false
+        )
     }
     val uiRuntimeResetKey = remember(chatScopeId, initialLocalSnapshot, hasRemoteHistorySource) {
         buildString {
@@ -2518,10 +2580,10 @@ fun ChatScreen() {
     var hasStartedConversation by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var initialWorklinePhase by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(
-            restoredInitialWorklinePhase(
-                hasStaticVisualContent = initialLocalMessages.isNotEmpty(),
-                hasStreamingDraft = false,
-                initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
+            restoredStartupWorklinePhase(
+                messageCount = initialLocalMessages.size,
+                hasTodayAgriVisualContent = initialTodayAgriCardIsRenderable,
+                persistedInitialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
             )
         )
     }
@@ -2549,6 +2611,13 @@ fun ChatScreen() {
     }
     var todayAgriCard by remember(uiRuntimeResetKey) { mutableStateOf(initialTodayAgriCard) }
     var todayAgriRemoteConfirmedDay by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var todayAgriMainShownDay by rememberSaveable(uiRuntimeResetKey) {
+        mutableStateOf(initialTodayAgriMainShownDay)
+    }
+    var todayAgriShownThisRuntime by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
+    var todayAgriAutoInsertSuppressedThisRuntime by rememberSaveable(uiRuntimeResetKey) {
+        mutableStateOf(false)
+    }
     var hiddenRemoteRoundCount by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var todayAgriCardAnchorDay by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(context.loadTodayAgriCardAnchorDaySync(chatScopeId))
@@ -2557,20 +2626,25 @@ fun ChatScreen() {
         mutableStateOf(context.loadTodayAgriCardAnchorMessageSync(chatScopeId))
     }
     val currentTodayAgriCardDay = todayAgriCardDayKey(todayAgriCard)
-    val todayAgriCardIsCurrentDay = todayAgriCard?.let {
-        normalizeTodayAgriCardDayKey(it.dateCn.orEmpty()) == currentChinaDateKey()
-    } == true
     val retryingUserMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     fun isQuotaExhaustedToday(): Boolean = quotaExhaustedDayKey == currentQuotaDayKey()
     val shouldShowTodayAgriCard by remember(
         todayAgriCard,
-        todayAgriCardIsCurrentDay
+        currentTodayAgriCardDay,
+        todayAgriMainShownDay,
+        todayAgriShownThisRuntime,
+        todayAgriAutoInsertSuppressedThisRuntime
     ) {
         derivedStateOf {
-            todayAgriCard?.isRenderableTodayAgriCard() == true &&
-                todayAgriCardIsCurrentDay
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard,
+                currentDayKey = currentChinaDateKey(),
+                shownDayKey = todayAgriMainShownDay,
+                shownThisRuntime = todayAgriShownThisRuntime,
+                suppressedThisRuntime = todayAgriAutoInsertSuppressedThisRuntime
+            )
         }
     }
     val currentTodayAgriCardHasSavedAnchor by remember(
@@ -2669,6 +2743,11 @@ fun ChatScreen() {
     fun resolveTodayAgriContextDayForSend(existingUserMessageId: String? = null): String? {
         return persistedTodayAgriContextDayForUserMessage(existingUserMessageId)
             ?: todayAgriContextDayForNextSend(existingUserMessageId)
+    }
+    fun suppressPendingTodayAgriAutoInsertForUserSend() {
+        if (!todayAgriShownThisRuntime && !hasTodayAgriCard) {
+            todayAgriAutoInsertSuppressedThisRuntime = true
+        }
     }
 
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
@@ -3089,6 +3168,9 @@ fun ChatScreen() {
     var historyHydrationComplete by remember(uiRuntimeResetKey) {
         mutableStateOf(initialLocalMessages.isNotEmpty() || !shouldHydrateRemoteHistory)
     }
+    var remoteSnapshotHydrationComplete by remember(uiRuntimeResetKey) {
+        mutableStateOf(!shouldHydrateRemoteHistory)
+    }
     var chatHistoryClearEpoch by remember(uiRuntimeResetKey) {
         mutableIntStateOf(0)
     }
@@ -3103,7 +3185,7 @@ fun ChatScreen() {
         todayAgriCardAnchorDay,
         todayAgriCardAnchorMessageId,
         currentTodayAgriCardHasSavedAnchor,
-        historyHydrationComplete,
+        remoteSnapshotHydrationComplete,
         shouldHydrateRemoteHistory,
         isStreaming,
         hasStreamingItem,
@@ -3111,17 +3193,9 @@ fun ChatScreen() {
         messages.size
     ) {
         if (!shouldShowTodayAgriCard || isStreaming || hasStreamingItem) return@LaunchedEffect
-        if (shouldHydrateRemoteHistory && !historyHydrationComplete) return@LaunchedEffect
+        if (shouldHydrateRemoteHistory && !remoteSnapshotHydrationComplete) return@LaunchedEffect
         val latestMessageAnchorId = messages.lastOrNull()?.id
         if (currentTodayAgriCardHasSavedAnchor) {
-            if (
-                todayAgriCardAnchorMessageId == TODAY_AGRI_CARD_ANCHOR_START &&
-                latestMessageAnchorId != null &&
-                !hasStartedConversation
-            ) {
-                todayAgriCardAnchorMessageId = latestMessageAnchorId
-                context.saveTodayAgriCardAnchorSync(chatScopeId, currentTodayAgriCardDay, latestMessageAnchorId)
-            }
             return@LaunchedEffect
         }
         val anchorMessageId = latestMessageAnchorId ?: TODAY_AGRI_CARD_ANCHOR_START
@@ -3223,6 +3297,7 @@ fun ChatScreen() {
         shouldRevealMessageList,
         showWelcomePlaceholder,
         historyHydrationComplete,
+        remoteSnapshotHydrationComplete,
         messages.size,
         hasTodayAgriCard,
         initialBottomSnapDone,
@@ -3245,6 +3320,7 @@ fun ChatScreen() {
                 "has_today_agri_card" to hasTodayAgriCard,
                 "remote_history_enabled" to shouldHydrateRemoteHistory,
                 "history_hydrated" to historyHydrationComplete,
+                "remote_snapshot_hydrated" to remoteSnapshotHydrationComplete,
                 "layout_ready" to startupLayoutReady,
                 "reserve_ready" to startupBottomReserveReady,
                 "list_revealed" to shouldRevealMessageList,
@@ -3288,10 +3364,20 @@ fun ChatScreen() {
         chatListItems.size,
         messages.size
     ) {
-        if (!hasTodayAgriCard || !shouldShowTodayAgriCard || todayAgriMainCardVisibleLogged) {
+        if (
+            !hasTodayAgriCard ||
+            !shouldShowTodayAgriCard ||
+            !shouldRevealMessageList ||
+            todayAgriMainCardVisibleLogged
+        ) {
             return@LaunchedEffect
         }
         todayAgriMainCardVisibleLogged = true
+        todayAgriShownThisRuntime = true
+        if (todayAgriMainShownDay != currentTodayAgriCardDay) {
+            todayAgriMainShownDay = currentTodayAgriCardDay
+            context.saveTodayAgriMainShownDaySync(chatScopeId, currentTodayAgriCardDay)
+        }
         val anchorState = when {
             todayAgriCardAnchorForRender == TODAY_AGRI_CARD_ANCHOR_START -> "start"
             todayAgriCardAnchorForRender.isNullOrBlank() -> "none"
@@ -3307,7 +3393,8 @@ fun ChatScreen() {
                 "list_item_count" to chatListItems.size,
                 "list_revealed" to shouldRevealMessageList,
                 "anchor_state" to anchorState,
-                "bottom_snap_done" to initialBottomSnapDone
+                "bottom_snap_done" to initialBottomSnapDone,
+                "shown_once_day" to currentTodayAgriCardDay
             )
         )
     }
@@ -3339,6 +3426,10 @@ fun ChatScreen() {
                 todayAgriCard = null
                 todayAgriRemoteConfirmedDay = null
                 todayAgriBottomAnchorAppliedKey = ""
+                todayAgriShownThisRuntime = false
+                todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
+                todayAgriMainCardLoadedLogged = false
+                todayAgriMainCardVisibleLogged = false
             }
         }
     }
@@ -3349,11 +3440,18 @@ fun ChatScreen() {
             todayAgriCard = null
             todayAgriRemoteConfirmedDay = null
             todayAgriBottomAnchorAppliedKey = ""
+            todayAgriShownThisRuntime = false
+            todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
+            todayAgriMainCardLoadedLogged = false
+            todayAgriMainCardVisibleLogged = false
         }
     }
     LaunchedEffect(uiRuntimeResetKey, todayAgriRefreshDayKey) {
         if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
         val refreshDayKey = todayAgriRefreshDayKey
+        if (!todayAgriShownThisRuntime && todayAgriMainShownDay == refreshDayKey) {
+            return@LaunchedEffect
+        }
         var attempt = 0
         while (isActive && refreshDayKey == currentChinaDateKey()) {
             val card = awaitTodayAgriCard()
@@ -3871,10 +3969,10 @@ fun ChatScreen() {
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
         anchoredUserMessageId = null
-        initialWorklinePhase = restoredInitialWorklinePhase(
-            hasStaticVisualContent = initialLocalMessages.isNotEmpty(),
-            hasStreamingDraft = false,
-            initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
+        initialWorklinePhase = restoredStartupWorklinePhase(
+            messageCount = initialLocalMessages.size,
+            hasTodayAgriVisualContent = initialTodayAgriCardIsRenderable,
+            persistedInitialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
         )
         inputLimitHintVisible = false
         composerStatusHintVisible = false
@@ -4712,6 +4810,7 @@ fun ChatScreen() {
                 context.loadLocalStreamingDraft(chatScopeId)
             }
             val snapshot = awaitRemoteSnapshot()
+            val remoteSnapshotLoaded = snapshot != null
             val localStreamingDraftForMerge = localStreamingDraftForMergeDeferred.await()
             val localSnapshotForMerge = recoverStreamingDraftAsInterruptedSnapshot(
                 localSnapshot = localSnapshotForMergeDeferred.await(),
@@ -4719,6 +4818,7 @@ fun ChatScreen() {
             )
             if (hydrateClearEpoch != chatHistoryClearEpoch) {
                 historyHydrationComplete = true
+                remoteSnapshotHydrationComplete = remoteSnapshotLoaded
                 return@LaunchedEffect
             }
             val shouldKeepPendingUserMessage: (String) -> Boolean = { messageId ->
@@ -4754,10 +4854,15 @@ fun ChatScreen() {
                     prewarmAssistantMarkdown(prewarmMessages)
                 }
             }
-            val shouldReplaceHydratedMessageList = shouldReplaceHydratedMessages(
-                currentMessages = messages,
-                remoteMessages = hydratedSnapshot.messages
-            )
+            val shouldReplaceHydratedMessageList =
+                if (snapshot == null && hydratedSnapshot.messages.isEmpty()) {
+                    false
+                } else {
+                    shouldReplaceHydratedMessages(
+                        currentMessages = messages,
+                        remoteMessages = hydratedSnapshot.messages
+                    )
+                }
             val shouldUpdateFailedUserStates =
                 failedUserMessageStates != hydratedSnapshot.failedUserMessageStates
             val shouldUpdateFailedAssistantStates =
@@ -4787,6 +4892,7 @@ fun ChatScreen() {
             }
             if (hydrateClearEpoch != chatHistoryClearEpoch) {
                 historyHydrationComplete = true
+                remoteSnapshotHydrationComplete = remoteSnapshotLoaded
                 return@LaunchedEffect
             }
             if (
@@ -4797,13 +4903,11 @@ fun ChatScreen() {
                 val messageListWasVisible = shouldRevealMessageList
                 if (shouldReplaceHydratedMessageList) {
                     replaceMessages(hydratedSnapshot.messages)
-                    if (hydratedSnapshot.messages.isNotEmpty()) {
-                        initialWorklinePhase = restoredInitialWorklinePhase(
-                            hasStaticVisualContent = true,
-                            hasStreamingDraft = false,
-                            initialWorklineOwned = hydratedSnapshot.initialWorklineOwned
-                        )
-                    }
+                    initialWorklinePhase = restoredStartupWorklinePhase(
+                        messageCount = hydratedSnapshot.messages.size,
+                        hasTodayAgriVisualContent = shouldShowTodayAgriCard,
+                        persistedInitialWorklineOwned = hydratedSnapshot.initialWorklineOwned
+                    )
                 }
                 if (shouldUpdateFailedUserStates) {
                     failedUserMessageStates.clear()
@@ -4819,8 +4923,10 @@ fun ChatScreen() {
                 persistTick++
             }
             historyHydrationComplete = true
+            remoteSnapshotHydrationComplete = remoteSnapshotLoaded
         } else {
             historyHydrationComplete = true
+            remoteSnapshotHydrationComplete = true
         }
     }
 
@@ -5476,6 +5582,7 @@ fun ChatScreen() {
         sendUiSettling = true
         snackbarScope.launch {
             try {
+                suppressPendingTodayAgriAutoInsertForUserSend()
                 hasStartedConversation = true
                 keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
                 initialBottomSnapDone = true
@@ -5568,6 +5675,7 @@ fun ChatScreen() {
             }
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
+        suppressPendingTodayAgriAutoInsertForUserSend()
         hasStartedConversation = true
         keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
         initialBottomSnapDone = true
@@ -5665,6 +5773,7 @@ fun ChatScreen() {
             }
         sendStartViewportHeightPx = messageViewportHeightPx
         sendUiSettling = true
+        suppressPendingTodayAgriAutoInsertForUserSend()
         hasStartedConversation = true
         keepOrStartInitialWorklineTopFlow(shouldUseInitialTopFlow)
         initialBottomSnapDone = true

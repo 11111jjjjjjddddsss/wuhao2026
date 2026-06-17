@@ -17,6 +17,7 @@ param(
     [switch]$NoBuild,
     [switch]$AllowDirty,
     [switch]$UseOssSignedDownload,
+    [switch]$UseEcsDownloadFallback,
     [switch]$SkipEcsDownloadPublish
 )
 
@@ -169,6 +170,48 @@ function Normalize-Hex {
     return ($Value -replace '[^0-9A-Fa-f]', '').ToLowerInvariant()
 }
 
+function Assert-SafeHostname {
+    param([string]$Name, [string]$Value)
+    if ($Value -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])$' -or
+        $Value.Contains("..") -or
+        $Value.Contains("/") -or
+        $Value.Contains("\") -or
+        $Value.Contains(":") -or
+        $Value.Contains("@")) {
+        throw "$Name must be a plain DNS hostname"
+    }
+}
+
+function Assert-ExpectedValue {
+    param([string]$Name, [string]$Value, [string]$Expected)
+    if ($Value -ne $Expected) {
+        throw "$Name must be '$Expected' for nongjiqiancha test APK publishing"
+    }
+}
+
+function Assert-SafeOssPrefix {
+    param([string]$Value)
+    $normalized = $Value.Replace("\", "/").Trim("/")
+    if ([string]::IsNullOrWhiteSpace($normalized) -or -not $normalized.ToLowerInvariant().StartsWith("test-apks/")) {
+        throw "internal test APKs must be stored under test-apks/ so the short lifecycle policy applies"
+    }
+    foreach ($part in $normalized.Split("/")) {
+        if ([string]::IsNullOrWhiteSpace($part) -or $part -eq "." -or $part -eq ".." -or $part -match '[^\w.\-]') {
+            throw "OssPrefix contains an unsafe path segment: $Value"
+        }
+    }
+    return $normalized
+}
+
+function Assert-SafeEcsTestApkRoot {
+    param([string]$Value)
+    $normalized = $Value.Replace("\", "/").TrimEnd("/")
+    if ($normalized -ne "/var/www/nongjiqiancha-test-apks") {
+        throw "refusing to use unexpected ECS test APK root: $Value"
+    }
+    return $normalized
+}
+
 function Test-PublicDownloadUrl {
     param(
         [string]$Url,
@@ -196,10 +239,7 @@ function Test-PublicDownloadUrl {
 }
 
 function Clear-EcsTestApkMirror {
-    $remoteRoot = $EcsTestApkRoot.TrimEnd("/")
-    if ([string]::IsNullOrWhiteSpace($remoteRoot) -or -not $remoteRoot.StartsWith("/var/www/nongjiqiancha-test-apks")) {
-        throw "refusing to clean unexpected ECS test APK root: $remoteRoot"
-    }
+    $remoteRoot = Assert-SafeEcsTestApkRoot -Value $EcsTestApkRoot
     $safeRoot = Escape-BashSingleQuoted $remoteRoot
     $remoteScript = @"
 set -eu
@@ -357,18 +397,31 @@ if ($KeepNewestRemote -lt 1 -or $KeepNewestRemote -gt 10) {
     throw "KeepNewestRemote must be between 1 and 10"
 }
 
-$normalizedOssPrefix = $OssPrefix.Trim().Trim("/")
-if ([string]::IsNullOrWhiteSpace($normalizedOssPrefix)) {
-    throw "OssPrefix must not be empty"
-}
-$normalizedOssPrefixForCheck = $normalizedOssPrefix.Replace("\", "/").ToLowerInvariant()
-if (-not $normalizedOssPrefixForCheck.StartsWith("test-apks/")) {
-    throw "internal test APKs must be stored under test-apks/ so the short lifecycle policy applies"
-}
+$normalizedOssPrefix = Assert-SafeOssPrefix -Value $OssPrefix
+Assert-SafeHostname -Name "DownloadDomain" -Value $DownloadDomain
+Assert-SafeHostname -Name "OssDownloadDomain" -Value $OssDownloadDomain
+Assert-SafeHostname -Name "Endpoint" -Value $Endpoint
+Assert-SafeHostname -Name "OssInternalEndpoint" -Value $OssInternalEndpoint
+Assert-ExpectedValue -Name "DownloadDomain" -Value $DownloadDomain -Expected "nongjiqiancha.cn"
+Assert-ExpectedValue -Name "OssDownloadDomain" -Value $OssDownloadDomain -Expected "download.nongjiqiancha.cn"
+Assert-ExpectedValue -Name "Endpoint" -Value $Endpoint -Expected "oss-cn-beijing.aliyuncs.com"
+Assert-ExpectedValue -Name "OssInternalEndpoint" -Value $OssInternalEndpoint -Expected "oss-cn-beijing-internal.aliyuncs.com"
+Assert-SafeEcsTestApkRoot -Value $EcsTestApkRoot | Out-Null
 
 Require-Command "git"
 Require-Command "aliyun"
 . (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+
+if ($UseEcsDownloadFallback -and $SkipEcsDownloadPublish) {
+    throw "-UseEcsDownloadFallback cannot be combined with -SkipEcsDownloadPublish"
+}
+if ($UseOssSignedDownload -and $SkipEcsDownloadPublish) {
+    throw "-UseOssSignedDownload cannot be combined with -SkipEcsDownloadPublish"
+}
+$useOssSignedDownloadEffective = -not $UseEcsDownloadFallback -and -not $SkipEcsDownloadPublish
+if ($UseOssSignedDownload) {
+    $useOssSignedDownloadEffective = $true
+}
 
 Write-Host "== android test apk publish =="
 Write-Host ("repo_root={0}" -f $RepoRoot)
@@ -430,7 +483,7 @@ if ($LASTEXITCODE -ne 0) {
 
 $ossSignedDownloadUrl = ""
 $ossSignedHeadUrl = ""
-if ($UseOssSignedDownload) {
+if ($useOssSignedDownloadEffective) {
     $expiresSeconds = $ExpireHours * 3600
     $ossSignedDownloadUrl = New-OssCnameSignedUrl -ObjectKey $objectKey -ExpiresSeconds $expiresSeconds -Method "GET"
     $ossSignedHeadUrl = New-OssCnameSignedUrl -ObjectKey $objectKey -ExpiresSeconds $expiresSeconds -Method "HEAD"
@@ -438,7 +491,7 @@ if ($UseOssSignedDownload) {
     Write-Host "test_apk_public_status=oss_signed"
 }
 
-if (-not $SkipEcsDownloadPublish -and -not $UseOssSignedDownload) {
+if (-not $SkipEcsDownloadPublish -and -not $useOssSignedDownloadEffective) {
     $internalSignOutput = @(& aliyun oss sign $ossUrl --endpoint $OssInternalEndpoint --timeout 3600 2>&1)
     if ($LASTEXITCODE -ne 0) {
         $joined = ($internalSignOutput | ForEach-Object { $_.ToString() }) -join "`n"
@@ -553,11 +606,11 @@ if (Test-Path -LiteralPath $cleanupScript -PathType Leaf) {
         throw "clean-oss-test-apks.ps1 failed with exit code $LASTEXITCODE"
     }
 }
-if ($UseOssSignedDownload -and -not $SkipEcsDownloadPublish) {
+if ($useOssSignedDownloadEffective -and -not $SkipEcsDownloadPublish) {
     Clear-EcsTestApkMirror
 }
 
-if ($UseOssSignedDownload) {
+if ($useOssSignedDownloadEffective) {
     Test-PublicDownloadUrl -Url $ossSignedHeadUrl -ExpectedSize $apkItem.Length -Method "Head"
 } elseif (-not $SkipEcsDownloadPublish) {
     Test-PublicDownloadUrl -Url $downloadUrl -ExpectedSize $apkItem.Length
@@ -567,6 +620,15 @@ Write-Host "test_apk_build_type=debug"
 Write-Host ("test_apk_expires_hours={0}" -f $ExpireHours)
 Write-Host ("test_apk_remote_keep_newest={0}" -f $KeepNewestRemote)
 if ($UseOssSignedDownload) {
+    Write-Host "test_apk_download_mode=oss_signed"
+} elseif ($UseEcsDownloadFallback) {
+    Write-Host "test_apk_download_mode=ecs_fallback"
+} elseif ($SkipEcsDownloadPublish) {
+    Write-Host "test_apk_download_mode=staged_only"
+} else {
+    Write-Host "test_apk_download_mode=oss_signed_default"
+}
+if ($useOssSignedDownloadEffective) {
     Write-Host "test_apk_status=ready"
     Write-Host "test_apk_public_status=oss_signed"
     Write-Host ("test_apk_url={0}" -f $ossSignedDownloadUrl)

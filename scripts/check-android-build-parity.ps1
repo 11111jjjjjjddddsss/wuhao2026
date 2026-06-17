@@ -366,6 +366,10 @@ if ($failures.Count -eq 0) {
         "Chat startup must reveal real messages or today agri content as soon as they exist; bottom snapping continues as calibration."
     Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowChatWelcomePlaceholder(?s:.*?)startupHydrationBarrierSatisfied\s*\|\|\s*!hasStartedConversation' `
         "Clean installs must show a nonblank welcome shell while remote history is still hydrating."
+    Require-NoMatch $failures $chatScreen 'messageCount\s*==\s*0\s*&&\s*!hasTodayAgriCard' `
+        "The welcome shell must remain available when today agri is the only non-message visual item."
+    Require-Match $failures $chatTimelineItemsTest 'hasTodayAgriCard\s*=\s*true,\s*messageCount\s*=\s*0' `
+        "Welcome placeholder behavior must be tested with today agri present and no real messages."
     Require-NoMatch $failures $chatScreen 'showWelcomePlaceholder(?s:.*?)waitingForRemoteStartupHydration' `
         "The welcome shell must not be hidden solely because remote history hydration is pending."
     Require-NoMatch $failures $chatScreen 'LaunchedEffect\s*\(\s*uiRuntimeResetKey\s*,\s*historyHydrationComplete\s*,\s*todayAgriRefreshDayKey\s*\)(?s:.*?)awaitTodayAgriCard' `
@@ -515,8 +519,32 @@ if ($failures.Count -eq 0) {
         "Today agri temporary context must wait for same-day remote confirmation; cached visual content alone must not enter model context."
     Require-Match $failures $chatScreen 'awaitTodayAgriCard\(\)(?s:.*?)todayAgriRemoteConfirmedDay\s*=\s*refreshDayKey' `
         "Today agri remote confirmation day must be set only after the backend returns a same-day renderable card."
-    Require-Match $failures $chatScreen 'todayAgriCardAnchorMessageId\s*==\s*TODAY_AGRI_CARD_ANCHOR_START(?s:.*?)latestMessageAnchorId\s*!=\s*null(?s:.*?)!hasStartedConversation' `
-        "Today agri START anchor must not migrate after the user has started sending, otherwise the item can jump below the first answer."
+    Require-Match $failures $chatScreen 'TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX\s*=\s*"today_agri_main_shown_day_"' `
+        "Today agri main-chat insertion must persist a per-day shown marker so reopening the app does not show it repeatedly."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
+        "Today agri main-chat visibility must be once per day, avoid surprise insertion after the user starts chatting, and keep the card visible for the current runtime after it is marked shown."
+    Require-Match $failures $chatScreen 'fun\s+suppressPendingTodayAgriAutoInsertForUserSend\(\)(?s:.*?)!\s*todayAgriShownThisRuntime\s*&&\s*!\s*hasTodayAgriCard(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*true' `
+        "Today agri pending auto-insert must be suppressed when the user starts a chat before the card is visible."
+    Require-Match $failures $chatScreen '!shouldRevealMessageList(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*true(?s:.*?)todayAgriShownThisRuntime\s*=\s*true(?s:.*?)saveTodayAgriMainShownDaySync' `
+        "Today agri should be marked shown only after it is inserted into the visible main-chat timeline."
+    Require-Match $failures $chatScreen 'todayAgriRefreshDayKey\s*!=\s*currentDay(?s:.*?)todayAgriShownThisRuntime\s*=\s*false(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*hasStartedConversation(?s:.*?)todayAgriMainCardLoadedLogged\s*=\s*false(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*false' `
+        "Today agri same-runtime day rollover must reset shown/log gates and avoid surprise insertion if the user is already chatting."
+    Require-Match $failures $chatScreen 'if\s*\(\s*!\s*todayAgriShownThisRuntime\s*&&\s*todayAgriMainShownDay\s*==\s*refreshDayKey\s*\)\s*\{\s*return@LaunchedEffect\s*\}' `
+        "Today agri fetch for the main chat must be skipped on later app opens after the same day has already been shown."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime' `
+        "Today agri once-per-day main-chat visibility must have unit coverage."
+    Require-NoMatch $failures $chatScreen 'todayAgriCardAnchorMessageId\s*==\s*TODAY_AGRI_CARD_ANCHOR_START(?s:.*?)context\.saveTodayAgriCardAnchorSync\s*\(\s*chatScopeId,\s*currentTodayAgriCardDay,\s*latestMessageAnchorId\s*\)' `
+        "Today agri START anchor must not migrate to the latest message after restart; keep it before subsequent messages."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriStartAnchorStaysBeforeMessagesAfterRestart' `
+        "Today agri START anchor restart behavior must stay covered by unit tests."
+    Require-Match $failures $chatScreen 'fun\s+restoredStartupWorklinePhase(?s:.*?)hasTodayAgriVisualContent\s*->\s*false' `
+        "Today agri as first visual content must ignore persisted bottom-owned startup state and start in top document flow."
+    Require-Match $failures $chatScreen 'initialWorklinePhase\s*=\s*restoredStartupWorklinePhase\s*\(\s*messageCount\s*=\s*hydratedSnapshot\.messages\.size(?s:.*?)hasTodayAgriVisualContent\s*=\s*shouldShowTodayAgriCard' `
+        "Remote hydrate replacement must reset startup workline phase, including the empty-history plus today-agri case."
+    Require-Match $failures $chatScreen 'remoteSnapshotHydrationComplete(?s:.*?)if\s*\(\s*shouldHydrateRemoteHistory\s*&&\s*!remoteSnapshotHydrationComplete\s*\)\s*return@LaunchedEffect(?s:.*?)saveTodayAgriCardAnchorSync' `
+        "Today agri anchor saving must wait for the remote snapshot, not only the local-first history hydration gate."
+    Require-Match $failures $chatScreen '"remote_snapshot_hydrated"\s+to\s+remoteSnapshotHydrationComplete' `
+        "Chat startup diagnostics must distinguish local-first history hydration from remote snapshot completion."
     Require-NoMatch $failures $chatScreen 'persistedTodayAgriContextDayForUserMessage(?s:.*?)takeIf\s*\{\s*it\s*==\s*currentDay\s*\}' `
         "Persisted today_agri_context_day for an existing client_msg_id must be reused across midnight to keep replay request hashes stable."
     Require-Match $failures ($chatScreen + "`n" + $sessionApi + "`n" + $pendingWorker) 'today_agri_context_day|todayAgriContextDay' `

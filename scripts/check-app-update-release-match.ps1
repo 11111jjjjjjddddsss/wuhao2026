@@ -285,6 +285,14 @@ if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
     if ($apkUrlText -match "test-apks|debug|internal|staging") {
         Add-Failure $failures "admin APK URL looks like an internal test APK URL; do not configure debug/internal/staging/test-apks links for app update"
     }
+    $signedQueryKeys = @("expires", "signature", "ossaccesskeyid", "security-token", "x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token")
+    foreach ($key in $parsedApkUrl.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $queryKey = ($key -split "=", 2)[0].ToLowerInvariant()
+        if ($signedQueryKeys -contains $queryKey) {
+            Add-Failure $failures "admin APK URL looks like a short-lived signed URL; configure a stable release URL or a backend on-demand signing flow"
+            break
+        }
+    }
     if (-not $parsedApkUrl.AbsolutePath.ToLowerInvariant().EndsWith(".apk")) {
         Add-Failure $failures "admin APK URL path should end with .apk"
     }

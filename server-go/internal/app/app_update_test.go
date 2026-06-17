@@ -159,6 +159,30 @@ func TestBuildAndroidUpdateInfoRejectsEscapedInternalTestAPKURL(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoRejectsShortLivedSignedAPKURL(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.example.com/releases/nongjiqiancha-1.0.4.apk?OSSAccessKeyId=abc&Expires=1781941394&Signature=sig",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	}
+	info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+	if info.HasUpdate {
+		t.Fatalf("expected short-lived signed apk url to disable update, got %#v", info)
+	}
+	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+	if androidUpdateConfigValid(cfg) {
+		t.Fatalf("short-lived signed apk config must be invalid")
+	}
+	if androidUpdateDownloadArtifactsComplete(cfg) {
+		t.Fatalf("short-lived signed apk must not count as complete release artifact")
+	}
+}
+
 func TestBuildAndroidUpdateInfoRequiresDownloadArtifacts(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
 		Enabled:           true,

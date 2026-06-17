@@ -40,6 +40,27 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriStartAnchorStaysBeforeMessagesAfterRestart() {
+        val first = userMessage("m1")
+        val second = assistantMessage("m2")
+
+        val items = buildChatTimelineItems(
+            messages = listOf(first, second),
+            todayAgriCard = todayAgriCard(),
+            todayAgriCardAnchorMessageId = TODAY_AGRI_CARD_ANCHOR_START
+        )
+
+        assertEquals(
+            listOf(
+                ChatTimelineItem.TodayAgriCard(todayAgriCard()),
+                ChatTimelineItem.Message(first),
+                ChatTimelineItem.Message(second)
+            ),
+            items
+        )
+    }
+
+    @Test
     fun todayAgriCardWithMissingAnchorFallsBackAfterHistoryNotice() {
         val first = userMessage("m1")
         val second = assistantMessage("m2")
@@ -167,6 +188,59 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime() {
+        assertTrue(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "",
+                shownThisRuntime = false,
+                suppressedThisRuntime = false
+            )
+        )
+
+        assertFalse(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "",
+                shownThisRuntime = false,
+                suppressedThisRuntime = true
+            )
+        )
+
+        assertFalse(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "20260615",
+                shownThisRuntime = false,
+                suppressedThisRuntime = false
+            )
+        )
+
+        assertTrue(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "20260615",
+                shownThisRuntime = true,
+                suppressedThisRuntime = true
+            )
+        )
+
+        assertFalse(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260616",
+                shownDayKey = "",
+                shownThisRuntime = false,
+                suppressedThisRuntime = false
+            )
+        )
+    }
+
+    @Test
     fun startupRevealWaitsOnlyWhileRemoteHistoryHasNoVisualContent() {
         assertFalse(
             shouldRevealChatMessageList(
@@ -230,13 +304,30 @@ class ChatTimelineItemsTest {
             )
         )
 
-        assertFalse(
+        assertTrue(
             shouldShowChatWelcomePlaceholder(
                 startupHydrationBarrierSatisfied = false,
                 hasStartedConversation = false,
                 hasStreamingItem = false,
                 hasTodayAgriCard = true,
                 messageCount = 0
+            )
+        )
+    }
+
+    @Test
+    fun emptyRemoteSnapshotReplacesCompletedLocalHistory() {
+        assertTrue(
+            shouldReplaceHydratedMessages(
+                currentMessages = listOf(userMessage("m1"), assistantMessage("m2")),
+                remoteMessages = emptyList()
+            )
+        )
+
+        assertFalse(
+            shouldReplaceHydratedMessages(
+                currentMessages = emptyList(),
+                remoteMessages = emptyList()
             )
         )
     }

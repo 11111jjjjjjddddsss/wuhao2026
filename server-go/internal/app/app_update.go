@@ -206,6 +206,13 @@ func isOfficialAndroidAPKURL(raw string) bool {
 	}
 	lower := strings.ToLower(raw)
 	if parsed, err := url.Parse(raw); err == nil {
+		for key := range parsed.Query() {
+			switch strings.ToLower(key) {
+			case "expires", "signature", "ossaccesskeyid", "security-token",
+				"x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token":
+				return false
+			}
+		}
 		if decodedPath, pathErr := url.PathUnescape(parsed.EscapedPath()); pathErr == nil {
 			lower += " " + strings.ToLower(decodedPath)
 		}

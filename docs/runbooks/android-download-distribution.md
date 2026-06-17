@@ -38,9 +38,9 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 
 - DNS：`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`。
 - OSS：Bucket 仍保持 private，不开放公共读；测试包通过签名 URL 下载。
-- HTTPS：下载域名已绑定免费 Let’s Encrypt 证书，当前证书到期日为 `2026-09-15`，ECS 上 `certbot.timer` 负责免费证书续期。
+- HTTPS：下载域名已绑定免费 Let’s Encrypt 证书，当前证书到期日为 `2026-09-15 07:03:04 UTC`；2026-06-17 已因旧同步脚本曾把私钥放进 Cloud Assistant 输出而强制重签该证书，并用加固后的脚本重新同步到 OSS。ECS 上 `certbot.timer` 负责后续免费证书续期。
 - 验证：`scripts/check-android-download-domain.ps1` 会检查 DNS、OSS CNAME、HTTPS 证书可见性，并用自有域名签名 HEAD 探针验证访问。
-- 发布：`scripts/publish-android-test-apk.ps1 -UseOssSignedDownload` 会上传 debug/internal APK 到 OSS `test-apks/debug/...`，生成 `https://download.nongjiqiancha.cn/...` 签名链接，默认 72 小时有效，并清理旧测试包只留最新。
+- 发布：`scripts/publish-android-test-apk.ps1` 默认会上传 debug/internal APK 到 OSS `test-apks/debug/...`，生成 `https://download.nongjiqiancha.cn/...` 签名链接，默认 72 小时有效，并清理旧测试包只留最新；只有显式 `-UseEcsDownloadFallback` 才允许临时回退旧 ECS `/test-apks/` 路径。
 
 发测试包前先跑：
 
@@ -68,7 +68,7 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 .\scripts\sync-oss-download-certificate.ps1
 ```
 
-脚本会通过 Cloud Assistant 从 ECS 读取 `download.nongjiqiancha.cn` 的证书和私钥，调用 OSS CNAME 证书配置接口更新绑定；输出只展示证书 subject / issuer / 有效期，不打印私钥。执行后再跑：
+脚本会先在本机生成一次性 RSA 公钥，把公钥随远端脚本发到 ECS；ECS 读取 `download.nongjiqiancha.cn` 的证书和私钥后，用随机 AES key 加密证书包，并用一次性 RSA 公钥加密 AES key。Cloud Assistant 输出里只包含证书 subject / issuer / 有效期和加密后的 payload，不再出现明文私钥；本机解密后调用 OSS CNAME 证书配置接口更新绑定，临时密钥和 XML 文件会在脚本结束时删除。执行后再跑：
 
 ```powershell
 .\scripts\check-android-download-domain.ps1
@@ -94,7 +94,7 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 - commit
 - 签名证书指纹
 
-注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 地址，或由后端检查更新接口按需生成可用下载链接；后台检查更新仍必须校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
+注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 地址，或由后端检查更新接口按需生成可用下载链接；后台检查更新和 release-match 脚本会拒绝带 `Expires / Signature / OSSAccessKeyId / x-oss-signature` 等短签名参数的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
 后台“检查更新”启用前继续跑：
 

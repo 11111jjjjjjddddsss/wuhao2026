@@ -33,6 +33,45 @@ function Require-Command {
     return $true
 }
 
+function Assert-SafeHostname {
+    param([string]$Name, [string]$Value)
+    if ($Value -notmatch '^[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])$' -or
+        $Value.Contains("..") -or
+        $Value.Contains("/") -or
+        $Value.Contains("\") -or
+        $Value.Contains(":") -or
+        $Value.Contains("@")) {
+        Add-Failure "$Name must be a plain DNS hostname"
+        return $false
+    }
+    return $true
+}
+
+function Assert-ExpectedValue {
+    param([string]$Name, [string]$Value, [string]$Expected)
+    if ($Value -ne $Expected) {
+        Add-Failure "$Name must be '$Expected'"
+        return $false
+    }
+    return $true
+}
+
+function Assert-SafeObjectKey {
+    param([string]$Value)
+    $normalized = $Value.Replace("\", "/").Trim("/")
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        Add-Failure "ProbeObjectKey must not be empty"
+        return $false
+    }
+    foreach ($part in $normalized.Split("/")) {
+        if ([string]::IsNullOrWhiteSpace($part) -or $part -eq "." -or $part -eq ".." -or $part -match '[^\w.\-]') {
+            Add-Failure "ProbeObjectKey contains an unsafe path segment"
+            return $false
+        }
+    }
+    return $true
+}
+
 function Invoke-AliyunText {
     param([string[]]$CommandArgs)
     $output = & aliyun @CommandArgs 2>&1
@@ -85,6 +124,16 @@ Write-Host "== android download domain check =="
 Write-Host "download_domain=$Domain"
 Write-Host "oss_bucket=$Bucket"
 Write-Host "oss_endpoint=$Endpoint"
+
+if (-not (Assert-SafeHostname -Name "Domain" -Value $Domain) -or
+    -not (Assert-SafeHostname -Name "Endpoint" -Value $Endpoint) -or
+    -not (Assert-SafeObjectKey -Value $ProbeObjectKey) -or
+    -not (Assert-ExpectedValue -Name "Domain" -Value $Domain -Expected "download.nongjiqiancha.cn") -or
+    -not (Assert-ExpectedValue -Name "Bucket" -Value $Bucket -Expected "nongjiqiancha-prod") -or
+    -not (Assert-ExpectedValue -Name "Endpoint" -Value $Endpoint -Expected "oss-cn-beijing.aliyuncs.com")) {
+    Write-Host ("status=failed failures={0} attention={1}" -f $failures.Count, $attention.Count)
+    exit 1
+}
 
 $expectedTarget = "$Bucket.$Endpoint"
 
