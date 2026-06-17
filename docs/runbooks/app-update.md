@@ -59,7 +59,7 @@ Codex 默认按下面流程处理：
 1. 先判断问题属于 Android、后端、官网、配置还是云资源；如果只是后端问题，优先只发后端，不打 APK
 2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
 3. Codex 负责运行 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用最终 `app-release.apk` 本体校验包名、`versionCode`、`versionName`、release 不可调试、权限白名单、签名证书指纹，并输出 APK 文件大小和 SHA-256；更新说明默认留空，展示统一默认文案
-4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接
+4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接；低成本长期分发优先走 `download.nongjiqiancha.cn` + OSS，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包的 72 小时签名链接不能直接写入正式检查更新；正式发版应使用长期稳定 release 地址，或由后端在检查更新链路中按需生成可用下载链接
 5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；启用更新时页面和服务端都要求输入本次 `versionCode` 作为确认，停更时页面和服务端都要求输入“停更”作为确认；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
 6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；需要连公网下载包体验证时加 `-VerifyDownload`，脚本会确认最终下载地址仍是 HTTPS
 7. 如果这是要给旧包用户推送的自更新包，必须带上旧包 `versionCode` 跑 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK、后台配置和公网 `/api/app/update` 都会对这个旧版本返回可更新
@@ -138,7 +138,7 @@ Codex 默认按下面流程处理：
 ```
 
 脚本会直接检查最终 `app/build/outputs/apk/release/app-release.apk`，并输出 `apk_size_bytes`、`apk_sha256`、`apk_package`、`apk_version_code`、`apk_version_name` 和 `apk_cert_sha256`。其中 `apk_size_bytes`、`apk_sha256` 和版本号用于填写后台“检查更新”页；证书指纹用于确认仍是固定 release 签名。
-3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK
+3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK；低成本长期分发优先走 `download.nongjiqiancha.cn` + OSS，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包短签名链接不能进入正式检查更新
 4. 在管理后台“检查更新”页填写版本号、HTTPS APK、SHA-256 和文件大小，更新说明留空即可，勾上“对外启用更新”后保存；保存成功后检查“发布历史”出现本次记录；如暂时不走后台，也可继续改 `APP_ANDROID_*` 环境变量，但环境变量兜底不会自动写发布历史
 5. 运行后台配置对账：
 

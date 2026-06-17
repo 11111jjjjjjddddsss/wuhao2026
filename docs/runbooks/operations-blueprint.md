@@ -6,7 +6,7 @@
 
 把后期“农技千查”整体 App 和后端怎么运维先存进仓库，避免以后买服务器、发版本、查问题、做管理后台时再从聊天记录里翻。
 
-第一版网页后台代码已落地并部署到 `https://admin.nongjiqiancha.cn/`；`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、管理后台 HTTPS、SLS 最小日志集和 5 条 SLS AlertHub 最小告警已落地，下载域名仍需后续单独配置。本文记录当前真实环境和后续生产运维里 Codex 应该协助你的范围、入口和安全边界。
+第一版网页后台代码已落地并部署到 `https://admin.nongjiqiancha.cn/`；`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、管理后台 HTTPS、`download.nongjiqiancha.cn` OSS 低成本下载域名、SLS 最小日志集和 5 条 SLS AlertHub 最小告警已落地。本文记录当前真实环境和后续生产运维里 Codex 应该协助你的范围、入口和安全边界。
 
 ## 总原则
 

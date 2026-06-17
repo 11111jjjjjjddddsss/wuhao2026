@@ -128,11 +128,13 @@ type adminGiftCardCreateBatchRequest struct {
 	Quantity     int    `json:"quantity"`
 	ValidUntil   *int64 `json:"valid_until,omitempty"`
 	Note         string `json:"note"`
+	Confirmation string `json:"confirmation"`
 }
 
 type adminGiftCardVoidRequest struct {
-	CardID string `json:"card_id"`
-	Reason string `json:"reason"`
+	CardID       string `json:"card_id"`
+	Reason       string `json:"reason"`
+	Confirmation string `json:"confirmation"`
 }
 
 type giftCardRedeemRequest struct {
@@ -201,12 +203,19 @@ func (s *Server) handleAdminCreateGiftCardBatch(w http.ResponseWriter, r *http.R
 	}
 	var body adminGiftCardCreateBatchRequest
 	if err := decodeJSONBody(r, &body); err != nil {
+		s.recordAdminGiftCardBatchValidationFailure(r, admin.User.Username, body, "invalid_json")
 		s.writeJSONDecodeError(w, err)
 		return
 	}
 	input, validationError := normalizeGiftCardBatchInput(body, admin.User.Username, time.Now())
 	if validationError != "" {
+		s.recordAdminGiftCardBatchValidationFailure(r, admin.User.Username, body, validationError)
 		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	if code := adminGiftCardBatchConfirmationError(body, input.Quantity, input.Tier, input.DurationDays); code != "" {
+		s.recordAdminGiftCardBatchValidationFailure(r, admin.User.Username, body, code)
+		s.writeError(w, http.StatusBadRequest, code)
 		return
 	}
 	batch, codes, err := s.store.CreateGiftCardBatch(r.Context(), input)
@@ -286,21 +295,30 @@ func (s *Server) handleAdminVoidGiftCard(w http.ResponseWriter, r *http.Request)
 	}
 	var body adminGiftCardVoidRequest
 	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.recordAdminGiftCardVoidValidationFailure(r, admin.User.Username, body, "invalid_json")
 		s.writeJSONDecodeError(w, err)
 		return
 	}
 	cardID := strings.TrimSpace(body.CardID)
 	reason := strings.TrimSpace(body.Reason)
 	if cardID == "" {
+		s.recordAdminGiftCardVoidValidationFailure(r, admin.User.Username, body, "card_id_required")
 		s.writeError(w, http.StatusBadRequest, "card_id_required")
 		return
 	}
 	if reason == "" {
+		s.recordAdminGiftCardVoidValidationFailure(r, admin.User.Username, body, "reason_required")
 		s.writeError(w, http.StatusBadRequest, "reason_required")
 		return
 	}
 	if giftCardTextLooksSensitive(reason) {
+		s.recordAdminGiftCardVoidValidationFailure(r, admin.User.Username, body, "reason_contains_sensitive_value")
 		s.writeError(w, http.StatusBadRequest, "reason_contains_sensitive_value")
+		return
+	}
+	if code := adminGiftCardVoidConfirmationError(body); code != "" {
+		s.recordAdminGiftCardVoidValidationFailure(r, admin.User.Username, body, code)
+		s.writeError(w, http.StatusBadRequest, code)
 		return
 	}
 	if err := s.store.VoidGiftCard(r.Context(), cardID, time.Now().UnixMilli()); err != nil {
@@ -1173,6 +1191,51 @@ func giftCardErrorCode(err error) string {
 	default:
 		return "gift_card_redeem_failed"
 	}
+}
+
+func adminGiftCardBatchConfirmationError(body adminGiftCardCreateBatchRequest, normalizedQuantity int, normalizedTier Tier, normalizedDurationDays int) string {
+	confirmation := strings.Join(strings.Fields(strings.TrimSpace(body.Confirmation)), " ")
+	if normalizedQuantity <= 0 || normalizedTier == "" || normalizedDurationDays <= 0 {
+		return "gift_card_batch_confirmation_required"
+	}
+	tierText := strings.ToLower(string(normalizedTier))
+	if tierText != "" {
+		tierText = strings.ToUpper(tierText[:1]) + tierText[1:]
+	}
+	expected := fmt.Sprintf("%d %s %d", normalizedQuantity, tierText, normalizedDurationDays)
+	if !strings.EqualFold(confirmation, expected) {
+		return "gift_card_batch_confirmation_required"
+	}
+	return ""
+}
+
+func adminGiftCardVoidConfirmationError(body adminGiftCardVoidRequest) string {
+	if strings.TrimSpace(body.Confirmation) != "作废" {
+		return "gift_card_void_confirmation_required"
+	}
+	return ""
+}
+
+func (s *Server) recordAdminGiftCardBatchValidationFailure(r *http.Request, actor string, body adminGiftCardCreateBatchRequest, code string) {
+	s.recordAdminAuditLog(r, actor, "admin.gift_cards.create_batch", "gift_cards", "", "", false, http.StatusBadRequest, map[string]any{
+		"error_code":    code,
+		"tier":          strings.ToLower(strings.TrimSpace(body.Tier)),
+		"quantity":      body.Quantity,
+		"duration_days": body.DurationDays,
+		"has_note":      strings.TrimSpace(body.Note) != "",
+	})
+}
+
+func (s *Server) recordAdminGiftCardVoidValidationFailure(r *http.Request, actor string, body adminGiftCardVoidRequest, code string) {
+	cardID := strings.TrimSpace(body.CardID)
+	reason := strings.TrimSpace(body.Reason)
+	s.recordAdminAuditLog(r, actor, "admin.gift_cards.void", "gift_cards", cardID, "", false, http.StatusBadRequest, map[string]any{
+		"error_code":            code,
+		"has_card_id":           cardID != "",
+		"has_reason":            reason != "",
+		"reason_length":         len([]rune(reason)),
+		"reason_sensitive_like": giftCardTextLooksSensitive(reason),
+	})
 }
 
 func normalizeGiftCardStatus(raw string) string {

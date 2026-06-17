@@ -19,7 +19,7 @@
 - RDS MySQL：基础版 1 核 / 2 GiB / 50 GiB，最大连接数 600，到期 `2027-05-24T16:00:00Z`。磁盘约 2.98 GiB（约 5.97%）；近 30 分钟 QPS/TPS 峰值约 10.03、IOPS 约 5.93、内存 / CPU 指标约 11.76%、连接约 4；备份保留 7 天，日志备份已启用
 - Redis：256 MiB 标准高可用主备，到期 `2027-05-30T16:00:00Z`。近 30 分钟内存约 5.39 MiB / 256 MiB（约 2.11%），CPU 峰值约 0.13%，连接使用约 0.04%；释放保护已开启
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS；生命周期为 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`；2026-06-17 起 `check-resource-capacity.ps1` 会解析生命周期 XML 并逐前缀输出 `lifecycle prefix=... status=... expiration_days=... abort_multipart_days=...`
-- DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；域名到期 `2027-05-24 19:23:07`；Let’s Encrypt 证书约 83 到 85 天后到期，`certbot.timer` enabled/active
+- DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`，用于 OSS 低成本 APK 下载；域名到期 `2027-05-24 19:23:07`；ECS 上 Let’s Encrypt 证书由 `certbot.timer` 自动续期，`download.nongjiqiancha.cn` 的 OSS 自定义域名证书已绑定，当前到期日 `2026-09-15`，证书续期后需用 `scripts/sync-oss-download-certificate.ps1` 同步到 OSS CNAME 配置
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。ECS 已补装 CloudMonitor C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；本轮严格巡检里 ECS 内存规则已回到 `OK`。若未来云监控返回 `INSUFFICIENT_DATA`，严格巡检会以 warning / attention 提醒。该组用于资源不足提前邮件提醒，不走短信 / 电话
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
 - 云安全中心：2026-06-14 只读巡检曾看到 1 条提醒级事件 `云产品威胁检测-OSS可疑访问行为`，类型不是资源水位告警，关联 OSS 读取 Bucket 加密配置类操作；核对后与本次 CLI / ossutil 做 OSS 配置巡检或开启服务端加密的运维行为一致，已在云安全中心按“我已手工处理”收口，未创建长期白名单，待处理列表为空。聊天和仓库文档不记录 AK、IP、UserAgent 或其它敏感字段；后续若出现来源不明、写操作、删除操作、失败调用或越权类告警，不能静默忽略，应按安全事件处理并优先轮换相关凭证。
@@ -34,6 +34,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 ```
 
 当前脚本汇总状态以实时输出为准。ECS / RDS 当前是包年包月，释放保护不适用，脚本会以 `not_applicable_prepaid` 表达；Redis 释放保护已开启。ECS 自动快照已按省钱策略开启，后续只需观察快照容量费用；SLS 应用日志 action policy / 仪表盘已闭环到邮件 + 最小图表。2026-06-15 严格巡检输出 `warnings=0 / errors=0 / status=ready`。
+
+下载域名和 OSS CNAME HTTPS 单独巡检：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-android-download-domain.ps1
+```
+
+如果 `download.nongjiqiancha.cn` 的 ECS 免费证书已经续期，但 OSS CNAME 证书仍是旧有效期，运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\sync-oss-download-certificate.ps1
+```
+
+本机 Codex 已创建每周“农技千查续费与证书巡检”自动化，默认检查 ECS / RDS / Redis / OSS 包、域名、免费证书、下载域名 OSS 证书、短信套餐、模型资源包 / 节省计划和异常账单；它只做巡检和必要的 OSS 证书同步，不购买、不续费、不退订、不释放任何付费资源。
 
 代理测试或疑似卡顿前后，可加跑服务器性能快检：
 

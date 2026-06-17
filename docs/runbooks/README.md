@@ -24,6 +24,7 @@
 - [today-agri-card.md](D:/wuhao/docs/runbooks/today-agri-card.md)：今日农情每日卡片生成与排查入口
 - [support-feedback.md](D:/wuhao/docs/runbooks/support-feedback.md)：帮助与反馈站内消息和后台回复入口
 - [app-update.md](D:/wuhao/docs/runbooks/app-update.md)：自有服务器 APK 分发与检查更新入口
+- [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)：Android APK 低成本下载域名、OSS 分发和 CDN 取舍入口
 - [gift-card.md](D:/wuhao/docs/runbooks/gift-card.md)：礼品卡后端、后台批次和用户侧兑换接口
 - [legal-privacy.md](D:/wuhao/docs/runbooks/legal-privacy.md)：服务协议、隐私政策、风险提示、第三方清单和权限口径
 - [software-copyright.md](D:/wuhao/docs/runbooks/software-copyright.md)：软件著作权登记口径、材料包和提交流程入口

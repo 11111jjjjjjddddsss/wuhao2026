@@ -9,6 +9,8 @@ const adminMain = read("admin/src/main.ts");
 const adminTypes = read("admin/src/types.ts");
 const serverRoutes = read("server-go/internal/app/server.go");
 const adminAPI = read("server-go/internal/app/admin_api.go");
+const giftCards = read("server-go/internal/app/gift_cards.go");
+const serverSurface = `${adminAPI}\n${giftCards}`;
 
 const fail = [];
 
@@ -59,13 +61,13 @@ function rejectAdminPattern(name, pattern) {
 }
 
 function expectServerPattern(name, pattern) {
-  if (!pattern.test(adminAPI)) {
+  if (!pattern.test(serverSurface)) {
     fail.push(`${name}: missing expected admin API contract`);
   }
 }
 
 function rejectServerPattern(name, pattern) {
-  if (pattern.test(adminAPI)) {
+  if (pattern.test(serverSurface)) {
     fail.push(`${name}: forbidden admin API contract present`);
   }
 }
@@ -176,15 +178,24 @@ expectAdminPattern("support handled action requires note", /status === "replied"
 rejectAdminPattern("support action must not say 标已回复", /标已回复/);
 expectServerPattern("support handled status has note-required API guard", /support_status_note_required/);
 expectAdminPattern("gift card generation emphasizes real entitlement", /生成后将产生真实可兑换权益/);
-expectAdminPattern("gift card generation requires typed quantity confirmation", /请输入 \$\{quantity\} 确认生成真实礼品卡/);
+expectAdminPattern("gift card generation builds quantity tier days confirmation", /confirmationText\s*=\s*`\$\{quantity\} \$\{tierLabel\} \$\{durationDays\}`/);
+expectAdminPattern("gift card generation requires typed quantity tier days confirmation", /请输入 \$\{confirmationText\} 确认生成真实礼品卡/);
+expectAdminPattern("gift card generation sends typed confirmation to API", /confirmation:\s*typedConfirmation\.trim\(\)/);
+expectServerPattern("gift card create API enforces typed confirmation", /adminGiftCardBatchConfirmationError\(body,\s*input\.Quantity,\s*input\.Tier,\s*input\.DurationDays\)/);
+expectServerPattern("gift card void API enforces typed confirmation", /adminGiftCardVoidConfirmationError/);
+expectServerPattern("gift card create validation failures are audited", /recordAdminGiftCardBatchValidationFailure/);
+expectServerPattern("gift card void validation failures are audited", /recordAdminGiftCardVoidValidationFailure/);
 expectAdminPattern("gift card page states immediate redemption policy", /生成后就是 active 可兑换卡/);
 expectAdminPattern("gift card redeemed KPI avoids activation wording", /权益已发放/);
 expectAdminPattern("gift card table uses redeem account label", /兑换账号ID/);
 expectAdminPattern("gift card create button makes production effect clear", /生成真实可兑换卡/);
 expectAdminPattern("gift card monitoring shortcut is trace entry", /礼品卡追溯/);
+expectAdminPattern("gift card void requires typed keyword", /请输入 作废 确认作废这张礼品卡/);
 rejectAdminPattern("gift card page must not imply future activation", /已经生效且未过期/);
 rejectServerPattern("admin gift card monitoring must not gate on future valid_from", /valid_from\s*<=/);
 rejectServerPattern("admin gift card monitoring text must not imply activation gate", /生效且未过期/);
+expectAdminPattern("orders page marks amount as development record", /开发期记录金额/);
+rejectAdminPattern("orders page must not imply actual income", /金额合计/);
 expectAdminPattern("app update separates switch from delivery", /是否会下发/);
 expectAdminPattern("app update labels switch as switch", /发布开关/);
 expectAdminPattern("app update enable requires typed versionCode and release command", /请输入 \$\{latestVersionCode\} 确认已获正式发版口令，并对外启用这次更新/);

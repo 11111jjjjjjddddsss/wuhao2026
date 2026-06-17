@@ -5,6 +5,10 @@
 
 ## 2026-06-17
 
+- 跑通并固化低成本 Android 下载链路：`download.nongjiqiancha.cn` 已 CNAME 到 OSS Bucket 并绑定 HTTPS，测试包发布脚本现在可用 `-UseOssSignedDownload` 生成自有下载域名签名链接，不再推荐走 ECS 5Mbps `/test-apks/` 路径；发布脚本会让 OSS `test-apks/debug/` 只保留最新内部测试包，并在走 OSS 签名下载时清掉 ECS 旧测试包镜像。新增 `check-android-download-domain.ps1`、`sign-oss-cname-url.py` 和 `sync-oss-download-certificate.ps1`，用于检查下载域名、生成 CNAME 签名 URL、以及 Let’s Encrypt 证书续期后同步 OSS CNAME 证书；本机也创建了每周续费 / 证书巡检自动化，只巡检和必要同步证书，不购买、不续费、不退订、不删除付费资源。正式发版仍等用户口令，且不能把 72 小时测试签名链接写进检查更新。
+
+- 修复礼品卡后台生成确认链路漂移：服务端创建批次确认字段从只校验张数，收紧为“张数 + 档位 + 天数”，例如 `3 Pro 30`；后台前端 prompt 和 `check-admin-surface.mjs` 同步检查同一口径，单测覆盖错误天数、错误档位和空格归一化，降低管理层试用时误点真实 Plus / Pro 卡的风险。订单表“金额”列也改成“开发期金额”，避免支付未接入阶段被误读成真实收入。
+
 - 修复卸载重装 / 清数据后首屏整屏空白的启动显示门：远端历史 snapshot 仍可在没有任何本地视觉内容时短暂等待，但等待期会显示普通欢迎壳，不再整屏空白；一旦 `messages`、今日农情视觉项或 streaming item 已进入同一个正向 `LazyColumn`，列表必须立即显示，启动贴底只作为后续校准继续运行，不再用 `initialBottomSnapDone` 把已有静态内容整屏透明隐藏。今日农情视觉拉取也不再等待聊天历史 hydrate 完成，先给清安装首屏一个可见内容；锚点保存仍等远端历史回来后按真实消息尾部或起始位置确定。用户手势“一扒就显示”的原因是旧链路会在拖动时把 `initialBottomSnapDone=true` 放开透明门；现在 `shouldRevealChatMessageList(...)`、`shouldShowChatWelcomePlaceholder(...)` 和 `ChatTimelineItemsTest` 已锁住“远端消息已存在就显示 / 等待远端时不空白”，`check-android-build-parity.ps1` 也禁止 `waitingForStaticTimelineBottomSnap` 回潮。本轮不改变正向列表、工作线、今日农情三轮上下文、三份提示词、官网首页文案、模型输出限制或真实支付。
 
 - 补回普通 AI 回复的标题轻分割线触发：近期模型更多输出 `**处理建议**`、`**注意事项：**` 这类独立加粗标题，旧渲染器只识别 `# / ##` 标题，所以正常 AI 回复看起来没有分割线。现在 `ChatStreamingRenderer.kt` 同时识别 `# / ## / ###` 标题、独立短加粗标题和 streaming 中正在吐出的未闭合加粗标题；行内加粗正文和连续标题不触发多余分割线。debug-only 预览面板已加入独立加粗标题样例，单测和 `check-android-build-parity.ps1` 已锁住该口径。本轮不修改三份提示词、官网首页文案、真实支付、主聊天滚动主方案或模型输出硬限制。
@@ -13,7 +17,7 @@
 
 - 继续按代理 / 管理层试用前的普通用户视角收口 Android 可见细节：设置首页“服务协议”入口改为“协议与隐私”，让隐私政策、第三方信息共享清单、个人信息收集清单和应用权限入口更直观；账号管理页手机号行改为静态展示，不再带点击感和右箭头，避免被误判为失效换绑入口；会员中心规则说明补充“升级补偿和加油包未用完不随会员到期清零”。debug-only 预览面板同步更新设置入口、协议目录和会员规则说明；本轮不修改三份提示词、官网首页文案、真实支付、主聊天滚动主方案或今日农情三轮临时上下文规则。
 
-- 修正内部测试包下载链路：实测阿里云 OSS 默认公网 endpoint 会对 APK 返回 `ApkDownloadForbidden`，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。`publish-android-test-apk.ps1` 现在仍先把 debug/internal APK 上传私有 OSS `test-apks/debug/...` 作为短期 staging，但会让 ECS 通过 OSS 内网签名 URL 拉取、校验 SHA-256 / 文件大小后发布到 `https://nongjiqiancha.cn/test-apks/debug/...apk`，同时清理 ECS 和 OSS 旧测试包只留最新 1 个，并写入每日清理任务删除 72 小时以上内部测试 APK；官网 Nginx 部署脚本也保留 `/test-apks/` 静态路径。该路径只用于代理 / 管理层人工安装测试包，不挂官网正式下载按钮、不进入 App 检查更新、不替代正式 release 包。
+- 历史过渡记录：当时修正内部测试包下载链路时，实测阿里云 OSS 默认公网 endpoint 会对 APK 返回 `ApkDownloadForbidden`，因此先让 ECS 通过 OSS 内网签名 URL 拉取并发布到 `https://nongjiqiancha.cn/test-apks/debug/...apk`，同时清理 ECS 和 OSS 旧测试包只留最新 1 个。2026-06-17 后该过渡方案已被 `download.nongjiqiancha.cn + OSS private object + signed URL` 主链替代，ECS `/test-apks/` 只作为临时回退，不挂官网正式下载按钮、不进入 App 检查更新、不替代正式 release 包。
 
 - 更新 debug-only 预览面板的今日农情说明：预览项明确今日农情是主聊天普通文本项、标题加粗、正文可复制；上下文规则说明改为“远端当天确认后，后方连续三轮临时参考”。`check-android-build-parity.ps1` 已同步锁住这条新文案，防止预览面板和真实三轮临时上下文口径漂移。该改动只影响调试预览和质检门禁，不改变正式用户 UI、主聊天滚动链、三份提示词、后端模型输出限制或真实支付状态。
 
@@ -87,7 +91,7 @@
 
 - 继续按“极端网络 / 极端交互先补低风险护栏”的角度收口 Android 主聊天：联网校准 Android 官方网络能力口径后，发送前网络预检不再把 captive portal 门户 Wi-Fi 当作可用网络，但也不把 `NET_CAPABILITY_VALIDATED` 设为硬门槛，避免部分 ROM / 运营商网络误拦；AI 回复链接打开失败时会给用户短提示“链接打开失败，请复制后打开”，并只上报 `ui.link_open_failed` 的 scheme 和异常类名，不记录完整 URL、正文或敏感信息。`check-android-build-parity.ps1` 已锁住这两条护栏。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型输出过滤或主聊天滚动主链；本机未连接真机，飞行模式、弱网、门户 Wi-Fi、ROM 链接拦截和连续点击仍需新包真机回归。
 
-- 继续按“清数据 / 慢网 / 重置竞态不能把主界面卡死”的角度收口动态交互：Android `SessionApi.getSnapshot()` 和 `getTodayAgriCard()` 在运行时 generation 变旧时不再静默 `return`，而是回调空结果，让 `ChatScreen` 的 hydrate / 今日农情协程继续走既有兜底，降低清历史、清数据、远端请求刚好返回时 UI 回退、今日农情消失或加载状态悬挂的风险；`check-android-build-parity.ps1` 已锁住这些 stale callback 不能回退。管理后台同步收高风险运营动作：帮助反馈状态从“已回复”改成“已处理/无需回复”，前端要求处理备注，后端在最新用户消息尚无后台回复时拒绝无备注标记；礼品卡生成增加真实权益提醒和输入张数确认；检查更新启用确认展示 SHA-256、文件大小并提示先跑 release-match 校验；停更空配置不再显示为配置异常；`check-admin-surface.mjs` 锁住这些确认项。短信统计脚本原始 JSON 输出改为脱敏输出。后端和后台已部署到生产，`check-ecs-readiness.ps1` 显示 active upstream `3000`、后台 upstream 同为 `3000`、HTTPS healthz 200，后台静态包 `SHA256=b516a5bbb61fa2b63812816256cb8f72971f215966ca967ac78c7203ad4b364b`，公网黑盒 `status=ready`。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型输出过滤或主聊天滚动主链。
+- 继续按“清数据 / 慢网 / 重置竞态不能把主界面卡死”的角度收口动态交互：Android `SessionApi.getSnapshot()` 和 `getTodayAgriCard()` 在运行时 generation 变旧时不再静默 `return`，而是回调空结果，让 `ChatScreen` 的 hydrate / 今日农情协程继续走既有兜底，降低清历史、清数据、远端请求刚好返回时 UI 回退、今日农情消失或加载状态悬挂的风险；`check-android-build-parity.ps1` 已锁住这些 stale callback 不能回退。管理后台同步收高风险运营动作：帮助反馈状态从“已回复”改成“已处理/无需回复”，前端要求处理备注，后端在最新用户消息尚无后台回复时拒绝无备注标记；礼品卡生成增加真实权益提醒，确认字段后续已收紧为“张数 + 档位 + 天数”；检查更新启用确认展示 SHA-256、文件大小并提示先跑 release-match 校验；停更空配置不再显示为配置异常；`check-admin-surface.mjs` 锁住这些确认项。短信统计脚本原始 JSON 输出改为脱敏输出。后端和后台已部署到生产，`check-ecs-readiness.ps1` 显示 active upstream `3000`、后台 upstream 同为 `3000`、HTTPS healthz 200，后台静态包 `SHA256=b516a5bbb61fa2b63812816256cb8f72971f215966ca967ac78c7203ad4b364b`，公网黑盒 `status=ready`。本轮不修改主对话锚点、记忆提示词、今日农情提示词、模型输出过滤或主聊天滚动主链。
 
 - 按用户确认“融合认证新包不用、已买套餐大概率退不了”的口径收敛成本巡检和监控表达：阿里云 CLI 只读查到两个 DYPNS / 融合认证套餐均为 `ManualRenewal`，不是自动续费；2026-05-31 包实付 `0` 元，2026-06-06 包实付约 `34.85` 元；安全退订询价 `InquiryPriceRefundInstance` 对两个包均返回 `CommodityNotSupported`，因此不走 CLI 退订。`check-aliyun-costs.ps1` 不再把已购融合包本身当 warning，只在自动续费或新增购买迹象出现时提醒；上线总门禁和监控后台“费用 / 套餐成本”人工项改为“已购沉没成本、确认不再使用、不自动续费、不新增购买”。本轮只改费用巡检、后台文案和项目记忆，不修改 Android、三份提示词、支付真实接入、模型输出过滤或主聊天滚动链。
 

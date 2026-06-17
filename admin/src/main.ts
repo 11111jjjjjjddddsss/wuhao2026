@@ -578,10 +578,10 @@ async function ordersPage(): Promise<string> {
           ${kpi(userID ? "筛选订单" : "最近订单", orders.length, userID ? `账号 ${userID}` : "最近 50 条")}
           ${kpi("成功", summary.success, "只读统计")}
           ${kpi("失败", summary.failed, "只读统计")}
-          ${kpi("金额合计", summary.amountText, "仅按当前返回记录粗略合计")}
+          ${kpi("开发期记录金额", summary.amountText, "不代表实收")}
         </div>
         <div class="grid two" style="margin-top:12px">
-          ${notice("支付未接入", "真实微信 / 支付宝支付、回调、退款、对账和自动发放权益尚未接入；当前页面仅展示已有记录，不提供支付成功模拟或手动发放入口。", "warn")}
+          ${notice("支付未接入", "真实微信 / 支付宝支付、回调、退款、对账和自动发放权益尚未接入；当前金额只代表开发期记录，不代表实收，不提供支付成功模拟或手动发放入口。", "warn")}
           ${notice("当前用途", "用于查看现有订单 / 会员变更记录，辅助核查账号权益来源。支付接入后再扩展渠道订单号、回调状态和退款记录。", "info")}
         </div>
         <section class="card">
@@ -1363,10 +1363,11 @@ async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
   ) {
     return;
   }
-  const typedConfirmation = window.prompt(`请输入 ${quantity} 确认生成真实礼品卡。`);
+  const confirmationText = `${quantity} ${tierLabel} ${durationDays}`;
+  const typedConfirmation = window.prompt(`请输入 ${confirmationText} 确认生成真实礼品卡。`);
   if (typedConfirmation === null) return;
-  if (typedConfirmation.trim() !== String(quantity)) {
-    window.alert("输入的确认张数不一致，已取消生成。");
+  if (typedConfirmation.trim().replace(/\s+/g, " ").toLowerCase() !== confirmationText.toLowerCase()) {
+    window.alert("输入的确认内容不一致，已取消生成。");
     return;
   }
   const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
@@ -1374,7 +1375,7 @@ async function submitGiftCardBatch(form: HTMLFormElement): Promise<void> {
   try {
     const response = await apiFetch<{ codes: AdminGiftCardCreatedCode[] }>("/admin-api/v1/gift-cards/batches", {
       method: "POST",
-      json: { name, tier, quantity, duration_days: durationDays, note },
+      json: { name, tier, quantity, duration_days: durationDays, note, confirmation: typedConfirmation.trim() },
     });
     lastGiftCardCodes = response.codes || [];
     await render();
@@ -1555,10 +1556,16 @@ async function voidGiftCard(cardID: string, button?: HTMLElement): Promise<void>
   if (!window.confirm("确认作废这张未兑换礼品卡？作废后不能再被用户兑换。")) {
     return;
   }
+  const typedConfirmation = window.prompt("请输入 作废 确认作废这张礼品卡。");
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== "作废") {
+    window.alert("未输入“作废”，已取消操作。");
+    return;
+  }
   await withButtonBusy(button, "作废中", async () => {
     await apiFetch("/admin-api/v1/gift-cards/void", {
       method: "POST",
-      json: { card_id: cardID, reason: trimmedReason },
+      json: { card_id: cardID, reason: trimmedReason, confirmation: typedConfirmation.trim() },
     });
     lastGiftCardCodes = [];
     await render();
@@ -1889,7 +1896,7 @@ function ordersTable(rows: AdminOrderEntry[]): string {
   if (!rows.length) return emptyState("没有订单数据", "支付未正式接入，或当前筛选范围内没有现有订单 / 会员变更记录。");
   return `
     <table class="table">
-      <thead><tr><th>订单</th><th>账号ID</th><th>类型</th><th>金额</th><th>状态</th><th>创建时间</th><th>结果</th></tr></thead>
+      <thead><tr><th>订单</th><th>账号ID</th><th>类型</th><th>开发期金额</th><th>状态</th><th>创建时间</th><th>结果</th></tr></thead>
       <tbody>
         ${rows
           .map(

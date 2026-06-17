@@ -6,14 +6,17 @@ param(
     [string]$Endpoint = "oss-cn-beijing.aliyuncs.com",
     [string]$OssInternalEndpoint = "oss-cn-beijing-internal.aliyuncs.com",
     [string]$DownloadDomain = "nongjiqiancha.cn",
+    [string]$OssDownloadDomain = "download.nongjiqiancha.cn",
     [string]$EcsRegionId = "cn-beijing",
     [string]$EcsInstanceId = "i-2ze5nrem0jrchln4f0eh",
     [string]$EcsTestApkRoot = "/var/www/nongjiqiancha-test-apks",
     [string]$ExpectedPackageName = "com.nongjiqiancha",
+    [string]$PublicInfoPath = "",
     [int]$ExpireHours = 72,
     [int]$KeepNewestRemote = 1,
     [switch]$NoBuild,
     [switch]$AllowDirty,
+    [switch]$UseOssSignedDownload,
     [switch]$SkipEcsDownloadPublish
 )
 
@@ -158,20 +161,29 @@ function Escape-BashSingleQuoted {
     return $Value.Replace("'", "'\''")
 }
 
+function Normalize-Hex {
+    param([string]$Value)
+    if ([string]::IsNullOrWhiteSpace($Value)) {
+        return ""
+    }
+    return ($Value -replace '[^0-9A-Fa-f]', '').ToLowerInvariant()
+}
+
 function Test-PublicDownloadUrl {
     param(
         [string]$Url,
-        [long]$ExpectedSize
+        [long]$ExpectedSize,
+        [string]$Method = "Head"
     )
     try {
-        $response = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 30
+        $response = Invoke-WebRequest -Uri $Url -Method $Method -UseBasicParsing -TimeoutSec 90
         $status = [int]$response.StatusCode
         $contentLength = [string]$response.Headers["Content-Length"]
         $contentType = [string]$response.Headers["Content-Type"]
         if ($status -ne 200) {
             throw "unexpected HTTP status $status"
         }
-        if ($contentLength -ne [string]$ExpectedSize) {
+        if (-not [string]::IsNullOrWhiteSpace($contentLength) -and $contentLength -ne [string]$ExpectedSize) {
             throw "content length mismatch: expected=$ExpectedSize actual=$contentLength"
         }
         if ($contentType -notmatch "application/vnd\.android\.package-archive|application/octet-stream") {
@@ -181,6 +193,63 @@ function Test-PublicDownloadUrl {
     } catch {
         throw "test APK public download probe failed for ${Url}: $($_.Exception.Message)"
     }
+}
+
+function Clear-EcsTestApkMirror {
+    $remoteRoot = $EcsTestApkRoot.TrimEnd("/")
+    if ([string]::IsNullOrWhiteSpace($remoteRoot) -or -not $remoteRoot.StartsWith("/var/www/nongjiqiancha-test-apks")) {
+        throw "refusing to clean unexpected ECS test APK root: $remoteRoot"
+    }
+    $safeRoot = Escape-BashSingleQuoted $remoteRoot
+    $remoteScript = @"
+set -euo pipefail
+download_root='$safeRoot'
+if [ -d "`$download_root" ]; then
+  find "`$download_root" -type f -name '*.apk' -delete 2>/dev/null || true
+  find "`$download_root" -mindepth 1 -type d -empty -delete 2>/dev/null || true
+fi
+echo "ecs_test_apk_mirror_cleanup=done"
+"@
+    $run = Invoke-JsonCommand @(
+        "aliyun", "ecs", "RunCommand",
+        "--RegionId", $EcsRegionId,
+        "--Type", "RunShellScript",
+        "--InstanceId.1", $EcsInstanceId,
+        "--Name", "clean-test-apk-mirror-$commit",
+        "--CommandContent", $remoteScript,
+        "--Timeout", "120"
+    )
+    $runResult = Wait-RunCommand -RegionId $EcsRegionId -InvokeId $run.InvokeId
+    Write-Host $runResult.Output.Trim()
+    if ($runResult.Status -ne "Success" -or $runResult.ExitCode -ne 0) {
+        throw "ECS test APK mirror cleanup failed: status=$($runResult.Status) exit=$($runResult.ExitCode)`n$($runResult.Output)"
+    }
+}
+
+function New-OssCnameSignedUrl {
+    param(
+        [string]$ObjectKey,
+        [int]$ExpiresSeconds,
+        [string]$Method = "GET"
+    )
+    $scriptPath = Join-Path $PSScriptRoot "sign-oss-cname-url.py"
+    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+        throw "OSS CNAME signing helper not found: $scriptPath"
+    }
+    $output = & python $scriptPath `
+        --bucket $Bucket `
+        --endpoint "https://$OssDownloadDomain" `
+        --object-key $ObjectKey `
+        --expires-seconds $ExpiresSeconds `
+        --method $Method 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "OSS CNAME signing failed with exit code $LASTEXITCODE`n$($output | Out-String)"
+    }
+    $url = (($output | Out-String).Trim())
+    if ($url -notmatch "^https://$([regex]::Escape($OssDownloadDomain))/") {
+        throw "OSS CNAME signing produced an unexpected URL host"
+    }
+    return $url
 }
 
 function Invoke-AndroidTool {
@@ -196,7 +265,7 @@ function Invoke-AndroidTool {
     return @($output)
 }
 
-function Find-AndroidAapt {
+function Find-AndroidBuildTools {
     $sdkCandidates = @()
     foreach ($candidate in @($env:ANDROID_HOME, $env:ANDROID_SDK_ROOT, (Join-Path $env:LOCALAPPDATA "Android\Sdk"))) {
         if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate -PathType Container)) {
@@ -215,28 +284,43 @@ function Find-AndroidAapt {
                     try { [version]$_.Name } catch { [version]"0.0" }
                 }
                 Descending = $true
-            }
+        }
         foreach ($versionDir in $versions) {
             $aapt = Join-Path $versionDir.FullName "aapt.exe"
-            if (Test-Path -LiteralPath $aapt -PathType Leaf) {
-                return $aapt
+            $apksigner = Join-Path $versionDir.FullName "apksigner.bat"
+            if ((Test-Path -LiteralPath $aapt -PathType Leaf) -and (Test-Path -LiteralPath $apksigner -PathType Leaf)) {
+                return [pscustomobject]@{
+                    Version = $versionDir.Name
+                    Aapt = $aapt
+                    ApkSigner = $apksigner
+                }
             }
         }
     }
-    throw "Android SDK build-tools with aapt.exe were not found. Set ANDROID_HOME or ANDROID_SDK_ROOT."
+    throw "Android SDK build-tools with aapt.exe and apksigner.bat were not found. Set ANDROID_HOME or ANDROID_SDK_ROOT."
 }
 
 function Assert-DebugApk {
     param([string]$Path)
-    $aapt = Find-AndroidAapt
-    $badging = Invoke-AndroidTool -FilePath $aapt -Arguments @("dump", "badging", $Path)
+    if ([string]::IsNullOrWhiteSpace($script:PublicInfoPath)) {
+        $script:PublicInfoPath = Join-Path $env:USERPROFILE ".nongjiqiancha/android-release-public-info.txt"
+    }
+    if (-not (Test-Path -LiteralPath $script:PublicInfoPath -PathType Leaf)) {
+        throw "release public certificate info not found: $script:PublicInfoPath"
+    }
+    $tools = Find-AndroidBuildTools
+    $badging = Invoke-AndroidTool -FilePath $tools.Aapt -Arguments @("dump", "badging", $Path)
     $badgingText = $badging -join "`n"
     $packageLine = $badging | Where-Object { $_ -match "^package:" } | Select-Object -First 1
     $packageNameMatch = if ($null -eq $packageLine) { $null } else { [regex]::Match($packageLine, "\bname='([^']+)'") }
-    if ($null -eq $packageLine -or -not $packageNameMatch.Success) {
+    $versionCodeMatch = if ($null -eq $packageLine) { $null } else { [regex]::Match($packageLine, "\bversionCode='([^']+)'") }
+    $versionNameMatch = if ($null -eq $packageLine) { $null } else { [regex]::Match($packageLine, "\bversionName='([^']*)'") }
+    if ($null -eq $packageLine -or -not $packageNameMatch.Success -or -not $versionCodeMatch.Success -or -not $versionNameMatch.Success) {
         throw "could not parse package metadata from APK badging output"
     }
     $packageName = $packageNameMatch.Groups[1].Value
+    $versionCode = $versionCodeMatch.Groups[1].Value
+    $versionName = $versionNameMatch.Groups[1].Value
     if ($packageName -ne $ExpectedPackageName) {
         throw "test APK package mismatch. expected=$ExpectedPackageName actual=$packageName"
     }
@@ -244,7 +328,26 @@ function Assert-DebugApk {
         throw "test APK must be a debuggable debug build; refusing to publish a non-debuggable APK as an internal test package"
     }
     Write-Host ("test_apk_package={0}" -f $packageName)
+    Write-Host ("test_apk_version_code={0}" -f $versionCode)
+    Write-Host ("test_apk_version_name={0}" -f $versionName)
     Write-Host "test_apk_debuggable=true"
+    $verify = Invoke-AndroidTool -FilePath $tools.ApkSigner -Arguments @("verify", "--print-certs", $Path)
+    $verifyText = $verify -join "`n"
+    if ($verifyText -notmatch "Signer #1 certificate SHA-256 digest:\s*([0-9A-Fa-f:]+)") {
+        throw "could not parse test APK certificate SHA-256 from apksigner output"
+    }
+    $actualCertSha256 = Normalize-Hex $Matches[1]
+    $publicInfo = Get-Content -LiteralPath $script:PublicInfoPath -Raw
+    if ($publicInfo -notmatch "(?m)^SHA256:\s*(.+)$") {
+        throw "release public certificate info does not contain a SHA256 line: $script:PublicInfoPath"
+    }
+    $expectedCertSha256 = Normalize-Hex $Matches[1]
+    if ($actualCertSha256 -ne $expectedCertSha256) {
+        throw "test APK certificate SHA-256 mismatch. expected=$expectedCertSha256 actual=$actualCertSha256"
+    }
+    Write-Host ("test_apk_cert_sha256={0}" -f $actualCertSha256)
+    Write-Host "test_apk_release_cert_match=true"
+    Write-Host ("android_build_tools={0}" -f $tools.Version)
 }
 
 if ($ExpireHours -lt 1 -or $ExpireHours -gt 168) {
@@ -325,7 +428,17 @@ if ($LASTEXITCODE -ne 0) {
     throw "aliyun oss cp failed with exit code $LASTEXITCODE"
 }
 
-if (-not $SkipEcsDownloadPublish) {
+$ossSignedDownloadUrl = ""
+$ossSignedHeadUrl = ""
+if ($UseOssSignedDownload) {
+    $expiresSeconds = $ExpireHours * 3600
+    $ossSignedDownloadUrl = New-OssCnameSignedUrl -ObjectKey $objectKey -ExpiresSeconds $expiresSeconds -Method "GET"
+    $ossSignedHeadUrl = New-OssCnameSignedUrl -ObjectKey $objectKey -ExpiresSeconds $expiresSeconds -Method "HEAD"
+    Write-Host ("test_apk_oss_download_domain={0}" -f $OssDownloadDomain)
+    Write-Host "test_apk_public_status=oss_signed"
+}
+
+if (-not $SkipEcsDownloadPublish -and -not $UseOssSignedDownload) {
     $internalSignOutput = @(& aliyun oss sign $ossUrl --endpoint $OssInternalEndpoint --timeout 3600 2>&1)
     if ($LASTEXITCODE -ne 0) {
         $joined = ($internalSignOutput | ForEach-Object { $_.ToString() }) -join "`n"
@@ -440,13 +553,31 @@ if (Test-Path -LiteralPath $cleanupScript -PathType Leaf) {
         throw "clean-oss-test-apks.ps1 failed with exit code $LASTEXITCODE"
     }
 }
+if ($UseOssSignedDownload -and -not $SkipEcsDownloadPublish) {
+    Clear-EcsTestApkMirror
+}
 
-if (-not $SkipEcsDownloadPublish) {
+if ($UseOssSignedDownload) {
+    Test-PublicDownloadUrl -Url $ossSignedHeadUrl -ExpectedSize $apkItem.Length -Method "Head"
+} elseif (-not $SkipEcsDownloadPublish) {
     Test-PublicDownloadUrl -Url $downloadUrl -ExpectedSize $apkItem.Length
 }
 
-Write-Host "test_apk_status=ready"
 Write-Host "test_apk_build_type=debug"
 Write-Host ("test_apk_expires_hours={0}" -f $ExpireHours)
 Write-Host ("test_apk_remote_keep_newest={0}" -f $KeepNewestRemote)
-Write-Host ("test_apk_url={0}" -f $downloadUrl)
+if ($UseOssSignedDownload) {
+    Write-Host "test_apk_status=ready"
+    Write-Host "test_apk_public_status=oss_signed"
+    Write-Host ("test_apk_url={0}" -f $ossSignedDownloadUrl)
+    Write-Host "test_apk_note=This internal debug APK is served from private OSS through a signed download.nongjiqiancha.cn URL."
+} elseif ($SkipEcsDownloadPublish) {
+    Write-Host "test_apk_status=staged_only"
+    Write-Host "test_apk_public_status=staged_only"
+    Write-Host "test_apk_url=none"
+    Write-Host "test_apk_note=No public download URL was published because -SkipEcsDownloadPublish was set."
+} else {
+    Write-Host "test_apk_status=ready"
+    Write-Host "test_apk_public_status=published"
+    Write-Host ("test_apk_url={0}" -f $downloadUrl)
+}

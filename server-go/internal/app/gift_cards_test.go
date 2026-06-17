@@ -73,6 +73,32 @@ func TestGiftCardTextLooksSensitiveAllowsOperationalNotes(t *testing.T) {
 	}
 }
 
+func TestAdminGiftCardBatchConfirmationRequiresQuantityTierAndDays(t *testing.T) {
+	body := adminGiftCardCreateBatchRequest{Quantity: 3, Tier: "pro", DurationDays: 30, Confirmation: "3 Pro 31"}
+	if got := adminGiftCardBatchConfirmationError(body, 3, TierPro, 30); got != "gift_card_batch_confirmation_required" {
+		t.Fatalf("confirmation error = %q, want gift_card_batch_confirmation_required", got)
+	}
+	body.Confirmation = "3 Plus 30"
+	if got := adminGiftCardBatchConfirmationError(body, 3, TierPro, 30); got != "gift_card_batch_confirmation_required" {
+		t.Fatalf("confirmation error = %q, want gift_card_batch_confirmation_required", got)
+	}
+	body.Confirmation = "  3   Pro  30 "
+	if got := adminGiftCardBatchConfirmationError(body, 3, TierPro, 30); got != "" {
+		t.Fatalf("confirmation error = %q, want empty", got)
+	}
+}
+
+func TestAdminGiftCardVoidConfirmationRequiresKeyword(t *testing.T) {
+	body := adminGiftCardVoidRequest{CardID: "gcc_123", Reason: "运营作废", Confirmation: "确认"}
+	if got := adminGiftCardVoidConfirmationError(body); got != "gift_card_void_confirmation_required" {
+		t.Fatalf("confirmation error = %q, want gift_card_void_confirmation_required", got)
+	}
+	body.Confirmation = "作废"
+	if got := adminGiftCardVoidConfirmationError(body); got != "" {
+		t.Fatalf("confirmation error = %q, want empty", got)
+	}
+}
+
 func TestNormalizeGiftCardBatchInputUsesImmediateValidFrom(t *testing.T) {
 	now := time.Date(2026, 6, 16, 10, 30, 0, 0, time.UTC)
 	input, reason := normalizeGiftCardBatchInput(adminGiftCardCreateBatchRequest{

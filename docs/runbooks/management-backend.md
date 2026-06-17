@@ -1,6 +1,6 @@
 # 统一管理后台 Runbook
 
-最后更新：2026-06-15
+最后更新：2026-06-17
 
 ## 目的
 
@@ -23,7 +23,7 @@
 - 后台账号：服务启动时可用 `ADMIN_BOOTSTRAP_USERNAME` / `ADMIN_BOOTSTRAP_PASSWORD` 初始化；密码会以 PBKDF2-SHA256 hash 存入 `admin_users`，明文不得写入仓库、文档或前端。
 - 后台角色：首版支持 `owner`、`ops_readonly`、`support`、`content_ops`、`release_ops`、`finance_ops`、`auditor`；服务端校验权限，不能靠前端隐藏按钮。前端侧栏和监控快捷入口会按同一角色矩阵隐藏无权页面，减少误点和 403，但这只是体验收敛，不是安全边界。
 - 后台审计：登录、登出、查询用户、客服回复、日志查询、审计日志查询、今日农情、检查更新、检查更新校验失败、礼品卡生成 / 查询 / 作废 / 用户兑换等会写审计记录。
-- 后台写操作体验：今日农情补跑、检查更新发布 / 停更、礼品卡作废、帮助反馈状态更新和客服回复等入口会显示按钮忙碌态、阻止重复点击，并在失败时弹出明确错误；检查更新发布 / 停更和客服回复有二次确认；长账号ID、完整卡码和错误字段会自动换行，避免窄屏或宽表撑破页面。
+- 后台写操作体验：今日农情补跑、检查更新发布 / 停更、礼品卡生成 / 作废、帮助反馈状态更新和客服回复等入口会显示按钮忙碌态、阻止重复点击，并在失败时弹出明确错误；检查更新发布 / 停更、礼品卡生成 / 作废和客服回复有二次确认。礼品卡生成和作废不只靠前端确认，后端也强制校验确认字段并审计失败。长账号ID、完整卡码和错误字段会自动换行，避免窄屏或宽表撑破页面。
 - 后台敏感资产可见性：owner 默认拥有完整手机号和礼品卡完整卡码查看 / 复制权限；`support`、`finance_ops` 可查看完整手机号用于回访，`finance_ops` 可查看礼品卡完整卡码用于发卡 / 追溯。其他只读 / 审计角色只看脱敏信息；礼品卡完整码在后端列表 / 用户详情查询阶段也只对 owner / finance_ops 读取并解密，非授权角色不解密完整卡码。前端同口径展示保护只是体验兜底，真正权限仍以后端为准。
 - 后台展示安全：App 日志详情会在前端再次脱敏敏感字段；客服图片只展示后台同源、无 query / hash、单层 `/uploads/support/*.jpg` 图片；今日农情来源只允许安全 HTTPS 链接，避免后台页面被日志或异常数据带偏。
 - Android 没有后台入口，也没有调用任何 `/internal/*` 或 `/admin-api/*` 接口。
@@ -38,8 +38,8 @@
 - 检查更新验收口径：`app_update_logs` 和物料齐全只代表“可测 / 有阶段信号”，不能替代旧包真机覆盖安装；`launch_readiness` 的“安装包更新”在版本号、HTTPS APK、SHA-256 和文件大小都齐时仍保持 `attention`，完成旧包“检查更新 -> 下载 -> 校验 -> 系统安装页 -> 覆盖安装成功”前不要当成正式验收。
 - 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；页面展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；`owner`、`support`、`finance_ops` 可查看和复制加密保存的完整手机号，用于回访，其他只读巡检角色只看脱敏号。
 - 会员额度：除用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录外，现已补 `GET /admin-api/v1/entitlements/summary` 全局盘子，页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额和有升级补偿人数，不再只有“按账号ID查单人权益”。
-- 订单：`GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录；页面只做只读核查和粗略统计，不提供补发、退款、对账或手动改权益。
-- 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总，owner / finance_ops 可直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；后台非授权角色查询礼品卡列表或用户详情时不读取 / 不解密完整卡码；旧卡若没有加密字段，只能显示掩码 / 尾号。
+- 订单：`GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录；页面只做只读核查和粗略统计，不提供补发、退款、对账或手动改权益。支付未接入时金额汇总只标为“开发期记录金额”，不代表真实收入。
+- 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总，owner / finance_ops 可直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。创建批次必须输入“张数 + 档位 + 天数”确认，例如 `3 Pro 30`；作废必须输入“作废”确认，服务端也会强制校验。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；后台非授权角色查询礼品卡列表或用户详情时不读取 / 不解密完整卡码；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
 - 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。用户侧发送消息和系统自动回复走同一条 MySQL 命名锁 + 事务路径，避免同一用户并发连发时重复插入自动回复。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；客服回复前端二次确认，后端回复正文会拒绝手机号、礼品卡完整码、token、密钥等敏感全文；回复图片附件只能使用同源 support 图片校验，状态备注也会拒绝敏感全文，审计里仍不写正文。
 - 注销申请：`GET /admin-api/v1/account-deletion-requests`、`POST /admin-api/v1/account-deletion-requests/status`；用户侧 `POST /api/account/deletion-requests` 创建申请后会退出当前设备，后台可按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态。这里的已处理只表示线下核验和处理流程已收口，不代表系统已经自动物理删除或匿名化全部账号数据；会员、订单、礼品卡、反馈、日志和法定留存范围仍需按合规规则处理。

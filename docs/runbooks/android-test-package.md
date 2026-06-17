@@ -9,8 +9,8 @@
 - 测试包默认使用 `debug` 构建，包名仍是 `com.nongjiqiancha`，后端仍接 `https://api.nongjiqiancha.cn`。
 - 测试包可以包含 debug-only 预览面板和调试日志；除此之外，业务链路应尽量和正式包一致。
 - 测试包文件名和 OSS 路径必须显式包含 `debug`、`internal` 或 `test-apks`，避免和正式 release 物料混淆。
-- 测试包默认先上传到 OSS 私有对象作为短期 staging，再通过 ECS 官网域名单独的 `/test-apks/` 静态路径提供下载链接；阿里云 OSS 默认公网 endpoint 不允许直接分发 APK，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。
-- 上传脚本默认会清理 OSS `test-apks/debug/` 和 ECS `/test-apks/` 下旧测试包，云端只保留最新 1 个；ECS 同时写入每日清理任务，默认删除 72 小时以上的内部测试 APK；OSS `test-apks/` 前缀 3 天游走期只是兜底。ECS 测试包路径只用于人工测试，不挂官网正式下载按钮。
+- 测试包默认先上传到 OSS 私有对象，再通过 `download.nongjiqiancha.cn` 自有 HTTPS 下载域名生成签名链接；阿里云 OSS 默认公网 endpoint 不允许直接分发 APK，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。低成本下载方案见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。
+- 上传脚本默认会清理 OSS `test-apks/debug/` 下旧测试包，云端只保留最新 1 个；走 OSS 签名下载时也会顺手清掉 ECS `/test-apks/` 旧调试包镜像，避免旧直链混淆。OSS `test-apks/` 前缀 3 天游走期只是兜底。
 - 没有用户明确发版口令时，不生成并对外发布正式 release APK，不配置 App 内检查更新，不改官网正式下载按钮。
 
 ## 生成测试包
@@ -18,7 +18,7 @@
 测试包只走：
 
 ```powershell
-.\scripts\publish-android-test-apk.ps1
+.\scripts\publish-android-test-apk.ps1 -UseOssSignedDownload
 ```
 
 脚本会执行：
@@ -26,13 +26,16 @@
 1. 检查 git 工作区默认必须干净，保证测试包能追到明确 commit。
 2. 运行 `:app:assembleDebug`。
 3. 读取 `app/build/outputs/apk/debug/app-debug.apk`。
-4. 计算 SHA-256 和文件大小。
-5. 上传到私有 OSS `test-apks/debug/<日期>/nongjiqiancha-debug-internal-<时间>-<commit>.apk`。
-6. 让 ECS 通过 OSS 内网签名 URL 拉取 APK，校验 SHA-256 和文件大小后发布到 `https://nongjiqiancha.cn/test-apks/debug/<日期>/...apk`。
-7. 清理云端旧测试包，默认只保留最新 1 个。
-8. 输出自有域名测试下载链接、commit、SHA-256、文件大小和有效期口径。
+4. 校验 APK 包名、debuggable 状态、versionCode / versionName 和签名证书，要求测试包签名仍匹配本机固定 release 证书指纹。
+5. 计算 SHA-256 和文件大小。
+6. 上传到私有 OSS `test-apks/debug/<日期>/nongjiqiancha-debug-internal-<时间>-<commit>.apk`。
+7. 通过 `download.nongjiqiancha.cn` 生成限时签名下载链接和 HEAD 探针。
+8. 清理云端旧测试包，默认只保留最新 1 个，并清理 ECS 旧 `/test-apks/` 调试包镜像。
+9. 输出自有下载域名测试链接、commit、SHA-256、文件大小、签名指纹和有效期口径。
 
-如果只是本机已构建好的 APK，可传 `-NoBuild -ApkPath <path>`，但脚本仍会读取 APK 本体确认它是 debuggable debug 包；release APK 不能通过这个脚本发给用户或代理。如果确实要发布未提交工作区的临时包，必须显式传 `-AllowDirty`，并在对外说明中标注这是未提交测试包。日常不要这样做。若临时需要多保留几个云端测试包，可显式传 `-KeepNewestRemote <1-10>`，默认不要改。
+如果只是本机已构建好的 APK，可传 `-NoBuild -ApkPath <path>`，但脚本仍会读取 APK 本体确认它是 debuggable debug 包，并比对固定 release 证书指纹；release APK 不能通过这个脚本发给用户或代理。如果确实要发布未提交工作区的临时包，必须显式传 `-AllowDirty`，并在对外说明中标注这是未提交测试包。日常不要这样做。若临时需要多保留几个云端测试包，可显式传 `-KeepNewestRemote <1-10>`，默认不要改。
+
+只有内部 staging 或排查云端对象时才可显式传 `-SkipEcsDownloadPublish`。这种情况下脚本只输出 `test_apk_status=staged_only` 和 `test_apk_url=none`，不会给出可发给用户的公网下载链接。若下载域名临时异常，才允许不带 `-UseOssSignedDownload` 回退到 ECS 官网 `/test-apks/` 路径。
 
 ## 云端测试包清理
 
