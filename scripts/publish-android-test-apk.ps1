@@ -30,7 +30,7 @@ function Require-Command {
 }
 
 function Get-GitOutput {
-    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$GitArgs)
+    param([string[]]$GitArgs)
     $output = & git -C $RepoRoot @GitArgs 2>$null
     if ($LASTEXITCODE -ne 0) {
         return ""
@@ -47,7 +47,7 @@ function Ensure-CleanGitTree {
         return
     }
 
-    $status = Get-GitOutput @("status", "--porcelain")
+    $status = Get-GitOutput -GitArgs @("status", "--porcelain")
     if (-not [string]::IsNullOrWhiteSpace($status)) {
         throw "git working tree is dirty; commit or stash before publishing a traceable test APK, or pass -AllowDirty intentionally"
     }
@@ -374,7 +374,7 @@ Write-Host "== android test apk publish =="
 Write-Host ("repo_root={0}" -f $RepoRoot)
 Ensure-CleanGitTree
 
-$commit = Get-GitOutput @("rev-parse", "--short=12", "HEAD")
+$commit = Get-GitOutput -GitArgs @("rev-parse", "--short=12", "HEAD")
 if ([string]::IsNullOrWhiteSpace($commit)) {
     throw "failed to resolve git commit"
 }
