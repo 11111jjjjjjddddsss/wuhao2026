@@ -7,6 +7,8 @@
 
 - 跑通并固化低成本 Android 下载链路：`download.nongjiqiancha.cn` 已 CNAME 到 OSS Bucket 并绑定 HTTPS，测试包发布脚本现在可用 `-UseOssSignedDownload` 生成自有下载域名签名链接，不再推荐走 ECS 5Mbps `/test-apks/` 路径；发布脚本会让 OSS `test-apks/debug/` 只保留最新内部测试包，并在走 OSS 签名下载时清掉 ECS 旧测试包镜像。新增 `check-android-download-domain.ps1`、`sign-oss-cname-url.py` 和 `sync-oss-download-certificate.ps1`，用于检查下载域名、生成 CNAME 签名 URL、以及 Let’s Encrypt 证书续期后同步 OSS CNAME 证书；本机也创建了每周续费 / 证书巡检自动化，只巡检和必要同步证书，不购买、不续费、不退订、不删除付费资源。正式发版仍等用户口令，且不能把 72 小时测试签名链接写进检查更新。
 
+- 修复内部测试包发布脚本两处收尾问题：`publish-android-test-apk.ps1` 的 Git commit / clean tree 读取改为显式数组参数，避免 PowerShell 把 `status --porcelain` 当成单个 git 子命令；ECS 旧测试包镜像清理和备用 ECS 发布脚本改用 POSIX `sh` 兼容的 `set -eu`，避免阿里云 Cloud Assistant 默认 shell 不支持 `pipefail` 导致测试包已上传但收尾报失败。该修复只影响 debug/internal 测试包发布脚本稳定性，不改变正式发版口令、检查更新、官网正式下载、应用商店或 release APK 保留策略。
+
 - 修复礼品卡后台生成确认链路漂移：服务端创建批次确认字段从只校验张数，收紧为“张数 + 档位 + 天数”，例如 `3 Pro 30`；后台前端 prompt 和 `check-admin-surface.mjs` 同步检查同一口径，单测覆盖错误天数、错误档位和空格归一化，降低管理层试用时误点真实 Plus / Pro 卡的风险。订单表“金额”列也改成“开发期金额”，避免支付未接入阶段被误读成真实收入。
 
 - 修复卸载重装 / 清数据后首屏整屏空白的启动显示门：远端历史 snapshot 仍可在没有任何本地视觉内容时短暂等待，但等待期会显示普通欢迎壳，不再整屏空白；一旦 `messages`、今日农情视觉项或 streaming item 已进入同一个正向 `LazyColumn`，列表必须立即显示，启动贴底只作为后续校准继续运行，不再用 `initialBottomSnapDone` 把已有静态内容整屏透明隐藏。今日农情视觉拉取也不再等待聊天历史 hydrate 完成，先给清安装首屏一个可见内容；锚点保存仍等远端历史回来后按真实消息尾部或起始位置确定。用户手势“一扒就显示”的原因是旧链路会在拖动时把 `initialBottomSnapDone=true` 放开透明门；现在 `shouldRevealChatMessageList(...)`、`shouldShowChatWelcomePlaceholder(...)` 和 `ChatTimelineItemsTest` 已锁住“远端消息已存在就显示 / 等待远端时不空白”，`check-android-build-parity.ps1` 也禁止 `waitingForStaticTimelineBottomSnap` 回潮。本轮不改变正向列表、工作线、今日农情三轮上下文、三份提示词、官网首页文案、模型输出限制或真实支付。
