@@ -1404,7 +1404,7 @@ private fun HamburgerLegalHubContent(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        HamburgerLegalPageTitle("服务协议")
+        HamburgerLegalPageTitle("协议与隐私")
         HamburgerAccountGroup(
             modifier = Modifier.padding(top = 22.dp)
         ) {

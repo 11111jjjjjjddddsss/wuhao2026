@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.text.selection.TextSelectionColors
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -58,19 +59,26 @@ fun TodayAgriNewsText(
         ) {
             val content: @Composable () -> Unit = {
                 Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                    Text(
-                        text = buildString {
-                            append("今日农情")
-                            if (!dateText.isNullOrBlank()) {
-                                append(" · ")
-                                append(dateText)
-                            }
-                        },
-                        color = Color(0xFF111111),
-                        fontSize = 22.sp,
-                        lineHeight = 30.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = buildString {
+                                append("今日农情")
+                                if (!dateText.isNullOrBlank()) {
+                                    append(" · ")
+                                    append(dateText)
+                                }
+                            },
+                            color = Color(0xFF111111),
+                            fontSize = 22.sp,
+                            lineHeight = 30.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.fillMaxWidth(),
+                            thickness = 1.dp,
+                            color = Color(0xFFE7E9ED)
+                        )
+                    }
                     items.forEachIndexed { index, item ->
                         TodayAgriNewsItem(
                             index = index,

@@ -85,12 +85,13 @@ $imageUploaderFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/
 $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/LoginScreen.kt"
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $hamburgerMenuSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
+$membershipCenterSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MembershipCenterSheet.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -121,6 +122,7 @@ if ($failures.Count -eq 0) {
     $loginScreen = Read-SourceFile $loginScreenFile
     $chatScreen = Read-SourceFile $chatScreenFile
     $hamburgerMenuSheet = Read-SourceFile $hamburgerMenuSheetFile
+    $membershipCenterSheet = Read-SourceFile $membershipCenterSheetFile
 
     Require-Match $failures $build 'val\s+defaultUploadBaseUrl\s*=\s*"https://api\.nongjiqiancha\.cn"' `
         "Android default UPLOAD_BASE_URL must remain https://api.nongjiqiancha.cn."
@@ -410,7 +412,7 @@ if ($failures.Count -eq 0) {
     $settingsLabelTodayAgri = [regex]::Escape("$([char]0x4eca)$([char]0x65e5)$([char]0x519c)$([char]0x60c5)")
     $settingsLabelUpdate = [regex]::Escape("$([char]0x68c0)$([char]0x67e5)$([char]0x66f4)$([char]0x65b0)")
     $settingsLabelGiftCard = [regex]::Escape("$([char]0x793c)$([char]0x54c1)$([char]0x5361)")
-    $settingsLabelLegal = [regex]::Escape("$([char]0x670d)$([char]0x52a1)$([char]0x534f)$([char]0x8bae)")
+    $settingsLabelLegal = [regex]::Escape("$([char]0x534f)$([char]0x8bae)$([char]0x4e0e)$([char]0x9690)$([char]0x79c1)")
     $settingsLabelLogout = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x767b)$([char]0x5f55)")
     $accountLabelPhone = [regex]::Escape("$([char]0x624b)$([char]0x673a)$([char]0x53f7)")
     $accountLabelClearing = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e2d)")
@@ -454,8 +456,14 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must show the current gift-card immediate-effect rule."
     Require-Match $failures $chatScreen 'valid_from 只作创建追溯，不作为预约生效门槛' `
         "Debug UI copy preview must explain that gift-card valid_from is not a future activation gate."
+    Require-Match $failures $membershipCenterSheet ([regex]::Escape('加油包暂未开放。开放后仅 Plus / Pro 用户可购买；未用完次数长期保留，购买和续购以页面开放为准。')) `
+        "Membership topup copy must not imply that topup balance expires with membership."
+    Require-NoMatch $failures $membershipCenterSheet '有效期、使用规则' `
+        "Membership topup copy must not keep the old vague validity-period wording."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
         "Settings main page defaults must include every production row after app data is cleared."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalHubContent(?s:.*?)HamburgerLegalPageTitle\("协议与隐私"\)' `
+        "Legal hub page title must match the settings entry because it also contains privacy, permissions and risk pages."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"') `
         "Account management page must keep its logout row in the default code path."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
@@ -477,6 +485,8 @@ if ($failures.Count -eq 0) {
         "Today agri main-chat item must stay as ordinary text, not a framed card."
     Require-Match $failures $todayAgriCardUi 'fontWeight\s*=\s*FontWeight\.SemiBold(?s:.*?)TodayAgriNewsItem' `
         "Today agri title must stay visually emphasized without becoming a separate card surface."
+    Require-Match $failures $todayAgriCardUi 'HorizontalDivider(?s:.*?)Color\(0xFFE7E9ED\)(?s:.*?)items\.forEachIndexed' `
+        "Today agri title must keep a light divider before the news items, without turning the item back into a framed card."
     Require-Match $failures $todayAgriCardUi '"一、"(?s:.*?)"二、"(?s:.*?)"三、"' `
         "Today agri item labels must keep the current Chinese sequence marker style."
     Require-Match $failures $todayAgriCardUi 'LocalTextToolbar\s+provides\s+textToolbar' `
@@ -549,6 +559,8 @@ if ($failures.Count -eq 0) {
         "User message text and user-link text must remain white inside the black bubble."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("今日农情窄屏",\s*"280dp 下标题、正文和来源不互挤",\s*UiCopyPreviewKind\.TodayAgriNarrow\)' `
         "Debug UI copy preview must include a narrow today-agri layout case."
+    Require-Match $failures $chatScreen 'UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE(?s:.*?)\*\*处理建议\*\*(?s:.*?)\*\*注意事项：\*\*' `
+        "Debug UI copy preview must include standalone bold heading lines so ordinary AI text dividers can be checked."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.TodayAgriNarrow(?s:.*?)TodayAgriNewsText\((?s:.*?)horizontalPadding\s*=\s*0\.dp(?s:.*?)maxContentWidth\s*=\s*280\.dp' `
         "Today agri narrow preview must exercise the 280dp ordinary-text layout."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"远端当天确认后，后方连续三轮临时参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
@@ -584,6 +596,16 @@ if ($failures.Count -eq 0) {
         "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*selectionEnabled\s*\)\s*\{\s*SelectionContainer\s*\{(?s:.*?)RendererAssistantMarkdownContentImpl' `
         "Assistant settled text must keep the message selection container even when content contains links, so copy/full-copy remains available."
+    Require-Match $failures $chatStreamingRenderer 'parseRendererStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)(?s:.*?)parseRendererStandaloneBoldHeading\(trimmed\)\s*!=\s*null' `
+        "Assistant text dividers must recognize standalone bold heading lines, not only # markdown headings."
+    Require-Match $failures $chatStreamingRenderer 'parseRendererActiveStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)' `
+        "Assistant text dividers must recognize an active standalone bold heading while it is still streaming."
+    Require-Match $failures $chatStreamingRenderer 'heading\.level\s*<=\s*3' `
+        "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
+    Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
+        "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."
+    Require-Match $failures $chatStreamingRenderer 'previous\s+!is\s+StreamingLineModel\.Heading' `
+        "Assistant text dividers must not stack between consecutive heading lines."
     Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
         "Assistant Markdown links and bare URLs must keep real URL annotations that open through the system URI handler."
     Require-Match $failures $chatStreamingRenderer 'ui\.link_open_failed(?s:.*?)substringBefore\(":"(?s:.*?)exception' `

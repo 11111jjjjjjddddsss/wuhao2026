@@ -529,6 +529,9 @@ internal fun splitStreamingBlockState(content: String): StreamingBlockState {
 internal fun classifyStreamingLine(line: String): StreamingLineModel {
     if (line.isBlank()) return StreamingLineModel.Blank
     val trimmed = line.trimStart()
+    parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(2, headingText)
+    }
     return when {
         trimmed.matches(rendererHeadingRegex) -> {
             val marker = trimmed.takeWhile { it == '#' }
@@ -547,6 +550,12 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
 internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     if (line.isBlank()) return StreamingLineModel.Blank
     val trimmed = line.trimStart()
+    parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(2, headingText)
+    }
+    parseRendererActiveStandaloneBoldHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(2, headingText)
+    }
     val headingMarker = trimmed.takeWhile { it == '#' }
     if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
         val remainder = trimmed.drop(headingMarker.length)
@@ -590,7 +599,36 @@ internal fun shouldShowStreamingSectionDivider(
     current: StreamingLineModel
 ): Boolean {
     val heading = current as? StreamingLineModel.Heading ?: return false
-    return previous != null && heading.level <= 2
+    return previous != null && previous !is StreamingLineModel.Heading && heading.level <= 3
+}
+
+private fun parseRendererStandaloneBoldHeading(line: String): String? {
+    val trimmed = line.trim()
+    if (!trimmed.startsWith("**")) return null
+    val closing = trimmed.lastIndexOf("**")
+    if (closing <= 1) return null
+    val suffix = trimmed.drop(closing + 2).trim()
+    if (suffix.isNotEmpty() && suffix !in setOf(":", "：")) return null
+    val title = trimmed.substring(2, closing).trim()
+    if (!isRendererStandaloneBoldHeadingTitle(title)) return null
+    return title + suffix
+}
+
+private fun parseRendererActiveStandaloneBoldHeading(line: String): String? {
+    val trimmed = line.trim()
+    if (!trimmed.startsWith("**")) return null
+    if (trimmed.indexOf("**", startIndex = 2) >= 0) return null
+    val title = trimmed.drop(2).trimStart()
+    if (title.any { it in "，,；;" }) return null
+    if (!isRendererStandaloneBoldHeadingTitle(title)) return null
+    return title
+}
+
+private fun isRendererStandaloneBoldHeadingTitle(title: String): Boolean {
+    if (title.isBlank()) return false
+    if (title.length > 40) return false
+    if (title.any { it in "。！？!?" }) return false
+    return true
 }
 
 private fun ensureStreamingMessageId(
@@ -798,6 +836,7 @@ private fun hasRendererStructuralMarkdownPrefix(text: String, startIndex: Int = 
     }
     return cursor < text.length && (
         text[cursor] == '#' ||
+            text.startsWith("**", startIndex = cursor) ||
             text.startsWith("- ", startIndex = cursor) ||
             text.startsWith("* ", startIndex = cursor) ||
             text.startsWith("> ", startIndex = cursor) ||
@@ -878,6 +917,7 @@ private fun splitRendererStreamingLogicalLines(content: String): StreamingLogica
 
 private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
     return trimmed.matches(rendererHeadingRegex) ||
+        parseRendererStandaloneBoldHeading(trimmed) != null ||
         trimmed.matches(rendererBulletRegex) ||
         trimmed.matches(rendererNumberedRegex) ||
         trimmed.matches(rendererQuoteRegex)

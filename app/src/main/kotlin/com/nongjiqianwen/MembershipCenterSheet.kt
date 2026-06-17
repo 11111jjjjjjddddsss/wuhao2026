@@ -826,7 +826,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "加油包暂未开放。开放后仅 Plus / Pro 用户可购买；有效期、使用规则和续购方式以页面展示为准。",
+                text = "加油包暂未开放。开放后仅 Plus / Pro 用户可购买；未用完次数长期保留，购买和续购以页面开放为准。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp

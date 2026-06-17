@@ -8272,6 +8272,10 @@ private data class UiCopyPreviewItem(
 private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
     "# 叶片发黄排查\n" +
         "建议先看 **叶背虫体**、`pH` 和近期浇水。\n" +
+        "**处理建议**\n" +
+        "先停用高浓度叶面肥，补拍根系和土壤湿度。\n" +
+        "**注意事项：**\n" +
+        "不要把正文里的 **重点词** 当成标题分割。\n" +
         "- 拍叶片正反面\n" +
         "- 拍根系和土壤湿度\n" +
         "1. 先停用高浓度叶面肥\n" +

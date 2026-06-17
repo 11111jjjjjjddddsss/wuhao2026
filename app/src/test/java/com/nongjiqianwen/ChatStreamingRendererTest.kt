@@ -243,6 +243,63 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun standaloneBoldLineIsHeadingBlockForLightDivider() {
+        val blockState = splitStreamingBlockState("先观察叶片变化。\n**处理建议**\n及时通风。")
+        val models = blockState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(blockState.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(3, models.size)
+        assertTrue(models[0] is StreamingLineModel.Paragraph)
+        val heading = models[1]
+        assertTrue(heading is StreamingLineModel.Heading)
+        assertEquals("处理建议", (heading as StreamingLineModel.Heading).text)
+        assertTrue(shouldShowStreamingSectionDivider(models[0], heading))
+    }
+
+    @Test
+    fun inlineBoldSentenceStaysParagraphWithoutSectionDivider() {
+        val blockState = splitStreamingBlockState("建议**控水**后观察。\n继续记录。")
+        val model = classifyStreamingLine(blockState.activeBlock.orEmpty())
+
+        assertTrue(model is StreamingLineModel.Paragraph)
+    }
+
+    @Test
+    fun consecutiveBoldHeadingsDoNotStackDividers() {
+        val first = classifyStreamingLine("**病因分析**")
+        val second = classifyStreamingLine("**处理建议：**")
+
+        assertTrue(first is StreamingLineModel.Heading)
+        assertTrue(second is StreamingLineModel.Heading)
+        assertFalse(shouldShowStreamingSectionDivider(first, second))
+        assertEquals("处理建议：", (second as StreamingLineModel.Heading).text)
+    }
+
+    @Test
+    fun activeStandaloneBoldHeadingStreamsAsHeading() {
+        val model = classifyActiveStreamingLine("**处理建议")
+
+        assertTrue(model is StreamingLineModel.Heading)
+        assertEquals("处理建议", (model as StreamingLineModel.Heading).text)
+    }
+
+    @Test
+    fun inlineBoldWithTrailingBodyStaysParagraph() {
+        val model = classifyStreamingLine("**重点** 后面还有正文")
+
+        assertTrue(model is StreamingLineModel.Paragraph)
+    }
+
+    @Test
+    fun thirdLevelMarkdownHeadingCanUseLightDivider() {
+        val previous = classifyStreamingLine("先看整体长势。")
+        val heading = classifyStreamingLine("### 处理建议")
+
+        assertTrue(heading is StreamingLineModel.Heading)
+        assertTrue(shouldShowStreamingSectionDivider(previous, heading))
+    }
+
+    @Test
     fun pendingBoldMarkerDoesNotReplaceWaitingBallBeforeVisibleText() {
         val advanced = consumeStreamingRevealBatch(
             currentMessageId = null,
