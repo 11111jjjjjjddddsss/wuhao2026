@@ -1401,12 +1401,16 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     window.alert("versionCode 必须是大于 0 的整数。");
     return;
   }
-  if (apkURL && !apkURL.startsWith("https://")) {
-    window.alert("APK URL 必须是 https:// 开头。");
+  if (apkURL && !isOfficialApkURL(apkURL)) {
+    window.alert("APK URL 必须是 download.nongjiqiancha.cn 下的稳定正式 .apk 链接。");
     return;
   }
   if (apkURL && isInternalTestApkURL(apkURL)) {
     window.alert("这是内部测试包链接，不能配置到正式检查更新。测试包请走临时下载链接。");
+    return;
+  }
+  if (apkURL && isShortLivedSignedApkURL(apkURL)) {
+    window.alert("这是带短期签名参数的临时链接，不能配置到正式检查更新。请使用稳定的正式包下载地址。");
     return;
   }
   if (apkSHA256 && !/^[0-9a-fA-F]{64}$/.test(apkSHA256.replace(/:/g, ""))) {
@@ -2864,6 +2868,42 @@ function isInternalTestApkURL(value: string): boolean {
     normalized.includes("debug") ||
     normalized.includes("internal") ||
     normalized.includes("staging");
+}
+
+function isOfficialApkURL(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "download.nongjiqiancha.cn" &&
+      url.pathname.toLowerCase().startsWith("/android/releases/") &&
+      url.pathname.toLowerCase().endsWith(".apk");
+  } catch {
+    return false;
+  }
+}
+
+function isShortLivedSignedApkURL(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    const signedKeys = new Set([
+      "expires",
+      "signature",
+      "ossaccesskeyid",
+      "security-token",
+      "x-oss-expires",
+      "x-oss-signature",
+      "x-oss-credential",
+      "x-oss-security-token",
+    ]);
+    for (const key of url.searchParams.keys()) {
+      if (signedKeys.has(key.toLowerCase())) {
+        return true;
+      }
+    }
+  } catch {
+    return false;
+  }
+  return false;
 }
 
 function sinceFromWindow(value: string): number {

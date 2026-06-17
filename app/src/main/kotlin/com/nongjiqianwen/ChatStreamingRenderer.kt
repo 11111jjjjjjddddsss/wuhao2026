@@ -1,7 +1,6 @@
 package com.nongjiqianwen
 
 import android.os.Handler
-import android.os.SystemClock
 import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -25,12 +24,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.MutableIntState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -79,11 +76,7 @@ internal data class ChatStreamingRuntimeState(
     val streamingMessageId: MutableState<String?>,
     val streamingMessageContent: MutableState<String>,
     val streamingRevealBuffer: MutableState<String>,
-    val streamRevealJob: MutableState<kotlinx.coroutines.Job?>,
-    val streamingFreshStart: MutableIntState,
-    val streamingFreshEnd: MutableIntState,
-    val streamingFreshTick: MutableIntState,
-    val lastStreamingFreshRevealMs: MutableState<Long>
+    val streamRevealJob: MutableState<kotlinx.coroutines.Job?>
 )
 
 @Composable
@@ -93,21 +86,13 @@ internal fun rememberChatStreamingRuntimeState(chatScopeId: String): ChatStreami
     val streamingMessageContent = remember(chatScopeId) { mutableStateOf("") }
     val streamingRevealBuffer = remember(chatScopeId) { mutableStateOf("") }
     val streamRevealJob = remember(chatScopeId) { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-    val streamingFreshStart = remember(chatScopeId) { mutableIntStateOf(-1) }
-    val streamingFreshEnd = remember(chatScopeId) { mutableIntStateOf(-1) }
-    val streamingFreshTick = remember(chatScopeId) { mutableIntStateOf(0) }
-    val lastStreamingFreshRevealMs = remember(chatScopeId) { mutableStateOf(0L) }
     return remember(chatScopeId) {
         ChatStreamingRuntimeState(
             isStreaming = isStreaming,
             streamingMessageId = streamingMessageId,
             streamingMessageContent = streamingMessageContent,
             streamingRevealBuffer = streamingRevealBuffer,
-            streamRevealJob = streamRevealJob,
-            streamingFreshStart = streamingFreshStart,
-            streamingFreshEnd = streamingFreshEnd,
-            streamingFreshTick = streamingFreshTick,
-            lastStreamingFreshRevealMs = lastStreamingFreshRevealMs
+            streamRevealJob = streamRevealJob
         )
     }
 }
@@ -120,8 +105,6 @@ internal fun ensureStreamingRevealJob(
     currentMessageId: () -> String?,
     currentContent: () -> String,
     currentRevealBuffer: () -> String,
-    currentFreshTick: () -> Int,
-    currentLastFreshRevealMs: () -> Long,
     anchoredUserMessageId: () -> String?,
     assistantIdProvider: (String) -> String,
     fallbackIdProvider: () -> String,
@@ -135,12 +118,9 @@ internal fun ensureStreamingRevealJob(
                     currentMessageId = currentMessageId(),
                     currentContent = currentContent(),
                     currentRevealBuffer = currentRevealBuffer(),
-                    currentFreshTick = currentFreshTick(),
-                    lastFreshRevealMs = currentLastFreshRevealMs(),
                     anchoredUserMessageId = anchoredUserMessageId(),
                     assistantIdProvider = assistantIdProvider,
-                    fallbackIdProvider = fallbackIdProvider,
-                    nowMs = SystemClock.uptimeMillis()
+                    fallbackIdProvider = fallbackIdProvider
                 )
                 if (advance == null) {
                     if (!isStreaming()) break
@@ -355,10 +335,6 @@ internal data class StreamingRevealAdvance(
     val messageId: String,
     val content: String,
     val revealBuffer: String,
-    val freshStart: Int,
-    val freshEnd: Int,
-    val freshTick: Int,
-    val lastFreshRevealMs: Long,
     val delayMs: Long
 )
 
@@ -392,12 +368,9 @@ internal fun consumeStreamingRevealBatch(
     currentMessageId: String?,
     currentContent: String,
     currentRevealBuffer: String,
-    currentFreshTick: Int,
-    lastFreshRevealMs: Long,
     anchoredUserMessageId: String?,
     assistantIdProvider: (String) -> String,
-    fallbackIdProvider: () -> String,
-    nowMs: Long
+    fallbackIdProvider: () -> String
 ): StreamingRevealAdvance? {
     if (currentRevealBuffer.isEmpty()) return null
     val batch = buildStreamingRevealBatch(currentRevealBuffer)
@@ -411,10 +384,6 @@ internal fun consumeStreamingRevealBatch(
             ),
             content = currentContent,
             revealBuffer = currentRevealBuffer,
-            freshStart = currentContent.length,
-            freshEnd = currentContent.length,
-            freshTick = currentFreshTick,
-            lastFreshRevealMs = lastFreshRevealMs,
             delayMs = batch.delayMs
         )
     }
@@ -425,24 +394,10 @@ internal fun consumeStreamingRevealBatch(
         fallbackIdProvider = fallbackIdProvider
     )
     val nextContent = currentContent + batch.text
-    val nextFreshTick = if (
-        currentFreshTick <= 0 ||
-        nowMs - lastFreshRevealMs >= STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS ||
-        batch.text.indexOf('\n') >= 0
-    ) {
-        currentFreshTick + 1
-    } else {
-        currentFreshTick
-    }
-    val nextFreshRevealMs = if (nextFreshTick != currentFreshTick) nowMs else lastFreshRevealMs
     return StreamingRevealAdvance(
         messageId = messageId,
         content = nextContent,
         revealBuffer = currentRevealBuffer.drop(batch.text.length),
-        freshStart = currentContent.length,
-        freshEnd = nextContent.length,
-        freshTick = nextFreshTick,
-        lastFreshRevealMs = nextFreshRevealMs,
         delayMs = batch.delayMs
     )
 }
@@ -996,11 +951,7 @@ private fun StringBuilder.appendRendererParagraphLine(line: String) {
 internal fun ChatStreamingRenderer(
     content: String,
     renderMode: StreamingRenderMode,
-    freshSuffixEnabled: Boolean,
     showWaitingBall: Boolean,
-    streamingFreshStart: Int,
-    streamingFreshEnd: Int,
-    streamingFreshTick: Int,
     selectionEnabled: Boolean,
     showDisclaimer: Boolean,
     showLeadingSectionDivider: Boolean = false,
@@ -1011,9 +962,6 @@ internal fun ChatStreamingRenderer(
     RendererAssistantMessageContentImpl(
         content = content,
         isStreaming = renderMode != StreamingRenderMode.Settled,
-        streamingFreshStart = streamingFreshStart,
-        streamingFreshEnd = streamingFreshEnd,
-        streamingFreshTick = if (freshSuffixEnabled) streamingFreshTick else 0,
         showWaitingBall = showWaitingBall,
         selectionEnabled = selectionEnabled,
         showDisclaimer = showDisclaimer,
@@ -1028,9 +976,6 @@ internal fun ChatStreamingRenderer(
 private fun RendererAssistantMessageContentImpl(
     content: String,
     isStreaming: Boolean,
-    streamingFreshStart: Int = -1,
-    streamingFreshEnd: Int = -1,
-    streamingFreshTick: Int = 0,
     showWaitingBall: Boolean = false,
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
@@ -1068,9 +1013,6 @@ private fun RendererAssistantMessageContentImpl(
             ) {
                 RendererAssistantStreamingContentImpl(
                     content = content,
-                    streamingFreshStart = streamingFreshStart,
-                    streamingFreshEnd = streamingFreshEnd,
-                    streamingFreshTick = streamingFreshTick,
                     showWaitingBall = showWaitingBall,
                     showLeadingSectionDivider = showLeadingSectionDivider,
                     modifier = Modifier.fillMaxWidth()
@@ -1170,13 +1112,9 @@ private fun markdownBlockSpacingModifier(
     }
 }
 
-@Suppress("UNUSED_PARAMETER")
 @Composable
 private fun RendererAssistantStreamingContentImpl(
     content: String,
-    streamingFreshStart: Int,
-    streamingFreshEnd: Int,
-    streamingFreshTick: Int,
     showWaitingBall: Boolean,
     showLeadingSectionDivider: Boolean,
     modifier: Modifier = Modifier

@@ -305,12 +305,9 @@ class ChatStreamingRendererTest {
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "**",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals("", advanced?.content)
@@ -323,12 +320,9 @@ class ChatStreamingRendererTest {
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "**控",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
         requireNotNull(advanced)
         val rendered = buildRendererInlineAnnotatedString(
@@ -357,12 +351,9 @@ class ChatStreamingRendererTest {
             currentMessageId = queued?.messageId,
             currentContent = "",
             currentRevealBuffer = queued?.revealBuffer.orEmpty(),
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals("控", advanced?.content)
@@ -385,12 +376,9 @@ class ChatStreamingRendererTest {
             currentMessageId = queued?.messageId,
             currentContent = "",
             currentRevealBuffer = queued?.revealBuffer.orEmpty(),
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals(extensionBCharacter, advanced?.content)
@@ -413,12 +401,9 @@ class ChatStreamingRendererTest {
             currentMessageId = queued?.messageId,
             currentContent = "",
             currentRevealBuffer = queued?.revealBuffer.orEmpty(),
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals(seedling, advanced?.content)
@@ -441,12 +426,9 @@ class ChatStreamingRendererTest {
             currentMessageId = queued?.messageId,
             currentContent = "",
             currentRevealBuffer = queued?.revealBuffer.orEmpty(),
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals(farmer, advanced?.content)
@@ -469,12 +451,9 @@ class ChatStreamingRendererTest {
             currentMessageId = queued?.messageId,
             currentContent = "",
             currentRevealBuffer = queued?.revealBuffer.orEmpty(),
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals(farmer, advanced?.content)
@@ -497,12 +476,9 @@ class ChatStreamingRendererTest {
             currentMessageId = queued?.messageId,
             currentContent = "",
             currentRevealBuffer = queued?.revealBuffer.orEmpty(),
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals(flag, advanced?.content)
@@ -515,12 +491,9 @@ class ChatStreamingRendererTest {
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "chlorantraniliprole",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals("chlorant", advanced?.content)
@@ -546,12 +519,9 @@ class ChatStreamingRendererTest {
                 currentMessageId = queued?.messageId,
                 currentContent = content,
                 currentRevealBuffer = buffer,
-                currentFreshTick = steps.size,
-                lastFreshRevealMs = 0L,
                 anchoredUserMessageId = "user_1",
                 assistantIdProvider = { "assistant_$it" },
                 fallbackIdProvider = { "assistant_fallback" },
-                nowMs = 100L + steps.size
             )
 
             requireNotNull(advanced)
@@ -570,12 +540,9 @@ class ChatStreamingRendererTest {
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "控",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertEquals("控", advanced?.content)
@@ -588,23 +555,17 @@ class ChatStreamingRendererTest {
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "控",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
         val punctuation = consumeStreamingRevealBatch(
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "。",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertTrue((punctuation?.delayMs ?: 0L) > (plain?.delayMs ?: Long.MAX_VALUE))
@@ -616,23 +577,17 @@ class ChatStreamingRendererTest {
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "控",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
         val ellipsis = consumeStreamingRevealBatch(
             currentMessageId = null,
             currentContent = "",
             currentRevealBuffer = "…",
-            currentFreshTick = 0,
-            lastFreshRevealMs = 0L,
             anchoredUserMessageId = "user_1",
             assistantIdProvider = { "assistant_$it" },
             fallbackIdProvider = { "assistant_fallback" },
-            nowMs = 100L
         )
 
         assertTrue((ellipsis?.delayMs ?: 0L) > (plain?.delayMs ?: Long.MAX_VALUE))

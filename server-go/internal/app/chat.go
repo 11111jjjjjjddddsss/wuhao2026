@@ -475,6 +475,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			} else if stale {
 				s.logger.Info("drop stale chat stream after session clear", "userId", auth.UserID, "clientMsgId", clientMsgID)
 			} else {
+				completionAtMs := time.Now().UnixMilli()
 				replay, updatedSnapshot, appendErr := s.store.AppendSessionRoundComplete(
 					context.Background(),
 					auth.UserID,
@@ -492,6 +493,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					},
 					aWindowRounds,
 					memoryEveryRounds,
+					completionAtMs,
 					tier,
 					dayCN,
 					"stream_done",
@@ -504,10 +506,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					}
 					s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
 				} else {
-					consume, consumeErr := s.store.ConsumeOnDone(context.Background(), auth.UserID, tier, clientMsgID, dayCN)
+					consume, consumeErr := s.store.consumeOnDoneAt(context.Background(), auth.UserID, tier, clientMsgID, dayCN, completionAtMs)
 					if consumeErr != nil {
 						s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
-						go s.retryQuotaConsumeOnDone(auth.UserID, tier, clientMsgID, dayCN)
+						go s.retryQuotaConsumeOnDone(auth.UserID, tier, clientMsgID, dayCN, completionAtMs)
 					} else {
 						if err := s.store.MarkQuotaConsumeOutboxDone(context.Background(), auth.UserID, clientMsgID, time.Now().UnixMilli()); err != nil {
 							s.logger.Warn("quota consume outbox mark done failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
@@ -619,7 +621,7 @@ func readLimitedSSELine(reader *bufio.Reader, limit int) (string, error) {
 	}
 }
 
-func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID string, dayCN string) {
+func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID string, dayCN string, completionAtMs int64) {
 	delays := []time.Duration{
 		500 * time.Millisecond,
 		2 * time.Second,
@@ -627,7 +629,7 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 	}
 	for attempt, delay := range delays {
 		time.Sleep(delay)
-		consume, err := s.store.ConsumeOnDone(context.Background(), userID, tier, clientMsgID, dayCN)
+		consume, err := s.store.consumeOnDoneAt(context.Background(), userID, tier, clientMsgID, dayCN, completionAtMs)
 		if err == nil {
 			if markErr := s.store.MarkQuotaConsumeOutboxDone(context.Background(), userID, clientMsgID, time.Now().UnixMilli()); markErr != nil {
 				s.logger.Warn("quota consume outbox mark done after retry failed", "userId", userID, "clientMsgId", clientMsgID, "error", markErr)

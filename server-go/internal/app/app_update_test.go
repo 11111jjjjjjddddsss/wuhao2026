@@ -21,7 +21,7 @@ func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		ReleaseNotes:      "修复已知问题",
 		ForceUpdate:       true,
@@ -45,7 +45,7 @@ func TestReadAndroidUpdateConfigRequiresExplicitEnvEnable(t *testing.T) {
 	values := map[string]string{
 		"APP_ANDROID_LATEST_VERSION_CODE": "4",
 		"APP_ANDROID_LATEST_VERSION_NAME": "1.0.4",
-		"APP_ANDROID_APK_URL":             "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		"APP_ANDROID_APK_URL":             "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		"APP_ANDROID_APK_SHA256":          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		"APP_ANDROID_FILE_SIZE_BYTES":     "12345",
 	}
@@ -69,7 +69,7 @@ func TestBuildAndroidUpdateInfoDoesNotForceUpdateByDefault(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		ForceUpdate:       true,
 		FileSizeBytes:     12_345,
@@ -87,7 +87,7 @@ func TestBuildAndroidUpdateInfoUsesDefaultReleaseNotes(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		FileSizeBytes:     12_345,
 	})
@@ -104,7 +104,7 @@ func TestBuildAndroidUpdateInfoRejectsNonHTTPSAPKURL(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "http://download.example.com/nongjiqianwen-1.0.4.apk",
+		APKURL:            "http://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 	})
 	if info.HasUpdate {
 		t.Fatalf("expected invalid apk url to disable update, got %#v", info)
@@ -119,7 +119,7 @@ func TestBuildAndroidUpdateInfoRejectsInternalTestAPKURL(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/test-apks/debug/nongjiqiancha-debug-internal.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/test-apks/debug/nongjiqiancha-debug-internal.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		FileSizeBytes:     12_345,
 	}
@@ -146,7 +146,7 @@ func TestBuildAndroidUpdateInfoRejectsEscapedInternalTestAPKURL(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/test-apks/%64ebug/nongjiqiancha-%69nternal.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/test-apks/%64ebug/nongjiqiancha-%69nternal.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		FileSizeBytes:     12_345,
 	}
@@ -164,7 +164,7 @@ func TestBuildAndroidUpdateInfoRejectsShortLivedSignedAPKURL(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/releases/nongjiqiancha-1.0.4.apk?OSSAccessKeyId=abc&Expires=1781941394&Signature=sig",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk?OSSAccessKeyId=abc&Expires=1781941394&Signature=sig",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		FileSizeBytes:     12_345,
 	}
@@ -183,12 +183,60 @@ func TestBuildAndroidUpdateInfoRejectsShortLivedSignedAPKURL(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoRejectsExternalAPKHost(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://example.com/android/releases/4/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	}
+	info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+	if info.HasUpdate {
+		t.Fatalf("expected external apk host to disable update, got %#v", info)
+	}
+	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+	if androidUpdateConfigValid(cfg) {
+		t.Fatalf("external apk host config must be invalid")
+	}
+	if androidUpdateDownloadArtifactsComplete(cfg) {
+		t.Fatalf("external apk host must not count as complete release artifact")
+	}
+}
+
+func TestBuildAndroidUpdateInfoRejectsNonAPKOfficialURL(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.zip",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	}
+	info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+	if info.HasUpdate {
+		t.Fatalf("expected non-apk official url to disable update, got %#v", info)
+	}
+	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+	if androidUpdateConfigValid(cfg) {
+		t.Fatalf("non-apk official url config must be invalid")
+	}
+	if androidUpdateDownloadArtifactsComplete(cfg) {
+		t.Fatalf("non-apk official url must not count as complete release artifact")
+	}
+}
+
 func TestBuildAndroidUpdateInfoRequiresDownloadArtifacts(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 	})
 	if info.HasUpdate {
 		t.Fatalf("expected missing artifacts to disable update, got %#v", info)
@@ -199,7 +247,7 @@ func TestBuildAndroidUpdateInfoRequiresDownloadArtifacts(t *testing.T) {
 	if got := androidUpdateIgnoredReason(androidUpdateConfig{
 		Enabled:           true,
 		LatestVersionCode: 4,
-		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 	}); got != "missing_release_artifacts" {
 		t.Fatalf("ignored reason = %q, want missing_release_artifacts", got)
 	}
@@ -210,7 +258,7 @@ func TestBuildAndroidUpdateInfoRejectsOversizedAPK(t *testing.T) {
 		Enabled:           true,
 		LatestVersionCode: 4,
 		LatestVersionName: "1.0.4",
-		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		FileSizeBytes:     maxAndroidAPKBytes + 1,
 	})
@@ -223,7 +271,7 @@ func TestBuildAndroidUpdateInfoRejectsOversizedAPK(t *testing.T) {
 	if got := androidUpdateIgnoredReason(androidUpdateConfig{
 		Enabled:           true,
 		LatestVersionCode: 4,
-		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		FileSizeBytes:     maxAndroidAPKBytes + 1,
 	}); got != "apk_too_large" {
@@ -231,7 +279,7 @@ func TestBuildAndroidUpdateInfoRejectsOversizedAPK(t *testing.T) {
 	}
 	if androidUpdateConfigValid(androidUpdateConfig{
 		LatestVersionCode: 4,
-		APKURL:            "https://download.example.com/nongjiqiancha-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		FileSizeBytes:     maxAndroidAPKBytes + 1,
 	}) {
 		t.Fatalf("oversized apk config must be invalid")
@@ -242,7 +290,7 @@ func TestBuildAndroidUpdateInfoHidesChecksumWhenNoUpdate(t *testing.T) {
 	info := buildAndroidUpdateInfo(4, "1.0.4", androidUpdateConfig{
 		Enabled:           true,
 		LatestVersionCode: 4,
-		APKURL:            "https://download.example.com/nongjiqianwen-1.0.4.apk",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
 		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	})
 	if info.HasUpdate {

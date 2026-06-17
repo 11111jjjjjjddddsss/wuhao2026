@@ -172,7 +172,44 @@ function Test-OfficialAndroidApkUrl {
     if ($parsed.Scheme -ne "https") {
         return $false
     }
-    return $parsed.AbsolutePath.ToLowerInvariant().EndsWith(".apk")
+    if ($parsed.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
+        return $false
+    }
+    $path = $parsed.AbsolutePath.ToLowerInvariant()
+    return $path.StartsWith("/android/releases/") -and $path.EndsWith(".apk")
+}
+
+function Test-ShortLivedSignedAndroidApkUrl {
+    param([string]$Url)
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $false
+    }
+    $parsed = $null
+    if (-not [System.Uri]::TryCreate($Url.Trim(), [System.UriKind]::Absolute, [ref]$parsed)) {
+        return $false
+    }
+    $signedKeys = @(
+        "expires",
+        "signature",
+        "ossaccesskeyid",
+        "security-token",
+        "x-oss-expires",
+        "x-oss-signature",
+        "x-oss-credential",
+        "x-oss-security-token"
+    )
+    foreach ($part in $parsed.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $key = ($part.Split("=", 2)[0]).ToLowerInvariant()
+        try {
+            $key = [System.Uri]::UnescapeDataString($key).ToLowerInvariant()
+        } catch {
+            # Keep the raw key if it cannot be decoded safely.
+        }
+        if ($signedKeys -contains $key) {
+            return $true
+        }
+    }
+    return $false
 }
 
 function Test-InternalAndroidApkUrlMarker {
@@ -213,8 +250,11 @@ if ($siteEnvFiles.Count -gt 0) {
             if (Test-InternalAndroidApkUrlMarker $envApkUrl) {
                 throw "site $($envFile.Name) contains an internal test APK URL; do not publish test packages on the official website."
             }
+            if (Test-ShortLivedSignedAndroidApkUrl $envApkUrl) {
+                throw "site $($envFile.Name) contains a short-lived signed APK URL; publish a stable official release URL instead."
+            }
             if (-not (Test-OfficialAndroidApkUrl $envApkUrl)) {
-                throw "site $($envFile.Name) contains VITE_ANDROID_APK_URL, but it is not a valid https .apk URL."
+                throw "site $($envFile.Name) contains VITE_ANDROID_APK_URL, but it is not a stable download.nongjiqiancha.cn release .apk URL."
             }
         }
     }
@@ -226,8 +266,11 @@ if (-not [string]::IsNullOrWhiteSpace($configuredApkUrl)) {
     if (Test-InternalAndroidApkUrlMarker $configuredApkUrl) {
         throw "VITE_ANDROID_APK_URL looks like an internal test APK URL; do not publish test packages on the official website."
     }
+    if (Test-ShortLivedSignedAndroidApkUrl $configuredApkUrl) {
+        throw "VITE_ANDROID_APK_URL looks like a short-lived signed APK URL; publish a stable official release URL instead."
+    }
     if (-not (Test-OfficialAndroidApkUrl $configuredApkUrl)) {
-        throw "VITE_ANDROID_APK_URL must be a valid https .apk URL when official downloads are explicitly enabled."
+        throw "VITE_ANDROID_APK_URL must be a stable download.nongjiqiancha.cn release .apk URL when official downloads are explicitly enabled."
     }
 }
 

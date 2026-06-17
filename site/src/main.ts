@@ -22,6 +22,21 @@ const decodeUrlText = (value: string): string => {
 const isValidApkUrl = (value: string): boolean => {
   try {
     const url = new URL(value);
+    const signedQueryKeys = new Set([
+      'expires',
+      'signature',
+      'ossaccesskeyid',
+      'security-token',
+      'x-oss-expires',
+      'x-oss-signature',
+      'x-oss-credential',
+      'x-oss-security-token',
+    ]);
+    for (const key of url.searchParams.keys()) {
+      if (signedQueryKeys.has(key.toLowerCase())) {
+        return false;
+      }
+    }
     const normalized = `${value}\n${decodeUrlText(value)}\n${url.pathname}\n${decodeUrlText(url.pathname)}`.toLowerCase();
     if (
       normalized.includes('test-apks') ||
@@ -31,7 +46,10 @@ const isValidApkUrl = (value: string): boolean => {
     ) {
       return false;
     }
-    return url.protocol === 'https:' && url.pathname.toLowerCase().endsWith('.apk');
+    return url.protocol === 'https:' &&
+      url.hostname.toLowerCase() === 'download.nongjiqiancha.cn' &&
+      url.pathname.toLowerCase().startsWith('/android/releases/') &&
+      url.pathname.toLowerCase().endsWith('.apk');
   } catch {
     return false;
   }

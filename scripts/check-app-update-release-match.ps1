@@ -275,6 +275,9 @@ if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
     Add-Failure $failures "admin APK URL must be an absolute https URL"
 } else {
     Write-Host ("admin_apk_url_host={0}" -f $parsedApkUrl.Host)
+    if ($parsedApkUrl.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
+        Add-Failure $failures "admin APK URL host must be download.nongjiqiancha.cn"
+    }
     $apkUrlText = $adminApkUrl.ToLowerInvariant()
     try {
         $apkUrlText = $apkUrlText + " " + [System.Uri]::UnescapeDataString($parsedApkUrl.AbsolutePath).ToLowerInvariant()
@@ -295,6 +298,9 @@ if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
     }
     if (-not $parsedApkUrl.AbsolutePath.ToLowerInvariant().EndsWith(".apk")) {
         Add-Failure $failures "admin APK URL path should end with .apk"
+    }
+    if (-not $parsedApkUrl.AbsolutePath.ToLowerInvariant().StartsWith("/android/releases/")) {
+        Add-Failure $failures "admin APK URL path should stay under /android/releases/"
     }
 }
 if (-not [string]::IsNullOrWhiteSpace($ExpectedApkUrl) -and $adminApkUrl -ne $ExpectedApkUrl) {

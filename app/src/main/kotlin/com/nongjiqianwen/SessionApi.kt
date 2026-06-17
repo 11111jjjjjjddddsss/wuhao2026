@@ -16,6 +16,7 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
+import java.net.URLDecoder
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
@@ -34,6 +35,8 @@ object SessionApi {
     private const val STREAM_ACTIVE_RETRY_BASE_DELAY_MS = 550L
     private const val CLIENT_LOG_THROTTLE_MS = 60_000L
     private const val APP_UPDATE_MAX_APK_DOWNLOAD_BYTES = 200L * 1024L * 1024L
+    private const val APP_UPDATE_OFFICIAL_APK_HOST = "download.nongjiqiancha.cn"
+    private const val APP_UPDATE_OFFICIAL_APK_PATH_PREFIX = "/android/releases/"
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
@@ -199,6 +202,7 @@ object SessionApi {
                 return hasUpdate == true &&
                     latestCode > BuildConfig.VERSION_CODE &&
                     url.startsWith("https://") &&
+                    isStableAppUpdateApkUrl(url) &&
                     normalizeAppUpdateSha256(apkSha256) != null &&
                     sizeBytes > 0L &&
                     sizeBytes <= APP_UPDATE_MAX_APK_DOWNLOAD_BYTES
@@ -251,6 +255,46 @@ object SessionApi {
             hex.all { ch -> ch in '0'..'9' || ch in 'a'..'f' }
         }
     }
+
+    private fun isStableAppUpdateApkUrl(raw: String): Boolean {
+        val parsed = raw.toHttpUrlOrNull() ?: return false
+        if (parsed.scheme != "https") return false
+        if (!parsed.host.equals(APP_UPDATE_OFFICIAL_APK_HOST, ignoreCase = true)) return false
+        val encodedPath = parsed.encodedPath.lowercase(Locale.US)
+        val decodedPath = decodeAppUpdateUrlGuardValue(parsed.encodedPath).lowercase(Locale.US)
+        if (!encodedPath.startsWith(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX)) return false
+        if (!encodedPath.endsWith(".apk")) return false
+        val lowerUrl = raw.lowercase(Locale.US)
+        val decodedUrl = decodeAppUpdateUrlGuardValue(raw).lowercase(Locale.US)
+        val internalMarkers = listOf("test-apks", "debug", "internal", "staging")
+        if (internalMarkers.any { marker ->
+                lowerUrl.contains(marker) ||
+                    decodedUrl.contains(marker) ||
+                    encodedPath.contains(marker) ||
+                    decodedPath.contains(marker)
+            }
+        ) {
+            return false
+        }
+        val signedQueryNames = setOf(
+            "expires",
+            "signature",
+            "ossaccesskeyid",
+            "security-token",
+            "x-oss-expires",
+            "x-oss-signature",
+            "x-oss-credential",
+            "x-oss-security-token"
+        )
+        return parsed.queryParameterNames.none { it.lowercase(Locale.US) in signedQueryNames }
+    }
+
+    private fun decodeAppUpdateUrlGuardValue(value: String): String =
+        try {
+            URLDecoder.decode(value, "UTF-8")
+        } catch (_: IllegalArgumentException) {
+            value
+        }
 
     fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
         val base = baseUrl()
@@ -2183,7 +2227,7 @@ object SessionApi {
             "gift_card_inactive" -> "这张礼品卡已被兑换或已作废"
             "gift_card_expired" -> "这张礼品卡已过期"
             "gift_card_lower_tier" -> "当前会员档位更高，不能兑换较低档位礼品卡"
-            "gift_card_not_configured" -> "礼品卡服务暂未配置"
+            "gift_card_not_configured" -> "礼品卡服务暂时不可用，请稍后再试"
             "rate_limited" -> "尝试太频繁，请稍后再试"
             "unauthorized" -> "请先登录后兑换"
             else -> if (statusCode >= 500) "服务暂时不可用，请稍后再试" else "兑换失败，请稍后再试"

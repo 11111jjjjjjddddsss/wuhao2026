@@ -13,6 +13,8 @@ import (
 const (
 	defaultAndroidUpdateReleaseNotes = "修复已知问题，优化使用体验。"
 	maxAndroidAPKBytes               = int64(200 * 1024 * 1024)
+	officialAndroidAPKHost           = "download.nongjiqiancha.cn"
+	officialAndroidAPKPathPrefix     = "/android/releases/"
 )
 
 type AppUpdateInfo struct {
@@ -206,6 +208,15 @@ func isOfficialAndroidAPKURL(raw string) bool {
 	}
 	lower := strings.ToLower(raw)
 	if parsed, err := url.Parse(raw); err == nil {
+		if !strings.EqualFold(parsed.Hostname(), officialAndroidAPKHost) {
+			return false
+		}
+		if !strings.HasPrefix(strings.ToLower(parsed.EscapedPath()), officialAndroidAPKPathPrefix) {
+			return false
+		}
+		if !strings.HasSuffix(strings.ToLower(parsed.Path), ".apk") {
+			return false
+		}
 		for key := range parsed.Query() {
 			switch strings.ToLower(key) {
 			case "expires", "signature", "ossaccesskeyid", "security-token",

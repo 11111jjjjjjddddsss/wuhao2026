@@ -205,6 +205,10 @@ expectAdminPattern("app update enable confirm shows file size", /文件大小: \
 expectAdminPattern("app update enable confirm points to release-match script", /check-app-update-release-match\.ps1/);
 expectAdminPattern("app update rejects internal test apk url", /内部测试包链接，不能配置到正式检查更新/);
 expectAdminPattern("app update rejects escaped internal test apk url", /decodeURIComponent\(value\)/);
+expectAdminPattern("app update requires official download domain", /download\.nongjiqiancha\.cn 下的稳定正式 \.apk 链接/);
+expectAdminPattern("app update official url checks release path", /\/android\/releases\//);
+expectAdminPattern("app update official url checks download host", /download\.nongjiqiancha\.cn/);
+expectAdminPattern("app update rejects short-lived signed apk url", /短期签名参数的临时链接，不能配置到正式检查更新/);
 expectServerPattern("app update API rejects internal test apk url", /isOfficialAndroidAPKURL/);
 expectAdminPattern("support reply button says production user send", /发送给用户（生产）/);
 [

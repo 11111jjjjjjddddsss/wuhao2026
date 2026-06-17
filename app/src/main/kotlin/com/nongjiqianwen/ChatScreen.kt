@@ -302,41 +302,63 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
         imageUris.orEmpty().isNotEmpty() &&
         imageUrls.orEmpty().isEmpty()
 
+private fun ChatMessage.isCompletedAssistantAnswer(failedAssistantMessageIds: Set<String> = emptySet()): Boolean =
+    role == ChatRole.ASSISTANT && content.isNotBlank() && id !in failedAssistantMessageIds
+
+internal fun hasCompletedAssistantAnswerTail(
+    messages: List<ChatMessage>,
+    failedAssistantMessageIds: Set<String> = emptySet()
+): Boolean =
+    messages.lastOrNull()?.isCompletedAssistantAnswer(failedAssistantMessageIds) == true
+
+private fun latestCompletedAssistantAnswerId(
+    messages: List<ChatMessage>,
+    failedAssistantMessageIds: Set<String> = emptySet()
+): String? =
+    messages.lastOrNull()?.takeIf { it.isCompletedAssistantAnswer(failedAssistantMessageIds) }?.id
+
 internal fun buildChatTimelineItems(
     messages: List<ChatMessage>,
     todayAgriCard: SessionApi.TodayAgriCard?,
     todayAgriCardAnchorMessageId: String?,
-    hiddenRoundCount: Int = 0
+    hiddenRoundCount: Int = 0,
+    failedAssistantMessageIds: Set<String> = emptySet()
 ): List<ChatTimelineItem> {
     val items = ArrayList<ChatTimelineItem>(messages.size + 2)
     if (hiddenRoundCount > 0) {
         items += ChatTimelineItem.HistoryNotice(hiddenRoundCount)
     }
-    val validTodayAgriCard = todayAgriCard?.takeIf { it.isRenderableTodayAgriCard() }
-    var todayAgriCardInserted = false
-    if (validTodayAgriCard != null && todayAgriCardAnchorMessageId == TODAY_AGRI_CARD_ANCHOR_START) {
-        items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
-        todayAgriCardInserted = true
+    val validTodayAgriCard = todayAgriCard?.takeIf {
+        it.isRenderableTodayAgriCard() &&
+            messages.any { message -> message.isCompletedAssistantAnswer(failedAssistantMessageIds) }
     }
+    if (validTodayAgriCard != null && todayAgriCardAnchorMessageId == TODAY_AGRI_CARD_ANCHOR_START) {
+        return items.apply {
+            messages.forEach { message -> add(ChatTimelineItem.Message(message)) }
+        }
+    }
+    val requestedAnchorMessageId = todayAgriCardAnchorMessageId
+        ?.takeUnless { it == TODAY_AGRI_CARD_ANCHOR_START }
+    var todayAgriCardInserted = false
+    var latestAssistantAnswerInsertIndex = -1
     messages.forEach { message ->
         items += ChatTimelineItem.Message(message)
+        if (message.isCompletedAssistantAnswer(failedAssistantMessageIds)) {
+            latestAssistantAnswerInsertIndex = items.size
+        }
         if (
             validTodayAgriCard != null &&
-            todayAgriCardAnchorMessageId != null &&
-            todayAgriCardAnchorMessageId != TODAY_AGRI_CARD_ANCHOR_START &&
-            message.id == todayAgriCardAnchorMessageId
+            requestedAnchorMessageId != null &&
+            message.id == requestedAnchorMessageId &&
+            message.isCompletedAssistantAnswer(failedAssistantMessageIds)
         ) {
             items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
             todayAgriCardInserted = true
         }
     }
     if (validTodayAgriCard != null && !todayAgriCardInserted) {
-        if (todayAgriCardAnchorMessageId == null) {
-            items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
-        } else {
-            val fallbackIndex = if (items.firstOrNull() is ChatTimelineItem.HistoryNotice) 1 else 0
-            items.add(fallbackIndex, ChatTimelineItem.TodayAgriCard(validTodayAgriCard))
-        }
+        val insertIndex = latestAssistantAnswerInsertIndex.takeIf { it >= 0 } ?: items.size
+        items.add(insertIndex, ChatTimelineItem.TodayAgriCard(validTodayAgriCard))
     }
     return items
 }
@@ -369,11 +391,13 @@ internal fun shouldShowTodayAgriMainCard(
     currentDayKey: String,
     shownDayKey: String,
     shownThisRuntime: Boolean,
+    hasAssistantAnswerTail: Boolean,
     suppressedThisRuntime: Boolean = false
 ): Boolean {
     val normalizedCurrentDay = normalizeTodayAgriCardDayKey(currentDayKey)
     val cardDay = normalizeTodayAgriCardDayKey(card?.dateCn.orEmpty())
     return card?.isRenderableTodayAgriCard() == true &&
+        (shownThisRuntime || hasAssistantAnswerTail) &&
         cardDay.isNotBlank() &&
         cardDay == normalizedCurrentDay &&
         (!suppressedThisRuntime || shownThisRuntime) &&
@@ -396,12 +420,10 @@ internal fun shouldRevealChatMessageList(
             !hasStartedConversation &&
             !isStreaming &&
             !hasStreamingItem &&
-            !hasTodayAgriCard &&
             messageCount <= 0
     return when {
         waitingForRemoteStartupHydration -> false
         messageCount > 0 -> true
-        hasTodayAgriCard -> true
         hasStreamingItem -> true
         !hasStartedConversation -> true
         startupHydrationBarrierSatisfied -> true
@@ -551,11 +573,6 @@ internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 20L
 private const val STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS = 40L
 internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
 internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
-internal const val STREAM_FRESH_LINE_SETTLE_FRAMES = 1
-internal const val STREAM_FRESH_LINE_AFTER_FOLLOW_SETTLE_FRAMES = 0
-internal const val STREAM_FRESH_SUFFIX_MIN_HIGHLIGHT_CHARS = 3
-internal const val STREAM_FRESH_SUFFIX_HIGHLIGHT_MS = 90
-internal const val STREAM_FRESH_SUFFIX_TRIGGER_INTERVAL_MS = 760L
 private const val REMOTE_STREAM_MIN_BALL_MS = 1800L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
@@ -591,7 +608,6 @@ private val JUMP_BUTTON_EXTRA_BOTTOM_CLEARANCE = 32.dp
 private val JUMP_BUTTON_BOTTOM_SAFETY_ZONE = 56.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 8.dp
-internal val STREAM_FRESH_SUFFIX_HIGHLIGHT_COLOR = Color(0xFFDDE1E6)
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
 private val STATIC_SELECTION_CACHE_WINDOW = 6000.dp
@@ -2401,12 +2417,20 @@ fun ChatScreen() {
     val initialTodayAgriCard = remember(chatScopeId) {
         context.loadTodayAgriCardCacheSync(chatScopeId)
     }
-    val initialTodayAgriCardIsRenderable = remember(initialTodayAgriCard, initialTodayAgriMainShownDay) {
+    val initialTodayAgriCardIsRenderable = remember(
+        initialTodayAgriCard,
+        initialTodayAgriMainShownDay,
+        initialLocalMessages
+    ) {
         shouldShowTodayAgriMainCard(
             card = initialTodayAgriCard,
             currentDayKey = currentChinaDateKey(),
             shownDayKey = initialTodayAgriMainShownDay,
-            shownThisRuntime = false
+            shownThisRuntime = false,
+            hasAssistantAnswerTail = hasCompletedAssistantAnswerTail(
+                initialLocalMessages,
+                initialLocalSnapshot.failedAssistantMessageStates.keys
+            )
         )
     }
     val uiRuntimeResetKey = remember(chatScopeId, initialLocalSnapshot, hasRemoteHistorySource) {
@@ -2504,10 +2528,6 @@ fun ChatScreen() {
     var streamingMessageContent by streamingRuntime.streamingMessageContent
     var streamingRevealBuffer by streamingRuntime.streamingRevealBuffer
     var streamRevealJob by streamingRuntime.streamRevealJob
-    var streamingFreshStart by streamingRuntime.streamingFreshStart
-    var streamingFreshEnd by streamingRuntime.streamingFreshEnd
-    var streamingFreshTick by streamingRuntime.streamingFreshTick
-    var lastStreamingFreshRevealMs by streamingRuntime.lastStreamingFreshRevealMs
     val initialChatListIndex = remember(uiRuntimeResetKey) {
         (initialLocalMessages.size - 1).coerceAtLeast(0)
     }
@@ -2626,6 +2646,12 @@ fun ChatScreen() {
         mutableStateOf(context.loadTodayAgriCardAnchorMessageSync(chatScopeId))
     }
     val currentTodayAgriCardDay = todayAgriCardDayKey(todayAgriCard)
+    val hasCompletedAssistantTail by remember(messages, failedAssistantMessageStates) {
+        derivedStateOf { hasCompletedAssistantAnswerTail(messages, failedAssistantMessageStates.keys) }
+    }
+    val latestCompletedAssistantTailId by remember(messages, failedAssistantMessageStates) {
+        derivedStateOf { latestCompletedAssistantAnswerId(messages, failedAssistantMessageStates.keys) }
+    }
     val retryingUserMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     var quotaExhaustedDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
@@ -2635,6 +2661,7 @@ fun ChatScreen() {
         currentTodayAgriCardDay,
         todayAgriMainShownDay,
         todayAgriShownThisRuntime,
+        hasCompletedAssistantTail,
         todayAgriAutoInsertSuppressedThisRuntime
     ) {
         derivedStateOf {
@@ -2643,6 +2670,7 @@ fun ChatScreen() {
                 currentDayKey = currentChinaDateKey(),
                 shownDayKey = todayAgriMainShownDay,
                 shownThisRuntime = todayAgriShownThisRuntime,
+                hasAssistantAnswerTail = hasCompletedAssistantTail,
                 suppressedThisRuntime = todayAgriAutoInsertSuppressedThisRuntime
             )
         }
@@ -2691,30 +2719,14 @@ fun ChatScreen() {
                 messages = messages,
                 todayAgriCard = visibleTodayAgriCard,
                 todayAgriCardAnchorMessageId = todayAgriCardAnchorForRender,
-                hiddenRoundCount = hiddenRemoteRoundCount
+                hiddenRoundCount = hiddenRemoteRoundCount,
+                failedAssistantMessageIds = failedAssistantMessageStates.keys
             )
         }
     }
     val hasTodayAgriCard by remember(chatListItems) {
         derivedStateOf {
             chatListItems.any { it is ChatTimelineItem.TodayAgriCard }
-        }
-    }
-    LaunchedEffect(
-        hasTodayAgriCard,
-        messages.size,
-        isStreaming,
-        hasStreamingItem,
-        initialWorklinePhase
-    ) {
-        if (
-            hasTodayAgriCard &&
-            messages.isEmpty() &&
-            !isStreaming &&
-            !hasStreamingItem &&
-            initialWorklinePhase == InitialWorklinePhase.WaitingForFirstSend
-        ) {
-            initialWorklinePhase = InitialWorklinePhase.TopUnreached
         }
     }
     fun todayAgriContextDayForNextSend(existingUserMessageId: String? = null): String? {
@@ -2977,7 +2989,7 @@ fun ChatScreen() {
             initialWorklinePhase == InitialWorklinePhase.TopAnchoring
 
     fun hasStaticVisualTimeline(): Boolean =
-        messages.isNotEmpty() || hasTodayAgriCard
+        messages.isNotEmpty()
 
     fun shouldUseTopArrangementForConversation(): Boolean =
         isInitialWorklineTopFlow()
@@ -3190,15 +3202,14 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         hasStartedConversation,
-        messages.size
+        latestCompletedAssistantTailId
     ) {
         if (!shouldShowTodayAgriCard || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (shouldHydrateRemoteHistory && !remoteSnapshotHydrationComplete) return@LaunchedEffect
-        val latestMessageAnchorId = messages.lastOrNull()?.id
+        val anchorMessageId = latestCompletedAssistantTailId ?: return@LaunchedEffect
         if (currentTodayAgriCardHasSavedAnchor) {
             return@LaunchedEffect
         }
-        val anchorMessageId = latestMessageAnchorId ?: TODAY_AGRI_CARD_ANCHOR_START
         todayAgriCardAnchorDay = currentTodayAgriCardDay
         todayAgriCardAnchorMessageId = anchorMessageId
         context.saveTodayAgriCardAnchorSync(chatScopeId, currentTodayAgriCardDay, anchorMessageId)
@@ -3374,12 +3385,14 @@ fun ChatScreen() {
         }
         todayAgriMainCardVisibleLogged = true
         todayAgriShownThisRuntime = true
-        if (todayAgriMainShownDay != currentTodayAgriCardDay) {
+        val canPersistTodayAgriShownDay =
+            !shouldHydrateRemoteHistory || remoteSnapshotHydrationComplete
+        if (canPersistTodayAgriShownDay && todayAgriMainShownDay != currentTodayAgriCardDay) {
             todayAgriMainShownDay = currentTodayAgriCardDay
             context.saveTodayAgriMainShownDaySync(chatScopeId, currentTodayAgriCardDay)
         }
         val anchorState = when {
-            todayAgriCardAnchorForRender == TODAY_AGRI_CARD_ANCHOR_START -> "start"
+            todayAgriCardAnchorForRender == TODAY_AGRI_CARD_ANCHOR_START -> "legacy_start"
             todayAgriCardAnchorForRender.isNullOrBlank() -> "none"
             else -> "message"
         }
@@ -3394,7 +3407,8 @@ fun ChatScreen() {
                 "list_revealed" to shouldRevealMessageList,
                 "anchor_state" to anchorState,
                 "bottom_snap_done" to initialBottomSnapDone,
-                "shown_once_day" to currentTodayAgriCardDay
+                "shown_once_day" to currentTodayAgriCardDay,
+                "shown_day_persisted" to canPersistTodayAgriShownDay
             )
         )
     }
@@ -3962,9 +3976,6 @@ fun ChatScreen() {
         streamingMessageId = null
         streamingMessageContent = ""
         streamingRevealBuffer = ""
-        streamingFreshStart = -1
-        streamingFreshEnd = -1
-        lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         pendingStreamingFinalizeMessageId = null
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
@@ -4426,8 +4437,7 @@ fun ChatScreen() {
     fun shouldShowInterruptedAssistantRetry(reason: String): Boolean =
         reason !in setOf(
             "rate_limit",
-            "stale_session",
-            "stream_in_progress"
+            "stale_session"
         )
 
     fun finalizeInterruptedAssistant(
@@ -4709,9 +4719,6 @@ fun ChatScreen() {
             sendStartAnchorActive = false
             streamingMessageId = null
             streamingRevealBuffer = ""
-            streamingFreshStart = -1
-            streamingFreshEnd = -1
-            lastStreamingFreshRevealMs = 0L
             resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
             composerSettlingMinHeightPx = 0
             composerSettlingChromeHeightPx = 0
@@ -4907,9 +4914,20 @@ fun ChatScreen() {
                 val messageListWasVisible = shouldRevealMessageList
                 if (shouldReplaceHydratedMessageList) {
                     replaceMessages(hydratedSnapshot.messages)
+                    val hydratedTodayAgriVisualContent = shouldShowTodayAgriMainCard(
+                        card = todayAgriCard,
+                        currentDayKey = currentChinaDateKey(),
+                        shownDayKey = todayAgriMainShownDay,
+                        shownThisRuntime = todayAgriShownThisRuntime,
+                        hasAssistantAnswerTail = hasCompletedAssistantAnswerTail(
+                            hydratedSnapshot.messages,
+                            hydratedSnapshot.failedAssistantMessageStates.keys
+                        ),
+                        suppressedThisRuntime = todayAgriAutoInsertSuppressedThisRuntime
+                    )
                     initialWorklinePhase = restoredStartupWorklinePhase(
                         messageCount = hydratedSnapshot.messages.size,
-                        hasTodayAgriVisualContent = shouldShowTodayAgriCard,
+                        hasTodayAgriVisualContent = hydratedTodayAgriVisualContent,
                         persistedInitialWorklineOwned = hydratedSnapshot.initialWorklineOwned
                     )
                 }
@@ -5296,19 +5314,13 @@ fun ChatScreen() {
             currentMessageId = { streamingMessageId },
             currentContent = { streamingMessageContent },
             currentRevealBuffer = { streamingRevealBuffer },
-            currentFreshTick = { streamingFreshTick },
-            currentLastFreshRevealMs = { lastStreamingFreshRevealMs },
             anchoredUserMessageId = { anchoredUserMessageId },
             assistantIdProvider = ::assistantMessageIdForSourceUser,
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
                 streamingMessageId = advance.messageId
                 streamingRevealBuffer = advance.revealBuffer
-                streamingFreshStart = advance.freshStart
                 streamingMessageContent = advance.content
-                streamingFreshEnd = advance.freshEnd
-                streamingFreshTick = advance.freshTick
-                lastStreamingFreshRevealMs = advance.lastFreshRevealMs
             }
         )
     }
@@ -5363,9 +5375,6 @@ fun ChatScreen() {
         streamingMessageId = null
         streamingMessageContent = ""
         streamingRevealBuffer = ""
-        streamingFreshStart = -1
-        streamingFreshEnd = -1
-        lastStreamingFreshRevealMs = 0L
         streamingBackgrounded = false
         streamRevealJob = null
         resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
@@ -5846,9 +5855,6 @@ fun ChatScreen() {
                 }
                 else -> -1
             }
-        streamingFreshStart = -1
-        streamingFreshEnd = -1
-        lastStreamingFreshRevealMs = 0L
         isStreaming = true
         streamingMessageId = assistantId
         remoteRecoveryJob?.cancel()
@@ -5856,9 +5862,6 @@ fun ChatScreen() {
         remoteRecoverySourceUserMessageId = null
         streamingMessageContent = ""
         streamingRevealBuffer = ""
-        streamingFreshStart = -1
-        streamingFreshEnd = -1
-        lastStreamingFreshRevealMs = 0L
         context.saveLocalStreamingDraftSync(
             chatScopeId = chatScopeId,
             draft = LocalStreamingDraft(
@@ -6893,18 +6896,10 @@ fun ChatScreen() {
                                         isActiveStreamingAssistant && isStreaming -> StreamingRenderMode.Streaming
                                         else -> StreamingRenderMode.Settled
                                     }
-                                    val freshSuffixEnabled =
-                                        isActiveStreamingAssistant &&
-                                            isStreaming &&
-                                            !isPendingStreamingFinalizeAssistant
                                     ChatStreamingRenderer(
                                         content = assistantDisplayContent,
                                         renderMode = renderMode,
-                                        freshSuffixEnabled = freshSuffixEnabled,
                                         showWaitingBall = renderMode == StreamingRenderMode.Waiting,
-                                        streamingFreshStart = if (freshSuffixEnabled) streamingFreshStart else -1,
-                                        streamingFreshEnd = if (freshSuffixEnabled) streamingFreshEnd else -1,
-                                        streamingFreshTick = if (freshSuffixEnabled) streamingFreshTick else 0,
                                         selectionEnabled =
                                             !isStreaming ||
                                                 isPendingStreamingFinalizeAssistant ||
@@ -8202,7 +8197,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("今日农情", "主聊天普通文本项，标题加粗、正文可复制", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
-                    UiCopyPreviewItem("农情上下文规则", "已显示后三轮参考，发送中不突插", UiCopyPreviewKind.TodayAgriContextRule),
+                    UiCopyPreviewItem("农情上下文规则", "空态不显示，安静历史后参考", UiCopyPreviewKind.TodayAgriContextRule),
                     UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
@@ -9020,8 +9015,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.TodayAgriContextRule -> {
                     UiCopyPreviewPlainText(
                         listOf(
-                            "当天今日农情仍是主聊天时间线里的普通视觉文本",
-                            "如果用户发送前农情还没显示，本次运行不突然插入",
+                            "无真实聊天时只显示欢迎语，今日农情不占空态",
+                            "安静打开且已有完整 AI 回答历史时，才跟在最后一条回答后",
+                            "如果用户本次开始问了而农情还没显示，本次运行不突然插入",
                             "用户在它后面发送的后三轮，会临时带当天农情标记",
                             "后端只在日期等于服务器当天时读取农情正文作为临时背景",
                             "第四轮起自动不带；记忆整理、聊天归档和扣次都不写入农情正文"
@@ -9038,11 +9034,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     ChatStreamingRenderer(
                         content = UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE,
                         renderMode = StreamingRenderMode.Settled,
-                        freshSuffixEnabled = false,
                         showWaitingBall = false,
-                        streamingFreshStart = -1,
-                        streamingFreshEnd = -1,
-                        streamingFreshTick = 0,
                         selectionEnabled = true,
                         showDisclaimer = true,
                         onStreamingContentBoundsChanged = null,
@@ -9053,11 +9045,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     ChatStreamingRenderer(
                         content = UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE,
                         renderMode = StreamingRenderMode.Settled,
-                        freshSuffixEnabled = false,
                         showWaitingBall = false,
-                        streamingFreshStart = -1,
-                        streamingFreshEnd = -1,
-                        streamingFreshTick = 0,
                         selectionEnabled = true,
                         showDisclaimer = true,
                         onStreamingContentBoundsChanged = null,
@@ -9617,11 +9605,7 @@ private fun UiCopyPreviewCleanStateFirstSend() {
         ChatStreamingRenderer(
             content = "",
             renderMode = StreamingRenderMode.Waiting,
-            freshSuffixEnabled = false,
             showWaitingBall = true,
-            streamingFreshStart = -1,
-            streamingFreshEnd = -1,
-            streamingFreshTick = 0,
             selectionEnabled = false,
             showDisclaimer = false,
             onStreamingContentBoundsChanged = null,

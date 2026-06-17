@@ -10,7 +10,7 @@
 
 内部测试包不走本 runbook 的正式检查更新链路。用户只说“给我一个测试包 / 代理测试 / 管理层试用”时，使用 [android-test-package.md](D:/wuhao/docs/runbooks/android-test-package.md) 和 [publish-android-test-apk.ps1](D:/wuhao/scripts/publish-android-test-apk.ps1) 生成 debug/internal 临时下载链接。
 
-测试包链接禁止写入管理后台“检查更新”、`APP_ANDROID_APK_URL`、`APP_ANDROID_*` 环境变量、官网 `VITE_ANDROID_APK_URL` 或正式下载按钮。正式发版校验脚本会对原始 URL 和 URL 解码后的路径一起拒绝包含 `test-apks`、`debug`、`internal` 或 `staging` 的 APK URL，避免把测试包误下发给用户。
+测试包链接禁止写入管理后台“检查更新”、`APP_ANDROID_APK_URL`、`APP_ANDROID_*` 环境变量、官网 `VITE_ANDROID_APK_URL` 或正式下载按钮。正式检查更新和官网下载当前只接受 `https://download.nongjiqiancha.cn/android/releases/...apk` 这种自有下载域名下的稳定 release 地址；正式发版校验脚本会对原始 URL 和 URL 解码后的路径一起拒绝包含 `test-apks`、`debug`、`internal` 或 `staging` 的 APK URL，避免把测试包误下发给用户。
 
 ## 正式包留存与本地清理
 
@@ -32,7 +32,7 @@
 - 无更新：提示“当前没有可用更新”
 - 有更新：弹“发现新版本”卡片，按钮为“稍后 / 立即更新”
 - 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，并通过 FileProvider 调起 Android 系统安装页；Android 侧优先使用系统包安装器 action，失败时保留通用 APK `ACTION_VIEW` 兜底，降低不同 ROM 安装页兼容风险
-- 客户端也会 fail closed：只有更高 `versionCode`、HTTPS APK、合法 SHA-256 和正数文件大小都齐全时，才会把服务端响应当成可用更新；下载入口若遇到物料缺失 / 非法，也会直接失败并上报 `MissingReleaseMetadata`
+- 客户端也会 fail closed：只有更高 `versionCode`、`download.nongjiqiancha.cn/android/releases/` 下的 HTTPS APK、合法 SHA-256 和正数文件大小都齐全时，才会把服务端响应当成可用更新；下载入口若遇到物料缺失 / 非法，也会直接失败并上报 `MissingReleaseMetadata`，用户侧统一提示“当前没有可用更新”
 - Android 8+ 如果用户还没允许本 App 安装未知应用，会先打开系统授权页；用户授权后返回 App，会自动继续本次下载 / 安装流程
 - App 会把检查更新关键阶段通过自动日志上报到后台：检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页、安装完成和安装未完成。日志只包含阶段、版本号、是否强更、是否配置 APK / SHA / 文件大小、失败原因、HTTP 状态和已安装版本号，不上传 APK URL、SHA-256、手机号、token 或其他敏感内容。
 - 用户点“稍后”会记录该版本已经提示过，避免同一个版本在每次启动时反复弹窗；用户仍可在设置页手动点“检查更新”再次打开同一版本的更新卡片。
@@ -59,7 +59,7 @@ Codex 默认按下面流程处理：
 1. 先判断问题属于 Android、后端、官网、配置还是云资源；如果只是后端问题，优先只发后端，不打 APK
 2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
 3. Codex 负责运行 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用最终 `app-release.apk` 本体校验包名、`versionCode`、`versionName`、release 不可调试、权限白名单、签名证书指纹，并输出 APK 文件大小和 SHA-256；更新说明默认留空，展示统一默认文案
-4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接；低成本长期分发优先走 `download.nongjiqiancha.cn` + OSS，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包的 72 小时签名链接不能直接写入正式检查更新；正式发版当前默认应使用长期稳定 release 地址。后端按需生成正式下载签名是未来可选方案，未另行实现和验收前不能当作现有正式能力。当前后端和 release-match 脚本会拒绝带 `Expires / Signature / OSSAccessKeyId / security-token / x-oss-expires / x-oss-signature / x-oss-credential / x-oss-security-token` 等短签名参数的 APK URL
+4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://download.nongjiqiancha.cn/android/releases/...apk` 下载链接；低成本长期分发优先走 `download.nongjiqiancha.cn` + OSS，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包的 72 小时签名链接不能直接写入正式检查更新；正式发版当前默认应使用长期稳定 release 地址。后端按需生成正式下载签名是未来可选方案，未另行实现和验收前不能当作现有正式能力。当前后端、Android、后台、官网和 release-match 脚本都会拒绝外部 APK 域名、非 `/android/releases/` 路径，以及带 `Expires / Signature / OSSAccessKeyId / security-token / x-oss-expires / x-oss-signature / x-oss-credential / x-oss-security-token` 等短签名参数的 APK URL
 5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；启用更新时页面和服务端都要求输入本次 `versionCode` 作为确认，停更时页面和服务端都要求输入“停更”作为确认；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
 6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；需要连公网下载包体验证时加 `-VerifyDownload`，脚本会确认最终下载地址仍是 HTTPS
 7. 如果这是要给旧包用户推送的自更新包，必须带上旧包 `versionCode` 跑 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK、后台配置和公网 `/api/app/update` 都会对这个旧版本返回可更新
@@ -107,7 +107,7 @@ Codex 默认按下面流程处理：
 
 管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明和是否对外启用。启用更新时前端会要求输入本次 `versionCode`，停更时要求输入“停更”；服务端 `POST /admin-api/v1/app-update/android` 也会校验同一个确认字段，绕过前端直接调 API 也不能无确认写入启用 / 停更配置。后台保存后会在同一事务里更新 `app_release_configs` 并追加 `app_release_events` 发布历史，`/api/app/update` 会优先按当前配置对外返回；取消“对外启用更新”并保存，就是停更，也会留下停更记录。发布历史只记录版本、物料状态、操作人、时间和更新说明，不替代 APK 文件上传、真机覆盖安装验收或正式回滚演练。
 
-管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL / 文件大小上限这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和 1 到 200MB 的文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts` 或 `apk_too_large`。
+管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL / 文件大小上限这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有自有下载域名下的 HTTPS release APK、SHA-256 和 1 到 200MB 的文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts` 或 `apk_too_large`。
 
 日常 readiness / 公网黑盒按“没有用户口令就不下发新版本”的口径运行：`check-ecs-readiness.ps1` 会拦截 `APP_ANDROID_UPDATE_ENABLED=true` 和 `APP_UPDATE_ALLOW_FORCE_UPDATE=true` 这类误开的环境变量开关；`check-public-blackbox.ps1` 默认要求旧版本探针返回 `has_update=false`。只有用户明确说“发布新版本 / 对外下发 / 配置检查更新”后，才走 `check-app-update-release-match.ps1 -ProbePreviousVersionUpdate` 证明旧包会看到 `has_update=true`。
 
@@ -138,7 +138,7 @@ Codex 默认按下面流程处理：
 ```
 
 脚本会直接检查最终 `app/build/outputs/apk/release/app-release.apk`，并输出 `apk_size_bytes`、`apk_sha256`、`apk_package`、`apk_version_code`、`apk_version_name` 和 `apk_cert_sha256`。其中 `apk_size_bytes`、`apk_sha256` 和版本号用于填写后台“检查更新”页；证书指纹用于确认仍是固定 release 签名。
-3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK；低成本长期分发优先走 `download.nongjiqiancha.cn` + OSS，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包短签名链接不能进入正式检查更新，非测试路径的短期签名 URL 也不能作为正式 APK 地址
+3. 把 APK 上传到自有服务器或 OSS，确保可以通过公网 https 下载，不建议让 Go 后端动态服务大 APK；低成本长期分发优先走 `download.nongjiqiancha.cn + OSS` 的 `/android/releases/` 正式路径，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包短签名链接不能进入正式检查更新，非测试路径的短期签名 URL 也不能作为正式 APK 地址
 4. 在管理后台“检查更新”页填写版本号、HTTPS APK、SHA-256 和文件大小，更新说明留空即可，勾上“对外启用更新”后保存；保存成功后检查“发布历史”出现本次记录；如暂时不走后台，也可继续改 `APP_ANDROID_*` 环境变量，但环境变量兜底不会自动写发布历史
 5. 运行后台配置对账：
 

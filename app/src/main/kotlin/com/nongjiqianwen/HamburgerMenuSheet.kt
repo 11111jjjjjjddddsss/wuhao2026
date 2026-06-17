@@ -90,6 +90,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
@@ -823,6 +824,7 @@ internal fun HamburgerMenuSheet(
                         shadowElevation = 4.dp,
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
+                            .imePadding()
                             .navigationBarsPadding()
                             .padding(bottom = 36.dp)
                     ) {
@@ -1109,7 +1111,7 @@ private fun HamburgerMembershipCenterPage(
 
 private fun appUpdateDownloadFailureText(reason: AppUpdateInstaller.DownloadFailureReason?): String =
     when (reason) {
-        AppUpdateInstaller.DownloadFailureReason.MissingReleaseMetadata -> "更新包信息不完整，请稍后再试"
+        AppUpdateInstaller.DownloadFailureReason.MissingReleaseMetadata -> "当前没有可用更新"
         AppUpdateInstaller.DownloadFailureReason.Sha256Mismatch,
         AppUpdateInstaller.DownloadFailureReason.PackageInfoMissing,
         AppUpdateInstaller.DownloadFailureReason.PackageNameMismatch,
@@ -2965,6 +2967,7 @@ private fun HamburgerSupportFeedbackPage(
     }
 
     fun sendMessage() {
+        val submittedText = inputValue.text
         val body = inputValue.text.trim()
         val imageSnapshot = selectedImages.take(4)
         if ((body.isEmpty() && imageSnapshot.isEmpty()) || sending) return
@@ -3002,7 +3005,9 @@ private fun HamburgerSupportFeedbackPage(
                     return@sendSupportMessage
                 }
                 sendingHint = null
-                inputValue = TextFieldValue("")
+                if (inputValue.text == submittedText) {
+                    inputValue = TextFieldValue("")
+                }
                 selectedImages.removeAll(imageSnapshot.toSet())
                 scope.launch(Dispatchers.IO) {
                     imageSnapshot.forEach(context::deleteComposerImageAttachment)
@@ -4358,10 +4363,13 @@ private fun HamburgerRedeemCodeContent(
                         ) {
                             BasicTextField(
                                 value = redeemCode,
+                                enabled = !redeeming,
                                 onValueChange = { next ->
-                                    redeemCode = normalizeGiftCardCodeInput(next)
-                                    if (redeemError != null) {
-                                        redeemError = null
+                                    if (!redeeming) {
+                                        redeemCode = normalizeGiftCardCodeInput(next)
+                                        if (redeemError != null) {
+                                            redeemError = null
+                                        }
                                     }
                                 },
                                 singleLine = true,
@@ -4648,8 +4656,7 @@ private fun HamburgerAccountActionRow(
             .heightIn(min = 58.dp)
             .clickable(
                 enabled = enabled,
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+                role = Role.Button,
                 onClick = onClick
             )
             .padding(horizontal = 20.dp, vertical = 15.dp),
@@ -4723,8 +4730,7 @@ private fun HamburgerMenuRow(
             .fillMaxWidth()
             .heightIn(min = 57.dp)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+                role = Role.Button,
                 onClick = onClick
             )
             .padding(horizontal = 18.dp, vertical = 11.dp),

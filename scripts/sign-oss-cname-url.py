@@ -31,7 +31,7 @@ def load_profile(profile_name: str | None) -> tuple[str, str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create an OSS signed URL for a custom CNAME endpoint.")
     parser.add_argument("--bucket", required=True)
-    parser.add_argument("--endpoint", required=True, help="Custom endpoint, for example https://download.example.com")
+    parser.add_argument("--endpoint", required=True, help="Custom endpoint, for example https://download.nongjiqiancha.cn")
     parser.add_argument("--object-key", required=True)
     parser.add_argument("--expires-seconds", type=int, default=259200)
     parser.add_argument("--method", default="GET", choices=("GET", "HEAD"))

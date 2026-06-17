@@ -147,6 +147,51 @@ func TestTopupPackStatusAfterConsumeUsesRemainingBeforeConsume(t *testing.T) {
 	}
 }
 
+func TestConsumeOnDoneAtDoesNotUseBenefitsCreatedAfterCompletion(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	completionAt := int64(1_800_000_000_000)
+	userID := "acct_completion_time"
+	clientMsgID := "cm_completion_time"
+	dayCN := "20260617"
+
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id FROM quota_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID, clientMsgID).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectExec("INSERT INTO daily_usage").
+		WithArgs(userID, dayCN).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT used FROM daily_usage WHERE user_id = ? AND day_cn = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID, dayCN).
+		WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(tierLimits[TierFree]))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT remaining
+		 FROM upgrade_credits
+		 WHERE user_id = ? AND remaining > 0 AND updated_at <= ? AND (expire_at IS NULL OR expire_at > ?)
+		 LIMIT 1
+		 FOR UPDATE`)).
+		WithArgs(userID, completionAt, completionAt).
+		WillReturnRows(sqlmock.NewRows([]string{"remaining"}))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT pack_id, remaining
+		 FROM topup_packs
+		 WHERE user_id = ? AND status = 'active' AND remaining > 0 AND created_at <= ? AND (expire_at IS NULL OR expire_at > ?)
+		 ORDER BY CASE WHEN expire_at IS NULL THEN 1 ELSE 0 END ASC, expire_at ASC, created_at ASC
+		 LIMIT 1
+		 FOR UPDATE`)).
+		WithArgs(userID, completionAt, completionAt).
+		WillReturnRows(sqlmock.NewRows([]string{"pack_id", "remaining"}))
+	mock.ExpectRollback()
+
+	_, err := store.consumeOnDoneAt(context.Background(), userID, TierFree, clientMsgID, dayCN, completionAt)
+	if err == nil || err.Error() != "QUOTA_EXHAUSTED" {
+		t.Fatalf("consumeOnDoneAt err = %v, want QUOTA_EXHAUSTED", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 func TestReadOrderReplayReturnsConflictForOtherUserOrderID(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()

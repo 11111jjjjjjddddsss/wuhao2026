@@ -609,14 +609,14 @@ func TestAndroidUpdateConfigValidityContract(t *testing.T) {
 		},
 		{
 			name:      "https apk without checksum is valid config but incomplete artifacts",
-			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "https://download.example.com/app.apk"},
+			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "https://download.nongjiqiancha.cn/android/releases/4/app.apk"},
 			wantValid: true,
 		},
 		{
 			name: "complete artifacts",
 			cfg: androidUpdateConfig{
 				LatestVersionCode: 4,
-				APKURL:            "https://download.example.com/app.apk",
+				APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/app.apk",
 				APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 				FileSizeBytes:     123,
 			},
@@ -625,12 +625,17 @@ func TestAndroidUpdateConfigValidityContract(t *testing.T) {
 		},
 		{
 			name:      "non https apk is invalid",
-			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "http://download.example.com/app.apk"},
+			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "http://download.nongjiqiancha.cn/android/releases/4/app.apk"},
+			wantValid: false,
+		},
+		{
+			name:      "external apk host is invalid",
+			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "https://third-party.example.invalid/android/releases/4/app.apk"},
 			wantValid: false,
 		},
 		{
 			name:      "internal test apk is invalid",
-			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "https://download.example.com/test-apks/debug/app-internal.apk"},
+			cfg:       androidUpdateConfig{LatestVersionCode: 4, APKURL: "https://download.nongjiqiancha.cn/test-apks/debug/app-internal.apk"},
 			wantValid: false,
 		},
 	}

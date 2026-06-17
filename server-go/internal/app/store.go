@@ -20,7 +20,10 @@ const (
 	sessionRoundArchiveUILimit   = 30
 )
 
-var ErrSessionRoundRequestConflict = errors.New("session round request conflict")
+var (
+	ErrSessionRoundRequestConflict = errors.New("session round request conflict")
+	ErrSessionRoundArchiveMissing  = errors.New("session round archive missing")
+)
 
 func NewStore(db *sql.DB, shanghai *time.Location) *Store {
 	return &Store{
@@ -37,6 +40,7 @@ func (s *Store) AppendSessionRoundComplete(
 	round SessionRound,
 	aWindowRounds int,
 	memoryEveryRounds int,
+	completionAtMs int64,
 	tierAtCompletion Tier,
 	dayCN string,
 	archiveSource string,
@@ -59,6 +63,13 @@ func (s *Store) AppendSessionRoundComplete(
 		if storedRequestHash.Valid && strings.TrimSpace(storedRequestHash.String) != "" && strings.TrimSpace(storedRequestHash.String) != strings.TrimSpace(requestHash) {
 			return false, nil, ErrSessionRoundRequestConflict
 		}
+		archiveExists, err := s.sessionRoundArchiveExistsTx(ctx, tx, userID, clientMsgID)
+		if err != nil {
+			return false, nil, err
+		}
+		if !archiveExists {
+			return false, nil, ErrSessionRoundArchiveMissing
+		}
 		snapshot, err := s.readSnapshotForUpdateTx(ctx, tx, userID)
 		if err != nil {
 			return false, nil, err
@@ -72,7 +83,10 @@ func (s *Store) AppendSessionRoundComplete(
 		return false, nil, err
 	}
 
-	nowMs := time.Now().UnixMilli()
+	nowMs := completionAtMs
+	if nowMs <= 0 {
+		nowMs = time.Now().UnixMilli()
+	}
 	roundCreatedAtMs := round.CreatedAt
 	if roundCreatedAtMs <= 0 {
 		roundCreatedAtMs = nowMs
@@ -114,7 +128,15 @@ func (s *Store) GetSessionRoundCompletion(ctx context.Context, userID string, cl
 	var requestHash sql.NullString
 	err := s.db.QueryRowContext(
 		ctx,
-		"SELECT created_at, request_hash FROM session_round_ledger WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		`SELECT l.created_at, l.request_hash
+		 FROM session_round_ledger l
+		 WHERE l.user_id = ? AND l.client_msg_id = ?
+		   AND EXISTS (
+		     SELECT 1
+		     FROM session_round_archive a
+		     WHERE a.user_id = l.user_id AND a.client_msg_id = l.client_msg_id
+		   )
+		 LIMIT 1`,
 		userID,
 		clientMsgID,
 	).Scan(&completion.CreatedAt, &requestHash)
@@ -127,6 +149,23 @@ func (s *Store) GetSessionRoundCompletion(ctx context.Context, userID string, cl
 	completion.Completed = true
 	completion.RequestHash = nullStringValue(requestHash)
 	return completion, nil
+}
+
+func (s *Store) sessionRoundArchiveExistsTx(ctx context.Context, tx *sql.Tx, userID string, clientMsgID string) (bool, error) {
+	var exists int
+	err := tx.QueryRowContext(
+		ctx,
+		"SELECT 1 FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		userID,
+		clientMsgID,
+	).Scan(&exists)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return exists == 1, nil
 }
 
 func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int) (bool, error) {

@@ -284,6 +284,14 @@ if ($failures.Count -eq 0) {
         "Legacy Android SMS login success logging must remain for old-package compatibility diagnostics."
     Require-Match $failures $sessionApi 'latestCode\s*>\s*BuildConfig\.VERSION_CODE(?s:.*?)normalizeAppUpdateSha256\s*\(\s*apkSha256\s*\)\s*!=\s*null(?s:.*?)sizeBytes\s*>\s*0L(?s:.*?)sizeBytes\s*<=\s*APP_UPDATE_MAX_APK_DOWNLOAD_BYTES' `
         "Android app update availability must require a newer version, SHA-256 and a positive bounded file size."
+    Require-Match $failures $sessionApi 'APP_UPDATE_OFFICIAL_APK_HOST\s*=\s*"download\.nongjiqiancha\.cn"(?s:.*?)APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\s*=\s*"/android/releases/"(?s:.*?)isStableAppUpdateApkUrl' `
+        "Android app update availability must be limited to the official download domain and release APK path."
+    Require-Match $failures $sessionApi 'parsed\.host\.equals\(APP_UPDATE_OFFICIAL_APK_HOST,\s*ignoreCase\s*=\s*true\)(?s:.*?)encodedPath\s*=\s*parsed\.encodedPath\.lowercase\(Locale\.US\)(?s:.*?)encodedPath\.startsWith\(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\)' `
+        "Android app update URL validation must reject external APK hosts and non-release paths."
+    Require-Match $failures $sessionApi 'encodedPath\.endsWith\("\.apk"\)(?s:.*?)decodeAppUpdateUrlGuardValue(?s:.*?)internalMarkers\s*=\s*listOf\("test-apks",\s*"debug",\s*"internal",\s*"staging"\)(?s:.*?)decodedUrl\.contains\(marker\)(?s:.*?)decodedPath\.contains\(marker\)' `
+        "Android app update URL validation must reject non-APK files and URL-encoded test/internal markers."
+    Require-Match $failures $sessionApi 'signedQueryNames\s*=\s*setOf\((?s:.*?)"expires"(?s:.*?)"signature"(?s:.*?)"ossaccesskeyid"(?s:.*?)"x-oss-signature"(?s:.*?)parsed\.queryParameterNames\.none' `
+        "Android app update URL validation must reject short signed APK URLs."
     Require-Match $failures $manifest '<uses-permission\s+android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s*/>' `
         "Android app update flow must keep REQUEST_INSTALL_PACKAGES so Android O+ can request package installation."
     Require-Match $failures $manifest '<provider\b(?=[^>]*android:authorities="\$\{applicationId\}\.fileprovider")(?=[^>]*android:grantUriPermissions="true")(?=[^>]*android:exported="false")(?s:.*?)android:resource="@xml/file_paths"' `
@@ -362,18 +370,20 @@ if ($failures.Count -eq 0) {
         "Chat startup must not treat local cached messages as if bottom snapping had already completed."
     Require-NoMatch $failures $chatScreen 'waitingForStaticTimelineBottomSnap' `
         "Chat startup must not hide hydrated static messages while waiting for bottom snapping."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldRevealChatMessageList(?s:.*?)messageCount\s*>\s*0\s*->\s*true(?s:.*?)hasTodayAgriCard\s*->\s*true' `
-        "Chat startup must reveal real messages or today agri content as soon as they exist; bottom snapping continues as calibration."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldRevealChatMessageList(?s:.*?)messageCount\s*>\s*0\s*->\s*true(?s:.*?)hasStreamingItem\s*->\s*true' `
+        "Chat startup must reveal real messages or streaming content as soon as they exist; bottom snapping continues as calibration."
+    Require-NoMatch $failures $chatScreen 'internal\s+fun\s+shouldRevealChatMessageList(?s:.*?)hasTodayAgriCard\s*->\s*true' `
+        "Today agri must not unlock an otherwise empty chat list; clean-state startup should keep the welcome shell."
     Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowChatWelcomePlaceholder(?s:.*?)startupHydrationBarrierSatisfied\s*\|\|\s*!hasStartedConversation' `
         "Clean installs must show a nonblank welcome shell while remote history is still hydrating."
-    Require-NoMatch $failures $chatScreen 'messageCount\s*==\s*0\s*&&\s*!hasTodayAgriCard' `
-        "The welcome shell must remain available when today agri is the only non-message visual item."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriCardDoesNotOccupyEmptyWelcomeState' `
+        "Today agri must have a unit test proving it does not occupy the empty welcome state."
     Require-Match $failures $chatTimelineItemsTest 'hasTodayAgriCard\s*=\s*true,\s*messageCount\s*=\s*0' `
         "Welcome placeholder behavior must be tested with today agri present and no real messages."
     Require-NoMatch $failures $chatScreen 'showWelcomePlaceholder(?s:.*?)waitingForRemoteStartupHydration' `
         "The welcome shell must not be hidden solely because remote history hydration is pending."
     Require-NoMatch $failures $chatScreen 'LaunchedEffect\s*\(\s*uiRuntimeResetKey\s*,\s*historyHydrationComplete\s*,\s*todayAgriRefreshDayKey\s*\)(?s:.*?)awaitTodayAgriCard' `
-        "Today agri fetch must not wait for chat history hydration before giving the clean-start screen visual content."
+        "Today agri fetch may be ready early, but it must not be coupled to the chat history hydration effect."
     Require-Match $failures $chatTimelineItemsTest 'startupRevealWaitsOnlyWhileRemoteHistoryHasNoVisualContent' `
         "Chat startup reveal behavior must have a unit test for remote hydration returning visual content before bottom snap completes."
     Require-Match $failures $chatTimelineItemsTest 'welcomePlaceholderShowsWhileRemoteHistoryHydrates' `
@@ -388,8 +398,8 @@ if ($failures.Count -eq 0) {
         "Chat startup must log when the today agri main card is loaded for diagnostics."
     Require-Match $failures $chatScreen 'today_agri\.main_card_visible' `
         "Chat startup must log when the today agri main card is inserted into the visible timeline."
-    Require-Match $failures $chatScreen 'fun\s+hasStaticVisualTimeline\s*\(\s*\)\s*:\s*Boolean\s*=\s*(?s:.*?)messages\.isNotEmpty\(\)\s*\|\|\s*hasTodayAgriCard' `
-        "Today agri must count as an ordinary static visual timeline item for startup layout and bottom anchoring."
+    Require-Match $failures $chatScreen 'fun\s+hasStaticVisualTimeline\s*\(\s*\)\s*:\s*Boolean\s*=\s*messages\.isNotEmpty\(\)' `
+        "Clean-state startup must treat real chat messages, not today agri data, as the static timeline gate."
     Require-NoMatch $failures $chatScreen 'hasOnlyTodayAgriVisualTimeline|todayAgriCardOnlyTopExtraPaddingPx|TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING|cardOnlyTopPaddingPx' `
         "Today agri must not keep the old card-only top padding or skip-bottom-snap special case."
     Require-Match $failures $chatScreen 'fun\s+bottomAnchorIndexOrMinusOne\s*\(\s*\)\s*:\s*Int\s*=\s*(?s:.*?)if\s*\(\s*isStreaming\s*\|\|\s*hasStreamingItem\s*\)(?s:.*?)latestMessageIndexOrMinusOne\(\)(?s:.*?)latestVisualTailIndexOrMinusOne\(\)' `
@@ -525,8 +535,12 @@ if ($failures.Count -eq 0) {
         "Today agri remote confirmation day must be set only after the backend returns a same-day renderable card."
     Require-Match $failures $chatScreen 'TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX\s*=\s*"today_agri_main_shown_day_"' `
         "Today agri main-chat insertion must persist a per-day shown marker so reopening the app does not show it repeatedly."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
-        "Today agri main-chat visibility must be once per day, avoid surprise insertion after the user starts chatting, and keep the card visible for the current runtime after it is marked shown."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasAssistantAnswerTail(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
+        "Today agri main-chat visibility must require a completed assistant tail, be once per day, avoid surprise insertion after the user starts chatting, and stay visible for the current runtime after it is marked shown."
+    Require-Match $failures $chatScreen 'hasCompletedAssistantAnswerTail\(messages,\s*failedAssistantMessageStates\.keys\)' `
+        "Today agri completed-tail detection must exclude failed assistant tails in the live chat state."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriCardDoesNotTreatFailedAssistantAsCompletedTail(?s:.*?)failedAssistantMessageIds\s*=\s*setOf' `
+        "Today agri must have unit coverage proving failed assistant tails do not count as completed answers."
     Require-Match $failures $chatScreen 'fun\s+suppressPendingTodayAgriAutoInsertForUserSend\(\)(?s:.*?)!\s*todayAgriShownThisRuntime\s*&&\s*!\s*hasTodayAgriCard(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*true' `
         "Today agri pending auto-insert must be suppressed when the user starts a chat before the card is visible."
     Require-Match $failures $chatScreen '!shouldRevealMessageList(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*true(?s:.*?)todayAgriShownThisRuntime\s*=\s*true(?s:.*?)saveTodayAgriMainShownDaySync' `
@@ -537,14 +551,14 @@ if ($failures.Count -eq 0) {
         "Today agri fetch for the main chat must be skipped on later app opens after the same day has already been shown."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime' `
         "Today agri once-per-day main-chat visibility must have unit coverage."
-    Require-NoMatch $failures $chatScreen 'todayAgriCardAnchorMessageId\s*==\s*TODAY_AGRI_CARD_ANCHOR_START(?s:.*?)context\.saveTodayAgriCardAnchorSync\s*\(\s*chatScopeId,\s*currentTodayAgriCardDay,\s*latestMessageAnchorId\s*\)' `
-        "Today agri START anchor must not migrate to the latest message after restart; keep it before subsequent messages."
-    Require-Match $failures $chatTimelineItemsTest 'todayAgriStartAnchorStaysBeforeMessagesAfterRestart' `
-        "Today agri START anchor restart behavior must stay covered by unit tests."
+    Require-NoMatch $failures $chatScreen 'latestMessageAnchorId\s*\?:\s*TODAY_AGRI_CARD_ANCHOR_START|saveTodayAgriCardAnchorSync\s*\([^)]*TODAY_AGRI_CARD_ANCHOR_START' `
+        "Today agri must not save START as its main-chat anchor; it should anchor to a completed assistant answer."
+    Require-Match $failures $chatTimelineItemsTest 'legacyTodayAgriStartAnchorDoesNotMigrateAfterCompletedAssistant(?s:.*?)TODAY_AGRI_CARD_ANCHOR_START(?s:.*?)assertEquals\((?s:.*?)listOf\((?s:.*?)ChatTimelineItem\.Message\(first\),(?s:.*?)ChatTimelineItem\.Message\(second\)(?s:.*?)\),\s*items' `
+        "Legacy today-agri START anchor must stay non-rendering and must not migrate after a completed assistant answer."
     Require-Match $failures $chatScreen 'fun\s+restoredStartupWorklinePhase(?s:.*?)hasTodayAgriVisualContent\s*->\s*false' `
-        "Today agri as first visual content must ignore persisted bottom-owned startup state and start in top document flow."
-    Require-Match $failures $chatScreen 'initialWorklinePhase\s*=\s*restoredStartupWorklinePhase\s*\(\s*messageCount\s*=\s*hydratedSnapshot\.messages\.size(?s:.*?)hasTodayAgriVisualContent\s*=\s*shouldShowTodayAgriCard' `
-        "Remote hydrate replacement must reset startup workline phase, including the empty-history plus today-agri case."
+        "If today agri is visible after real history, it must still ignore persisted bottom-owned startup state when resetting top document flow."
+    Require-Match $failures $chatScreen 'hydratedTodayAgriVisualContent\s*=\s*shouldShowTodayAgriMainCard(?s:.*?)hasAssistantAnswerTail\s*=\s*hasCompletedAssistantAnswerTail\(\s*hydratedSnapshot\.messages,\s*hydratedSnapshot\.failedAssistantMessageStates\.keys\s*\)(?s:.*?)hasTodayAgriVisualContent\s*=\s*hydratedTodayAgriVisualContent' `
+        "Remote hydrate replacement must compute today-agri visual content from the hydrated message tail, not stale current UI state."
     Require-Match $failures $chatScreen 'remoteSnapshotHydrationComplete(?s:.*?)if\s*\(\s*shouldHydrateRemoteHistory\s*&&\s*!remoteSnapshotHydrationComplete\s*\)\s*return@LaunchedEffect(?s:.*?)saveTodayAgriCardAnchorSync' `
         "Today agri anchor saving must wait for the remote snapshot, not only the local-first history hydration gate."
     Require-Match $failures $chatScreen '"remote_snapshot_hydrated"\s+to\s+remoteSnapshotHydrationComplete' `
@@ -580,7 +594,7 @@ if ($failures.Count -eq 0) {
     Require-NoMatch $failures ($chatScreen + $chatComposerCoordinator + $chatComposerPanel) $composerCollapseOverlayPattern `
         "Chat UI must not restore the dead composer collapse overlay chain; keep composer collapse on the single measured bottom-bar path."
     $chatMainScrollSurface = $chatScreen + "`n" + $chatRecyclerViewHost + "`n" + $chatScrollCoordinator + "`n" + $chatStreamingRenderer
-    $forbiddenMainScrollPattern = "reverseLayout\s*=|asReversed\s*\(|dispatchRawDelta\s*\(|scrollBy\s*\(|StreamingBlockChatListItem|StreamingTextBlock|streaming_tail|SparseBottomSpacer|BottomActiveZone|StreamingLocation|requestSendStartBottomSnap|followStreamingByDelta|streamBottomFollowActive"
+    $forbiddenMainScrollPattern = "reverseLayout\s*=|asReversed\s*\(|dispatchRawDelta\s*\(|scrollBy\s*\(|StreamingBlockChatListItem|StreamingTextBlock|streaming_tail|streamingBrowseBlockSnapshot|activeStreamingBlockIndex|SparseBottomSpacer|BottomActiveZone|StreamingLocation|requestSendStartBottomSnap|followStreamingByDelta|streamBottomFollowActive"
     Require-NoMatch $failures $chatMainScrollSurface $forbiddenMainScrollPattern `
         "Main chat must stay on the current forward LazyColumn chain and must not restore reverse layout, raw-delta/scrollBy chasing, active-zone overlay, or split streaming items."
     Require-Match $failures $chatRecyclerViewHost 'LazyColumn\s*\((?s:.*?)verticalArrangement\s*=\s*verticalArrangement(?s:.*?)userScrollEnabled\s*=\s*true(?s:.*?)items\s*\(' `
@@ -609,9 +623,11 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must include standalone bold heading lines so ordinary AI text dividers can be checked."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.TodayAgriNarrow(?s:.*?)TodayAgriNewsText\((?s:.*?)horizontalPadding\s*=\s*0\.dp(?s:.*?)maxContentWidth\s*=\s*280\.dp' `
         "Today agri narrow preview must exercise the 280dp ordinary-text layout."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"已显示后三轮参考，发送中不突插",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
-        "Debug UI copy preview must include the today-agri three-round temporary context and anti-surprise-insert rule."
-    Require-Match $failures $chatScreen '"如果用户发送前农情还没显示，本次运行不突然插入"' `
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"空态不显示，安静历史后参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
+        "Debug UI copy preview must include the today-agri empty-state, completed-tail, three-round temporary context, and anti-surprise-insert rule."
+    Require-Match $failures $chatScreen '"无真实聊天时只显示欢迎语，今日农情不占空态"' `
+        "Debug UI copy preview must explicitly show that today agri does not occupy the empty welcome state."
+    Require-Match $failures $chatScreen '"如果用户本次开始问了而农情还没显示，本次运行不突然插入"' `
         "Debug UI copy preview must explicitly show that today agri is not inserted mid-chat before it has appeared."
     Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
         "Message action menu buttons must expose button semantics for accessibility and UI automation."
@@ -635,13 +651,15 @@ if ($failures.Count -eq 0) {
         "Streaming Chinese text must keep one visible character per normal-paced step."
     $onAdvanceMatch = [regex]::Match(
         $chatScreen,
-        'onAdvance\s*=\s*\{\s*advance\s*->(?s:.*?lastStreamingFreshRevealMs\s*=\s*advance\.lastFreshRevealMs\s*)\}'
+        'onAdvance\s*=\s*\{\s*advance\s*->(?s:.*?streamingMessageId\s*=\s*advance\.messageId(?s:.*?)streamingRevealBuffer\s*=\s*advance\.revealBuffer(?s:.*?)streamingMessageContent\s*=\s*advance\.content.*?)\}'
     )
     if (!$onAdvanceMatch.Success) {
         Add-Failure $failures "Streaming reveal onAdvance block must stay simple and inspectable."
     } elseif ($onAdvanceMatch.Value -match 'requestForwardListBottomAnchor|requestProgrammaticForwardListBottomAnchor|scrollForwardListToBottom|scrollToItem|requestScrollToItem') {
         Add-Failure $failures "Streaming reveal onAdvance must not do pre-content scroll anchoring; anchoring belongs in the same-frame SideEffect."
     }
+    Require-NoMatch $failures ($chatScreen + "`n" + $chatStreamingRenderer) 'freshSuffixEnabled|streamingFreshStart|streamingFreshEnd|streamingFreshTick|lastStreamingFreshRevealMs|currentFreshTick|lastFreshRevealMs' `
+        "Streaming renderer must not restore the removed fresh-suffix highlight chain."
     Require-Match $failures $chatScreen 'verticalArrangement\s*=\s*if\s*\(\s*shouldUseTopArrangementForConversation\s*\(\s*\)\s*\)\s*\{(?s:.*?)Arrangement\.Top(?s:.*?)\}\s*else\s*\{(?s:.*?)Arrangement\.Bottom' `
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `

@@ -34,6 +34,7 @@ WATCHED_EXACT = {
 
 WATCHED_SCRIPT_EXACT = {
     "scripts/check_project_memory.py",
+    "scripts/check-admin-surface.mjs",
     "scripts/check-android-build-parity.ps1",
     "scripts/check-android-release-artifact.ps1",
     "scripts/check-app-update-release-match.ps1",
@@ -78,6 +79,7 @@ CURRENT_STATUS_PREFIXES = (
 
 CURRENT_STATUS_SCRIPT_EXACT = {
     "scripts/check-android-build-parity.ps1",
+    "scripts/check-admin-surface.mjs",
     "scripts/check-android-release-artifact.ps1",
     "scripts/check-app-update-release-match.ps1",
     "scripts/check-ecs-readiness.ps1",
@@ -186,10 +188,13 @@ def changed_files(base_ref: str | None, head_ref: str | None) -> list[str]:
         return normalize_paths(run_git(["diff-tree", "--no-commit-id", "--name-only", "-r", head_ref]))
 
     staged = normalize_paths(run_git(["diff", "--cached", "--name-only"]))
-    if staged:
-        return staged
+    unstaged = normalize_paths(run_git(["diff", "--name-only", "HEAD"]))
+    untracked = normalize_paths(run_git(["ls-files", "--others", "--exclude-standard"]))
+    local_changes = [*staged, *unstaged, *untracked]
+    if local_changes:
+        return list(dict.fromkeys(local_changes))
 
-    return normalize_paths(run_git(["diff", "--name-only", "HEAD"]))
+    return []
 
 
 def is_memory_file(path: str) -> bool:
