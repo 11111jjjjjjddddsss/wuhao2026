@@ -339,6 +339,68 @@ func (s *Server) handleTodayAgriCards(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type saveTodayAgriItemRequest struct {
+	DayCN             string `json:"day_cn"`
+	AnchorClientMsgID string `json:"anchor_client_msg_id"`
+	SessionGeneration *int   `json:"session_generation,omitempty"`
+}
+
+func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request) {
+	auth, ok := s.requireAuth(w, r)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
+		return
+	}
+	var body saveTodayAgriItemRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	dayCN := normalizeTodayAgriContextDay(body.DayCN)
+	anchorID := strings.TrimSpace(body.AnchorClientMsgID)
+	if dayCN == "" {
+		s.writeError(w, http.StatusBadRequest, "invalid_day_cn")
+		return
+	}
+	currentDayCN := GetTodayKeyCN(s.shanghai, time.Now())
+	if dayCN != currentDayCN {
+		s.writeError(w, http.StatusBadRequest, "today_agri_item_day_not_current")
+		return
+	}
+	if anchorID == "" || len(anchorID) > 128 {
+		s.writeError(w, http.StatusBadRequest, "invalid_anchor")
+		return
+	}
+	if s.dailyAgri == nil || s.dailyAgri.store == nil {
+		s.writeError(w, http.StatusServiceUnavailable, "today_agri_unavailable")
+		return
+	}
+	card, status, err := s.dailyAgri.store.GetDailyAgriCard(r.Context(), dayCN, dailyAgriDefaultScope)
+	if err != nil {
+		s.logger.Error("validate today agri item card failed", "userId", auth.UserID, "day_cn", dayCN, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if status != "ready" || card == nil || card.DateCN != dayCN {
+		s.writeError(w, http.StatusBadRequest, "today_agri_card_not_ready")
+		return
+	}
+	saved, err := s.store.UpsertTodayAgriUserItem(r.Context(), auth.UserID, dayCN, anchorID, *card, body.SessionGeneration)
+	if err != nil {
+		s.logger.Error("save today agri user item failed", "userId", auth.UserID, "day_cn", dayCN, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !saved {
+		s.writeError(w, http.StatusConflict, "stale_session_generation")
+		return
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 type dailyAgriPublicCard struct {
 	DateCN      string                    `json:"date_cn"`
 	Title       string                    `json:"title"`

@@ -1201,6 +1201,65 @@ object SessionApi {
         )
     }
 
+    fun saveTodayAgriItem(
+        dayCn: String,
+        anchorClientMsgId: String,
+        sessionGeneration: Int? = currentSessionGenerationOrNull(),
+        onResult: ((Boolean) -> Unit)? = null
+    ) {
+        val base = baseUrl()
+        val normalizedDay = dayCn.filter { it.isDigit() }.takeIf { it.length == 8 }.orEmpty()
+        val anchor = anchorClientMsgId.trim().take(128)
+        if (base.isEmpty() || normalizedDay.isBlank() || anchor.isBlank()) {
+            postToMain { onResult?.invoke(false) }
+            return
+        }
+        val body = gson.toJson(
+            buildMap<String, Any> {
+                put("day_cn", normalizedDay)
+                put("anchor_client_msg_id", anchor)
+                sessionGeneration?.let { put("session_generation", it) }
+            }
+        )
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/today-agri-item")
+                        .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    val ok = it.isSuccessful
+                    if (!ok) {
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "today_agri.item_save_failed",
+                            message = "Today agri main item save failed",
+                            attrs = mapOf("http_status" to it.code)
+                        )
+                    }
+                    postToMain { onResult?.invoke(ok) }
+                }
+            },
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "today_agri.item_save_failed",
+                    message = "Today agri main item save failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult?.invoke(false) }
+            }
+        )
+    }
+
     fun getSupportSummary(onResult: (SupportSummary?) -> Unit) {
         val base = baseUrl()
         if (base.isEmpty()) {
@@ -1730,6 +1789,28 @@ object SessionApi {
                             updateSessionGeneration(snapshotGeneration)
                             val memoryDocument = json.memory_document ?: json.b_summary ?: ""
                             val roundTotal = json.round_total ?: full.size.coerceAtLeast(forUi.size)
+                            val todayAgriItems = json.today_agri_items
+                                .orEmpty()
+                                .mapNotNull { item ->
+                                    val day = item.day_cn
+                                        ?.filter { ch -> ch.isDigit() }
+                                        ?.takeIf { it.length == 8 }
+                                        ?: return@mapNotNull null
+                                    val anchorId = item.anchor_client_msg_id
+                                        ?.trim()
+                                        ?.takeIf { it.isNotBlank() }
+                                        ?: return@mapNotNull null
+                                    val card = item.card
+                                        ?.takeIf { it.isValidTodayAgriCard() }
+                                        ?: return@mapNotNull null
+                                    TodayAgriMainItem(
+                                        day_cn = day,
+                                        anchor_client_msg_id = anchorId,
+                                        card = card,
+                                        created_at = item.created_at ?: 0L,
+                                        updated_at = item.updated_at ?: 0L
+                                    )
+                                }
                             onResult(
                                 SessionSnapshot(
                                     memory_document = memoryDocument,
@@ -1737,7 +1818,8 @@ object SessionApi {
                                     a_rounds_full = full,
                                     a_rounds_for_ui = forUi,
                                     round_total = roundTotal,
-                                    session_generation = snapshotGeneration
+                                    session_generation = snapshotGeneration,
+                                    today_agri_items = todayAgriItems
                                 )
                             )
                         } catch (e: Exception) {
@@ -2183,7 +2265,8 @@ object SessionApi {
         @SerializedName("a_rounds_for_ui") val a_rounds_for_ui: List<ARoundJson>?,
         @SerializedName("a_rounds") val a_rounds: List<ARoundJson>? = null,
         @SerializedName("round_total") val round_total: Int? = null,
-        @SerializedName("session_generation") val session_generation: Int? = null
+        @SerializedName("session_generation") val session_generation: Int? = null,
+        @SerializedName("today_agri_items") val today_agri_items: List<TodayAgriMainItemJson>? = null
     )
 
     private data class SessionClearResponse(
@@ -2199,6 +2282,14 @@ object SessionApi {
         @SerializedName("region") val region: String? = null,
         @SerializedName("region_source") val region_source: String? = null,
         @SerializedName("region_reliability") val region_reliability: String? = null
+    )
+
+    private data class TodayAgriMainItemJson(
+        @SerializedName("day_cn") val day_cn: String? = null,
+        @SerializedName("anchor_client_msg_id") val anchor_client_msg_id: String? = null,
+        @SerializedName("card") val card: TodayAgriCard? = null,
+        @SerializedName("created_at") val created_at: Long? = null,
+        @SerializedName("updated_at") val updated_at: Long? = null
     )
 
     private data class SupportMessagesResponse(

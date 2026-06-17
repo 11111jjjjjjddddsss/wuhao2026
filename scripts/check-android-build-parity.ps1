@@ -422,10 +422,12 @@ if ($failures.Count -eq 0) {
         "Foreground chat streams must pass the captured session generation explicitly, matching pending image-send recovery."
     Require-NoMatch $failures $imageUploader 'Log\.e\s*\(\s*TAG\s*,\s*"[^"]*"\s*,\s*e\s*\)|e\.message|error=\$errorMsg|上传异常:\s*\$\{e\.message\}' `
         "Image upload/compression logs must not print raw exception messages, stack traces, backend errors, image URLs, or other sensitive details."
-    Require-Match $failures $chatScreen 'private\s+fun\s+Context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId:\s*String\s*\)(?s:.*?)remove\("\$CHAT_CACHE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_STREAM_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_COMPOSER_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)commit\s*\(\s*\)' `
-        "Chat clean-state reset must synchronously remove local window, stream draft, composer draft and today-agri anchors."
-    Require-Match $failures $chatScreen 'fun\s+applyChatHistoryCleared\s*\(\s*\)(?s:.*?)SessionApi\.resetUiRuntimeForCleanState\s*\(\s*\)(?s:.*?)advanceChatHistoryClearEpoch\s*\(\s*\)(?s:.*?)context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId\s*\)(?s:.*?)todayAgriCardAnchorDay\s*=\s*""(?s:.*?)todayAgriCardAnchorMessageId\s*=\s*""(?s:.*?)messages\.clear\s*\(\s*\)(?s:.*?)initialBottomSnapDone\s*=\s*false' `
+    Require-Match $failures $chatScreen 'private\s+fun\s+Context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId:\s*String\s*\)(?s:.*?)remove\("\$CHAT_CACHE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_STREAM_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_COMPOSER_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_CACHE_DAY_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_CACHE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX\$chatScopeId"\)(?s:.*?)commit\s*\(\s*\)' `
+        "Chat clean-state reset must synchronously remove local window, stream draft, composer draft, today-agri cache and shown-day marker."
+    Require-Match $failures $chatScreen 'fun\s+applyChatHistoryCleared\s*\(\s*\)(?s:.*?)SessionApi\.resetUiRuntimeForCleanState\s*\(\s*\)(?s:.*?)advanceChatHistoryClearEpoch\s*\(\s*\)(?s:.*?)context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId\s*\)(?s:.*?)resetTodayAgriRuntimeAfterHistoryClear\(\)(?s:.*?)messages\.clear\s*\(\s*\)(?s:.*?)initialBottomSnapDone\s*=\s*false' `
         "Chat history clear must invalidate in-flight runtime, advance clear epoch, clear local state and restart bottom calibration."
+    Require-Match $failures $chatScreen 'fun\s+resetTodayAgriRuntimeAfterHistoryClear\(\)(?s:.*?)todayAgriMainShownDay\s*=\s*currentChinaDateKey\(\)(?s:.*?)saveTodayAgriMainShownDaySync(?s:.*?)todayAgriShownThisRuntime\s*=\s*false(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*false(?s:.*?)todayAgriMainItem\s*=\s*null(?s:.*?)todayAgriCard\s*=\s*null(?s:.*?)todayAgriRemoteConfirmedDay\s*=\s*null' `
+        "Chat history clear must remove the in-process today agri item and mark the current day handled so it does not reappear after deletion."
     Require-Match $failures $chatScreen 'LocalChatWindowSnapshotPayload\s*\((?s:.*?)sessionGeneration\s*=\s*SessionApi\.currentSessionGenerationOrNull\s*\(\s*\)' `
         "Local chat window snapshots must be stamped with the current backend session generation."
     Require-Match $failures $chatScreen 'if\s*\(\s*!\s*isStoredSessionGenerationCurrent\s*\(\s*payload\?\.sessionGeneration\s*\)\s*\)\s*\{\s*return@runCatching\s+LocalChatWindowSnapshot\s*\(\s*\)\s*\}' `
@@ -533,10 +535,10 @@ if ($failures.Count -eq 0) {
         "Today agri temporary context must wait for same-day remote confirmation; cached visual content alone must not enter model context."
     Require-Match $failures $chatScreen 'awaitTodayAgriCard\(\)(?s:.*?)todayAgriRemoteConfirmedDay\s*=\s*refreshDayKey' `
         "Today agri remote confirmation day must be set only after the backend returns a same-day renderable card."
-    Require-Match $failures $chatScreen 'TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX\s*=\s*"today_agri_main_shown_day_"' `
-        "Today agri main-chat insertion must persist a per-day shown marker so reopening the app does not show it repeatedly."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasAssistantAnswerTail(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
-        "Today agri main-chat visibility must require a completed assistant tail, be once per day, avoid surprise insertion after the user starts chatting, and stay visible for the current runtime after it is marked shown."
+    Require-NoMatch $failures $chatScreen 'saveTodayAgriCardAnchorSync|TODAY_AGRI_CARD_ANCHOR|todayAgriCardAnchor' `
+        "Today agri main-chat state must not keep the retired local anchor storage path."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*hasAssistantAnswerTail(?s:.*?)cardDay\s*==\s*normalizedCurrentDay(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime\s*\|\|\s*hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
+        "Today agri main-chat visibility must restore a saved same-day item while still requiring a completed assistant tail for first-time insertion."
     Require-Match $failures $chatScreen 'hasCompletedAssistantAnswerTail\(messages,\s*failedAssistantMessageStates\.keys\)' `
         "Today agri completed-tail detection must exclude failed assistant tails in the live chat state."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriCardDoesNotTreatFailedAssistantAsCompletedTail(?s:.*?)failedAssistantMessageIds\s*=\s*setOf' `
@@ -547,20 +549,22 @@ if ($failures.Count -eq 0) {
         "Today agri should be marked shown only after it is inserted into the visible main-chat timeline, and must persist the shown day after remote snapshot hydration completes."
     Require-Match $failures $chatScreen 'todayAgriRefreshDayKey\s*!=\s*currentDay(?s:.*?)todayAgriShownThisRuntime\s*=\s*false(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*hasStartedConversation(?s:.*?)todayAgriMainCardLoadedLogged\s*=\s*false(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*false' `
         "Today agri same-runtime day rollover must reset shown/log gates and avoid surprise insertion if the user is already chatting."
-    Require-Match $failures $chatScreen 'if\s*\(\s*!\s*todayAgriShownThisRuntime\s*&&\s*todayAgriMainShownDay\s*==\s*refreshDayKey\s*\)\s*\{\s*return@LaunchedEffect\s*\}' `
-        "Today agri fetch for the main chat must be skipped on later app opens after the same day has already been shown."
+    Require-Match $failures $chatScreen 'hasRefreshDayItem\s*=\s*currentTodayAgriMainItem\?\.day_cn\s*==\s*refreshDayKey(?s:.*?)if\s*\(\s*!\s*todayAgriShownThisRuntime\s*&&\s*todayAgriMainShownDay\s*==\s*refreshDayKey\s*&&\s*!hasRefreshDayItem\s*\)' `
+        "Today agri fetch for the main chat must not let the shown-day marker block a saved same-day main item from being restored."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime' `
         "Today agri once-per-day main-chat visibility must have unit coverage."
-    Require-NoMatch $failures $chatScreen 'latestMessageAnchorId\s*\?:\s*TODAY_AGRI_CARD_ANCHOR_START|saveTodayAgriCardAnchorSync\s*\([^)]*TODAY_AGRI_CARD_ANCHOR_START' `
-        "Today agri must not save START as its main-chat anchor; it should anchor to a completed assistant answer."
-    Require-Match $failures $chatTimelineItemsTest 'legacyTodayAgriStartAnchorDoesNotMigrateAfterCompletedAssistant(?s:.*?)TODAY_AGRI_CARD_ANCHOR_START(?s:.*?)assertEquals\((?s:.*?)listOf\((?s:.*?)ChatTimelineItem\.Message\(first\),(?s:.*?)ChatTimelineItem\.Message\(second\)(?s:.*?)\),\s*items' `
-        "Legacy today-agri START anchor must stay non-rendering and must not migrate after a completed assistant answer."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriCardAfterCompletedAssistantStaysInsideTimeline(?s:.*?)todayAgriAfterMessageId\s*=\s*second\.id' `
+        "Today agri must anchor after a completed assistant answer in the ordinary timeline item builder."
     Require-Match $failures $chatScreen 'fun\s+restoredStartupWorklinePhase(?s:.*?)hasTodayAgriVisualContent\s*->\s*false' `
         "If today agri is visible after real history, it must still ignore persisted bottom-owned startup state when resetting top document flow."
     Require-Match $failures $chatScreen 'hydratedTodayAgriVisualContent\s*=\s*shouldShowTodayAgriMainCard(?s:.*?)hasAssistantAnswerTail\s*=\s*hasCompletedAssistantAnswerTail\(\s*hydratedSnapshot\.messages,\s*hydratedSnapshot\.failedAssistantMessageStates\.keys\s*\)(?s:.*?)hasTodayAgriVisualContent\s*=\s*hydratedTodayAgriVisualContent' `
         "Remote hydrate replacement must compute today-agri visual content from the hydrated message tail, not stale current UI state."
-    Require-Match $failures $chatScreen 'remoteSnapshotHydrationComplete(?s:.*?)if\s*\(\s*shouldHydrateRemoteHistory\s*&&\s*!remoteSnapshotHydrationComplete\s*\)\s*return@LaunchedEffect(?s:.*?)saveTodayAgriCardAnchorSync' `
-        "Today agri anchor saving must wait for the remote snapshot, not only the local-first history hydration gate."
+    Require-Match $failures $chatScreen 'remoteSnapshotHydrationComplete(?s:.*?)if\s*\(\s*shouldHydrateRemoteHistory\s*&&\s*!remoteSnapshotHydrationComplete\s*\)\s*return@LaunchedEffect(?s:.*?)saveTodayAgriItem' `
+        "Today agri main item saving must wait for the remote snapshot, not only the local-first history hydration gate."
+    Require-Match $failures $sessionApi 'fun\s+saveTodayAgriItem(?s:.*?)session_generation' `
+        "Today agri main-chat item saves must include session generation."
+    Require-Match $failures $chatScreen 'snapshot\.today_agri_items(?s:.*?)item\.card(?s:.*?)todayAgriMainItem\s*=\s*item' `
+        "Today agri main-chat item must be restored from session snapshot with its saved card content."
     Require-Match $failures $chatScreen '"remote_snapshot_hydrated"\s+to\s+remoteSnapshotHydrationComplete' `
         "Chat startup diagnostics must distinguish local-first history hydration from remote snapshot completion."
     Require-NoMatch $failures $chatScreen 'persistedTodayAgriContextDayForUserMessage(?s:.*?)takeIf\s*\{\s*it\s*==\s*currentDay\s*\}' `
@@ -682,7 +686,7 @@ if ($failures.Count -eq 0) {
         "Assistant text dividers must recognize standalone bold heading lines, not only # markdown headings."
     Require-Match $failures $chatStreamingRenderer 'parseRendererActiveStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)' `
         "Assistant text dividers must recognize an active standalone bold heading while it is still streaming."
-    Require-Match $failures $chatStreamingRenderer 'heading\.level\s*<=\s*3' `
+    Require-Match $failures $chatStreamingRenderer 'heading\.level\s*(<=\s*3|>\s*3\)\s*return\s+false)' `
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
         "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."

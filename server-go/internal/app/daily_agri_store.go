@@ -118,6 +118,146 @@ func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string,
 	return cards, nil
 }
 
+func (s *Store) UpsertTodayAgriUserItem(ctx context.Context, userID string, dayCN string, anchorClientMsgID string, card DailyAgriCard, expectedGeneration *int) (bool, error) {
+	now := time.Now().UnixMilli()
+	card = sanitizeTodayAgriMainItemCard(card, dayCN)
+	content, err := json.Marshal(card)
+	if err != nil {
+		return false, err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer rollbackQuietly(tx)
+
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO session_generation(user_id, generation, cleared_at, updated_at)
+		 VALUES (?, 0, 0, ?)
+		 ON DUPLICATE KEY UPDATE user_id = user_id`,
+		userID,
+		now,
+	); err != nil {
+		return false, err
+	}
+	var state SessionGenerationState
+	if err := tx.QueryRowContext(
+		ctx,
+		`SELECT generation, cleared_at
+		 FROM session_generation
+		 WHERE user_id = ?
+		 LIMIT 1 FOR UPDATE`,
+		userID,
+	).Scan(&state.Generation, &state.ClearedAt); err != nil {
+		return false, err
+	}
+	if isStaleForSessionGenerationState(state, expectedGeneration) {
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`DELETE FROM today_agri_user_items
+		 WHERE user_id = ? AND day_cn <> ?`,
+		userID,
+		dayCN,
+	); err != nil {
+		return false, err
+	}
+	_, err = tx.ExecContext(
+		ctx,
+		`INSERT INTO today_agri_user_items(user_id, day_cn, anchor_client_msg_id, content_json, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE
+		   anchor_client_msg_id = VALUES(anchor_client_msg_id),
+		   content_json = VALUES(content_json),
+		   updated_at = VALUES(updated_at)`,
+		userID,
+		dayCN,
+		anchorClientMsgID,
+		string(content),
+		now,
+		now,
+	)
+	if err != nil {
+		return false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Store) GetTodayAgriUserItems(ctx context.Context, userID string, dayCN string, limit int) ([]TodayAgriUserItem, error) {
+	if limit <= 0 {
+		return []TodayAgriUserItem{}, nil
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
+		 FROM today_agri_user_items
+		 WHERE user_id = ? AND day_cn = ?
+		 ORDER BY updated_at DESC, day_cn DESC
+		 LIMIT ?`,
+		userID,
+		dayCN,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]TodayAgriUserItem, 0, limit)
+	for rows.Next() {
+		var item TodayAgriUserItem
+		var contentRaw string
+		if err := rows.Scan(&item.DayCN, &item.AnchorClientMsgID, &contentRaw, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		if strings.TrimSpace(contentRaw) == "" || !json.Valid([]byte(contentRaw)) {
+			continue
+		}
+		var card DailyAgriCard
+		if err := json.Unmarshal([]byte(contentRaw), &card); err != nil {
+			continue
+		}
+		if !isUsableStoredDailyAgriCard(card) {
+			continue
+		}
+		card = sanitizeTodayAgriMainItemCard(card, item.DayCN)
+		item.Card = card
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+func sanitizeTodayAgriMainItemCard(card DailyAgriCard, dayCN string) DailyAgriCard {
+	card.DateCN = strings.TrimSpace(card.DateCN)
+	if card.DateCN == "" {
+		card.DateCN = dayCN
+	}
+	card.Title = "今日农情"
+	if len(card.Items) > dailyAgriTargetItemCount {
+		card.Items = card.Items[:dailyAgriTargetItemCount]
+	}
+	for idx := range card.Items {
+		item := &card.Items[idx]
+		item.Title = strings.TrimSpace(item.Title)
+		item.Summary = strings.TrimSpace(item.Summary)
+		item.Source = dailyAgriPublicSourceName(*item)
+		item.PublishedDate = ""
+		item.URL = ""
+	}
+	return card
+}
+
 func (s *Store) TryAcquireDailyAgriCardGeneration(
 	ctx context.Context,
 	dayCN string,

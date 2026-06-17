@@ -247,12 +247,6 @@ func (s *Store) ClearSessionHistory(ctx context.Context, userID string) (int, er
 	}
 	defer rollbackQuietly(tx)
 
-	if _, err := tx.ExecContext(ctx, "DELETE FROM session_round_archive WHERE user_id = ?", userID); err != nil {
-		return 0, err
-	}
-	if _, err := tx.ExecContext(ctx, "DELETE FROM session_ab WHERE user_id = ?", userID); err != nil {
-		return 0, err
-	}
 	nowMs := time.Now().UnixMilli()
 	if _, err := tx.ExecContext(
 		ctx,
@@ -271,9 +265,18 @@ func (s *Store) ClearSessionHistory(ctx context.Context, userID string) (int, er
 	var generation int
 	if err := tx.QueryRowContext(
 		ctx,
-		"SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1",
+		"SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1 FOR UPDATE",
 		userID,
 	).Scan(&generation); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM session_round_archive WHERE user_id = ?", userID); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM today_agri_user_items WHERE user_id = ?", userID); err != nil {
+		return 0, err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM session_ab WHERE user_id = ?", userID); err != nil {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {

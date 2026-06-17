@@ -12,7 +12,8 @@ data class SessionSnapshot(
     val a_rounds_full: List<ARound>,
     val a_rounds_for_ui: List<ARound>,
     val round_total: Int = 0,
-    val session_generation: Int = 0
+    val session_generation: Int = 0,
+    val today_agri_items: List<TodayAgriMainItem> = emptyList()
 ) {
     /** 兼容旧接口只返回 a_rounds 时：视为 for_ui，full 用 for_ui */
     constructor(memoryDocument: String, a_rounds: List<ARound>) : this(memoryDocument, memoryDocument, a_rounds, a_rounds)
@@ -26,6 +27,14 @@ data class SessionSnapshot(
             session_generation
         )
 }
+
+data class TodayAgriMainItem(
+    val day_cn: String,
+    val anchor_client_msg_id: String,
+    val card: SessionApi.TodayAgriCard,
+    val created_at: Long = 0L,
+    val updated_at: Long = 0L
+)
 
 /** 单轮对话 (user, assistant) */
 data class ARound(

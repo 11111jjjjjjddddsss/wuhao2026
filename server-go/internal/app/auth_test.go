@@ -226,6 +226,23 @@ func TestLegacyMergeCoversLongLivedIdentityTables(t *testing.T) {
 	}
 }
 
+func TestLegacyMergeKeepsNewerTodayAgriItem(t *testing.T) {
+	source, err := os.ReadFile("auth_accounts.go")
+	if err != nil {
+		t.Fatalf("read auth_accounts.go: %v", err)
+	}
+	text := strings.ToLower(string(source))
+	if !strings.Contains(text, "today_agri_user_items") {
+		t.Fatalf("legacy account merge must include today agri main display items")
+	}
+	if !strings.Contains(text, "if(values(updated_at) >= today_agri_user_items.updated_at") {
+		t.Fatalf("today agri item merge must keep the newer record")
+	}
+	if !strings.Contains(text, "content_json = if(values(updated_at) >= today_agri_user_items.updated_at") {
+		t.Fatalf("today agri item merge must keep the content_json from the newer record")
+	}
+}
+
 func TestLegacyMigrationMappingIsImmutable(t *testing.T) {
 	source, err := os.ReadFile("auth_accounts.go")
 	if err != nil {

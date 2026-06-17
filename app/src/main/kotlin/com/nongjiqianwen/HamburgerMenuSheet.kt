@@ -1498,7 +1498,7 @@ internal fun HamburgerServiceAgreementContent(
         listOf(
             HamburgerLegalSection(
                 title = "一、服务内容与适用范围",
-                body = "农技千查面向农业种植、作物管理、病虫害线索排查、农资信息理解、田间管理复盘和农业资讯查看等场景，提供文字问答、图片辅助分析、历史记录、会员额度、加油包、礼品卡、帮助与反馈、今日农情、检查更新以及页面展示的其他服务。具体功能、价格、权益、次数、有效期、支付方式和适用条件，以 App 页面、平台记录和当时生效规则为准。"
+                body = "农技千查面向农业种植、作物管理、病虫害线索排查、农资信息理解、田间管理复盘和农业资讯查看等场景，提供文字问答、图片辅助分析、历史记录、会员额度、加油包、礼品卡、帮助与反馈、今日农情、检查更新以及页面展示的其他服务。具体功能范围、权益次数、有效期、价格、支付方式和适用条件，以 App 页面、平台记录和当时生效规则为准。"
             ),
             HamburgerLegalSection(
                 title = "二、农业建议的使用边界",
@@ -1506,11 +1506,11 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "三、您提交的内容与账号权益",
-                body = "您提交的文字、图片、反馈和补充材料仍归您或原权利人所有。为提供问答、图片分析、历史展示、失败重试、客服处理、权益核对和安全保障，我们会在必要范围内处理相关内容。请确保您有权提交这些内容，并尽量只上传与农业问题相关的材料；不要上传身份证件、银行卡、完整人脸、他人隐私、商业秘密、违法侵权或与服务无关的内容。"
+                body = "您提交的文字、图片、反馈和补充材料仍归您或原权利人所有。为提供问答、图片分析、历史展示、失败重试、客服处理、权益核对和安全保障，我们会在必要范围内处理相关内容。请确保您有权提交这些内容，并尽量只上传与农业问题相关的材料；不要上传身份证件、银行卡、完整人脸、他人隐私、商业秘密、违法侵权或明显无关的内容。"
             ),
             HamburgerLegalSection(
                 title = "四、会员、支付、加油包和礼品卡",
-                body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、平台记录、支付渠道结果、兑换结果和法律规定为准。您购买付费服务时，应通过 App 页面支持的微信支付、支付宝等官方渠道完成支付；页面标明暂未开放或不可购买的入口不会发起真实扣费。礼品卡兑换属于权益发放方式，不等同于支付订单、退款或对账凭证。请不要相信 App 外私下收款、代充、代兑换或非官方客服承诺。"
+                body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、平台记录、支付渠道结果、兑换结果和法律规定为准。您购买付费服务时，应通过 App 页面支持的微信支付、支付宝等官方渠道完成；未展示可购买状态的入口不会发起真实扣费。礼品卡兑换属于权益发放方式，不等同于支付订单、退款或对账凭证。请不要相信 App 外私下收款、代充、代兑换或非官方客服承诺。"
             ),
             HamburgerLegalSection(
                 title = "五、农资信息和交易边界",
@@ -1518,13 +1518,13 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "六、禁止行为、责任和协议更新",
-                body = "请不要上传违法、侵权、虚假、有害、无关、侵犯隐私或商业秘密的内容；不要冒充官方、专家、平台人员或他人，不传播虚假农情，不诱导错误用药用肥或违规经营；不要攻击接口、爬虫抓取、刷量、绕过额度、逆向工程、批量撞库礼品卡、转售账号权益或恶意消耗服务资源。我们可能根据产品、法律法规或运营需要更新本协议，重要变化会以 App 内页面、弹窗或其他合理方式提示；您不同意的，可以停止使用相关服务。如有问题可通过邮箱 nongjiqiancha@foxmail.com 联系我们。"
+                body = "请不要上传违法、侵权、虚假、有害、无关、侵犯隐私或商业秘密的内容；不要冒充官方、专家、平台人员或他人，不传播虚假农情，不诱导错误用药用肥或违规经营；不要攻击接口、爬虫抓取、刷量、绕过额度、逆向工程、批量撞库礼品卡、转售账号权益或恶意消耗服务资源。我们可能根据产品、法律法规或运营需要更新本协议，重要变化会以 App 内页面、弹窗或其他合理方式提示；您不同意相关变更的，可以停止使用对应服务。如有问题可通过邮箱 nongjiqiancha@foxmail.com 联系我们。"
             )
         )
     }
     HamburgerLegalTextPage(
         title = "服务协议",
-        meta = "更新日期：2026年6月16日\n生效日期：2026年6月16日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+        meta = "更新日期：2026年6月17日\n生效日期：2026年6月17日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
         sections = sections,
         modifier = modifier,
     )
@@ -1590,7 +1590,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年6月16日\n生效日期：2026年6月16日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+            text = "更新日期：2026年6月17日\n生效日期：2026年6月17日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1605,7 +1605,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "三、AI 问诊和图片处理",
-            body = "为生成农业技术参考建议，我们会处理您输入的文字、主动上传的图片、必要历史上下文、AI 回复、记忆摘要、平台时间、地区文本和必要质量状态。App 会请求定位权限，用于把系统定位反查为省、市、区县等地区文本，并在每次发送问诊前尽量刷新校准；我们不上传经纬度，不保存轨迹。未授权、定位失败或系统无法反查时，系统可能依据网络信息提供粗略地区或未知兜底。图片会导入 App 私有空间并按规则处理后上传，用于图片分析、历史展示、失败重试和反馈附件。"
+            body = "为生成农业技术参考建议，我们会处理您输入的文字、主动上传的图片、必要历史上下文、AI 回复、记忆摘要、平台时间、地区文本和必要质量状态。在您授权定位后，App 会把系统定位反查为省、市、区县等地区文本，并在发送问诊前尽量刷新校准；我们不上传经纬度，不保存轨迹。未授权、定位失败或系统无法反查时，系统可能依据网络信息提供粗略地区或未知兜底。图片会导入 App 私有空间并按规则处理后上传，用于图片分析、历史展示、失败重试和反馈附件。"
         )
         HamburgerAgreementSection(
             title = "四、相机、照片和系统相册",
@@ -1613,7 +1613,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "五、会员、支付、农资交易和检查更新",
-            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。当您通过 App 页面支持的官方渠道购买会员、加油包或其他付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果；页面标明暂未开放或不可购买的入口不会发起真实扣费。检查更新会使用当前版本号、平台信息和下载的安装包缓存，用于判断是否有新版本并调起系统安装确认页。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。当您通过 App 页面支持的官方渠道购买会员、加油包或其他付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果；未展示可购买状态的入口不会发起真实扣费。检查更新会使用当前版本号、平台信息和下载的安装包缓存，用于判断是否有新版本并调起系统安装确认页。"
         )
         HamburgerAgreementSection(
             title = "六、帮助与反馈",
@@ -1629,11 +1629,11 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "九、本地缓存和平台保存",
-            body = "App 会在本机保存必要运行缓存，包括本机用户标识、聊天窗口快照、未发送文字草稿、待发送任务、私有图片副本、图片预览缓存和更新安装包缓存。平台会保存会话、对话摘要、问答记录、权益使用记录、帮助与反馈、今日农情、上传图片地址和必要日志，用于历史恢复、权益核对、服务处理和故障排查。问诊上传图片通常 3 天后自动删除，帮助与反馈图片通常 30 天后自动删除，主聊天记录和对话承接按当前规则滚动保留约 30 天；App 自动日志只保存脱敏事件和安全诊断字段，通常按约 30 天排障窗口控制；服务端运行日志通常保留 7 天；订单、额度、礼品卡、审计、安全风控、注销申请和依法需要留存的记录，会按交易、合规和安全需要保存或去标识化处理。"
+            body = "App 会在本机保存必要运行缓存，包括本机用户标识、聊天窗口快照、未发送文字草稿、待发送任务、私有图片副本、图片预览缓存和更新安装包缓存。平台会保存会话、对话摘要、问答记录、权益使用记录、帮助与反馈、今日农情、上传图片地址和必要日志，用于历史恢复、权益核对、服务处理和故障排查。问诊上传图片通常 3 天后自动删除，帮助与反馈图片通常 30 天后自动删除，主聊天记录和对话承接按当前规则滚动保留约 30 天；App 自动日志只保存脱敏事件和安全诊断字段，通常按约 30 天排障窗口控制；服务端运行日志通常保留 7 天；订单、额度、礼品卡、审计、安全风控、注销申请和依法需要留存的记录，会按交易、合规和安全需要保存，或在达到目的后删除、匿名化处理。"
         )
         HamburgerAgreementSection(
             title = "十、第三方和系统能力清单",
-            body = "云计算和数据存储服务用于系统运行、保存会话、图片地址、额度、反馈和必要日志；智能分析服务用于问诊回复、图片理解、记忆摘要和今日农情；第三方短信服务用于发送手机号登录验证码；支付入口开放后，当您主动购买付费服务时，页面展示的支付服务商可能处理订单和支付状态；当前标明暂未开放或不可购买的入口不会向支付服务商提交支付信息或发起扣费。系统浏览器、系统安装器、外部相机和系统照片选择器只在您主动点击相关功能时调用。当前不接入广告、地图、推送或统计类第三方 SDK。"
+            body = "云计算和数据存储服务用于系统运行、保存会话、图片地址、额度、反馈和必要日志；智能分析服务用于问诊回复、图片理解、记忆摘要和今日农情；第三方短信服务用于发送手机号登录验证码；支付入口开放后，当您主动购买付费服务时，页面展示的支付服务商可能处理订单和支付状态；未展示可购买状态的入口不会向支付服务商提交支付信息或发起扣费。系统浏览器、系统安装器、外部相机和系统照片选择器只在您主动点击相关功能时调用。当前不接入广告、地图、推送或统计类第三方 SDK。"
         )
         HamburgerAgreementSection(
             title = "十一、共享和公开",
@@ -1641,7 +1641,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十二、您的权利",
-            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。当前“删除所有历史对话”只删除问诊聊天历史和相关记忆，不等于完整账号注销；账号注销为申请处理流程，我们会在收到有效申请后 15 个工作日内完成账号注销，并删除或匿名化相关个人信息，法律法规另有规定或确有必要用于交易核验、安全风控、争议处理的除外。"
+            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。“删除历史对话”用于删除问诊聊天历史和相关记忆，不等于完整账号注销，也不会删除会员、礼品卡和反馈记录；账号注销为申请处理流程，我们会在收到有效申请后 15 个工作日内完成账号注销，并删除或匿名化相关个人信息，法律法规另有规定或确有必要用于交易核验、安全风控、争议处理的除外。"
         )
         HamburgerAgreementSection(
             title = "十三、未成年人和敏感信息",
@@ -1681,7 +1681,7 @@ private fun HamburgerRiskNoticeContent(
     ) {
         HamburgerLegalPageTitle("风险提示")
         Text(
-            text = "更新日期：2026年6月16日\n生效日期：2026年6月16日",
+            text = "更新日期：2026年6月17日\n生效日期：2026年6月17日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1778,7 +1778,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年6月16日",
+            text = "更新日期：2026年6月17日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1789,7 +1789,7 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "二、智能分析和云服务",
-            body = "我们通过平台服务器调用境内云计算和智能分析服务，用于生成农业技术参考建议、图片理解、记忆摘要和今日农情。相关服务只在实现问诊、摘要或今日农情功能所必需的范围内处理您提交的文字、图片、必要上下文和必要日志。"
+            body = "我们通过平台服务器调用境内云计算、数据存储和智能分析服务，用于系统运行、生成农业技术参考建议、图片理解、记忆摘要和今日农情。相关服务只在实现对应功能所必需的范围内处理您提交的文字、图片、必要上下文和必要日志。"
         )
         HamburgerAgreementSection(
             title = "三、云资源和存储",
@@ -1805,7 +1805,7 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "六、支付服务",
-            body = "当 App 页面开放购买且您主动购买会员、加油包或其他付费服务时，可能由页面展示的微信支付、支付宝等支付服务商处理支付订单、支付状态、退款状态和必要交易信息。支付完成后的权益发放、退款和售后处理，以平台记录、支付渠道结果、页面规则和法律规定为准；页面标明暂未开放或不可购买的入口不会发起真实扣费。"
+            body = "当 App 页面开放购买且您主动购买会员、加油包或其他付费服务时，可能由页面展示的微信支付、支付宝等支付服务商处理支付订单、支付状态、退款状态和必要交易信息。支付完成后的权益发放、退款和售后处理，以平台记录、支付渠道结果、页面规则和法律规定为准；未展示可购买状态的入口不会发起真实扣费。"
         )
     }
 }
@@ -1849,7 +1849,7 @@ private fun HamburgerPersonalInfoListContent(
     ) {
         HamburgerLegalPageTitle("个人信息收集清单")
         Text(
-            text = "更新日期：2026年6月16日",
+            text = "更新日期：2026年6月17日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1868,7 +1868,7 @@ private fun HamburgerPersonalInfoListContent(
         )
         HamburgerAgreementSection(
             title = "四、会员、支付、礼品卡和更新",
-            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。当您通过 App 页面支持的官方渠道购买付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果；页面标明暂未开放或不可购买的入口不会发起真实扣费。检查更新会使用当前版本号、平台信息和下载的安装包缓存。"
+            body = "会员和额度功能会处理会员档位、到期时间、每日剩余次数、升级补偿和加油包余额。礼品卡兑换会处理卡码校验结果、兑换时间和权益生效记录。当您通过 App 页面支持的官方渠道购买付费服务时，系统可能处理订单号、商品信息、支付渠道、支付状态、退款状态和权益生效结果；未展示可购买状态的入口不会发起真实扣费。检查更新会使用当前版本号、平台信息和下载的安装包缓存。"
         )
         HamburgerAgreementSection(
             title = "五、帮助与反馈",
@@ -1916,7 +1916,7 @@ private fun HamburgerPermissionListContent(
     ) {
         HamburgerLegalPageTitle("应用权限")
         Text(
-            text = "更新日期：2026年6月16日",
+            text = "更新日期：2026年6月17日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1943,7 +1943,7 @@ private fun HamburgerPermissionListContent(
         )
         HamburgerAgreementSection(
             title = "六、当前不申请的权限",
-            body = "本版本会申请定位权限，用于问诊地区上下文校准；不上传经纬度，不保存轨迹，不用于地图、广告或推送。当前不申请相册 / 存储读写权限、录音、通讯录、短信、电话状态或通知权限；也不做 App 外推送通知。"
+            body = "本版本会在问诊需要时申请定位权限，用于地区上下文校准；不上传经纬度，不保存轨迹，不用于地图、广告或推送。当前不申请相册 / 存储读写权限、录音、通讯录、短信、电话状态或通知权限；也不做 App 外推送通知。"
         )
     }
 }
@@ -2480,7 +2480,7 @@ private fun HamburgerTodayAgriHistoryContent(
                 cards.forEachIndexed { index, card ->
                     HamburgerTodayAgriHistoryDaySection(
                         card = card,
-                        showTopDivider = index > 0
+                        topPadding = if (index > 0) 2.dp else 0.dp
                     )
                 }
             }
@@ -2539,39 +2539,23 @@ private fun HamburgerTodayAgriHistoryContent(
 @Composable
 private fun HamburgerTodayAgriHistoryDaySection(
     card: SessionApi.TodayAgriCard,
-    showTopDivider: Boolean
+    topPadding: Dp = 0.dp
 ) {
     val dateText = hamburgerTodayAgriDateText(card.dateCn).ifBlank { "日期未明" }
     Column(
         modifier = Modifier
-            .fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+            .fillMaxWidth()
+            .padding(top = topPadding),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (showTopDivider) {
-            HorizontalDivider(
-                modifier = Modifier.fillMaxWidth(),
-                thickness = 1.dp,
-                color = Color(0xFFE4E6EA)
-            )
-        }
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(
-                text = dateText,
-                color = Color(0xFF6F747C),
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
-                fontWeight = FontWeight.Medium
-            )
-            HorizontalDivider(
-                modifier = Modifier.weight(1f),
-                thickness = 1.dp,
-                color = Color(0xFFE7E9ED)
-            )
-        }
+        Text(
+            text = dateText,
+            color = Color(0xFF6F747C),
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(start = 2.dp)
+        )
         Surface(
             color = Color.White,
             shape = RoundedCornerShape(14.dp),
@@ -2633,22 +2617,15 @@ private fun HamburgerTodayAgriHistoryCard(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(
-                text = "今日农情",
-                color = Color(0xFF111111),
-                fontSize = 17.sp,
-                lineHeight = 24.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            HorizontalDivider(
-                modifier = Modifier.fillMaxWidth(),
-                thickness = 1.dp,
-                color = Color(0xFFE9EBEF)
-            )
-        }
+        Text(
+            text = "今日农情",
+            color = Color(0xFF111111),
+            fontSize = 17.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.SemiBold
+        )
         card.items.orEmpty().take(3).forEachIndexed { index, item ->
             HamburgerTodayAgriHistoryItem(item = item, index = index)
         }

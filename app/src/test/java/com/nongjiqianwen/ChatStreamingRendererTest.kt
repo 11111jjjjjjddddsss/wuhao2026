@@ -202,9 +202,77 @@ class ChatStreamingRendererTest {
         assertEquals(
             "维度\t成品肥\t自配方案\t销售提示\n" +
                 "便利性\t高\t中\t需要讲清配比\n" +
-                "灵活性\t固定\t可调整",
+                "灵活性\t固定\t可调整\t",
             table.toPlainCopyText()
         )
+        assertEquals(
+            "维度\t成品肥\t自配方案\t销售提示\n" +
+                "便利性\t高\t中\t需要讲清配比\n" +
+                "灵活性\t固定\t可调整\t",
+            buildRendererPlainCopyText(
+                "|维度|成品肥|自配方案|销售提示|\n" +
+                    "|---|---|---|---|\n" +
+                    "|便利性|高|中|需要讲清配比|\n" +
+                    "|灵活性|固定|可调整|\n"
+            )
+        )
+    }
+
+    @Test
+    fun markdownTableCopyRemovesInlineMarkdownMarkers() {
+        val state = splitStreamingBlockState(
+            "|维度|**成品肥**|自配方案|链接|\n" +
+                "|---|---|---|---|\n" +
+                "|便利性|`开袋即用`|[配比](https://example.com)|保留|\n"
+        )
+        val model = classifyStreamingLine(state.completedBlocks.first())
+
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(
+            "维度\t成品肥\t自配方案\t链接\n" +
+                "便利性\t开袋即用\t配比\t保留",
+            table.toPlainCopyText()
+        )
+        assertEquals(
+            "维度\t成品肥\t自配方案\t链接\n" +
+                "便利性\t开袋即用\t配比\t保留",
+            buildRendererPlainCopyText(
+                "|维度|**成品肥**|自配方案|链接|\n" +
+                    "|---|---|---|---|\n" +
+                    "|便利性|`开袋即用`|[配比](https://example.com)|保留|\n"
+            )
+        )
+    }
+
+    @Test
+    fun rendererStructureStatsKeepsDividerDecisionStable() {
+        val stats = buildRendererStructureStats(
+            "先说清楚。\n\n" +
+                "**处理建议**\n\n" +
+                "继续观察。\n\n" +
+                "一、用肥策略\n" +
+                "少量多次。"
+        )
+
+        assertEquals(5, stats.blockCount)
+        assertEquals(2, stats.headingCount)
+        assertEquals(0, stats.tableCount)
+        assertEquals(2, stats.dividerHeadingCount)
+    }
+
+    @Test
+    fun leadingHeadingDoesNotCreateTopDivider() {
+        val stats = buildRendererStructureStats(
+            "**处理建议**\n\n" +
+                "继续观察。\n\n" +
+                "一、用肥策略\n" +
+                "少量多次。"
+        )
+
+        assertEquals(4, stats.blockCount)
+        assertEquals(2, stats.headingCount)
+        assertEquals(1, stats.dividerHeadingCount)
     }
 
     @Test
@@ -256,6 +324,22 @@ class ChatStreamingRendererTest {
             shouldShowStreamingSectionDivider(
                 previous = settledModels[0],
                 current = settledModels[1]
+            )
+        )
+    }
+
+    @Test
+    fun unclosedStandaloneBoldHeadingDividerSurvivesInSettledHistory() {
+        val state = splitStreamingBlockState("先说清楚。\n\n**处理建议\n\n继续观察。")
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertTrue(models[1] is StreamingLineModel.Heading)
+        assertEquals("处理建议", (models[1] as StreamingLineModel.Heading).text)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = models[0],
+                current = models[1]
             )
         )
     }

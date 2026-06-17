@@ -19,30 +19,24 @@ class ChatTimelineItemsTest {
 
     @Test
     fun todayAgriCardDoesNotOccupyEmptyWelcomeState() {
-        val startAnchoredItems = buildChatTimelineItems(
-            messages = emptyList(),
-            todayAgriCard = todayAgriCard(),
-            todayAgriCardAnchorMessageId = TODAY_AGRI_CARD_ANCHOR_START
-        )
         val unanchoredItems = buildChatTimelineItems(
             messages = emptyList(),
             todayAgriCard = todayAgriCard(),
-            todayAgriCardAnchorMessageId = null
+            todayAgriAfterMessageId = null
         )
 
-        assertEquals(emptyList<ChatTimelineItem>(), startAnchoredItems)
         assertEquals(emptyList<ChatTimelineItem>(), unanchoredItems)
     }
 
     @Test
-    fun todayAgriCardAnchoredAfterCompletedAssistantStaysInsideTimeline() {
+    fun todayAgriCardAfterCompletedAssistantStaysInsideTimeline() {
         val first = userMessage("m1")
         val second = assistantMessage("m2")
 
         val items = buildChatTimelineItems(
             messages = listOf(first, second),
             todayAgriCard = todayAgriCard(),
-            todayAgriCardAnchorMessageId = second.id
+            todayAgriAfterMessageId = second.id
         )
 
         assertEquals(
@@ -56,26 +50,6 @@ class ChatTimelineItemsTest {
     }
 
     @Test
-    fun legacyTodayAgriStartAnchorDoesNotMigrateAfterCompletedAssistant() {
-        val first = userMessage("m1")
-        val second = assistantMessage("m2")
-
-        val items = buildChatTimelineItems(
-            messages = listOf(first, second),
-            todayAgriCard = todayAgriCard(),
-            todayAgriCardAnchorMessageId = TODAY_AGRI_CARD_ANCHOR_START
-        )
-
-        assertEquals(
-            listOf(
-                ChatTimelineItem.Message(first),
-                ChatTimelineItem.Message(second)
-            ),
-            items
-        )
-    }
-
-    @Test
     fun todayAgriCardWithoutAnchorFallsBackAfterLatestCompletedAssistant() {
         val first = userMessage("m1")
         val second = assistantMessage("m2")
@@ -83,7 +57,7 @@ class ChatTimelineItemsTest {
         val items = buildChatTimelineItems(
             messages = listOf(first, second),
             todayAgriCard = todayAgriCard(),
-            todayAgriCardAnchorMessageId = null
+            todayAgriAfterMessageId = null
         )
 
         assertEquals(
@@ -104,7 +78,7 @@ class ChatTimelineItemsTest {
         val items = buildChatTimelineItems(
             messages = listOf(first, second),
             todayAgriCard = todayAgriCard(),
-            todayAgriCardAnchorMessageId = "trimmed-old-message",
+            todayAgriAfterMessageId = "trimmed-old-message",
             hiddenRoundCount = 6
         )
 
@@ -122,7 +96,7 @@ class ChatTimelineItemsTest {
         val items = buildChatTimelineItems(
             messages = listOf(first, failedAssistant),
             todayAgriCard = todayAgriCard(),
-            todayAgriCardAnchorMessageId = failedAssistant.id,
+            todayAgriAfterMessageId = failedAssistant.id,
             failedAssistantMessageIds = setOf(failedAssistant.id)
         )
 
@@ -301,6 +275,30 @@ class ChatTimelineItemsTest {
                 card = todayAgriCard(),
                 currentDayKey = "20260615",
                 shownDayKey = "20260615",
+                shownThisRuntime = false,
+                hasAssistantAnswerTail = true,
+                hasSavedItem = true,
+                suppressedThisRuntime = false
+            )
+        )
+
+        assertFalse(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard().copy(dateCn = "20260615"),
+                currentDayKey = "20260616",
+                shownDayKey = "20260615",
+                shownThisRuntime = false,
+                hasAssistantAnswerTail = true,
+                hasSavedItem = true,
+                suppressedThisRuntime = false
+            )
+        )
+
+        assertTrue(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "20260615",
                 shownThisRuntime = true,
                 hasAssistantAnswerTail = false,
                 suppressedThisRuntime = true
@@ -428,7 +426,7 @@ class ChatTimelineItemsTest {
             buildChatTimelineItems(
                 messages = emptyList(),
                 todayAgriCard = todayAgriCard(),
-                todayAgriCardAnchorMessageId = null
+                todayAgriAfterMessageId = null
             )
         )
     }

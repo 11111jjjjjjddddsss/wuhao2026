@@ -414,6 +414,24 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	if err := copyRowsToNewUserID(ctx, tx, "session_round_archive", oldUserID, newUserID, "id"); err != nil {
 		return "", err
 	}
+	if _, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO today_agri_user_items(user_id, day_cn, anchor_client_msg_id, content_json, created_at, updated_at)
+		 SELECT ?, day_cn, anchor_client_msg_id, content_json, created_at, updated_at
+		 FROM today_agri_user_items
+		 WHERE user_id = ?
+		 ON DUPLICATE KEY UPDATE
+		   anchor_client_msg_id = IF(VALUES(updated_at) >= today_agri_user_items.updated_at, VALUES(anchor_client_msg_id), today_agri_user_items.anchor_client_msg_id),
+		   content_json = IF(VALUES(updated_at) >= today_agri_user_items.updated_at, VALUES(content_json), today_agri_user_items.content_json),
+		   updated_at = GREATEST(today_agri_user_items.updated_at, VALUES(updated_at))`,
+		newUserID,
+		oldUserID,
+	); err != nil {
+		return "", err
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM today_agri_user_items WHERE user_id = ?", oldUserID); err != nil {
+		return "", err
+	}
 
 	if _, err := tx.ExecContext(ctx, mergeUpgradeCreditsSQL, newUserID, nowMs, oldUserID); err != nil {
 		return "", err

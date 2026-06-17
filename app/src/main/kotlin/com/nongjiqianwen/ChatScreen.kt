@@ -320,7 +320,7 @@ private fun latestCompletedAssistantAnswerId(
 internal fun buildChatTimelineItems(
     messages: List<ChatMessage>,
     todayAgriCard: SessionApi.TodayAgriCard?,
-    todayAgriCardAnchorMessageId: String?,
+    todayAgriAfterMessageId: String?,
     hiddenRoundCount: Int = 0,
     failedAssistantMessageIds: Set<String> = emptySet()
 ): List<ChatTimelineItem> {
@@ -332,13 +332,7 @@ internal fun buildChatTimelineItems(
         it.isRenderableTodayAgriCard() &&
             messages.any { message -> message.isCompletedAssistantAnswer(failedAssistantMessageIds) }
     }
-    if (validTodayAgriCard != null && todayAgriCardAnchorMessageId == TODAY_AGRI_CARD_ANCHOR_START) {
-        return items.apply {
-            messages.forEach { message -> add(ChatTimelineItem.Message(message)) }
-        }
-    }
-    val requestedAnchorMessageId = todayAgriCardAnchorMessageId
-        ?.takeUnless { it == TODAY_AGRI_CARD_ANCHOR_START }
+    val requestedAfterMessageId = todayAgriAfterMessageId?.takeIf { it.isNotBlank() }
     var todayAgriCardInserted = false
     var latestAssistantAnswerInsertIndex = -1
     messages.forEach { message ->
@@ -348,8 +342,8 @@ internal fun buildChatTimelineItems(
         }
         if (
             validTodayAgriCard != null &&
-            requestedAnchorMessageId != null &&
-            message.id == requestedAnchorMessageId &&
+            requestedAfterMessageId != null &&
+            message.id == requestedAfterMessageId &&
             message.isCompletedAssistantAnswer(failedAssistantMessageIds)
         ) {
             items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
@@ -392,16 +386,17 @@ internal fun shouldShowTodayAgriMainCard(
     shownDayKey: String,
     shownThisRuntime: Boolean,
     hasAssistantAnswerTail: Boolean,
+    hasSavedItem: Boolean = false,
     suppressedThisRuntime: Boolean = false
 ): Boolean {
     val normalizedCurrentDay = normalizeTodayAgriCardDayKey(currentDayKey)
     val cardDay = normalizeTodayAgriCardDayKey(card?.dateCn.orEmpty())
     return card?.isRenderableTodayAgriCard() == true &&
-        (shownThisRuntime || hasAssistantAnswerTail) &&
+        (shownThisRuntime || hasSavedItem || hasAssistantAnswerTail) &&
         cardDay.isNotBlank() &&
         cardDay == normalizedCurrentDay &&
-        (!suppressedThisRuntime || shownThisRuntime) &&
-        (shownThisRuntime || shownDayKey != cardDay)
+        (!suppressedThisRuntime || shownThisRuntime || hasSavedItem) &&
+        (shownThisRuntime || hasSavedItem || shownDayKey != cardDay)
 }
 
 internal fun shouldRenderTodayAgriMainCardInTimeline(
@@ -570,12 +565,9 @@ private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
 private const val CHAT_STREAM_DRAFT_KEY_PREFIX = "stream_draft_"
 private const val CHAT_COMPOSER_DRAFT_KEY_PREFIX = "composer_draft_"
 private const val CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX = "composer_draft_gen_"
-private const val TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX = "today_agri_card_anchor_day_"
-private const val TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX = "today_agri_card_anchor_message_"
 private const val TODAY_AGRI_CARD_CACHE_DAY_KEY_PREFIX = "today_agri_card_cache_day_"
 private const val TODAY_AGRI_CARD_CACHE_KEY_PREFIX = "today_agri_card_cache_"
 private const val TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX = "today_agri_main_shown_day_"
-internal const val TODAY_AGRI_CARD_ANCHOR_START = "__today_agri_card_timeline_start__"
 private const val TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS = 5_000L
 private const val TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS = 15 * 60 * 1000L
 private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
@@ -1242,21 +1234,7 @@ private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
 private fun buildRenderedMessageCopyText(role: ChatRole, content: String): String {
     return when (role) {
         ChatRole.USER -> content.trim()
-        ChatRole.ASSISTANT -> {
-            val blocks = getCachedMarkdownUiBlocks(content)
-            if (blocks.isEmpty()) {
-                getCachedAnnotatedString(normalizeAssistantText(content)).text.trim()
-            } else {
-                blocks.joinToString(separator = "\n\n") { block ->
-                    when (block) {
-                        is MarkdownUiBlock.Heading -> block.text.text.trim()
-                        is MarkdownUiBlock.Bullet -> "\u2022 ${block.text.text.trim()}".trim()
-                        is MarkdownUiBlock.Numbered -> "${block.number}. ${block.text.text.trim()}".trim()
-                        is MarkdownUiBlock.Paragraph -> block.text.text.trim()
-                    }
-                }.trim()
-            }
-        }
+        ChatRole.ASSISTANT -> buildRendererPlainCopyText(content)
     }
 }
 
@@ -1812,33 +1790,9 @@ private fun Context.clearLocalChatHistoryStateSync(chatScopeId: String) {
             .remove("$CHAT_STREAM_DRAFT_KEY_PREFIX$chatScopeId")
             .remove("$CHAT_COMPOSER_DRAFT_KEY_PREFIX$chatScopeId")
             .remove("$CHAT_COMPOSER_DRAFT_GENERATION_KEY_PREFIX$chatScopeId")
-            .remove("$TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX$chatScopeId")
-            .remove("$TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX$chatScopeId")
-            .commit()
-    }
-}
-
-private fun Context.loadTodayAgriCardAnchorDaySync(chatScopeId: String): String =
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .getString("$TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX$chatScopeId", null)
-        .orEmpty()
-
-private fun Context.loadTodayAgriCardAnchorMessageSync(chatScopeId: String): String =
-    getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-        .getString("$TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX$chatScopeId", null)
-        .orEmpty()
-
-private fun Context.saveTodayAgriCardAnchorSync(
-    chatScopeId: String,
-    dayKey: String,
-    anchorMessageId: String
-) {
-    if (dayKey.isBlank() || anchorMessageId.isBlank()) return
-    synchronized(chatCacheWriteLock) {
-        getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
-            .edit()
-            .putString("$TODAY_AGRI_CARD_ANCHOR_DAY_KEY_PREFIX$chatScopeId", dayKey)
-            .putString("$TODAY_AGRI_CARD_ANCHOR_MESSAGE_KEY_PREFIX$chatScopeId", anchorMessageId)
+            .remove("$TODAY_AGRI_CARD_CACHE_DAY_KEY_PREFIX$chatScopeId")
+            .remove("$TODAY_AGRI_CARD_CACHE_KEY_PREFIX$chatScopeId")
+            .remove("$TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX$chatScopeId")
             .commit()
     }
 }
@@ -2582,6 +2536,7 @@ fun ChatScreen() {
     var startupUiStateLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var startupBottomSnapDoneLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var startupBottomSnapPendingLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+    var chatRenderStructureLoggedSignature by rememberSaveable(uiRuntimeResetKey) { mutableStateOf("") }
     var todayAgriMainCardLoadedLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var todayAgriMainCardVisibleLogged by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var jumpButtonPulseVisible by scrollRuntime.jumpButtonPulseVisible
@@ -2657,6 +2612,7 @@ fun ChatScreen() {
         }
     }
     var todayAgriCard by remember(uiRuntimeResetKey) { mutableStateOf(initialTodayAgriCard) }
+    var todayAgriMainItem by remember(uiRuntimeResetKey) { mutableStateOf<TodayAgriMainItem?>(null) }
     var todayAgriRemoteConfirmedDay by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var todayAgriMainShownDay by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(initialTodayAgriMainShownDay)
@@ -2666,18 +2622,22 @@ fun ChatScreen() {
         mutableStateOf(false)
     }
     var hiddenRemoteRoundCount by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
-    var todayAgriCardAnchorDay by rememberSaveable(uiRuntimeResetKey) {
-        mutableStateOf(context.loadTodayAgriCardAnchorDaySync(chatScopeId))
-    }
-    var todayAgriCardAnchorMessageId by rememberSaveable(uiRuntimeResetKey) {
-        mutableStateOf(context.loadTodayAgriCardAnchorMessageSync(chatScopeId))
-    }
     val currentTodayAgriCardDay = todayAgriCardDayKey(todayAgriCard)
+    val currentTodayAgriMainItem by remember(todayAgriMainItem) {
+        derivedStateOf {
+            todayAgriMainItem
+                ?.takeIf { item -> item.day_cn == currentChinaDateKey() }
+                ?.takeIf { item -> todayAgriCardDayKey(item.card) == item.day_cn }
+        }
+    }
     val hasCompletedAssistantTail by remember(messages, failedAssistantMessageStates) {
         derivedStateOf { hasCompletedAssistantAnswerTail(messages, failedAssistantMessageStates.keys) }
     }
     val latestCompletedAssistantTailId by remember(messages, failedAssistantMessageStates) {
         derivedStateOf { latestCompletedAssistantAnswerId(messages, failedAssistantMessageStates.keys) }
+    }
+    val currentTodayAgriCardHasSavedItem by remember(currentTodayAgriMainItem) {
+        derivedStateOf { currentTodayAgriMainItem != null }
     }
     val retryingUserMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
     val retryingAssistantMessageIds = remember(uiRuntimeResetKey) { mutableStateMapOf<String, Boolean>() }
@@ -2686,18 +2646,21 @@ fun ChatScreen() {
     val shouldShowTodayAgriCard by remember(
         todayAgriCard,
         currentTodayAgriCardDay,
+        currentTodayAgriMainItem,
         todayAgriMainShownDay,
         todayAgriShownThisRuntime,
         hasCompletedAssistantTail,
+        currentTodayAgriCardHasSavedItem,
         todayAgriAutoInsertSuppressedThisRuntime
     ) {
         derivedStateOf {
             shouldShowTodayAgriMainCard(
-                card = todayAgriCard,
+                card = currentTodayAgriMainItem?.card ?: todayAgriCard,
                 currentDayKey = currentChinaDateKey(),
                 shownDayKey = todayAgriMainShownDay,
                 shownThisRuntime = todayAgriShownThisRuntime,
                 hasAssistantAnswerTail = hasCompletedAssistantTail,
+                hasSavedItem = currentTodayAgriCardHasSavedItem,
                 suppressedThisRuntime = todayAgriAutoInsertSuppressedThisRuntime
             )
         }
@@ -2717,25 +2680,12 @@ fun ChatScreen() {
             )
         }
     }
-    val currentTodayAgriCardHasSavedAnchor by remember(
-        todayAgriCardAnchorDay,
-        todayAgriCardAnchorMessageId,
-        currentTodayAgriCardDay
-    ) {
+    val todayAgriAfterMessageIdForRender by remember(currentTodayAgriMainItem, latestCompletedAssistantTailId) {
         derivedStateOf {
-            todayAgriCardAnchorDay == currentTodayAgriCardDay &&
-                todayAgriCardAnchorMessageId.isNotBlank()
-        }
-    }
-    val todayAgriCardAnchorForRender by remember(
-        currentTodayAgriCardDay,
-        todayAgriCardAnchorDay,
-        todayAgriCardAnchorMessageId
-    ) {
-        derivedStateOf {
-            todayAgriCardAnchorMessageId
-                .takeIf { todayAgriCardAnchorDay == currentTodayAgriCardDay }
+            currentTodayAgriMainItem
+                ?.anchor_client_msg_id
                 ?.takeIf { it.isNotBlank() }
+                ?: latestCompletedAssistantTailId
         }
     }
     val hasStreamingItem by remember(isStreaming, streamingMessageId, messages.size) {
@@ -2748,19 +2698,25 @@ fun ChatScreen() {
     }
     val chatListItems by remember(
         todayAgriCard,
+        currentTodayAgriMainItem,
+        hasRemoteHistorySource,
         shouldRenderTodayAgriCardInTimeline,
-        todayAgriCardAnchorForRender,
+        todayAgriAfterMessageIdForRender,
         hiddenRemoteRoundCount,
         messages
     ) {
         derivedStateOf {
-            val visibleTodayAgriCard = todayAgriCard.takeIf {
-                shouldRenderTodayAgriCardInTimeline
+            val visibleTodayAgriCard = if (!shouldRenderTodayAgriCardInTimeline) {
+                null
+            } else if (hasRemoteHistorySource) {
+                currentTodayAgriMainItem?.card
+            } else {
+                currentTodayAgriMainItem?.card ?: todayAgriCard
             }
             buildChatTimelineItems(
                 messages = messages,
                 todayAgriCard = visibleTodayAgriCard,
-                todayAgriCardAnchorMessageId = todayAgriCardAnchorForRender,
+                todayAgriAfterMessageId = todayAgriAfterMessageIdForRender,
                 hiddenRoundCount = hiddenRemoteRoundCount,
                 failedAssistantMessageIds = failedAssistantMessageStates.keys
             )
@@ -2770,6 +2726,72 @@ fun ChatScreen() {
         derivedStateOf {
             chatListItems.any { it is ChatTimelineItem.TodayAgriCard }
         }
+    }
+    LaunchedEffect(
+        messages.size,
+        streamingMessageContent.length,
+        hasTodayAgriCard,
+        chatListItems.size
+    ) {
+        val assistantContents = messages
+            .filter { message -> message.role == ChatRole.ASSISTANT && message.content.isNotBlank() }
+            .map { message -> message.content }
+            .takeLast(3)
+            .toMutableList()
+        if (streamingMessageContent.isNotBlank()) {
+            assistantContents += streamingMessageContent
+        }
+        if (assistantContents.isEmpty() && !hasTodayAgriCard) return@LaunchedEffect
+        val stats = assistantContents
+            .map(::buildRendererStructureStats)
+            .fold(RendererStructureStats(0, 0, 0, 0, 0, 0)) { acc, item ->
+                RendererStructureStats(
+                    blockCount = acc.blockCount + item.blockCount,
+                    headingCount = acc.headingCount + item.headingCount,
+                    tableCount = acc.tableCount + item.tableCount,
+                    bulletCount = acc.bulletCount + item.bulletCount,
+                    numberedCount = acc.numberedCount + item.numberedCount,
+                    dividerHeadingCount = acc.dividerHeadingCount + item.dividerHeadingCount
+                )
+            }
+        val signature = listOf(
+            messages.size,
+            streamingMessageContent.length,
+            hasTodayAgriCard,
+            chatListItems.size,
+            stats.blockCount,
+            stats.headingCount,
+            stats.tableCount,
+            stats.dividerHeadingCount
+        ).joinToString("|")
+        if (signature == chatRenderStructureLoggedSignature) return@LaunchedEffect
+        chatRenderStructureLoggedSignature = signature
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                CHAT_STARTUP_DIAG_TAG,
+                "render_structure visible=${messages.size}, list=${chatListItems.size}, " +
+                    "todayAgri=$hasTodayAgriCard, blocks=${stats.blockCount}, " +
+                    "headings=${stats.headingCount}, tables=${stats.tableCount}, " +
+                    "dividers=${stats.dividerHeadingCount}"
+            )
+        }
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "ui.chat_render_structure",
+            message = "Chat render structure",
+            attrs = mapOf(
+                "visible_item_count" to messages.size,
+                "list_item_count" to chatListItems.size,
+                "assistant_sample_count" to assistantContents.size,
+                "has_today_agri_card" to hasTodayAgriCard,
+                "block_count" to stats.blockCount,
+                "heading_count" to stats.headingCount,
+                "table_count" to stats.tableCount,
+                "bullet_count" to stats.bulletCount,
+                "numbered_count" to stats.numberedCount,
+                "divider_heading_count" to stats.dividerHeadingCount
+            )
+        )
     }
     fun todayAgriContextDayForNextSend(existingUserMessageId: String? = null): String? {
         if (!hasTodayAgriCard || !shouldRenderTodayAgriCardInTimeline) return null
@@ -2802,6 +2824,17 @@ fun ChatScreen() {
         if (!todayAgriShownThisRuntime && !hasTodayAgriCard) {
             todayAgriAutoInsertSuppressedThisRuntime = true
         }
+    }
+
+    fun resetTodayAgriRuntimeAfterHistoryClear() {
+        todayAgriMainShownDay = currentChinaDateKey()
+        context.saveTodayAgriMainShownDaySync(chatScopeId, todayAgriMainShownDay)
+        todayAgriShownThisRuntime = false
+        todayAgriAutoInsertSuppressedThisRuntime = false
+        todayAgriMainItem = null
+        todayAgriCard = null
+        todayAgriRemoteConfirmedDay = null
+        todayAgriBottomAnchorAppliedKey = ""
     }
 
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
@@ -3227,12 +3260,11 @@ fun ChatScreen() {
         chatHistoryClearEpoch++
         chatHistoryClearEpochRef.incrementAndGet()
     }
+    var todayAgriItemSaveInFlightKey by remember(uiRuntimeResetKey) { mutableStateOf("") }
     LaunchedEffect(
         shouldShowTodayAgriCard,
         currentTodayAgriCardDay,
-        todayAgriCardAnchorDay,
-        todayAgriCardAnchorMessageId,
-        currentTodayAgriCardHasSavedAnchor,
+        currentTodayAgriCardHasSavedItem,
         remoteSnapshotHydrationComplete,
         shouldHydrateRemoteHistory,
         isStreaming,
@@ -3243,12 +3275,45 @@ fun ChatScreen() {
         if (!shouldShowTodayAgriCard || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (shouldHydrateRemoteHistory && !remoteSnapshotHydrationComplete) return@LaunchedEffect
         val anchorMessageId = latestCompletedAssistantTailId ?: return@LaunchedEffect
-        if (currentTodayAgriCardHasSavedAnchor) {
+        val cardToSave = todayAgriCard?.takeIf { card ->
+            todayAgriCardDayKey(card) == currentTodayAgriCardDay &&
+                card.isRenderableTodayAgriCard()
+        } ?: return@LaunchedEffect
+        if (currentTodayAgriCardHasSavedItem) {
             return@LaunchedEffect
         }
-        todayAgriCardAnchorDay = currentTodayAgriCardDay
-        todayAgriCardAnchorMessageId = anchorMessageId
-        context.saveTodayAgriCardAnchorSync(chatScopeId, currentTodayAgriCardDay, anchorMessageId)
+        val saveKey = "$currentTodayAgriCardDay|$anchorMessageId"
+        if (todayAgriItemSaveInFlightKey == saveKey) return@LaunchedEffect
+        todayAgriItemSaveInFlightKey = saveKey
+        val saveClearEpoch = chatHistoryClearEpoch
+        if (hasRemoteHistorySource) {
+            val anchorSessionGeneration = SessionApi.currentSessionGenerationOrNull()
+            SessionApi.saveTodayAgriItem(
+                dayCn = currentTodayAgriCardDay,
+                anchorClientMsgId = anchorMessageId,
+                sessionGeneration = anchorSessionGeneration
+            ) { saved ->
+                if (todayAgriItemSaveInFlightKey == saveKey) {
+                    todayAgriItemSaveInFlightKey = ""
+                }
+                if (saved && saveClearEpoch == chatHistoryClearEpoch) {
+                    todayAgriMainItem = TodayAgriMainItem(
+                        day_cn = currentTodayAgriCardDay,
+                        anchor_client_msg_id = anchorMessageId,
+                        card = cardToSave,
+                        updated_at = System.currentTimeMillis()
+                    )
+                }
+            }
+        } else {
+            todayAgriItemSaveInFlightKey = ""
+            todayAgriMainItem = TodayAgriMainItem(
+                day_cn = currentTodayAgriCardDay,
+                anchor_client_msg_id = anchorMessageId,
+                card = cardToSave,
+                updated_at = System.currentTimeMillis()
+            )
+        }
     }
     val startupHydrationBarrierSatisfied by remember(
         historyHydrationComplete,
@@ -3405,8 +3470,8 @@ fun ChatScreen() {
     LaunchedEffect(
         hasTodayAgriCard,
         shouldShowTodayAgriCard,
-        currentTodayAgriCardDay,
-        todayAgriCardAnchorForRender,
+        currentTodayAgriMainItem?.day_cn ?: currentTodayAgriCardDay,
+        todayAgriAfterMessageIdForRender,
         shouldRevealMessageList,
         remoteSnapshotHydrationComplete,
         shouldHydrateRemoteHistory,
@@ -3439,17 +3504,13 @@ fun ChatScreen() {
         if (!shouldLogTodayAgriVisible) {
             return@LaunchedEffect
         }
-        val anchorState = when {
-            todayAgriCardAnchorForRender == TODAY_AGRI_CARD_ANCHOR_START -> "legacy_start"
-            todayAgriCardAnchorForRender.isNullOrBlank() -> "none"
-            else -> "message"
-        }
+        val anchorState = if (todayAgriAfterMessageIdForRender.isNullOrBlank()) "none" else "message"
         SessionApi.reportClientLog(
             level = "info",
             event = "today_agri.main_card_visible",
             message = "Today agri main card visible",
             attrs = mapOf(
-                "card_day" to currentTodayAgriCardDay,
+                "card_day" to (currentTodayAgriMainItem?.day_cn ?: currentTodayAgriCardDay),
                 "visible_item_count" to messages.size,
                 "list_item_count" to chatListItems.size,
                 "list_revealed" to shouldRevealMessageList,
@@ -3486,8 +3547,10 @@ fun ChatScreen() {
             if (todayAgriRefreshDayKey != currentDay) {
                 todayAgriRefreshDayKey = currentDay
                 todayAgriCard = null
+                todayAgriMainItem = null
                 todayAgriRemoteConfirmedDay = null
                 todayAgriBottomAnchorAppliedKey = ""
+                todayAgriItemSaveInFlightKey = ""
                 todayAgriShownThisRuntime = false
                 todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
                 todayAgriMainCardLoadedLogged = false
@@ -3500,8 +3563,10 @@ fun ChatScreen() {
         if (todayAgriRefreshDayKey != currentChinaDateKey()) {
             todayAgriRefreshDayKey = currentChinaDateKey()
             todayAgriCard = null
+            todayAgriMainItem = null
             todayAgriRemoteConfirmedDay = null
             todayAgriBottomAnchorAppliedKey = ""
+            todayAgriItemSaveInFlightKey = ""
             todayAgriShownThisRuntime = false
             todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
             todayAgriMainCardLoadedLogged = false
@@ -3511,7 +3576,8 @@ fun ChatScreen() {
     LaunchedEffect(uiRuntimeResetKey, todayAgriRefreshDayKey) {
         if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
         val refreshDayKey = todayAgriRefreshDayKey
-        if (!todayAgriShownThisRuntime && todayAgriMainShownDay == refreshDayKey) {
+        val hasRefreshDayItem = currentTodayAgriMainItem?.day_cn == refreshDayKey
+        if (!todayAgriShownThisRuntime && todayAgriMainShownDay == refreshDayKey && !hasRefreshDayItem) {
             return@LaunchedEffect
         }
         var attempt = 0
@@ -4789,8 +4855,7 @@ fun ChatScreen() {
         mainHandler.removeCallbacksAndMessages(null)
         resetStreamingUiState(clearVisibleContent = true)
         context.clearLocalChatHistoryStateSync(chatScopeId)
-        todayAgriCardAnchorDay = ""
-        todayAgriCardAnchorMessageId = ""
+        resetTodayAgriRuntimeAfterHistoryClear()
         hiddenRemoteRoundCount = 0
         messages.clear()
         chatListState.requestScrollToItem(0, 0)
@@ -4870,6 +4935,32 @@ fun ChatScreen() {
             }
             val snapshot = awaitRemoteSnapshot()
             val remoteSnapshotLoaded = snapshot != null
+            if (snapshot != null) {
+                val item = snapshot.today_agri_items
+                    .firstOrNull { item ->
+                        item.day_cn == currentChinaDateKey() &&
+                            item.anchor_client_msg_id.isNotBlank() &&
+                            item.card.isRenderableTodayAgriCard()
+                    }
+                if (item != null) {
+                    todayAgriMainItem = item
+                    todayAgriCard = item.card
+                    context.saveTodayAgriCardCacheSync(chatScopeId, item.card)
+                    todayAgriRemoteConfirmedDay = item.day_cn
+                    SessionApi.reportClientLog(
+                        level = "info",
+                        event = "today_agri.item_restored",
+                        message = "Today agri main item restored",
+                        attrs = mapOf(
+                            "card_day" to item.day_cn,
+                            "item_count" to (item.card.items?.size ?: 0),
+                            "from_snapshot" to true
+                        )
+                    )
+                } else {
+                    todayAgriMainItem = null
+                }
+            }
             val localStreamingDraftForMerge = localStreamingDraftForMergeDeferred.await()
             val localSnapshotForMerge = recoverStreamingDraftAsInterruptedSnapshot(
                 localSnapshot = localSnapshotForMergeDeferred.await(),
@@ -4963,7 +5054,7 @@ fun ChatScreen() {
                 if (shouldReplaceHydratedMessageList) {
                     replaceMessages(hydratedSnapshot.messages)
                     val hydratedTodayAgriVisualContent = shouldShowTodayAgriMainCard(
-                        card = todayAgriCard,
+                        card = todayAgriMainItem?.card,
                         currentDayKey = currentChinaDateKey(),
                         shownDayKey = todayAgriMainShownDay,
                         shownThisRuntime = todayAgriShownThisRuntime,
@@ -4971,6 +5062,7 @@ fun ChatScreen() {
                             hydratedSnapshot.messages,
                             hydratedSnapshot.failedAssistantMessageStates.keys
                         ),
+                        hasSavedItem = todayAgriMainItem != null,
                         suppressedThisRuntime = todayAgriAutoInsertSuppressedThisRuntime
                     )
                     if (!hydratedTodayAgriVisualContent) {
@@ -5192,8 +5284,8 @@ fun ChatScreen() {
     LaunchedEffect(
         hasTodayAgriCard,
         shouldShowTodayAgriCard,
-        currentTodayAgriCardDay,
-        todayAgriCardAnchorForRender,
+        currentTodayAgriMainItem?.day_cn ?: currentTodayAgriCardDay,
+        todayAgriAfterMessageIdForRender,
         startupLayoutReady,
         shouldRevealMessageList,
         chatListItems.size,
@@ -5215,8 +5307,8 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         val anchorKey = listOf(
-            currentTodayAgriCardDay,
-            todayAgriCardAnchorForRender.orEmpty(),
+            currentTodayAgriMainItem?.day_cn ?: currentTodayAgriCardDay,
+            todayAgriAfterMessageIdForRender.orEmpty(),
             chatListItems.size.toString()
         ).joinToString("|")
         if (todayAgriBottomAnchorAppliedKey == anchorKey) return@LaunchedEffect
@@ -9068,8 +9160,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     UiCopyPreviewPlainText(
                         listOf(
                             "无真实聊天时只显示欢迎语，今日农情不占空态",
-                            "安静打开且已有完整 AI 回答历史时，才跟在最后一条回答后",
+                            "已有完整 AI 回答历史时，才跟在最后一条回答后",
                             "如果用户本次开始问了而农情还没显示，本次运行不突然插入",
+                            "一旦主界面展示过，保存当天一条主界面记录，重开后稳定恢复",
                             "远端确认当天 ready 后，用户在它后面发送的后三轮会临时带当天农情标记",
                             "后端只在日期等于服务器当天时读取农情正文作为临时背景",
                             "第四轮起自动不带；记忆整理、聊天归档和扣次都不写入农情正文"

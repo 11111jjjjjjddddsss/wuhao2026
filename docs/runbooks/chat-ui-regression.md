@@ -21,7 +21,7 @@
 
 - 消息列表是单一正向 `LazyColumn` 主人，`messages` oldest -> newest，视觉底部最新消息是 `lastIndex`
 - 清数据 / 删除历史后的首次真实聊天内容未触到工作线前，运行时是 `InitialWorklinePhase.TopUnreached`：同一个 `LazyColumn` 临时 `Arrangement.Top`，真实消息、图片 pending / 失败、assistant placeholder、失败 footer 和小球从顶部自然向下排；首屏文档流底边触到 96dp 工作线后，如果用户没在触碰 / 拖动 / 浏览，先进入极短 `TopAnchoring` 并继续保持 Top 布局，等列表可正向滚动且内容超过工作线约 56dp 时，同一执行点切回默认 `Arrangement.Bottom` 并复用现有强制底部锚点接一次
-- 今日农情是 UI-only `ChatTimelineItem.TodayAgriCard`，不是 `ChatMessage`，但一旦出现必须作为同一个 `LazyColumn` 里的普通文本视觉项上下滑动。主聊天只在当天第一次合适时机展示一次：没有真实聊天消息时只显示欢迎语，今日农情不占空态、不替代欢迎语、不作为第一条视觉内容；只有安静打开且可见历史尾部是已完成 AI 回答时，今日农情才跟在这条完整回答后方，失败 / 未完成 assistant 尾巴不算完整回答。今日农情一旦插入可见 timeline，同日关闭重开不再反复出现，设置页“今日农情”历史入口仍可查看。如果用户进入后先开始发送 / 生成，且今日农情还没展示出来，本次运行不再自动插入，避免刚发送完消息时突然弹出。后续用户发送消息时，新消息自然追加在它后面并把它往上顶。不允许把它改成 overlay、floating card、sticky 尾卡、关闭动画、黑框卡片或第二套列表主人
+- 今日农情是 UI-only `ChatTimelineItem.TodayAgriCard`，不是 `ChatMessage`，但一旦出现必须作为同一个 `LazyColumn` 里的普通文本视觉项上下滑动。主聊天没有真实消息时仍只显示欢迎语，今日农情不占空态、不替代欢迎语、不作为第一条视觉内容；已有完整 AI 回答历史时，今日农情跟在当时最后一条完整回答后方，并保存当天一条主界面展示记录和展示用正文副本。后续重开 App 或远端 snapshot hydrate 后，按后端 snapshot 返回的当天保存项恢复这一条内容，让它像历史文本一样稳定存在；用户发送新消息时，新消息自然追加在它后面并把它往上顶。删除历史对话会清掉主界面展示记录；设置页“今日农情”历史入口仍可查看近 30 天公开历史，不随聊天历史删除。不允许把它改成 overlay、floating card、sticky 尾卡、关闭动画、黑框卡片或第二套列表主人
 - 工作线 gap 是 `96.dp`，小球、streaming 正文、开机历史态、完成态尾部都围绕这条工作线；工作线以下空白必须完整露出来
 - AutoFollow / 回到底部使用 `lastIndex + FORWARD_LIST_BOTTOM_SCROLL_OFFSET`
 - streaming 内容提交后由 `SideEffect` 在同帧 apply changes 后、layout 前请求底部锚定，压“下一行从工作线下方冒头闪”
@@ -31,7 +31,7 @@
 - active / settled 渲染共用 unified soft-wrap renderer；不再用小分割 item、物理行预切、fresh suffix 灰色高亮动画
 - 流式运行态里的正文 / reveal buffer / message id / isStreaming 是运行时状态，不进入 Activity saved-state；切后台 / 重建恢复依赖已有流式草稿、远端快照和 pending 恢复链，避免大字符串进 saved-state 或出现“状态保存了但内容丢了”的半恢复状态
 - 主聊天只渲染最近 30 个用户轮次以保护长期使用性能；`/api/session/snapshot` 的 `round_total` 大于 `a_rounds_for_ui` 展示数时，列表顶部显示历史窗口轻提示，清空历史或 clean-state 后该提示必须消失
-- 当前 `ChatStreamingRenderer.kt` 是移动聊天轻量 Markdown 子集渲染器，不是 Markwon / CommonMark / GFM 全量引擎。支持段落、标题、列表、引用、加粗、斜体、行内代码、Markdown 链接、裸 URL、emoji / 普通 Unicode；标准 Markdown 表格降级成普通项目行文本，代码块内的 `|` 不做表格降级。复杂嵌套列表、GFM 表格网格、代码高亮、数学公式、Mermaid、图片 Markdown 和任意 HTML 不作为当前主聊天承诺能力
+- 当前 `ChatStreamingRenderer.kt` 是移动聊天轻量 Markdown 子集渲染器，不是 Markwon / CommonMark / GFM 全量引擎。支持段落、标题、列表、引用、加粗、斜体、行内代码、Markdown 链接、裸 URL、emoji / 普通 Unicode 和标准 Markdown 表格；标准表格会渲染成横向可滑轻量表格并带复制按钮，代码块内的 `|` 不做表格。复杂嵌套列表、全量 GFM 表格能力、代码高亮、数学公式、Mermaid、图片 Markdown 和任意 HTML 不作为当前主聊天承诺能力
 - 清除 App 数据 / 缓存属于常规用户路径，不再按极端场景处理。清数据后本地登录态、DataStore、私有数据库和缓存可以消失，但固定 UI 默认样式、设置页入口、账号管理条目、登录页和主聊天基础布局必须全部来自当前 APK 代码；手机号账号、会员、额度、礼品卡、反馈、聊天历史和今日农情等业务数据应在重新登录后从后端恢复。本地缓存只用于加速首屏和减少闪烁，不能成为新 UI 是否存在、默认菜单是否出现、启动是否贴底的唯一来源。
 - 启动显示门只允许在“远端历史还没返回且本地没有任何真实消息 / streaming 视觉内容”时短暂隐藏列表；只要远端 hydrate 已经把消息放入 `messages`，或 streaming item 已存在，列表必须显示出来，贴底和工作线锚定继续作为后续校准运行。今日农情不能单独解锁空列表；空态先显示欢迎语。不要再用 `initialBottomSnapDone` / `waitingForStaticTimelineBottomSnap` 把已有静态内容整屏透明隐藏，否则用户会看到白屏，只有拖动后才因手势把 bottom snap 标记放开。
 - `scripts/check-android-build-parity.ps1` 需要同时挡住 clean-state 相关回退：启动贴底不能把本地消息存在误判为已完成；设置页默认入口必须包含会员中心、账号管理、帮助与反馈、今日农情、检查更新、礼品卡、协议与隐私和退出登录；账号管理默认条目必须包含手机号、清理临时缓存、删除历史对话、退出登录和注销账号。
@@ -158,7 +158,7 @@ a | b | c
 ````
 
 预期：
-- 标准表格降级成可读项目行文本
+- 标准 Markdown 表格渲染为横向可滑轻量表格，复制为 TSV 文本
 - 代码块里的 `|` 不被当表格转换
 - emoji 不崩、不撑乱布局，常见可见组合符号不应拆半显示
 - 完成态链接仍按现有规则打开系统浏览器
@@ -167,7 +167,7 @@ a | b | c
 
 步骤：
 - 清数据后启动
-- 清数据后只有今日农情卡片、还没有真实业务消息
+- 清数据后只有欢迎语、还没有真实业务消息；今日农情不能替代空态
 - 切后台 / 杀进程后重进
 - user 发送失败、assistant 中断失败、首 token 前失败
 - 账号下后端归档超过 30 轮时进入聊天页，再执行“删除所有历史对话”

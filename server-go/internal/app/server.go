@@ -248,6 +248,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/tier/renew_plus", s.handleRenewPlus)
 	s.mux.HandleFunc("POST /api/tier/renew_pro", s.handleRenewPro)
 	s.mux.HandleFunc("POST /api/tier/upgrade_plus_to_pro", s.handleUpgradePlusToPro)
+	s.mux.HandleFunc("POST /api/today-agri-item", s.handleSaveTodayAgriItem)
 	s.mux.HandleFunc("GET /api/today-agri-card", s.handleTodayAgriCard)
 	s.mux.HandleFunc("GET /api/today-agri-cards", s.handleTodayAgriCards)
 	s.mux.HandleFunc("GET /api/app/update", s.handleAppUpdate)
@@ -394,11 +395,17 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 	} else if len(archivedRounds) > 0 {
 		uiRounds = mergeSessionRoundsForUI(safe.ARoundsFull, archivedRounds)
 	}
+	todayAgriItems, err := s.store.GetTodayAgriUserItems(r.Context(), auth.UserID, GetTodayKeyCN(s.shanghai, time.Now()), 1)
+	if err != nil {
+		s.logger.Warn("get today agri user items failed", "userId", auth.UserID, "error", err)
+		todayAgriItems = nil
+	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":            safe.UserID,
 		"a_json":             safe.ARoundsFull,
 		"a_rounds_full":      safe.ARoundsFull,
 		"a_rounds_for_ui":    uiRounds,
+		"today_agri_items":   todayAgriItems,
 		"memory_document":    safe.MemoryDocument,
 		"b_summary":          safe.MemoryDocument,
 		"round_total":        safe.RoundTotal,
@@ -816,5 +823,10 @@ func cloneSessionSnapshot(snapshot SessionSnapshot) SessionSnapshot {
 	clonedRounds := make([]SessionRound, len(snapshot.ARoundsFull))
 	copy(clonedRounds, snapshot.ARoundsFull)
 	snapshot.ARoundsFull = clonedRounds
+	if len(snapshot.TodayAgriItems) > 0 {
+		clonedItems := make([]TodayAgriUserItem, len(snapshot.TodayAgriItems))
+		copy(clonedItems, snapshot.TodayAgriItems)
+		snapshot.TodayAgriItems = clonedItems
+	}
 	return snapshot
 }

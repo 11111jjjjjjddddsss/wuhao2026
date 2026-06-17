@@ -211,17 +211,26 @@ internal data class RendererMarkdownTable(
 internal fun RendererMarkdownTable.toPlainCopyText(): String {
     val columnCount = headers.size.coerceAtLeast(1)
     return buildString {
-        append(headers.take(columnCount).joinToString("\t"))
+        append(headers.take(columnCount).joinToString("\t") { cell -> plainRendererInlineText(cell) })
         rows.forEach { row ->
             append('\n')
             append(
                 (0 until columnCount).joinToString("\t") { index ->
-                    row.getOrNull(index).orEmpty()
+                    plainRendererInlineText(row.getOrNull(index).orEmpty())
                 }
             )
         }
-    }.trim()
+    }
 }
+
+internal data class RendererStructureStats(
+    val blockCount: Int,
+    val headingCount: Int,
+    val tableCount: Int,
+    val bulletCount: Int,
+    val numberedCount: Int,
+    val dividerHeadingCount: Int
+)
 
 private fun splitRendererMarkdownTableCells(line: String): List<String> {
     val trimmed = line.trim().removePrefix("|").removeSuffix("|")
@@ -584,6 +593,9 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
     parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(2, headingText)
     }
+    parseRendererActiveStandaloneBoldHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(2, headingText)
+    }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(3, headingText)
     }
@@ -660,8 +672,62 @@ internal fun shouldShowStreamingSectionDivider(
     current: StreamingLineModel
 ): Boolean {
     val heading = current as? StreamingLineModel.Heading ?: return false
-    return previous != null && previous !is StreamingLineModel.Heading && heading.level <= 3
+    if (heading.level > 3) return false
+    return previous != null && previous !is StreamingLineModel.Heading
 }
+
+internal fun buildRendererPlainCopyText(content: String): String {
+    val blockState = splitStreamingBlockState(content)
+    val models = buildList {
+        addAll(blockState.completedBlocks.map(::classifyStreamingLine))
+        blockState.activeBlock?.let { add(classifyStreamingLine(it)) }
+    }
+    if (models.isEmpty()) return content.trim()
+    return models.joinToString(separator = "\n\n") { model ->
+        when (model) {
+            StreamingLineModel.Blank -> ""
+            is StreamingLineModel.Heading -> plainRendererInlineText(model.text)
+            is StreamingLineModel.Bullet -> "\u2022 ${plainRendererInlineText(model.text)}".trim()
+            is StreamingLineModel.Numbered -> "${model.number}. ${plainRendererInlineText(model.text)}".trim()
+            is StreamingLineModel.Quote -> plainRendererInlineText(model.text)
+            is StreamingLineModel.Table -> model.table.toPlainCopyText()
+            is StreamingLineModel.Paragraph -> plainRendererInlineText(model.text)
+        }
+    }
+        .replace(Regex("\n{3,}"), "\n\n")
+        .trim('\n', '\r', ' ')
+}
+
+internal fun buildRendererStructureStats(content: String): RendererStructureStats {
+    val blockState = splitStreamingBlockState(content)
+    val models = buildList {
+        addAll(blockState.completedBlocks.map(::classifyStreamingLine))
+        blockState.activeBlock?.let { add(classifyActiveStreamingLine(it)) }
+    }.filterNot { it is StreamingLineModel.Blank }
+    var previous: StreamingLineModel? = null
+    var dividerHeadingCount = 0
+    models.forEach { model ->
+        if (shouldShowStreamingSectionDivider(previous, model)) {
+            dividerHeadingCount += 1
+        }
+        previous = model
+    }
+    return RendererStructureStats(
+        blockCount = models.size,
+        headingCount = models.count { it is StreamingLineModel.Heading },
+        tableCount = models.count { it is StreamingLineModel.Table },
+        bulletCount = models.count { it is StreamingLineModel.Bullet },
+        numberedCount = models.count { it is StreamingLineModel.Numbered },
+        dividerHeadingCount = dividerHeadingCount
+    )
+}
+
+private fun plainRendererInlineText(text: String): String =
+    buildRendererInlineAnnotatedString(
+        text = text,
+        mode = RendererInlineMode.Settled,
+        linksEnabled = false
+    ).text.trim()
 
 private fun parseRendererStandaloneBoldHeading(line: String): String? {
     val trimmed = line.trim()
@@ -1807,7 +1873,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
             is StreamingLineModel.Heading -> {
                 val headingStyle = remember(model.level) { assistantStreamingHeadingTextStyle(model.level) }
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-                    if (showLeadingSectionDivider && model.level <= 2) RendererMarkdownSectionDividerImpl()
+                    if (showLeadingSectionDivider) RendererMarkdownSectionDividerImpl()
                     RendererStreamingActiveTextImpl(
                         text = model.text,
                         modifier = Modifier.fillMaxWidth(),
