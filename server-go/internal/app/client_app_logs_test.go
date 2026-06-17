@@ -204,6 +204,23 @@ func TestNormalizeClientAppLogPayloadSanitizesSensitiveMessage(t *testing.T) {
 	}
 }
 
+func TestNormalizeClientAppLogPayloadSanitizesSensitiveMetadata(t *testing.T) {
+	input, validationError := normalizeClientAppLogPayload("user-1", "1.2.*.*", clientAppLogRequest{
+		Level:          "error",
+		Event:          "app.startup",
+		Message:        "safe",
+		AppVersionName: "Bearer token abc",
+		OSVersion:      "https://api.example.com/path",
+		DeviceModel:    "Phone 13800138000",
+	}, 123)
+	if validationError != "" {
+		t.Fatalf("unexpected validation error: %s", validationError)
+	}
+	if input.AppVersionName != "" || input.OSVersion != "" || input.DeviceModel != "" {
+		t.Fatalf("sensitive metadata leaked: %#v", input)
+	}
+}
+
 func TestNormalizeClientAppLogPayloadRejectsInvalidPayload(t *testing.T) {
 	tests := []struct {
 		name string

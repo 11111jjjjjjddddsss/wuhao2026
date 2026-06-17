@@ -277,10 +277,12 @@ func TestProcessSessionSummariesKeepsPendingOnTimeout(t *testing.T) {
 		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	snapshot := &SessionSnapshot{
-		UserID:         "u1",
-		PendingMemory:  true,
-		MemoryDocument: "短期承接：旧短期",
-		RoundTotal:     6,
+		UserID:            "u1",
+		PendingMemory:     true,
+		MemoryDocument:    "短期承接：旧短期",
+		RoundTotal:        6,
+		UpdatedAt:         1700000000000,
+		SessionGeneration: 1,
 		ARoundsFull: []SessionRound{
 			{User: "番茄叶片发黄", Assistant: "先看新叶老叶差异"},
 		},
@@ -307,7 +309,7 @@ type summaryFakeStore struct {
 	pendingValue bool
 }
 
-func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int) (bool, error) {
+func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.writeCalls++
@@ -317,12 +319,12 @@ func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context,
 	return true, nil
 }
 
-func (s *summaryFakeStore) SetUserMemoryPending(ctx context.Context, userID string, pending bool) error {
+func (s *summaryFakeStore) SetUserMemoryPendingIfCurrent(ctx context.Context, userID string, pending bool, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pendingSet = true
 	s.pendingValue = pending
-	return nil
+	return true, nil
 }
 
 func TestProcessSessionSummariesKeepsPendingWhenSnapshotStale(t *testing.T) {
@@ -343,10 +345,12 @@ func TestProcessSessionSummariesKeepsPendingWhenSnapshotStale(t *testing.T) {
 		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
 	}
 	snapshot := &SessionSnapshot{
-		UserID:         "u1",
-		PendingMemory:  true,
-		MemoryDocument: "短期承接：旧短期",
-		RoundTotal:     6,
+		UserID:            "u1",
+		PendingMemory:     true,
+		MemoryDocument:    "短期承接：旧短期",
+		RoundTotal:        6,
+		UpdatedAt:         1700000000000,
+		SessionGeneration: 1,
 		ARoundsFull: []SessionRound{
 			{User: "番茄叶片发黄", Assistant: "先看新叶老叶差异"},
 		},

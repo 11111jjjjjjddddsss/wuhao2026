@@ -315,6 +315,7 @@ internal fun HamburgerMenuSheet(
     var cachedTodayAgriHistoryCards by remember(userId) { mutableStateOf<List<SessionApi.TodayAgriCard>>(emptyList()) }
     var supportAttachmentMenuVisible by remember(visible) { mutableStateOf(false) }
     var supportAttachmentCloseRequest by remember(visible) { mutableStateOf(0) }
+    var supportFeedbackSending by remember(visible) { mutableStateOf(false) }
     var mainLogoutDialogVisible by rememberSaveable(visible) { mutableStateOf(false) }
     var mainLogoutSubmitting by remember(visible) { mutableStateOf(false) }
     var updateChecking by remember(userId) { mutableStateOf(false) }
@@ -364,7 +365,6 @@ internal fun HamburgerMenuSheet(
                     val latestVersionCode = info.latestVersionCode ?: 0
                     val shouldAutoPrompt =
                         userTriggered ||
-                            info.forceUpdate == true ||
                             latestVersionCode <= 0 ||
                             latestVersionCode > context.loadLastPromptedUpdateVersionCode()
                     if (shouldAutoPrompt) {
@@ -528,6 +528,10 @@ internal fun HamburgerMenuSheet(
         }
     }
     fun handleBackClick() {
+        if (page == HamburgerMenuPage.Support && supportFeedbackSending) {
+            showNotice("正在发送，请稍后")
+            return
+        }
         if (page == HamburgerMenuPage.Support && supportAttachmentMenuVisible) {
             supportAttachmentCloseRequest += 1
             return
@@ -743,6 +747,9 @@ internal fun HamburgerMenuSheet(
                                 onMessagesChanged = { messages ->
                                     cachedSupportMessages = messages
                                 },
+                                onSendingChanged = { sending ->
+                                    supportFeedbackSending = sending
+                                },
                                 onAttachmentMenuVisibilityChanged = { visible ->
                                     supportAttachmentMenuVisible = visible
                                 }
@@ -869,6 +876,7 @@ internal fun HamburgerMenuSheet(
         HamburgerAppUpdateDialog(
             update = info,
             downloading = updateDownloading,
+            installPermissionPending = pendingInstallPermissionUpdate != null,
             onDismiss = {
                 if (!updateDownloading) {
                     info.latestVersionCode
@@ -889,6 +897,7 @@ internal fun HamburgerMenuSheet(
 private fun HamburgerAppUpdateDialog(
     update: SessionApi.AppUpdateInfo,
     downloading: Boolean,
+    installPermissionPending: Boolean,
     onDismiss: () -> Unit,
     onInstall: () -> Unit
 ) {
@@ -923,6 +932,7 @@ private fun HamburgerAppUpdateDialog(
                 notes = notes,
                 forceUpdate = forceUpdate,
                 downloading = downloading,
+                installPermissionPending = installPermissionPending,
                 onDismiss = onDismiss,
                 onInstall = onInstall,
                 modifier = Modifier.widthIn(max = 340.dp)
@@ -938,6 +948,7 @@ private fun HamburgerAppUpdateCard(
     notes: String,
     forceUpdate: Boolean,
     downloading: Boolean,
+    installPermissionPending: Boolean,
     onDismiss: () -> Unit,
     onInstall: () -> Unit,
     modifier: Modifier = Modifier
@@ -976,6 +987,13 @@ private fun HamburgerAppUpdateCard(
             if (downloading) {
                 Text(
                     text = "正在准备安装包，请稍候。",
+                    color = Color(0xFF6D7178),
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            } else if (installPermissionPending) {
+                Text(
+                    text = "还需要允许本 App 安装更新包。授权后返回本页，会自动继续；也可以稍后再更新。",
                     color = Color(0xFF6D7178),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -1047,7 +1065,8 @@ private fun HamburgerAppUpdateCard(
 
 @Composable
 internal fun HamburgerAppUpdateDialogPreview(
-    downloading: Boolean = false
+    downloading: Boolean = false,
+    installPermissionPending: Boolean = false
 ) {
     HamburgerAppUpdateCard(
         versionText = "版本 1.0.1 (2)",
@@ -1055,6 +1074,7 @@ internal fun HamburgerAppUpdateDialogPreview(
         notes = "修复已知问题，优化使用体验。",
         forceUpdate = false,
         downloading = downloading,
+        installPermissionPending = installPermissionPending,
         onDismiss = {},
         onInstall = {},
         modifier = Modifier
@@ -1282,14 +1302,12 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Membership,
                 title = "会员中心",
-                showChevron = false,
                 onClick = onOpenMembership
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Account,
                 title = "账号管理",
-                showChevron = false,
                 onClick = onOpenAccount
             )
         }
@@ -1299,14 +1317,12 @@ private fun HamburgerMenuMainPage(
                 icon = HamburgerMenuIcon.Feedback,
                 title = "帮助与反馈",
                 showBadge = supportUnread,
-                showChevron = false,
                 onClick = onOpenSupport
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.TodayAgri,
                 title = "今日农情",
-                showChevron = false,
                 onClick = onOpenTodayAgri
             )
             HamburgerMenuDivider()
@@ -1320,14 +1336,12 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Redeem,
                 title = "礼品卡",
-                showChevron = false,
                 onClick = onOpenRedeem
             )
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
                 title = "协议与隐私",
-                showChevron = false,
                 onClick = onOpenLegalHub
             )
         }
@@ -1448,8 +1462,7 @@ private fun HamburgerLegalHubRow(
             fontSize = 17.sp,
             lineHeight = 23.sp,
             fontWeight = FontWeight.Normal,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            maxLines = 2,
             modifier = Modifier.weight(1f)
         )
         HamburgerChevronIcon(
@@ -1506,25 +1519,25 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "三、您提交的内容与账号权益",
-                body = "您提交的文字、图片、反馈和补充材料仍归您或原权利人所有。为提供问答、图片分析、历史展示、失败重试、客服处理、权益核对和安全保障，我们会在必要范围内处理相关内容。请确保您有权提交这些内容，并尽量只上传与农业问题相关的材料；不要上传身份证件、银行卡、完整人脸、他人隐私、商业秘密、违法侵权或明显无关的内容。"
+                body = "您提交的文字、图片、反馈和补充材料仍归您或原权利人所有。为提供问答、图片分析、历史展示、失败重试、客服处理、权益核对和安全保障，我们会在必要范围内处理相关内容。请确认您有权提交这些内容，并尽量只上传与农业问题相关的材料；涉及身份证件、银行卡、完整人脸、他人隐私、商业秘密、违法侵权或明显无关内容时，请先自行遮挡或避免提交。"
             ),
             HamburgerLegalSection(
                 title = "四、会员、支付、加油包和礼品卡",
-                body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、平台记录、支付渠道结果、兑换结果和法律规定为准。您购买付费服务时，应通过 App 页面支持的微信支付、支付宝等官方渠道完成；未展示可购买状态的入口不会发起真实扣费。礼品卡兑换属于权益发放方式，不等同于支付订单、退款或对账凭证。请不要相信 App 外私下收款、代充、代兑换或非官方客服承诺。"
+                body = "会员套餐、每日次数、加油包、升级补偿、优惠、礼品卡、订单、退款和权益生效规则，以 App 页面、平台记录、支付渠道结果、兑换结果和法律规定为准。您购买付费服务时，应通过 App 页面支持的微信支付、支付宝等官方渠道完成；未展示可购买状态的入口不会发起真实扣费。礼品卡兑换属于权益发放方式，不等同于支付订单、退款或对账凭证。涉及 App 外私下收款、代充、代兑换或非官方客服承诺时，请谨慎核实。"
             ),
             HamburgerLegalSection(
                 title = "五、农资信息和交易边界",
                 body = "本服务可能展示农资标签解读、登记信息查询路径、使用注意事项、价格或市场信息整理等内容。相关信息仅供参考，不构成购买建议、效果保证或质量承诺。若后续页面提供农资商品、交易或售后服务，商品信息、适用范围、发票、物流、退款、售后和责任承担，以页面说明、商家规则、商品标签、订单记录和法律规定为准。"
             ),
             HamburgerLegalSection(
-                title = "六、禁止行为、责任和协议更新",
-                body = "请不要上传违法、侵权、虚假、有害、无关、侵犯隐私或商业秘密的内容；不要冒充官方、专家、平台人员或他人，不传播虚假农情，不诱导错误用药用肥或违规经营；不要攻击接口、爬虫抓取、刷量、绕过额度、逆向工程、批量撞库礼品卡、转售账号权益或恶意消耗服务资源。我们可能根据产品、法律法规或运营需要更新本协议，重要变化会以 App 内页面、弹窗或其他合理方式提示；您不同意相关变更的，可以停止使用对应服务。如有问题可通过邮箱 nongjiqiancha@foxmail.com 联系我们。"
+                title = "六、使用规范、责任和协议更新",
+                body = "请您在合法、真实、合理的范围内使用本服务。为保障平台和其他用户的正常使用，请勿提交违法侵权、侵犯隐私、商业秘密或与农业服务明显无关的内容；请勿冒充他人，或以不当方式影响平台运行、绕过额度规则、批量测试礼品卡、转让账号权益。我们可能根据产品功能、法律法规或运营需要更新本协议，重要变化会通过 App 内页面、弹窗或其他合理方式提示。如您对协议内容有疑问，可通过邮箱 nongjiqiancha@foxmail.com 联系我们。"
             )
         )
     }
     HamburgerLegalTextPage(
         title = "服务协议",
-        meta = "更新日期：2026年6月17日\n生效日期：2026年6月17日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+        meta = "更新日期：2026年6月18日\n生效日期：2026年6月18日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
         sections = sections,
         modifier = modifier,
     )
@@ -1590,7 +1603,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年6月17日\n生效日期：2026年6月17日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+            text = "更新日期：2026年6月18日\n生效日期：2026年6月18日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1617,7 +1630,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "六、帮助与反馈",
-            body = "帮助与反馈会处理您提交的文字、图片、客服回复、已读状态、发送时间和必要用户标识，用于站内沟通、问题排查、权益核对和服务处理。请不要在反馈中提交与问题无关的身份证件、银行卡、完整人脸、联系方式、他人隐私或商业秘密。"
+            body = "帮助与反馈会处理您提交的文字、图片、客服回复、已读状态、发送时间和必要用户标识，用于站内沟通、问题排查、权益核对和服务处理。请尽量避免在反馈中提交与问题无关的身份证件、银行卡、完整人脸、联系方式、他人隐私或商业秘密。"
         )
         HamburgerAgreementSection(
             title = "七、当前权限说明",
@@ -1641,7 +1654,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "十二、您的权利",
-            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。“删除历史对话”用于删除问诊聊天历史和相关记忆，不等于完整账号注销，也不会删除会员、礼品卡和反馈记录；账号注销为申请处理流程，我们会在收到有效申请后 15 个工作日内完成账号注销，并删除或匿名化相关个人信息，法律法规另有规定或确有必要用于交易核验、安全风控、争议处理的除外。"
+            body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。我们会在核验身份并确认合法可行后处理；撤回授权、删除信息或注销账号可能影响相关功能。“删除历史对话”用于删除问诊聊天历史和长期记忆，不等于完整账号注销，也不会删除会员、礼品卡和反馈记录；账号注销为申请处理流程，我们会在收到有效申请后 15 个工作日内完成账号注销，并删除或匿名化相关个人信息，法律法规另有规定或确有必要用于交易核验、安全风控、争议处理的除外。"
         )
         HamburgerAgreementSection(
             title = "十三、未成年人和敏感信息",
@@ -1681,13 +1694,13 @@ private fun HamburgerRiskNoticeContent(
     ) {
         HamburgerLegalPageTitle("风险提示")
         Text(
-            text = "更新日期：2026年6月17日\n生效日期：2026年6月17日",
+            text = "更新日期：2026年6月18日\n生效日期：2026年6月18日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
         )
         Text(
-            text = "农技千查提供农业技术参考，不能替代现场诊断、官方认定、检测结论、商品质量承诺或线下专业服务。涉及用药用肥、农资购买、重大损失、赔付争议或安全风险，请先线下复核。",
+            text = "农技千查提供农业技术参考，不能替代现场诊断、官方认定、检测结论、商品质量承诺或线下专业服务。涉及用药用肥、农资购买、重大损失、赔付争议或安全风险，建议结合线下情况复核。",
             color = Color(0xFF30343A),
             fontSize = 14.5.sp,
             lineHeight = 23.sp
@@ -1698,11 +1711,11 @@ private fun HamburgerRiskNoticeContent(
         )
         HamburgerAgreementSection(
             title = "二、图片不等于现场",
-            body = "图片只反映拍摄瞬间和局部。病斑、叶背、根系、果实、虫体、整株和田间环境没拍清时，不要只凭图片做大面积用药、毁苗、停水停肥、索赔或投诉。"
+            body = "图片只反映拍摄瞬间和局部。病斑、叶背、根系、果实、虫体、整株和田间环境没有拍清时，不建议仅凭图片直接做大面积用药、毁苗、停水停肥、索赔或投诉等决定。"
         )
         HamburgerAgreementSection(
             title = "三、药肥农资看标签",
-            body = "涉及农药、肥料、调节剂、种子、基质、设备等农资，请以产品标签、登记信息、质量证明、当地法规、安全间隔期和线下农技人员意见为准。不要仅凭 AI 建议超范围、超剂量、混配或在不适宜天气下使用；购买农资时请核对经营主体、商品资质、适用作物、售后规则和发票凭证。"
+            body = "涉及农药、肥料、调节剂、种子、基质、设备等农资，请以产品标签、登记信息、质量证明、当地法规、安全间隔期和线下农技人员意见为准。不建议仅凭 AI 建议超范围、超剂量、混配或在不适宜天气下使用；购买农资时请核对经营主体、商品资质、适用作物、售后规则和发票凭证。"
         )
         HamburgerAgreementSection(
             title = "四、官方和时效信息以最新发布为准",
@@ -1710,15 +1723,15 @@ private fun HamburgerRiskNoticeContent(
         )
         HamburgerAgreementSection(
             title = "五、交易和权益风险",
-            body = "会员、加油包、礼品卡、支付、农资交易或售后服务的权益，以 App 页面、平台记录、订单记录、支付渠道结果、商品标签和商家规则为准。请不要相信 App 外私下收款、代充、代兑换、非官方客服或承诺包治包赔的信息。"
+            body = "会员、加油包、礼品卡、支付、农资交易或售后服务的权益，以 App 页面、平台记录、订单记录、支付渠道结果、商品标签和商家规则为准。涉及 App 外私下收款、代充、代兑换、非官方客服或包治包赔承诺时，请谨慎核实。"
         )
         HamburgerAgreementSection(
             title = "六、未成年人需监护",
-            body = "未成年人应在监护人指导下使用。不要上传未成年人照片、身份信息、联系方式或其他无关敏感内容；未满十四周岁提交个人信息应取得监护人同意。"
+            body = "未成年人应在监护人指导下使用。请尽量避免上传未成年人照片、身份信息、联系方式或其他无关敏感内容；未满十四周岁提交个人信息应取得监护人同意。"
         )
         HamburgerAgreementSection(
             title = "七、紧急情况别等 AI",
-            body = "发生大面积突发病害、药害、灾害、食品安全、人身安全或重大财产风险时，请立即联系当地农业农村部门、植保站、应急或监管机构以及线下专业人员，不要等待 AI 回复。"
+            body = "发生大面积突发病害、药害、灾害、食品安全、人身安全或重大财产风险时，请优先联系当地农业农村部门、植保站、应急或监管机构以及线下专业人员。AI 回复仅作辅助参考，请以现场专业处理为先。"
         )
     }
 }
@@ -1732,10 +1745,11 @@ private fun HamburgerLegalPageTitle(text: String) {
         lineHeight = 28.sp,
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
+        maxLines = 2,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .padding(top = 14.dp)
+            .padding(start = 76.dp, end = 76.dp, top = 14.dp)
     )
 }
 
@@ -1778,7 +1792,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年6月17日",
+            text = "更新日期：2026年6月18日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1849,7 +1863,7 @@ private fun HamburgerPersonalInfoListContent(
     ) {
         HamburgerLegalPageTitle("个人信息收集清单")
         Text(
-            text = "更新日期：2026年6月17日",
+            text = "更新日期：2026年6月18日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1916,7 +1930,7 @@ private fun HamburgerPermissionListContent(
     ) {
         HamburgerLegalPageTitle("应用权限")
         Text(
-            text = "更新日期：2026年6月17日",
+            text = "更新日期：2026年6月18日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1942,7 +1956,7 @@ private fun HamburgerPermissionListContent(
             body = "当前照片入口使用系统照片选择器，只访问您本次主动选择的图片；拍照入口调用系统或外部相机，并仅为本次拍摄提供必要的临时写入授权，不申请 App 相机权限。Android 10 及以上系统，拍照成功后会把原始照片另存到系统相册 Pictures/农技千查。"
         )
         HamburgerAgreementSection(
-            title = "六、当前不申请的权限",
+            title = "六、定位和未申请权限",
             body = "本版本会在问诊需要时申请定位权限，用于地区上下文校准；不上传经纬度，不保存轨迹，不用于地图、广告或推送。当前不申请相册 / 存储读写权限、录音、通讯录、短信、电话状态或通知权限；也不做 App 外推送通知。"
         )
     }
@@ -2084,33 +2098,29 @@ internal fun HamburgerMenuShellPreview(userId: String) {
 @Composable
 private fun HamburgerMenuPreviewGroups() {
     HamburgerMenuGroup {
-        HamburgerMenuRow(
-            icon = HamburgerMenuIcon.Membership,
-            title = "会员中心",
-            showChevron = false,
-            onClick = {}
-        )
-        HamburgerMenuDivider()
-        HamburgerMenuRow(
-            icon = HamburgerMenuIcon.Account,
-            title = "账号管理",
-            showChevron = false,
-            onClick = {}
-        )
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Membership,
+                title = "会员中心",
+                onClick = {}
+            )
+            HamburgerMenuDivider()
+            HamburgerMenuRow(
+                icon = HamburgerMenuIcon.Account,
+                title = "账号管理",
+                onClick = {}
+            )
     }
     HamburgerMenuGroup {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Feedback,
             title = "帮助与反馈",
             showBadge = true,
-            showChevron = false,
             onClick = {}
         )
         HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.TodayAgri,
             title = "今日农情",
-            showChevron = false,
             onClick = {}
         )
         HamburgerMenuDivider()
@@ -2124,14 +2134,12 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Redeem,
             title = "礼品卡",
-            showChevron = false,
             onClick = {}
         )
         HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
             title = "协议与隐私",
-            showChevron = false,
             onClick = {}
         )
     }
@@ -2410,9 +2418,7 @@ private fun HamburgerTodayAgriHistoryPage(
         SessionApi.getRecentTodayAgriCards { loaded ->
             loading = false
             if (loaded == null) {
-                if (cards.isEmpty()) {
-                    loadFailed = true
-                }
+                loadFailed = true
                 onPendingAction("农情同步失败")
                 return@getRecentTodayAgriCards
             }
@@ -2475,12 +2481,15 @@ private fun HamburgerTodayAgriHistoryContent(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(top = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
+                if (loadFailed) {
+                    HamburgerSupportStatusText(text = "当前显示上次同步内容，稍后可重试")
+                }
                 cards.forEachIndexed { index, card ->
                     HamburgerTodayAgriHistoryDaySection(
                         card = card,
-                        topPadding = if (index > 0) 2.dp else 0.dp
+                        topPadding = if (index > 0) 1.dp else 0.dp
                     )
                 }
             }
@@ -2546,16 +2555,8 @@ private fun HamburgerTodayAgriHistoryDaySection(
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = topPadding),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(0.dp)
     ) {
-        Text(
-            text = dateText,
-            color = Color(0xFF6F747C),
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.padding(start = 2.dp)
-        )
         Surface(
             color = Color.White,
             shape = RoundedCornerShape(14.dp),
@@ -2564,6 +2565,7 @@ private fun HamburgerTodayAgriHistoryDaySection(
         ) {
             HamburgerTodayAgriHistoryCard(
                 card = card,
+                dateText = dateText,
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)
             )
         }
@@ -2601,7 +2603,7 @@ private fun HamburgerTodayAgriEmptyState() {
             textAlign = TextAlign.Center
         )
         Text(
-            text = "生成成功后会在这里留存",
+            text = "有可用简报后会在这里留存",
             color = Color(0xFF858A91),
             fontSize = 12.sp,
             lineHeight = 17.sp,
@@ -2613,19 +2615,30 @@ private fun HamburgerTodayAgriEmptyState() {
 @Composable
 private fun HamburgerTodayAgriHistoryCard(
     card: SessionApi.TodayAgriCard,
+    dateText: String,
     modifier: Modifier = Modifier
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "今日农情",
-            color = Color(0xFF111111),
-            fontSize = 17.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = dateText,
+                color = Color(0xFF7C8188),
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = "今日农情",
+                color = Color(0xFF111111),
+                fontSize = 17.sp,
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE8EAEE))
         card.items.orEmpty().take(3).forEachIndexed { index, item ->
             HamburgerTodayAgriHistoryItem(item = item, index = index)
         }
@@ -2689,6 +2702,7 @@ private fun HamburgerSupportFeedbackPage(
     onPendingAction: (String) -> Unit,
     onConversationChanged: () -> Unit,
     onMessagesChanged: (List<SessionApi.SupportMessage>) -> Unit = {},
+    onSendingChanged: (Boolean) -> Unit = {},
     onAttachmentMenuVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -2708,8 +2722,13 @@ private fun HamburgerSupportFeedbackPage(
     var pendingCameraImageGalleryBacked by rememberSaveable { mutableStateOf(false) }
     var pendingCameraImageTemporaryFilePath by rememberSaveable { mutableStateOf<String?>(null) }
 
+    LaunchedEffect(sending) {
+        onSendingChanged(sending)
+    }
+
     DisposableEffect(Unit) {
         onDispose {
+            onSendingChanged(false)
             val contextForCleanup = context.applicationContext
             val imagesForCleanup = selectedImages.toList()
             val pendingCameraUri = pendingCameraImageUriString
@@ -3103,6 +3122,8 @@ private fun HamburgerSupportFeedbackPage(
                     if (shouldShowAttachmentMenu) {
                         focusManager.clearFocus(force = true)
                     }
+                } else {
+                    onPendingAction("正在发送，请稍后")
                 }
             },
             onRemoveImage = { image ->
@@ -3111,6 +3132,8 @@ private fun HamburgerSupportFeedbackPage(
                     scope.launch(Dispatchers.IO) {
                         context.deleteComposerImageAttachment(image)
                     }
+                } else {
+                    onPendingAction("正在发送，请稍后")
                 }
             },
             onSend = ::sendMessage,
@@ -3148,7 +3171,9 @@ private fun HamburgerSupportFeedbackContent(
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val listState = rememberLazyListState()
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = messages.lastIndex.coerceAtLeast(0)
+    )
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val actionCircleSize = if (screenWidth < 360.dp) 44.dp else 48.dp
     val addIconSize = if (screenWidth < 360.dp) 26.dp else 28.dp
@@ -3157,13 +3182,16 @@ private fun HamburgerSupportFeedbackContent(
     val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
     var inputFocused by remember { mutableStateOf(false) }
     var previousMessageCount by remember { mutableStateOf(messages.size) }
+    var didInitialMessageScroll by remember { mutableStateOf(messages.isNotEmpty()) }
 
     LaunchedEffect(messages.size, loading, loadFailed) {
         val oldCount = previousMessageCount
         val nearBottom = oldCount <= 1 ||
             listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= oldCount - 2 } != false
+        val shouldInitialScroll = !didInitialMessageScroll && messages.isNotEmpty()
         previousMessageCount = messages.size
         val shouldAutoScroll = when {
+            shouldInitialScroll -> true
             loading || loadFailed || messages.isEmpty() -> false
             oldCount == 0 -> true
             messages.size > oldCount && nearBottom -> true
@@ -3171,10 +3199,13 @@ private fun HamburgerSupportFeedbackContent(
         }
         if (shouldAutoScroll) {
             delay(80)
-            if (oldCount == 0) {
+            if (shouldInitialScroll || oldCount == 0) {
                 listState.scrollToItem(messages.lastIndex)
             } else {
                 listState.animateScrollToItem(messages.lastIndex)
+            }
+            if (shouldInitialScroll) {
+                didInitialMessageScroll = true
             }
         }
     }
@@ -3239,7 +3270,7 @@ private fun HamburgerSupportFeedbackContent(
                     }
                     loading -> {
                         item(key = "loading") {
-                            HamburgerSupportStatusText(text = "正在同步消息...")
+                            HamburgerSupportStatusText(text = "正在读取反馈记录...")
                         }
                     }
                     loadFailed -> {
@@ -3248,7 +3279,7 @@ private fun HamburgerSupportFeedbackContent(
                                 horizontalAlignment = Alignment.CenterHorizontally,
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                HamburgerSupportStatusText(text = "消息同步失败")
+                                HamburgerSupportStatusText(text = "反馈记录加载失败")
                                 Surface(
                                     color = Color.White,
                                     shape = RoundedCornerShape(999.dp),
@@ -3915,7 +3946,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "将删除当前账号的历史对话，并清除用于承接对话的记忆；会员、礼品卡和反馈记录不受影响。",
+                text = "将删除当前账号历史对话，并清除长期记忆。会员礼品卡反馈记录不受影响。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -4165,7 +4196,7 @@ private fun HamburgerAccountDeletionConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "提交后会退出当前账号。后台核验后，会在 15 个工作日内按规则处理账号和相关记录。",
+                text = "提交后会退出当前账号。工作人员核验后，会在 15 个工作日内按规则处理账号和相关记录。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -4386,6 +4417,14 @@ private fun HamburgerRedeemCodeContent(
                         lineHeight = 20.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
+                    )
+                    Text(
+                        text = "礼品卡一般由活动或客服发放，兑换不会扣费，成功后权益立即生效。",
+                        color = Color(0xFF6D7178),
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
                     )
                     Surface(
                         color = Color(0xFFFAFBFC),

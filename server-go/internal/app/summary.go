@@ -19,8 +19,8 @@ import (
 )
 
 type summaryStore interface {
-	WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int) (bool, error)
-	SetUserMemoryPending(ctx context.Context, userID string, pending bool) error
+	WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error)
+	SetUserMemoryPendingIfCurrent(ctx context.Context, userID string, pending bool, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error)
 }
 
 type SummaryService struct {
@@ -110,7 +110,14 @@ func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *Sessio
 		return
 	}
 
-	written, err := s.store.WriteUserMemoryDocumentIfCurrent(ctx, userID, nextMemory.MemoryDocument, snapshot.RoundTotal)
+	written, err := s.store.WriteUserMemoryDocumentIfCurrent(
+		ctx,
+		userID,
+		nextMemory.MemoryDocument,
+		snapshot.RoundTotal,
+		snapshot.UpdatedAt,
+		snapshot.SessionGeneration,
+	)
 	if err != nil {
 		s.keepPending(ctx, userID, snapshot)
 		s.log().Error("write memory document failed", "userId", userID, "error", err)
@@ -194,7 +201,21 @@ func (s *SummaryService) keepPending(ctx context.Context, userID string, snapsho
 		return
 	}
 	if snapshot.PendingMemory {
-		_ = s.store.SetUserMemoryPending(ctx, userID, true)
+		written, err := s.store.SetUserMemoryPendingIfCurrent(
+			ctx,
+			userID,
+			true,
+			snapshot.RoundTotal,
+			snapshot.UpdatedAt,
+			snapshot.SessionGeneration,
+		)
+		if err != nil {
+			s.log().Warn("keep memory pending failed", "userId", userID, "error", err)
+			return
+		}
+		if !written {
+			s.log().Info("keep memory pending skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
+		}
 	}
 }
 

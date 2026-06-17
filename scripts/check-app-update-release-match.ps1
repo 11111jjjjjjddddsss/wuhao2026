@@ -86,6 +86,44 @@ function Save-HttpDownload {
     }
 }
 
+function Test-AllowedReleaseApkUri {
+    param(
+        [System.Uri]$Uri,
+        [string]$Label
+    )
+    if ($null -eq $Uri -or $Uri.Scheme -ne "https") {
+        Add-Failure $failures "$Label URL must be absolute https"
+        return
+    }
+    if ($Uri.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
+        Add-Failure $failures "$Label URL host must be download.nongjiqiancha.cn"
+    }
+    $path = $Uri.AbsolutePath.ToLowerInvariant()
+    if (-not $path.StartsWith("/android/releases/")) {
+        Add-Failure $failures "$Label URL path should stay under /android/releases/"
+    }
+    if (-not $path.EndsWith(".apk")) {
+        Add-Failure $failures "$Label URL path should end with .apk"
+    }
+    if ($path.Contains("..")) {
+        Add-Failure $failures "$Label URL path must not contain parent traversal"
+    }
+    $signedQueryKeys = @("expires", "signature", "ossaccesskeyid", "security-token", "x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token")
+    foreach ($key in $Uri.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $queryKey = ($key -split "=", 2)[0].ToLowerInvariant()
+        try {
+            $queryKey = [System.Uri]::UnescapeDataString($queryKey).ToLowerInvariant()
+        } catch {
+            Add-Failure $failures "$Label URL query contains invalid percent-encoding"
+            break
+        }
+        if ($signedQueryKeys -contains $queryKey) {
+            Add-Failure $failures "$Label URL looks like a short-lived signed URL; configure a stable release URL or a backend on-demand signing flow"
+            break
+        }
+    }
+}
+
 function Join-AdminUrl {
     param([string]$Path)
     $base = $BaseUrl.TrimEnd("/")
@@ -272,12 +310,13 @@ $parsedApkUrl = $null
 if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
     Add-Failure $failures "admin APK URL is empty"
 } elseif (-not [System.Uri]::TryCreate($adminApkUrl, [System.UriKind]::Absolute, [ref]$parsedApkUrl) -or $parsedApkUrl.Scheme -ne "https") {
-    Add-Failure $failures "admin APK URL must be an absolute https URL"
+	Add-Failure $failures "admin APK URL must be an absolute https URL"
 } else {
-    Write-Host ("admin_apk_url_host={0}" -f $parsedApkUrl.Host)
-    if ($parsedApkUrl.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
-        Add-Failure $failures "admin APK URL host must be download.nongjiqiancha.cn"
-    }
+	Write-Host ("admin_apk_url_host={0}" -f $parsedApkUrl.Host)
+	Test-AllowedReleaseApkUri -Uri $parsedApkUrl -Label "admin APK"
+	if ($parsedApkUrl.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
+		Add-Failure $failures "admin APK URL host must be download.nongjiqiancha.cn"
+	}
     $apkUrlText = $adminApkUrl.ToLowerInvariant()
     try {
         $apkUrlText = $apkUrlText + " " + [System.Uri]::UnescapeDataString($parsedApkUrl.AbsolutePath).ToLowerInvariant()
@@ -291,6 +330,12 @@ if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
     $signedQueryKeys = @("expires", "signature", "ossaccesskeyid", "security-token", "x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token")
     foreach ($key in $parsedApkUrl.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
         $queryKey = ($key -split "=", 2)[0].ToLowerInvariant()
+        try {
+            $queryKey = [System.Uri]::UnescapeDataString($queryKey).ToLowerInvariant()
+        } catch {
+            Add-Failure $failures "admin APK URL query contains invalid percent-encoding"
+            break
+        }
         if ($signedQueryKeys -contains $queryKey) {
             Add-Failure $failures "admin APK URL looks like a short-lived signed URL; configure a stable release URL or a backend on-demand signing flow"
             break
@@ -313,11 +358,12 @@ if ($VerifyDownload -and $failures.Count -eq 0) {
         Write-Host "download_verify=started"
         $finalDownloadUrl = Save-HttpDownload -Url $adminApkUrl -OutFile $tempApk -TimeoutSeconds $TimeoutSec
         $parsedFinalDownloadUrl = $null
-        if (-not [System.Uri]::TryCreate($finalDownloadUrl, [System.UriKind]::Absolute, [ref]$parsedFinalDownloadUrl) -or $parsedFinalDownloadUrl.Scheme -ne "https") {
-            Add-Failure $failures "download final URL must remain https. final=$finalDownloadUrl"
-        } else {
-            Write-Host ("download_final_url_host={0}" -f $parsedFinalDownloadUrl.Host)
-        }
+		if (-not [System.Uri]::TryCreate($finalDownloadUrl, [System.UriKind]::Absolute, [ref]$parsedFinalDownloadUrl) -or $parsedFinalDownloadUrl.Scheme -ne "https") {
+			Add-Failure $failures "download final URL must remain https. final=$finalDownloadUrl"
+		} else {
+			Write-Host ("download_final_url_host={0}" -f $parsedFinalDownloadUrl.Host)
+			Test-AllowedReleaseApkUri -Uri $parsedFinalDownloadUrl -Label "download final"
+		}
         $downloadItem = Get-Item -LiteralPath $tempApk
         $downloadSha256 = Get-FileSha256Hex $tempApk
         Write-Host ("download_size_bytes={0}" -f $downloadItem.Length)

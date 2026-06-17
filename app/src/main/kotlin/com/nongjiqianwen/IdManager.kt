@@ -25,6 +25,8 @@ object IdManager {
     private fun prefs(): SharedPreferences? =
         appContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+    internal fun applicationContextOrNull(): Context? = appContext
+
     fun init(context: Context) {
         if (appContext == null) {
             appContext = context.applicationContext

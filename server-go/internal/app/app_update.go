@@ -2,12 +2,16 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const (
@@ -15,6 +19,7 @@ const (
 	maxAndroidAPKBytes               = int64(200 * 1024 * 1024)
 	officialAndroidAPKHost           = "download.nongjiqiancha.cn"
 	officialAndroidAPKPathPrefix     = "/android/releases/"
+	androidReleaseAPKVerifyTimeout   = 90 * time.Second
 )
 
 type AppUpdateInfo struct {
@@ -202,6 +207,54 @@ func androidUpdateDownloadArtifactsComplete(cfg androidUpdateConfig) bool {
 		cfg.FileSizeBytes <= maxAndroidAPKBytes
 }
 
+func verifyAndroidReleaseAPKDownload(ctx context.Context, cfg androidUpdateConfig) string {
+	return verifyAndroidReleaseAPKDownloadWithClient(ctx, cfg, &http.Client{Timeout: androidReleaseAPKVerifyTimeout})
+}
+
+func verifyAndroidReleaseAPKDownloadWithClient(ctx context.Context, cfg androidUpdateConfig, client *http.Client) string {
+	if !androidUpdateDownloadArtifactsComplete(cfg) {
+		return "missing_release_artifacts"
+	}
+	if client == nil {
+		client = &http.Client{Timeout: androidReleaseAPKVerifyTimeout}
+	}
+	ctx, cancel := context.WithTimeout(ctx, androidReleaseAPKVerifyTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(cfg.APKURL), nil)
+	if err != nil {
+		return "invalid_apk_url"
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "release_apk_unreachable"
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "release_apk_unavailable"
+	}
+	if resp.Request == nil || resp.Request.URL == nil || !isOfficialAndroidAPKURL(resp.Request.URL.String()) {
+		return "release_apk_redirect_invalid"
+	}
+	if resp.ContentLength > 0 && resp.ContentLength != cfg.FileSizeBytes {
+		return "release_apk_size_mismatch"
+	}
+	hasher := sha256.New()
+	written, err := io.Copy(hasher, io.LimitReader(resp.Body, cfg.FileSizeBytes+1))
+	if err != nil {
+		return "release_apk_unreachable"
+	}
+	if written != cfg.FileSizeBytes {
+		return "release_apk_size_mismatch"
+	}
+	if written > maxAndroidAPKBytes {
+		return "release_apk_too_large"
+	}
+	if got := fmt.Sprintf("%x", hasher.Sum(nil)); !strings.EqualFold(got, cfg.APKChecksumSHA256) {
+		return "release_apk_sha_mismatch"
+	}
+	return ""
+}
+
 func isOfficialAndroidAPKURL(raw string) bool {
 	if !isHTTPSURL(raw) {
 		return false
@@ -225,6 +278,9 @@ func isOfficialAndroidAPKURL(raw string) bool {
 			}
 		}
 		if decodedPath, pathErr := url.PathUnescape(parsed.EscapedPath()); pathErr == nil {
+			if strings.Contains(decodedPath, "..") {
+				return false
+			}
 			lower += " " + strings.ToLower(decodedPath)
 		}
 		if decodedRaw, rawErr := url.QueryUnescape(raw); rawErr == nil {

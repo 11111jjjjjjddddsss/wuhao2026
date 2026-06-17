@@ -19,6 +19,7 @@ MEMORY_FILES = {
 WATCHED_PREFIXES = (
     "admin/",
     "app/src/main/kotlin/com/nongjiqianwen/",
+    "gradle/",
     "site/",
     "server-go/",
     ".github/workflows/",
@@ -28,6 +29,11 @@ WATCHED_PREFIXES = (
 
 WATCHED_EXACT = {
     "README.md",
+    "build.gradle.kts",
+    "settings.gradle.kts",
+    "gradle.properties",
+    "gradlew",
+    "gradlew.bat",
     "app/AGENTS.md",
     "server-go/AGENTS.md",
 }
@@ -39,7 +45,9 @@ WATCHED_SCRIPT_EXACT = {
     "scripts/check-android-release-artifact.ps1",
     "scripts/check-app-update-release-match.ps1",
     "scripts/check-ecs-readiness.ps1",
+    "scripts/check-public-blackbox.ps1",
     "scripts/check-launch-readiness.ps1",
+    "scripts/check-admin-authenticated-smoke.ps1",
     "scripts/deploy-ecs-server.ps1",
     "scripts/rollback-ecs-server.ps1",
     "scripts/deploy-ecs-admin.ps1",
@@ -70,6 +78,7 @@ IGNORED_PREFIXES = (
 CURRENT_STATUS_PREFIXES = (
     "admin/",
     "app/src/main/kotlin/com/nongjiqianwen/",
+    "gradle/",
     "site/",
     "server-go/",
     ".github/workflows/",
@@ -83,7 +92,9 @@ CURRENT_STATUS_SCRIPT_EXACT = {
     "scripts/check-android-release-artifact.ps1",
     "scripts/check-app-update-release-match.ps1",
     "scripts/check-ecs-readiness.ps1",
+    "scripts/check-public-blackbox.ps1",
     "scripts/check-launch-readiness.ps1",
+    "scripts/check-admin-authenticated-smoke.ps1",
     "scripts/deploy-ecs-server.ps1",
     "scripts/rollback-ecs-server.ps1",
     "scripts/deploy-ecs-admin.ps1",

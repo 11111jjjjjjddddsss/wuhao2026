@@ -15,15 +15,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
@@ -62,12 +67,12 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.delay
 
 @Composable
@@ -108,7 +113,7 @@ private fun LoginScreen(
     var phone by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
     val context = LocalContext.current
-    var agreed by remember { mutableStateOf(false) }
+    var agreed by remember(context) { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableIntStateOf(0) }
@@ -238,8 +243,7 @@ private fun LoginScreen(
                         fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         letterSpacing = 0.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 2,
                         modifier = Modifier.widthIn(max = 240.dp)
                     )
                 }
@@ -330,10 +334,7 @@ private fun LoginScreen(
                             checked = agreed,
                             onCheckedChange = {
                                 agreed = it
-                                if (it) {
-                                    message = null
-                                    acceptAgreementIfNeeded()
-                                }
+                                if (it) message = null
                             },
                         )
                         Spacer(Modifier.size(7.dp))
@@ -487,59 +488,72 @@ private fun LoginLegalDialog(
     page: LoginLegalPage,
     onDismiss: () -> Unit
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            color = Color(0xFFFFFFFF),
-            shape = RoundedCornerShape(14.dp),
-            border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 620.dp)
+                .fillMaxSize()
+                .background(Color(0x66000000))
+                .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical))
+                .padding(horizontal = 22.dp, vertical = 18.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 8.dp)
-                ) {
-                    Text(
-                        text = if (page == LoginLegalPage.ServiceAgreement) "服务协议" else "隐私政策",
-                        color = Color(0xFF111111),
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        letterSpacing = 0.sp,
-                        modifier = Modifier.weight(1f)
-                    )
-                    TextButton(onClick = onDismiss) {
-                        Text("关闭", color = Color(0xFF111111), letterSpacing = 0.sp)
-                    }
-                }
-                HorizontalDivider(color = Color(0xFFE8EAEE))
-                when (page) {
-                    LoginLegalPage.ServiceAgreement -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 540.dp)
-                        ) {
-                            HamburgerServiceAgreementContent(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .padding(horizontal = 18.dp, vertical = 14.dp)
-                            )
+            Surface(
+                color = Color(0xFFFFFFFF),
+                shape = RoundedCornerShape(14.dp),
+                border = BorderStroke(0.8.dp, Color(0xFFE2E4E8)),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 360.dp)
+                    .heightIn(max = 620.dp)
+            ) {
+                Column {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 8.dp)
+                    ) {
+                        Text(
+                            text = if (page == LoginLegalPage.ServiceAgreement) "服务协议" else "隐私政策",
+                            color = Color(0xFF111111),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(onClick = onDismiss) {
+                            Text("关闭", color = Color(0xFF111111), letterSpacing = 0.sp)
                         }
                     }
-                    LoginLegalPage.PrivacyPolicy -> {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 540.dp)
-                                .verticalScroll(rememberScrollState())
-                        ) {
-                            HamburgerPrivacyPolicyContent(
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
-                            )
+                    HorizontalDivider(color = Color(0xFFE8EAEE))
+                    when (page) {
+                        LoginLegalPage.ServiceAgreement -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 540.dp)
+                            ) {
+                                HamburgerServiceAgreementContent(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 18.dp, vertical = 14.dp)
+                                )
+                            }
+                        }
+                        LoginLegalPage.PrivacyPolicy -> {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 540.dp)
+                                    .verticalScroll(rememberScrollState())
+                            ) {
+                                HamburgerPrivacyPolicyContent(
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp)
+                                )
+                            }
                         }
                     }
                 }

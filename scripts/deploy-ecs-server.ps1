@@ -257,6 +257,41 @@ active_service="nongji-server-`$active_port.service"
 inactive_service="nongji-server-`$inactive_port.service"
 echo "active_port=`$active_port inactive_port=`$inactive_port"
 cancel_stale_drains
+switch_completed=0
+installed_new_binary=0
+preinstall_bin_backup=''
+preinstall_assets_backup=''
+preinstall_migrations_backup=''
+preinstall_gomod_backup=''
+preinstall_gosum_backup=''
+
+restore_pre_switch_install() {
+  if [ "`$installed_new_binary" != "1" ] || [ "`$switch_completed" = "1" ]; then
+    return 0
+  fi
+  echo "restore pre-switch install after failed deploy" >&2
+  if [ -n "`$preinstall_bin_backup" ] && [ -f "`$preinstall_bin_backup" ]; then
+    cp -a "`$preinstall_bin_backup" "`$install_dir/nongji-server" || true
+  fi
+  if [ -n "`$preinstall_assets_backup" ] && [ -d "`$preinstall_assets_backup" ]; then
+    rm -rf "`$install_dir/assets"
+    cp -a "`$preinstall_assets_backup" "`$install_dir/assets" || true
+  fi
+  if [ -n "`$preinstall_migrations_backup" ] && [ -d "`$preinstall_migrations_backup" ]; then
+    rm -rf "`$install_dir/migrations"
+    cp -a "`$preinstall_migrations_backup" "`$install_dir/migrations" || true
+  fi
+  if [ -n "`$preinstall_gomod_backup" ] && [ -f "`$preinstall_gomod_backup" ]; then
+    cp -a "`$preinstall_gomod_backup" "`$install_dir/go.mod" || true
+  fi
+  if [ -n "`$preinstall_gosum_backup" ] && [ -f "`$preinstall_gosum_backup" ]; then
+    cp -a "`$preinstall_gosum_backup" "`$install_dir/go.sum" || true
+  fi
+  chown -R nongji:nongji "`$install_dir/nongji-server" "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" 2>/dev/null || true
+  systemctl stop "`$inactive_service" 2>/dev/null || true
+}
+
+trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_pre_switch_install; fi; exit "`$status"' EXIT
 
 echo reassemble
 rm -f "`$archive"
@@ -284,8 +319,26 @@ go build -buildvcs=false -o "`$bin_tmp" ./cmd/server
 
 echo install
 install -m 0755 -o nongji -g nongji "`$bin_tmp" "`$install_dir/nongji-server.new"
+install_backup_suffix=`$(date +%Y%m%d%H%M%S)
 if [ -f "`$install_dir/nongji-server" ]; then
-  cp -a "`$install_dir/nongji-server" "`$install_dir/nongji-server.bak-`$(date +%Y%m%d%H%M%S)"
+  preinstall_bin_backup="`$install_dir/nongji-server.bak-`$install_backup_suffix"
+  cp -a "`$install_dir/nongji-server" "`$preinstall_bin_backup"
+fi
+if [ -d "`$install_dir/assets" ]; then
+  preinstall_assets_backup="`$install_dir/assets.bak-`$install_backup_suffix"
+  cp -a "`$install_dir/assets" "`$preinstall_assets_backup"
+fi
+if [ -d "`$install_dir/migrations" ]; then
+  preinstall_migrations_backup="`$install_dir/migrations.bak-`$install_backup_suffix"
+  cp -a "`$install_dir/migrations" "`$preinstall_migrations_backup"
+fi
+if [ -f "`$install_dir/go.mod" ]; then
+  preinstall_gomod_backup="`$install_dir/go.mod.bak-`$install_backup_suffix"
+  cp -a "`$install_dir/go.mod" "`$preinstall_gomod_backup"
+fi
+if [ -f "`$install_dir/go.sum" ]; then
+  preinstall_gosum_backup="`$install_dir/go.sum.bak-`$install_backup_suffix"
+  cp -a "`$install_dir/go.sum" "`$preinstall_gosum_backup"
 fi
 mv "`$install_dir/nongji-server.new" "`$install_dir/nongji-server"
 rm -rf "`$install_dir/assets" "`$install_dir/migrations"
@@ -294,6 +347,7 @@ cp -a "`$stage/migrations" "`$install_dir/migrations"
 cp "`$stage/go.mod" "`$install_dir/go.mod"
 cp "`$stage/go.sum" "`$install_dir/go.sum"
 chown -R nongji:nongji "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum"
+installed_new_binary=1
 
 write_slot_unit() {
   port="`$1"
@@ -445,6 +499,7 @@ if [ "`$admin_status" != "401" ]; then
   exit 22
 fi
 
+switch_completed=1
 echo drain-old-slot
 systemctl enable "`$inactive_service" >/dev/null
 systemctl disable "`$active_service" >/dev/null 2>&1 || true

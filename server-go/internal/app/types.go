@@ -83,9 +83,10 @@ type SessionGenerationState struct {
 }
 
 type SessionRoundCompletion struct {
-	Completed   bool
-	CreatedAt   int64
-	RequestHash string
+	Completed      bool
+	ArchiveMissing bool
+	CreatedAt      int64
+	RequestHash    string
 }
 
 type AuthMode string

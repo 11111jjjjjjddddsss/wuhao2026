@@ -284,7 +284,7 @@ private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "权益同步失败，请检查网络后重试",
+                text = "会员信息刷新失败，请检查网络后重试",
                 color = Color(0xFF4E5661),
                 fontSize = 13.sp,
                 lineHeight = 18.sp,
@@ -296,7 +296,7 @@ private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
                 shape = RoundedCornerShape(999.dp),
                 border = BorderStroke(0.8.dp, Color(0xFFD9DDE3)),
                 modifier = Modifier
-                    .height(34.dp)
+                    .heightIn(min = 34.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -309,7 +309,7 @@ private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 12.dp)
                 ) {
                     Text(
-                        text = "重新同步",
+                        text = "重试",
                         color = Color(0xFF111111),
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
@@ -379,7 +379,7 @@ private fun MembershipPurchaseSuccessCard(
                     shape = RoundedCornerShape(999.dp),
                     modifier = Modifier
                         .width(168.dp)
-                        .height(40.dp)
+                        .heightIn(min = 40.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -558,11 +558,11 @@ private fun MembershipExtraCountPill(text: String) {
         shape = RoundedCornerShape(999.dp),
         border = BorderStroke(0.7.dp, Color(0xFFE2E4E8)),
         modifier = Modifier
-            .height(24.dp)
-            .widthIn(max = 132.dp)
+            .heightIn(min = 24.dp)
+            .widthIn(max = 180.dp)
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 8.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
             contentAlignment = Alignment.Center
         ) {
             Text(
@@ -570,7 +570,7 @@ private fun MembershipExtraCountPill(text: String) {
                 color = Color(0xFF666A72),
                 fontSize = 11.sp,
                 lineHeight = 14.sp,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -663,13 +663,13 @@ private fun MembershipPlanSectionTitle(
             ),
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
-                .height(24.dp)
+                .heightIn(min = 24.dp)
                 .wrapContentHeight(Alignment.CenterVertically)
         )
         if (upgradeRemaining > 0 || topupRemaining > 0) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (upgradeRemaining > 0) {
                     MembershipExtraCountPill(text = "升级补偿次数 ${upgradeRemaining}次")
@@ -725,8 +725,8 @@ private fun MembershipPlanCard(
                         fontSize = 19.sp,
                         lineHeight = 24.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        maxLines = 2,
+                        overflow = TextOverflow.Clip,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     if (active) {
@@ -741,8 +741,8 @@ private fun MembershipPlanCard(
                     fontSize = 18.sp,
                     lineHeight = 23.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    overflow = TextOverflow.Clip,
                     textAlign = TextAlign.End
                 )
             }
@@ -802,16 +802,16 @@ private fun MembershipTopupCard(
                         fontSize = 18.sp,
                         lineHeight = 23.sp,
                         fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 2,
+                        overflow = TextOverflow.Clip
                     )
                     Text(
                         text = "额外${MEMBERSHIP_TOPUP_COUNT}次",
                         color = Color(0xFF747881),
                         fontSize = 12.sp,
                         lineHeight = 17.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        maxLines = 2,
+                        overflow = TextOverflow.Clip
                     )
                 }
                 Text(
@@ -820,8 +820,8 @@ private fun MembershipTopupCard(
                     fontSize = 18.sp,
                     lineHeight = 23.sp,
                     fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    maxLines = 2,
+                    overflow = TextOverflow.Clip,
                     textAlign = TextAlign.End
                 )
             }
@@ -878,7 +878,7 @@ private fun MembershipActionButton(
         shape = RoundedCornerShape(14.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .height(46.dp)
+            .heightIn(min = 46.dp)
             .then(
                 if (canClick) {
                     Modifier.clickable(
@@ -898,7 +898,10 @@ private fun MembershipActionButton(
                 color = contentColor,
                 fontSize = 15.sp,
                 lineHeight = 20.sp,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
             )
         }
     }

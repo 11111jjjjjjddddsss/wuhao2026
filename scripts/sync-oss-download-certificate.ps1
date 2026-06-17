@@ -141,6 +141,15 @@ Require-Command "python"
 if ($Domain -ne "download.nongjiqiancha.cn") {
     throw "refusing to sync unexpected OSS download certificate domain: $Domain"
 }
+if ($Bucket -ne "nongjiqiancha-prod") {
+    throw "refusing to sync download certificate to unexpected OSS bucket: $Bucket"
+}
+if ($Endpoint -ne "oss-cn-beijing.aliyuncs.com") {
+    throw "refusing to sync download certificate to unexpected OSS endpoint: $Endpoint"
+}
+if ($EcsRegionId -ne "cn-beijing") {
+    throw "refusing to read download certificate from unexpected ECS region: $EcsRegionId"
+}
 
 Write-Host "== sync OSS download certificate =="
 Write-Host "download_domain=$Domain"

@@ -61,8 +61,8 @@ Codex 默认按下面流程处理：
 3. Codex 负责运行 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用最终 `app-release.apk` 本体校验包名、`versionCode`、`versionName`、release 不可调试、权限白名单、签名证书指纹，并输出 APK 文件大小和 SHA-256；更新说明默认留空，展示统一默认文案
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://download.nongjiqiancha.cn/android/releases/...apk` 下载链接；低成本长期分发优先走 `download.nongjiqiancha.cn` + OSS，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包的 72 小时签名链接不能直接写入正式检查更新；正式发版当前默认应使用长期稳定 release 地址。后端按需生成正式下载签名是未来可选方案，未另行实现和验收前不能当作现有正式能力。当前后端、Android、后台、官网和 release-match 脚本都会拒绝外部 APK 域名、非 `/android/releases/` 路径，以及带 `Expires / Signature / OSSAccessKeyId / security-token / x-oss-expires / x-oss-signature / x-oss-credential / x-oss-security-token` 等短签名参数的 APK URL
 5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；启用更新时页面和服务端都要求输入本次 `versionCode` 作为确认，停更时页面和服务端都要求输入“停更”作为确认；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
-6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；需要连公网下载包体验证时加 `-VerifyDownload`，脚本会确认最终下载地址仍是 HTTPS
-7. 如果这是要给旧包用户推送的自更新包，必须带上旧包 `versionCode` 跑 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK、后台配置和公网 `/api/app/update` 都会对这个旧版本返回可更新
+6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；正式对外下发必须加 `-VerifyDownload`，脚本要从公网下载最终 APK 并重新校验大小和 SHA-256，避免后台配置看起来完整但 OSS 对象不存在、未公开或路径写错
+7. 如果这是要给旧包用户推送的自更新包，必须带上旧包 `versionCode` 跑 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK、后台配置和公网 `/api/app/update` 都会对这个旧版本返回可更新；上线总门禁必须使用 `check-launch-readiness.ps1 -AppUpdateReleaseGate -AppUpdatePreviousVersionCode <旧包版本号>`，不要只用普通 `-ReleaseGate` 代替检查更新发版门禁
 8. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
 
 这件事不需要你手写接口，也不需要你自己拼 JSON。
@@ -143,10 +143,10 @@ Codex 默认按下面流程处理：
 5. 运行后台配置对账：
 
 ```powershell
-.\scripts\check-app-update-release-match.ps1 -RequireEnabled
+.\scripts\check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload
 ```
 
-该脚本会先复用最终 APK 物料校验，再登录后台只读读取 `/admin-api/v1/app-update/android`，核对后台版本号、版本名、SHA-256 和文件大小是否与本地最终 APK 一致，并确认 APK URL 是公网 HTTPS。若要同时下载后台 APK 链接并重新比对大小和 SHA-256，可加 `-VerifyDownload`，脚本会同时确认最终下载地址没有从 HTTPS 跳到 HTTP。若这是一次给旧包用户推送的自更新发版，再加 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK 和后台版本都大于旧包，并且公网 `/api/app/update` 会对该旧版本返回 `has_update=true`。
+该脚本会先复用最终 APK 物料校验，再登录后台只读读取 `/admin-api/v1/app-update/android`，核对后台版本号、版本名、SHA-256 和文件大小是否与本地最终 APK 一致，并确认 APK URL 是公网 HTTPS。正式对外下发时必须保留 `-VerifyDownload`，让脚本从公网下载后台 APK 链接并重新比对大小和 SHA-256，同时确认最终下载地址没有从 HTTPS 跳到 HTTP。若这是一次给旧包用户推送的自更新发版，再加 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK 和后台版本都大于旧包，并且公网 `/api/app/update` 会对该旧版本返回 `has_update=true`。
 6. 用旧版本 App 点击“检查更新”验证：应出现“发现新版本”卡片
 7. 点“立即更新”验证下载、校验、未知来源授权和系统安装页是否能正常打开
 

@@ -95,6 +95,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\harden-ecs-
 
 - 默认使用本仓库 `scripts/cloud-assistant-safe.ps1` 中的 `Send-CloudAssistantScriptFile` 投递脚本正文，再通过短 `RunCommand` 执行远端文件
 - 不再新增 `echo <base64> | base64 -d | bash`、`curl ... | bash`、把长脚本塞进一条 `RunCommand` 的写法
+- 只读探针、短清理命令或无密钥的轻量操作允许继续使用短 `RunCommand`，但必须保持命令短、无密钥、无完整环境变量输出、无业务正文输出；一旦命令变长或需要读取敏感环境，就改用 `Send-CloudAssistantScriptFile`
 - 运维脚本可以在 ECS 内读取 `/etc/nongjiqiancha/server.env` 供本机服务调用使用，但不得把密钥值、完整环境变量、完整命令行或内部接口 secret 打到日志、文档或终端输出
 - 如果云安全中心再次报“云助手异常命令”，先核对时间、调用者 AK、调用 IP、命令摘要和本仓库脚本调用时间；能确认是本项目运维命令时，记录原因并优化脚本形态，不要简单忽略；不能确认时，立刻按 AK 泄露和入侵排查处理
 

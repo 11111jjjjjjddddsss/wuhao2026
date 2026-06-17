@@ -73,6 +73,7 @@ $appUpdateInstallerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqia
 $mainActivityFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MainActivity.kt"
 $privacyConsentFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PrivacyConsentStore.kt"
 $pendingWorkerFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendWorker.kt"
+$pendingChatSendStoreFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/PendingChatSendStore.kt"
 $todayAgriCardUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/TodayAgriCardUi.kt"
 $userMessageImageUiFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/UserMessageImageUi.kt"
 $chatImagePreviewFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatImagePreview.kt"
@@ -87,12 +88,13 @@ $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Cha
 $hamburgerMenuSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
 $membershipCenterSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MembershipCenterSheet.kt"
 $chatTimelineItemsTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatTimelineItemsTest.kt"
+$chatStreamingRendererTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatStreamingRendererTest.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile, $chatTimelineItemsTestFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $pendingChatSendStoreFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile, $chatTimelineItemsTestFile, $chatStreamingRendererTestFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -111,6 +113,7 @@ if ($failures.Count -eq 0) {
     $mainActivity = Read-SourceFile $mainActivityFile
     $privacyConsent = Read-SourceFile $privacyConsentFile
     $pendingWorker = Read-SourceFile $pendingWorkerFile
+    $pendingChatSendStore = Read-SourceFile $pendingChatSendStoreFile
     $todayAgriCardUi = Read-SourceFile $todayAgriCardUiFile
     $userMessageImageUi = Read-SourceFile $userMessageImageUiFile
     $chatImagePreview = Read-SourceFile $chatImagePreviewFile
@@ -125,6 +128,7 @@ if ($failures.Count -eq 0) {
     $hamburgerMenuSheet = Read-SourceFile $hamburgerMenuSheetFile
     $membershipCenterSheet = Read-SourceFile $membershipCenterSheetFile
     $chatTimelineItemsTest = Read-SourceFile $chatTimelineItemsTestFile
+    $chatStreamingRendererTest = Read-SourceFile $chatStreamingRendererTestFile
 
     Require-Match $failures $build 'val\s+defaultUploadBaseUrl\s*=\s*"https://api\.nongjiqiancha\.cn"' `
         "Android default UPLOAD_BASE_URL must remain https://api.nongjiqiancha.cn."
@@ -300,12 +304,16 @@ if ($failures.Count -eq 0) {
         "Android FileProvider paths must keep cacheDir/app_updates exposed for downloaded APK install intents."
     Require-Match $failures $appUpdateInstaller 'canRequestPackageInstalls\s*\(\s*\)(?s:.*?)Settings\.ACTION_MANAGE_UNKNOWN_APP_SOURCES' `
         "Android app update flow must keep the Android O+ unknown-app-source permission check and settings handoff."
+    Require-Match $failures $appUpdateInstaller 'private\s+fun\s+isAllowedReleaseApkUrl\(rawUrl:\s*String\):\s*Boolean\s*=(?s:.*?)SessionApi\.isStableAppUpdateApkUrl\(rawUrl\)' `
+        "App update installer must reuse the same stable official APK URL guard as SessionApi for initial and final redirect URLs."
     Require-Match $failures $appUpdateInstaller 'Intent\.ACTION_INSTALL_PACKAGE(?s:.*?)startInstallIntent(?s:.*?)Intent\.ACTION_VIEW' `
         "Android app update install must prefer the package installer action and keep ACTION_VIEW as a compatibility fallback."
     Require-Match $failures $appUpdateInstaller 'FileProvider\.getUriForFile(?s:.*?)"\$\{BuildConfig\.APPLICATION_ID\}\.fileprovider"(?s:.*?)FLAG_GRANT_READ_URI_PERMISSION' `
         "Android app update install intents must grant read access to a FileProvider content URI, not expose raw files."
     Require-Match $failures $appUpdateInstaller 'DownloadFailureReason\.MissingReleaseMetadata' `
         "Android app update downloader must fail closed when release metadata is incomplete."
+    Require-Match $failures $appUpdateInstaller 'response\.request\.url\.isHttps(?s:.*?)isAllowedReleaseApkUrl\(response\.request\.url\.toString\(\)\)' `
+        "Android app update downloader must re-check the final redirected URL, not only the configured URL."
     Require-NoMatch $failures $appUpdateInstaller 'update\.fileSizeBytes\s*\?:\s*0L' `
         "Android app update downloader must not fall back to unknown APK size."
     Require-NoMatch $failures $appUpdateInstaller 'expectedSha256\s*!=\s*null\s*&&' `
@@ -484,6 +492,12 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must include the app-update install-not-completed notice."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.AppUpdateInstallNotCompletedHint(?s:.*?)更新未完成，可稍后继续安装' `
         "Debug UI copy preview must render the actual app-update install-not-completed notice."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("更新权限大字体",\s*"1\.6x 字体下真实更新弹窗",\s*UiCopyPreviewKind\.AppUpdatePermissionLargeFont\)(?s:.*?)UiCopyPreviewItem\("账号管理大字体",\s*"1\.6x 字体下账号和危险操作",\s*UiCopyPreviewKind\.HamburgerAccountLargeFont\)' `
+        "Debug UI copy preview must keep large-font coverage for app update permission and account management screens."
+    Require-Match $failures $chatScreen 'UiCopyPreviewKind\.AppUpdateInstallPermissionHint(?s:.*?)HamburgerAppUpdateDialogPreview\(installPermissionPending\s*=\s*true\)' `
+        "Debug UI copy preview must render the real app-update permission-pending dialog, not only a plain text hint."
+    Require-Match $failures $chatScreen 'private\s+fun\s+UiCopyPreviewLargeFont(?s:.*?)LocalDensity\s+provides\s+Density\((?s:.*?)fontScale\s*=\s*1\.6f' `
+        "Debug UI copy preview must include a reusable large-font wrapper for regression checks."
     Require-NoMatch $failures $hamburgerMenuSheet 'fun\s+startAppUpdate\s*\([^{]+\)\s*\{(?s:.*?)val\s+appContext\s*=\s*context\.applicationContext(?s:.*?)update\.latestVersionCode(?s:.*?)saveLastPromptedUpdateVersionCode(?s:.*?)if\s*\(\s*!AppUpdateInstaller\.canRequestInstallPackages' `
         "App update must not mark a version as prompted before permission, download, and install-intent stages have succeeded."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("礼品卡生效规则",\s*"生成即可兑换，不做预约生效",\s*UiCopyPreviewKind\.HamburgerGiftCardImmediateRule\)' `
@@ -494,6 +508,10 @@ if ($failures.Count -eq 0) {
         "Membership topup copy must not imply that topup balance expires with membership."
     Require-NoMatch $failures $membershipCenterSheet '有效期、使用规则' `
         "Membership topup copy must not keep the old vague validity-period wording."
+    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPlanSectionTitle(?s:.*?)heightIn\(min\s*=\s*24\.dp\)' `
+        "Membership section title must use a minimum height instead of a fixed height so large fonts are not clipped."
+    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipActionButton(?s:.*?)heightIn\(min\s*=\s*46\.dp\)(?s:.*?)maxLines\s*=\s*2' `
+        "Membership action buttons must allow two-line text and avoid fixed-height clipping on large font settings."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
         "Settings main page defaults must include every production row after app data is cleared."
     Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalHubContent(?s:.*?)HamburgerLegalPageTitle\("协议与隐私"\)' `
@@ -502,6 +520,28 @@ if ($failures.Count -eq 0) {
         "Account management page must keep its logout row in the default code path."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
         "Account management defaults must include phone, scoped cache cleanup, history deletion, logout, and account deletion application rows after app data is cleared."
+    Require-Match $failures $hamburgerMenuSheet ([regex]::Escape("将删除当前账号历史对话，并清除长期记忆。会员礼品卡反馈记录不受影响。")) `
+        "Delete-history confirmation must keep the concise user-approved wording and mention long-term memory."
+    Require-Match $failures $hamburgerMenuSheet 'title\s*=\s*"六、使用规范、责任和协议更新"(?s:.*?)请您在合法、真实、合理的范围内使用本服务' `
+        "Service agreement section 6 must use the calmer formal usage-norms wording."
+    Require-NoMatch $failures $hamburgerMenuSheet '攻击接口|爬虫抓取|批量撞库礼品卡|恶意消耗服务资源' `
+        "Legal copy shown in-app must not revert to the harsh blacklist-style wording."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalHubRow(?s:.*?)maxLines\s*=\s*2' `
+        "Legal hub row titles must be able to wrap, so long legal-entry names are not ellipsized on narrow screens."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalPageTitle(?s:.*?)maxLines\s*=\s*2(?s:.*?)padding\(start\s*=\s*76\.dp,\s*end\s*=\s*76\.dp' `
+        "Legal page titles must leave room for the floating back button and wrap on narrow screens."
+    Require-Match $failures $membershipCenterSheet '会员信息刷新失败，请检查网络后重试(?s:.*?)heightIn\(min\s*=\s*34\.dp\)(?s:.*?)text\s*=\s*"重试"' `
+        "Membership refresh failure notice must use plain user-facing wording and avoid fixed-height clipping."
+    Require-Match $failures $membershipCenterSheet 'width\(168\.dp\)(?s:.*?)heightIn\(min\s*=\s*40\.dp\)' `
+        "Membership success confirmation button must avoid fixed-height clipping on large font settings."
+    Require-Match $failures $sessionApi 'gift_card_lower_tier"\s*->\s*"当前已是更高档会员，这张礼品卡不能叠加使用"' `
+        "Gift card lower-tier rejection must keep the concise formal user-facing copy."
+    Require-Match $failures $hamburgerMenuSheet '正在读取反馈记录\.\.\.(?s:.*?)反馈记录加载失败' `
+        "Support feedback loading/error copy must use user-facing feedback-record wording instead of technical sync wording."
+    Require-NoMatch $failures $hamburgerMenuSheet 'val\s+shouldAutoPrompt\s*=(?s:.*?)info\.forceUpdate\s*==\s*true' `
+        "App update auto prompt logic must not force prompt based only on force_update; current Android release treats updates as ordinary prompts."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAppUpdateDialog(?s:.*?)val\s+forceUpdate\s*=\s*update\.forceUpdate\s*==\s*true' `
+        "Android update dialogs must respect backend force_update when a future release explicitly enables it; backend remains the release gate."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)SelectionContainer(?s:.*?)TodayAgriNewsItem"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
@@ -509,6 +549,14 @@ if ($failures.Count -eq 0) {
 
     Require-Match $failures $loginScreen $loginSharedTextPattern `
         "Login agreement links must let users read the same service agreement and privacy policy content as settings."
+    Require-Match $failures $loginScreen 'var\s+agreed\s+by\s+remember\(context\)\s*\{\s*mutableStateOf\(PrivacyConsentStore\.isAccepted\(context\)\)\s*\}' `
+        "Login agreement checkbox must initialize from persisted privacy consent, so UI and runtime consent state stay aligned."
+    Require-NoMatch $failures $loginScreen 'onCheckedChange\s*=\s*\{(?s:.*?)acceptAgreementIfNeeded\(\)' `
+        "Login agreement checkbox must not persist consent immediately; consent should be recorded only when the user submits SMS send or login."
+    Require-Match $failures $loginScreen 'private\s+fun\s+LoginLegalDialog(?s:.*?)DialogProperties\(usePlatformDefaultWidth\s*=\s*false\)(?s:.*?)WindowInsets\.safeDrawing\.only\(WindowInsetsSides\.Vertical\)(?s:.*?)widthIn\(max\s*=\s*360\.dp\)' `
+        "Login legal dialog must keep the safe-area, narrow-screen friendly shell instead of reverting to the platform default dialog width."
+    Require-Match $failures $loginScreen 'text\s*=\s*"农技千查"(?s:.*?)maxLines\s*=\s*2' `
+        "Login brand title must not be forced into one-line ellipsis on narrow screens or large font settings."
     Require-Match $failures $pendingWorker $pendingWorkerPrivacyGatePattern `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
     Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
@@ -527,24 +575,32 @@ if ($failures.Count -eq 0) {
         "Today agri selection must be able to use the same copy/full-copy toolbar as assistant text."
     Require-Match $failures $todayAgriCardUi 'fun\s+SessionApi\.TodayAgriCard\.toTodayAgriPlainText\b' `
         "Today agri full-copy text must stay with the isolated today-agri renderer."
+    Require-Match $failures $hamburgerMenuSheet 'HamburgerTodayAgriHistoryDaySection(?s:.*?)HamburgerTodayAgriHistoryCard\((?s:.*?)dateText\s*=\s*dateText(?s:.*?)private\s+fun\s+HamburgerTodayAgriHistoryCard\((?s:.*?)dateText:\s*String(?s:.*?)HorizontalDivider' `
+        "Today agri history must keep the date inside each card with one light internal divider, not as a floating external date label."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)buildMessageSelectionTextToolbar(?s:.*?)TodayAgriNewsText' `
         "Today agri main-chat copy menu must stay aligned with assistant text copy/full-copy behavior."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
         "Today agri context must be scoped to the next three user sends after its visual timeline anchor."
+    Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)failedUserMessageIds' `
+        "Today agri context counting must ignore local failed user sends so a failed send does not prematurely end the three-send window."
+    Require-Match $failures $chatScreen 'requestedAfterMessageId\s*!=\s*null\s*&&\s*hiddenRoundCount\s*>\s*0(?s:.*?)ChatTimelineItem\.HistoryNotice' `
+        "If today agri's saved anchor is outside the visible trimmed window, it must fall back after the history notice instead of being reattached to the latest assistant answer."
     Require-Match $failures $chatScreen 'todayAgriContextDayForNextSend(?s:.*?)remoteConfirmedDay\s*=\s*todayAgriRemoteConfirmedDay' `
         "Today agri temporary context must wait for same-day remote confirmation; cached visual content alone must not enter model context."
     Require-Match $failures $chatScreen 'awaitTodayAgriCard\(\)(?s:.*?)todayAgriRemoteConfirmedDay\s*=\s*refreshDayKey' `
         "Today agri remote confirmation day must be set only after the backend returns a same-day renderable card."
     Require-NoMatch $failures $chatScreen 'saveTodayAgriCardAnchorSync|TODAY_AGRI_CARD_ANCHOR|todayAgriCardAnchor' `
         "Today agri main-chat state must not keep the retired local anchor storage path."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*hasAssistantAnswerTail(?s:.*?)cardDay\s*==\s*normalizedCurrentDay(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime\s*\|\|\s*hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
-        "Today agri main-chat visibility must restore a saved same-day item while still requiring a completed assistant tail for first-time insertion."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*hasAssistantAnswerTail(?s:.*?)cardDay\s*==\s*normalizedCurrentDay(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
+        "Today agri main-chat visibility must restore saved same-day items, while runtime suppression still blocks late auto-insert before the card becomes visible."
     Require-Match $failures $chatScreen 'hasCompletedAssistantAnswerTail\(messages,\s*failedAssistantMessageStates\.keys\)' `
         "Today agri completed-tail detection must exclude failed assistant tails in the live chat state."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriCardDoesNotTreatFailedAssistantAsCompletedTail(?s:.*?)failedAssistantMessageIds\s*=\s*setOf' `
         "Today agri must have unit coverage proving failed assistant tails do not count as completed answers."
-    Require-Match $failures $chatScreen 'fun\s+suppressPendingTodayAgriAutoInsertForUserSend\(\)(?s:.*?)!\s*todayAgriShownThisRuntime\s*&&\s*!\s*hasTodayAgriCard(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*true' `
-        "Today agri pending auto-insert must be suppressed when the user starts a chat before the card is visible."
+    Require-Match $failures $chatScreen 'fun\s+suppressPendingTodayAgriAutoInsertForUserSend\(\)(?s:.*?)!\s*todayAgriShownThisRuntime\s*&&\s*!\s*hasTodayAgriCard(?s:.*?)todayAgriUserSendEpoch\+\+(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*true' `
+        "Today agri pending auto-insert must be suppressed and generation-guarded when the user starts a chat before the card is visible."
+    Require-Match $failures $chatScreen 'val\s+saveUserSendEpoch\s*=\s*todayAgriUserSendEpoch(?s:.*?)if\s*\(\s*saveUserSendEpoch\s*!=\s*todayAgriUserSendEpoch\s*\)\s*\{(?s:.*?)return@LaunchedEffect(?s:.*?)SessionApi\.saveTodayAgriItem(?s:.*?)saveUserSendEpoch\s*==\s*todayAgriUserSendEpoch' `
+        "Today agri async save callback must not visually back-insert a saved item after the user has already sent a new message."
     Require-Match $failures $chatScreen 'LaunchedEffect\((?s:.*?)remoteSnapshotHydrationComplete(?s:.*?)shouldHydrateRemoteHistory(?s:.*?)!shouldRevealMessageList(?s:.*?)shouldPersistTodayAgriShownDay\s*=(?s:.*?)canPersistTodayAgriShownDay(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*true(?s:.*?)todayAgriShownThisRuntime\s*=\s*true(?s:.*?)saveTodayAgriMainShownDaySync' `
         "Today agri should be marked shown only after it is inserted into the visible main-chat timeline, and must persist the shown day after remote snapshot hydration completes."
     Require-Match $failures $chatScreen 'todayAgriRefreshDayKey\s*!=\s*currentDay(?s:.*?)todayAgriShownThisRuntime\s*=\s*false(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*hasStartedConversation(?s:.*?)todayAgriMainCardLoadedLogged\s*=\s*false(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*false' `
@@ -555,12 +611,16 @@ if ($failures.Count -eq 0) {
         "Today agri once-per-day main-chat visibility must have unit coverage."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriCardAfterCompletedAssistantStaysInsideTimeline(?s:.*?)todayAgriAfterMessageId\s*=\s*second\.id' `
         "Today agri must anchor after a completed assistant answer in the ordinary timeline item builder."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriMissingAnchorFallbackDoesNotRestartContextWindow' `
+        "Today agri trimmed-anchor fallback must have unit coverage proving it does not restart the temporary context window."
     Require-Match $failures $chatScreen 'fun\s+restoredStartupWorklinePhase(?s:.*?)hasTodayAgriVisualContent\s*->\s*false' `
         "If today agri is visible after real history, it must still ignore persisted bottom-owned startup state when resetting top document flow."
     Require-Match $failures $chatScreen 'hydratedTodayAgriVisualContent\s*=\s*shouldShowTodayAgriMainCard(?s:.*?)hasAssistantAnswerTail\s*=\s*hasCompletedAssistantAnswerTail\(\s*hydratedSnapshot\.messages,\s*hydratedSnapshot\.failedAssistantMessageStates\.keys\s*\)(?s:.*?)hasTodayAgriVisualContent\s*=\s*hydratedTodayAgriVisualContent' `
         "Remote hydrate replacement must compute today-agri visual content from the hydrated message tail, not stale current UI state."
     Require-Match $failures $chatScreen 'remoteSnapshotHydrationComplete(?s:.*?)if\s*\(\s*shouldHydrateRemoteHistory\s*&&\s*!remoteSnapshotHydrationComplete\s*\)\s*return@LaunchedEffect(?s:.*?)saveTodayAgriItem' `
         "Today agri main item saving must wait for the remote snapshot, not only the local-first history hydration gate."
+    Require-Match $failures $chatScreen 'TODAY_AGRI_ITEM_SAVE_MAX_ATTEMPTS(?s:.*?)todayAgriItemSaveRetryAttempt(?s:.*?)delay\(TODAY_AGRI_ITEM_SAVE_RETRY_DELAY_MS \* retryAttempt\)(?s:.*?)SessionApi\.saveTodayAgriItem' `
+        "Today agri main item saving must keep a bounded retry path for transient save failures."
     Require-Match $failures $sessionApi 'fun\s+saveTodayAgriItem(?s:.*?)session_generation' `
         "Today agri main-chat item saves must include session generation."
     Require-Match $failures $chatScreen 'snapshot\.today_agri_items(?s:.*?)item\.card(?s:.*?)todayAgriMainItem\s*=\s*item' `
@@ -688,6 +748,14 @@ if ($failures.Count -eq 0) {
         "Assistant text dividers must recognize an active standalone bold heading while it is still streaming."
     Require-Match $failures $chatStreamingRenderer 'heading\.level\s*(<=\s*3|>\s*3\)\s*return\s+false)' `
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
+    Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `
+        "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
+    Require-Match $failures $chatStreamingRenderer 'TextButton\((?s:.*?)onClick\s*=\s*\{(?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)text\s*=\s*"复制表格"(?s:.*?)RendererMarkdownTableCardImpl' `
+        "Markdown table UI must keep the mobile grouped table cards and the TSV copy-table button."
+    Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
+        "Incomplete Markdown table headers must stay plain text while streaming, instead of rendering a half-empty table."
+    Require-NoMatch $failures $chatStreamingRenderer 'horizontalScroll\s*\(' `
+        "Assistant Markdown table rendering must not revert to the old horizontal-scroll wide table on mobile."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
         "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."
     Require-Match $failures $chatStreamingRenderer 'previous\s+!is\s+StreamingLineModel\.Heading' `
@@ -706,6 +774,12 @@ if ($failures.Count -eq 0) {
         "Support feedback must clean temporary selected images on page disposal, including interrupted sending states."
     Require-NoMatch $failures $hamburgerMenuSheet 'if\s*\(\s*!\s*sending\s*&&\s*selectedImages\.isNotEmpty\s*\(\s*\)\s*\)' `
         "Support feedback disposal cleanup must not skip temporary images while a send is in progress."
+    Require-Match $failures $hamburgerMenuSheet 'rememberLazyListState\s*\((?s:.*?)initialFirstVisibleItemIndex\s*=\s*messages\.lastIndex\.coerceAtLeast\(0\)' `
+        "Support feedback with cached messages must initially open at the latest message instead of flashing the top before scrolling down."
+    Require-Match $failures $hamburgerMenuSheet 'if\s*\(\s*page\s*==\s*HamburgerMenuPage\.Support\s*&&\s*supportFeedbackSending\s*\)(?s:.*?)showNotice\("正在发送，请稍后"\)' `
+        "Support feedback must block back/close while a send is in progress so the page coroutine and selected images are not torn down mid-send."
+    Require-Match $failures $pendingChatSendStore 'pending\.sessionGeneration\s*\?:\s*return\s+false' `
+        "Pending sends without a stored session generation must not be treated as stale after app restart; unknown generation should be retried/reconciled."
     Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*lifecycleOwner,\s*pendingInstallPermissionUpdate,\s*pendingInstallAttemptUpdate,\s*updateDownloading\s*\)(?s:.*?)ON_RESUME(?s:.*?)val\s+pendingUpdate\s*=\s*pendingInstallPermissionUpdate(?s:.*?)startAppUpdate\s*\(\s*pendingUpdate\s*\)' `
         "App update permission resume handling must keep working for automatic update prompts even when settings is not visible."
     Require-NoMatch $failures $hamburgerMenuSheet 'if\s*\(\s*!\s*visible\s*\|\|\s*updateDownloading\s*\)\s*return@LifecycleEventObserver' `

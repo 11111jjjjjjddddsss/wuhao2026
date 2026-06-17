@@ -1111,6 +1111,13 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		s.writeError(w, http.StatusBadRequest, code)
 		return
 	}
+	if cfg.Enabled {
+		if code := verifyAndroidReleaseAPKDownload(r.Context(), cfg); code != "" {
+			s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, code)
+			s.writeError(w, http.StatusBadRequest, code)
+			return
+		}
+	}
 	nowMs := time.Now().UnixMilli()
 	if err := s.store.UpsertAndroidUpdateConfigRecord(r.Context(), cfg, admin.User.Username, nowMs); err != nil {
 		s.logger.Error("admin app update write failed", "error", err)

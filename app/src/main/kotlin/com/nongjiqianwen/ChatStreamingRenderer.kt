@@ -12,24 +12,23 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -223,6 +222,40 @@ internal fun RendererMarkdownTable.toPlainCopyText(): String {
     }
 }
 
+internal fun RendererMarkdownTable.toReadableCopyText(): String {
+    val cleanHeaders = headers.map { plainRendererInlineText(it) }
+    if (cleanHeaders.isEmpty()) return ""
+    if (rows.isEmpty()) return cleanHeaders.joinToString(" / ").trim()
+
+    val firstHeader = cleanHeaders.firstOrNull().orEmpty()
+    val firstHeaderIsDimension = firstHeader in setOf("维度", "项目", "类别", "指标", "对比项")
+    return rows.mapIndexed { rowIndex, row ->
+        val cleanCells = cleanHeaders.indices.map { index ->
+            plainRendererInlineText(row.getOrNull(index).orEmpty())
+        }
+        val rowTitle = cleanCells.firstOrNull()
+            ?.takeIf { it.isNotBlank() }
+            ?: "第${rowIndex + 1}行"
+        val lines = mutableListOf<String>()
+        if (firstHeaderIsDimension) {
+            lines += "$rowTitle："
+        } else if (firstHeader.isNotBlank()) {
+            lines += "$firstHeader：$rowTitle"
+        } else {
+            lines += rowTitle
+        }
+        cleanHeaders.drop(1).forEachIndexed { index, header ->
+            val value = cleanCells.getOrNull(index + 1).orEmpty()
+            if (header.isNotBlank() && value.isNotBlank()) {
+                lines += "$header：$value"
+            }
+        }
+        lines.joinToString("\n")
+    }
+        .joinToString("\n\n")
+        .trim()
+}
+
 internal data class RendererStructureStats(
     val blockCount: Int,
     val headingCount: Int,
@@ -272,6 +305,15 @@ private fun looksLikeRendererMarkdownTableRow(line: String): Boolean {
     return splitRendererMarkdownTableCells(trimmed).size >= 2
 }
 
+private fun rendererMarkdownCodeFenceMarker(line: String): String? {
+    val trimmed = line.trimStart()
+    return when {
+        trimmed.startsWith("```") -> "```"
+        trimmed.startsWith("~~~") -> "~~~"
+        else -> null
+    }
+}
+
 private fun normalizeRendererMarkdownTables(content: String): String {
     val normalized = content.replace("\r\n", "\n")
     if (!normalized.contains('|')) return normalized
@@ -279,17 +321,20 @@ private fun normalizeRendererMarkdownTables(content: String): String {
     if (lines.isEmpty()) return normalized
     val result = mutableListOf<String>()
     var index = 0
-    var inCodeFence = false
+    var codeFenceMarker: String? = null
     while (index < lines.size) {
         val current = lines[index]
-        val trimmed = current.trimStart()
-        if (trimmed.startsWith("```")) {
-            inCodeFence = !inCodeFence
+        val currentFenceMarker = rendererMarkdownCodeFenceMarker(current)
+        if (codeFenceMarker == null && currentFenceMarker != null) {
+            codeFenceMarker = currentFenceMarker
             result += current
             index++
             continue
         }
-        if (inCodeFence) {
+        if (codeFenceMarker != null) {
+            if (currentFenceMarker == codeFenceMarker) {
+                codeFenceMarker = null
+            }
             result += current
             index++
             continue
@@ -344,6 +389,7 @@ private fun encodeRendererMarkdownTableBlock(
             .map { cell -> normalizeRendererMarkdownTableCell(cell) }
         cells.takeIf { it.any { cell -> cell.isNotBlank() } }
     }
+    if (rawRows.isEmpty()) return null
     val columnCount = maxOf(
         rawHeaders.size,
         separatorColumnCount,
@@ -567,7 +613,7 @@ internal fun splitStreamingBlockState(content: String): StreamingBlockState {
                 append(paragraph.toString())
                 if (trimmed.isNotBlank()) {
                     if (isNotEmpty()) {
-                        appendRendererParagraphLine(trimmed)
+                        appendRendererActiveParagraphLine(trimmed)
                     } else {
                         append(trimmed)
                     }
@@ -690,7 +736,7 @@ internal fun buildRendererPlainCopyText(content: String): String {
             is StreamingLineModel.Bullet -> "\u2022 ${plainRendererInlineText(model.text)}".trim()
             is StreamingLineModel.Numbered -> "${model.number}. ${plainRendererInlineText(model.text)}".trim()
             is StreamingLineModel.Quote -> plainRendererInlineText(model.text)
-            is StreamingLineModel.Table -> model.table.toPlainCopyText()
+            is StreamingLineModel.Table -> model.table.toReadableCopyText()
             is StreamingLineModel.Paragraph -> plainRendererInlineText(model.text)
         }
     }
@@ -1136,6 +1182,19 @@ private fun StringBuilder.appendRendererParagraphLine(line: String) {
         }
     }
     append(line)
+}
+
+private fun StringBuilder.appendRendererActiveParagraphLine(line: String) {
+    if (
+        line.isNotBlank() &&
+        isRendererMarkdownTableSeparatorLine(line.trim()) &&
+        toString().lineSequence().lastOrNull()?.let(::looksLikeRendererMarkdownTableRow) == true
+    ) {
+        if (isNotEmpty()) append('\n')
+        append(line)
+        return
+    }
+    appendRendererParagraphLine(line)
 }
 
 @Composable
@@ -1964,55 +2023,119 @@ private fun RendererMarkdownTableImpl(
     linksEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val columnCount = table.headers.size.coerceAtLeast(1)
-    val scrollState = rememberScrollState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    Column(modifier = modifier.fillMaxWidth()) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 6.dp),
+                .padding(bottom = 2.dp),
             horizontalArrangement = Arrangement.End
         ) {
-            Text(
-                text = "复制",
+            TextButton(
+                onClick = {
+                    clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
+                    Toast.makeText(context, "表格已复制，可粘贴到表格软件", Toast.LENGTH_SHORT).show()
+                },
                 modifier = Modifier
-                    .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp))
-                    .clickable {
-                        clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
-                        Toast.makeText(context, "表格已复制", Toast.LENGTH_SHORT).show()
-                    }
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-                color = Color(0xFF5F6368),
-                fontSize = 13.sp,
-                lineHeight = 16.sp
+                    .heightIn(min = 36.dp)
+                    .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
+                shape = RoundedCornerShape(999.dp),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = Color(0xFF5F6368),
+                    containerColor = Color.Transparent
+                )
+            ) {
+                Text(
+                    text = "复制表格",
+                    fontSize = 13.sp,
+                    lineHeight = 16.sp
+                )
+            }
+        }
+        table.rows.forEachIndexed { rowIndex, row ->
+            RendererMarkdownTableCardImpl(
+                headers = table.headers,
+                cells = row,
+                rowIndex = rowIndex,
+                inlineMode = inlineMode,
+                linksEnabled = linksEnabled
             )
         }
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(scrollState)
-        ) {
-            Column(
-                modifier = Modifier
-                    .widthIn(min = rendererMarkdownTableMinWidth(columnCount))
-                    .border(width = 0.7.dp, color = Color(0xFFE2E5EA))
-            ) {
-                RendererMarkdownTableRowImpl(
-                    cells = table.headers,
-                    columnCount = columnCount,
-                    header = true,
-                    inlineMode = inlineMode,
-                    linksEnabled = linksEnabled
-                )
-                table.rows.forEach { row ->
-                    RendererMarkdownTableRowImpl(
-                        cells = row,
-                        columnCount = columnCount,
-                        header = false,
+    }
+}
+
+@Composable
+private fun RendererMarkdownTableCardImpl(
+    headers: List<String>,
+    cells: List<String>,
+    rowIndex: Int,
+    inlineMode: RendererInlineMode,
+    linksEnabled: Boolean
+) {
+    val titleStyle = remember {
+        assistantStreamingParagraphTextStyle().copy(
+            fontSize = 16.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Color(0xFF151515),
+            letterSpacing = 0.sp
+        )
+    }
+    val labelStyle = remember {
+        TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            color = Color(0xFF7B8088),
+            letterSpacing = 0.sp,
+            fontWeight = FontWeight.Normal
+        )
+    }
+    val valueStyle = remember {
+        assistantStreamingParagraphTextStyle().copy(
+            fontSize = 15.sp,
+            lineHeight = 23.sp,
+            fontWeight = FontWeight.Normal,
+            color = Color(0xFF222222),
+            letterSpacing = 0.sp
+        )
+    }
+    val title = rendererMarkdownTableDisplayTitle(headers, cells, rowIndex)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(width = 0.7.dp, color = Color(0xFFE1E4E8), shape = RoundedCornerShape(8.dp))
+            .background(Color(0xFFFAFBFC), shape = RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        RendererStreamingActiveTextImpl(
+            text = title,
+            style = titleStyle,
+            minLineHeight = 24.dp,
+            inlineMode = inlineMode,
+            linksEnabled = linksEnabled,
+            modifier = Modifier.fillMaxWidth()
+        )
+        headers.drop(1).forEachIndexed { index, header ->
+            val value = cells.getOrNull(index + 1).orEmpty().trim()
+            if (value.isNotBlank()) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = plainRendererInlineText(header),
+                        style = labelStyle
+                    )
+                    RendererStreamingActiveTextImpl(
+                        text = value,
+                        style = valueStyle,
+                        minLineHeight = 23.dp,
                         inlineMode = inlineMode,
-                        linksEnabled = linksEnabled
+                        linksEnabled = linksEnabled,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -2020,60 +2143,18 @@ private fun RendererMarkdownTableImpl(
     }
 }
 
-@Composable
-private fun RendererMarkdownTableRowImpl(
+private fun rendererMarkdownTableDisplayTitle(
+    headers: List<String>,
     cells: List<String>,
-    columnCount: Int,
-    header: Boolean,
-    inlineMode: RendererInlineMode,
-    linksEnabled: Boolean
-) {
-    val style = remember(header) {
-        assistantStreamingParagraphTextStyle().copy(
-            fontSize = 15.sp,
-            lineHeight = 22.sp,
-            fontWeight = if (header) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (header) Color(0xFF111111) else Color(0xFF222222)
-        )
-    }
-    Row(
-        modifier = Modifier
-            .background(if (header) Color(0xFFF6F7F9) else Color.Transparent)
-    ) {
-        repeat(columnCount) { index ->
-            Box(
-                modifier = Modifier
-                    .width(rendererMarkdownTableColumnWidth(index, columnCount))
-                    .border(width = 0.5.dp, color = Color(0xFFE2E5EA))
-                    .padding(horizontal = 9.dp, vertical = 8.dp)
-            ) {
-                RendererStreamingActiveTextImpl(
-                    text = cells.getOrNull(index).orEmpty(),
-                    style = style,
-                    minLineHeight = 22.dp,
-                    inlineMode = inlineMode,
-                    linksEnabled = linksEnabled,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-private fun rendererMarkdownTableMinWidth(columnCount: Int): Dp {
-    var total = 0.dp
-    repeat(columnCount) { index ->
-        total += rendererMarkdownTableColumnWidth(index, columnCount)
-    }
-    return total
-}
-
-private fun rendererMarkdownTableColumnWidth(index: Int, columnCount: Int): Dp {
-    return when {
-        columnCount <= 1 -> 320.dp
-        columnCount == 2 -> if (index == 0) 128.dp else 240.dp
-        columnCount == 3 -> if (index == 0) 96.dp else 220.dp
-        else -> if (index == 0) 88.dp else 164.dp
+    rowIndex: Int
+): String {
+    val firstHeader = headers.firstOrNull()?.let(::plainRendererInlineText).orEmpty()
+    val firstCell = cells.firstOrNull()?.trim().orEmpty()
+    val rowTitle = firstCell.takeIf { it.isNotBlank() } ?: "第${rowIndex + 1}行"
+    return if (firstHeader in setOf("维度", "项目", "类别", "指标", "对比项") || firstHeader.isBlank()) {
+        rowTitle
+    } else {
+        "$firstHeader：$rowTitle"
     }
 }
 

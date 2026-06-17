@@ -179,6 +179,55 @@ function Test-OfficialAndroidApkUrl {
     return $path.StartsWith("/android/releases/") -and $path.EndsWith(".apk")
 }
 
+function Get-RequiredOfficialApkSha256 {
+    foreach ($name in @("OFFICIAL_ANDROID_APK_SHA256", "APP_ANDROID_APK_SHA256", "VITE_ANDROID_APK_SHA256")) {
+        $envItem = Get-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+        $value = [string]$envItem.Value
+        $normalized = $value.Trim().ToLowerInvariant()
+        if ($normalized -match '^[0-9a-f]{64}$') {
+            return $normalized
+        }
+    }
+    throw "official APK download verification requires OFFICIAL_ANDROID_APK_SHA256, APP_ANDROID_APK_SHA256, or VITE_ANDROID_APK_SHA256."
+}
+
+function Get-RequiredOfficialApkSizeBytes {
+    foreach ($name in @("OFFICIAL_ANDROID_APK_SIZE_BYTES", "APP_ANDROID_FILE_SIZE_BYTES", "VITE_ANDROID_APK_SIZE_BYTES")) {
+        $envItem = Get-Item -LiteralPath "Env:$name" -ErrorAction SilentlyContinue
+        $value = [string]$envItem.Value
+        if (-not [string]::IsNullOrWhiteSpace($value)) {
+            $parsed = 0L
+            if ([long]::TryParse($value.Trim(), [ref]$parsed) -and $parsed -gt 0 -and $parsed -le 209715200L) {
+                return $parsed
+            }
+        }
+    }
+    throw "official APK download verification requires OFFICIAL_ANDROID_APK_SIZE_BYTES, APP_ANDROID_FILE_SIZE_BYTES, or VITE_ANDROID_APK_SIZE_BYTES."
+}
+
+function Assert-OfficialAndroidApkDownloadVerified {
+    param([string]$Url)
+    if (-not (Test-OfficialAndroidApkUrl $Url)) {
+        throw "official APK URL must be a stable download.nongjiqiancha.cn release .apk URL."
+    }
+    $expectedSha = Get-RequiredOfficialApkSha256
+    $expectedSize = Get-RequiredOfficialApkSizeBytes
+    $tmpApk = Join-Path ([IO.Path]::GetTempPath()) ("nongji-release-apk-" + [Guid]::NewGuid().ToString("N") + ".apk")
+    try {
+        Invoke-WebRequest -Uri $Url -Method Get -OutFile $tmpApk -MaximumRedirection 0 -TimeoutSec 120 -ErrorAction Stop | Out-Null
+        $item = Get-Item -LiteralPath $tmpApk -ErrorAction Stop
+        if ($item.Length -ne $expectedSize) {
+            throw "official APK size mismatch. expected=$expectedSize actual=$($item.Length)"
+        }
+        $actualSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $tmpApk).Hash.ToLowerInvariant()
+        if ($actualSha -ne $expectedSha) {
+            throw "official APK SHA-256 mismatch. expected=$expectedSha actual=$actualSha"
+        }
+    } finally {
+        Remove-Item -LiteralPath $tmpApk -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Test-ShortLivedSignedAndroidApkUrl {
     param([string]$Url)
     if ([string]::IsNullOrWhiteSpace($Url)) {
@@ -256,6 +305,7 @@ if ($siteEnvFiles.Count -gt 0) {
             if (-not (Test-OfficialAndroidApkUrl $envApkUrl)) {
                 throw "site $($envFile.Name) contains VITE_ANDROID_APK_URL, but it is not a stable download.nongjiqiancha.cn release .apk URL."
             }
+            Assert-OfficialAndroidApkDownloadVerified $envApkUrl
         }
     }
 }
@@ -272,6 +322,7 @@ if (-not [string]::IsNullOrWhiteSpace($configuredApkUrl)) {
     if (-not (Test-OfficialAndroidApkUrl $configuredApkUrl)) {
         throw "VITE_ANDROID_APK_URL must be a stable download.nongjiqiancha.cn release .apk URL when official downloads are explicitly enabled."
     }
+    Assert-OfficialAndroidApkDownloadVerified $configuredApkUrl
 }
 
 Push-Location $siteDir
@@ -294,6 +345,27 @@ foreach ($relativePath in $requiredDistFiles) {
     $distFile = Join-Path $distDir $relativePath
     if (-not (Test-Path -LiteralPath $distFile -PathType Leaf)) {
         throw "site build missing required file: $relativePath"
+    }
+}
+
+$userAgreementDist = Get-Content -LiteralPath (Join-Path $distDir "legal/user-agreement/index.html") -Raw -Encoding UTF8
+$privacyPolicyDist = Get-Content -LiteralPath (Join-Path $distDir "legal/privacy-policy/index.html") -Raw -Encoding UTF8
+foreach ($marker in @(
+    'nongji-page-user-agreement',
+    'name="nongji-legal-version" content="20260618"',
+    'name="nongji-legal-section" content="user-agreement-usage-norms"'
+)) {
+    if ($userAgreementDist -notlike "*$marker*") {
+        throw "site user agreement dist missing marker: $marker"
+    }
+}
+foreach ($marker in @(
+    'nongji-page-privacy-policy',
+    'name="nongji-legal-version" content="20260618"',
+    'name="nongji-privacy-section" content="long-term-memory"'
+)) {
+    if ($privacyPolicyDist -notlike "*$marker*") {
+        throw "site privacy policy dist missing marker: $marker"
     }
 }
 
@@ -371,6 +443,9 @@ site_base='/var/www/nongjiqiancha-site'
 test_apks_root='/var/www/nongjiqiancha-test-apks'
 release_dir="`$site_base/releases/`$sha_prefix"
 current_link="`$site_base/current"
+previous_current_target=`$(readlink -f "`$current_link" 2>/dev/null || true)
+site_switched=0
+site_verified=0
 nginx_site='/etc/nginx/sites-available/nongjiqiancha-site'
 nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-site'
 cert_root='/var/www/certbot'
@@ -399,6 +474,28 @@ restore_nginx_site() {
   fi
   nginx -t && systemctl reload nginx || true
 }
+
+restore_current_link() {
+  if [ -n "`$previous_current_target" ] && [ -d "`$previous_current_target" ]; then
+    ln -sfn "`$previous_current_target" "`$current_link"
+  else
+    rm -f "`$current_link"
+  fi
+}
+
+restore_site_on_failure() {
+  local code="`$?"
+  if [ "`$code" -ne 0 ] && [ "`$site_verified" != "1" ]; then
+    if [ "`$site_switched" = "1" ]; then
+      restore_current_link
+    fi
+    if [ -f "`$nginx_site_backup_state" ]; then
+      restore_nginx_site
+    fi
+  fi
+  exit "`$code"
+}
+trap restore_site_on_failure EXIT
 
 write_http_nginx() {
   cat > "`$nginx_site" <<EOF
@@ -455,8 +552,7 @@ server {
     add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
 
     location ^~ /test-apks/ {
-        alias `$test_apks_root/;
-        default_type application/vnd.android.package-archive;
+        return 404;
         add_header Cache-Control "private, max-age=300" always;
         add_header X-Robots-Tag "noindex, nofollow" always;
     }
@@ -483,6 +579,7 @@ rm -rf "`$release_dir"
 mkdir -p "`$release_dir" "`$site_base/releases" "`$cert_root" "`$test_apks_root"
 tar -xzf "`$archive" -C "`$release_dir"
 ln -sfn "`$release_dir" "`$current_link"
+site_switched=1
 chown -R www-data:www-data "`$site_base" "`$cert_root"
 
 echo nginx-http
@@ -536,6 +633,18 @@ expect_contains() {
   fi
   echo "`$label contains expected text"
 }
+expect_not_contains() {
+  local label="`$1"
+  local needle="`$2"
+  shift 2
+  local body
+  body=`$(curl -fsS "`$@")
+  if printf '%s' "`$body" | grep -Fq "`$needle"; then
+    echo "`$label contains forbidden text: `$needle" >&2
+    exit 24
+  fi
+  echo "`$label does not contain forbidden text"
+}
 expect_min_bytes() {
   local label="`$1"
   local min_bytes="`$2"
@@ -562,15 +671,26 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_status "site-https-legal-user" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_status "site-https-legal-privacy" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_contains "site-legal-user-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_contains "site-legal-user-norms" "name=\"nongji-legal-section\" content=\"user-agreement-usage-norms\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-user-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_not_contains "site-legal-user-no-old-title" "禁止行为" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-privacy-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-www-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
+  expect_contains "site-www-legal-user-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
+  expect_contains "site-www-legal-user-norms" "name=\"nongji-legal-section\" content=\"user-agreement-usage-norms\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
+  expect_not_contains "site-www-legal-user-no-old-title" "禁止行为" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
+  expect_contains "site-www-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
+  expect_contains "site-www-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
 else
   echo 'site certificate missing after deploy' >&2
   exit 23
 fi
+site_verified=1
 "@
 
 Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-site-deploy.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null

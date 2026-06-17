@@ -11,6 +11,7 @@ internal data class PendingChatSend(
     val text: String,
     val imageUris: List<String>,
     val imageUrls: List<String> = emptyList(),
+    val authUserId: String? = null,
     val sessionGeneration: Int? = null,
     val region: String? = null,
     val regionSource: String? = null,
@@ -44,7 +45,12 @@ internal object PendingChatSendStore {
     private val gson = Gson()
 
     fun upsert(context: Context, pending: PendingChatSend) {
-        val next = pending.copy(updatedAtMs = System.currentTimeMillis())
+        val scoped = if (pending.authUserId.isNullOrBlank()) {
+            pending.copy(authUserId = IdManager.getAuthenticatedUserId())
+        } else {
+            pending
+        }
+        val next = scoped.copy(updatedAtMs = System.currentTimeMillis())
         prefs(context).edit()
             .putString(key(next.chatScopeId, next.userMessageId), gson.toJson(next))
             .commit()
@@ -64,8 +70,13 @@ internal object PendingChatSendStore {
         get(context, chatScopeId, userMessageId) != null
 
     fun isStaleForCurrentSession(pending: PendingChatSend): Boolean {
+        val pendingAuthUserId = pending.authUserId?.trim().orEmpty()
+        val currentAuthUserId = IdManager.getAuthenticatedUserId()?.trim().orEmpty()
+        if (pendingAuthUserId.isBlank() || currentAuthUserId.isBlank() || pendingAuthUserId != currentAuthUserId) {
+            return true
+        }
         val currentGeneration = SessionApi.currentSessionGenerationOrNull() ?: return false
-        val pendingGeneration = pending.sessionGeneration ?: return true
+        val pendingGeneration = pending.sessionGeneration ?: return false
         return pendingGeneration != currentGeneration
     }
 
@@ -154,6 +165,30 @@ internal object PendingChatSendStore {
                     storedKey.startsWith(expectedPrefix) -> {
                         storedKey.removePrefix(expectedPrefix).takeIf { it.isNotBlank() }?.let(::add)
                     }
+                }
+            }
+        }
+    }
+
+    fun keysForAuthUserId(context: Context, authUserId: String): List<Pair<String, String>> {
+        val expectedAuthUserId = authUserId.trim()
+        if (expectedAuthUserId.isBlank()) return emptyList()
+        val all = prefs(context).all
+        if (all.isEmpty()) return emptyList()
+        return buildList {
+            all.values.forEach { value ->
+                val raw = value as? String ?: return@forEach
+                val pending = try {
+                    gson.fromJson(raw, PendingChatSend::class.java)
+                } catch (_: JsonSyntaxException) {
+                    null
+                } ?: return@forEach
+                if (
+                    pending.authUserId?.trim() == expectedAuthUserId &&
+                    pending.chatScopeId.isNotBlank() &&
+                    pending.userMessageId.isNotBlank()
+                ) {
+                    add(pending.chatScopeId to pending.userMessageId)
                 }
             }
         }

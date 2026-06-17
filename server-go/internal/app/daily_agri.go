@@ -26,7 +26,7 @@ const (
 	dailyAgriGenerationAttempts = 2
 	dailyAgriTargetItemCount    = 3
 	dailyAgriMinPublishItems    = 3
-	dailyAgriProbeMaxRuns       = 5
+	dailyAgriProbeMaxRuns       = 3
 )
 
 func dailyAgriCardModel() string {
@@ -354,6 +354,9 @@ func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
 		return
 	}
+	if !s.consumeTodayAgriItemSaveRateLimit(w, r, auth.UserID) {
+		return
+	}
 	var body saveTodayAgriItemRequest
 	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
 		s.writeJSONDecodeError(w, err)
@@ -509,11 +512,11 @@ func dailyAgriPublicSourceLooksLikeArticleTitle(source string) bool {
 }
 
 func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Request) {
-	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_job") {
-		return
-	}
 	if !validateInternalJobSecret(r) {
 		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_job") {
 		return
 	}
 	card, status, err := s.dailyAgri.GenerateToday(r.Context())
@@ -544,11 +547,11 @@ func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleProbeTodayAgriCard(w http.ResponseWriter, r *http.Request) {
-	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_probe") {
-		return
-	}
 	if !validateInternalJobSecret(r) {
 		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !s.consumeInternalProbeRateLimit(w, r, "daily_agri_probe") {
 		return
 	}
 	runs := parseDailyAgriProbeRuns(r.URL.Query().Get("runs"))

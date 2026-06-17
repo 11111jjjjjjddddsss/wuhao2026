@@ -348,13 +348,21 @@ func normalizeClientAppLogPayload(userID string, maskedIP string, body clientApp
 		Platform:       platform,
 		BuildType:      buildType,
 		AppVersionCode: body.AppVersionCode,
-		AppVersionName: truncateRunes(strings.TrimSpace(body.AppVersionName), 64),
-		OSVersion:      truncateRunes(strings.TrimSpace(body.OSVersion), 64),
-		DeviceModel:    truncateRunes(strings.TrimSpace(body.DeviceModel), 128),
+		AppVersionName: normalizeClientLogMetadata(body.AppVersionName, 64),
+		OSVersion:      normalizeClientLogMetadata(body.OSVersion, 64),
+		DeviceModel:    normalizeClientLogMetadata(body.DeviceModel, 128),
 		ClientTimeMs:   body.ClientTimeMs,
 		CreatedAt:      createdAt,
 		MaskedIP:       truncateRunes(strings.TrimSpace(maskedIP), 64),
 	}, ""
+}
+
+func normalizeClientLogMetadata(raw string, limit int) string {
+	value := truncateRunes(strings.TrimSpace(raw), limit)
+	if value == "" || containsSensitiveClientLogText(value) {
+		return ""
+	}
+	return value
 }
 
 func normalizeClientLogMessage(raw string, fallback string) string {

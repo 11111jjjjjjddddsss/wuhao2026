@@ -2,10 +2,15 @@ package app
 
 import (
 	"bufio"
+	"context"
+	"encoding/json"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
+
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *testing.T) {
@@ -77,6 +82,116 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	}
 	if got := currentContent[1]["image_url"].(map[string]any)["url"]; got != "https://img/current.jpg" {
 		t.Fatalf("expected current image preserved, got %#v", got)
+	}
+}
+
+func TestResolveTodayAgriChatContextRequiresSavedUserItem(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	server := &Server{store: store}
+	userID := "acct_today_context"
+	dayCN := "20260618"
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
+		 FROM today_agri_user_items
+		 WHERE user_id = ? AND day_cn = ?
+		 ORDER BY updated_at DESC, day_cn DESC
+		 LIMIT ?`)).
+		WithArgs(userID, dayCN, 1).
+		WillReturnRows(sqlmock.NewRows([]string{"day_cn", "anchor_client_msg_id", "content_json", "created_at", "updated_at"}))
+
+	if got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN); got != "" {
+		t.Fatalf("context without saved item = %q, want empty", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestResolveTodayAgriChatContextUsesSavedDisplayCopy(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	server := &Server{store: store}
+	userID := "acct_today_context"
+	dayCN := "20260618"
+	card := testDailyAgriCard(dayCN)
+	card.Items[0].Summary = "保存后的展示摘要。"
+	raw, err := json.Marshal(card)
+	if err != nil {
+		t.Fatalf("marshal card: %v", err)
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
+		 FROM today_agri_user_items
+		 WHERE user_id = ? AND day_cn = ?
+		 ORDER BY updated_at DESC, day_cn DESC
+		 LIMIT ?`)).
+		WithArgs(userID, dayCN, 1).
+		WillReturnRows(
+			sqlmock.NewRows([]string{"day_cn", "anchor_client_msg_id", "content_json", "created_at", "updated_at"}).
+				AddRow(dayCN, "assistant_anchor_1", string(raw), int64(1700000000000), int64(1700000001000)),
+		)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, created_at FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1")).
+		WithArgs(userID, "anchor_1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(11), int64(1700000000000)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)
+		 FROM session_round_archive
+		 WHERE user_id = ?
+		   AND (created_at > ? OR (created_at = ? AND id > ?))`)).
+		WithArgs(userID, int64(1700000000000), int64(1700000000000), int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
+
+	got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN)
+	if !strings.Contains(got, "今日农情界面上下文") {
+		t.Fatalf("context missing heading: %q", got)
+	}
+	if !strings.Contains(got, "保存后的展示摘要。") {
+		t.Fatalf("context did not use saved display copy: %q", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestResolveTodayAgriChatContextStopsAfterThreeArchivedRounds(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	server := &Server{store: store}
+	userID := "acct_today_context"
+	dayCN := "20260618"
+	raw, err := json.Marshal(testDailyAgriCard(dayCN))
+	if err != nil {
+		t.Fatalf("marshal card: %v", err)
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
+		 FROM today_agri_user_items
+		 WHERE user_id = ? AND day_cn = ?
+		 ORDER BY updated_at DESC, day_cn DESC
+		 LIMIT ?`)).
+		WithArgs(userID, dayCN, 1).
+		WillReturnRows(
+			sqlmock.NewRows([]string{"day_cn", "anchor_client_msg_id", "content_json", "created_at", "updated_at"}).
+				AddRow(dayCN, "assistant_anchor_1", string(raw), int64(1700000000000), int64(1700000001000)),
+		)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, created_at FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1")).
+		WithArgs(userID, "anchor_1").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(11), int64(1700000000000)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)
+		 FROM session_round_archive
+		 WHERE user_id = ?
+		   AND (created_at > ? OR (created_at = ? AND id > ?))`)).
+		WithArgs(userID, int64(1700000000000), int64(1700000000000), int64(11)).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
+
+	if got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN); got != "" {
+		t.Fatalf("context after three rounds = %q, want empty", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
 	}
 }
 

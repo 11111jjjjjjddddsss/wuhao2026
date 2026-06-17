@@ -192,8 +192,9 @@ function Assert-ExpectedValue {
 function Assert-SafeOssPrefix {
     param([string]$Value)
     $normalized = $Value.Replace("\", "/").Trim("/")
-    if ([string]::IsNullOrWhiteSpace($normalized) -or -not $normalized.ToLowerInvariant().StartsWith("test-apks/")) {
-        throw "internal test APKs must be stored under test-apks/ so the short lifecycle policy applies"
+    $normalizedLower = $normalized.ToLowerInvariant()
+    if ([string]::IsNullOrWhiteSpace($normalized) -or ($normalizedLower -ne "test-apks/debug" -and -not $normalizedLower.StartsWith("test-apks/debug/"))) {
+        throw "internal test APKs must be stored under test-apks/debug so the short lifecycle policy and cleanup scripts apply"
     }
     foreach ($part in $normalized.Split("/")) {
         if ([string]::IsNullOrWhiteSpace($part) -or $part -eq "." -or $part -eq ".." -or $part -match '[^\w.\-]') {
@@ -219,20 +220,50 @@ function Test-PublicDownloadUrl {
         [string]$Method = "Head"
     )
     try {
-        $response = Invoke-WebRequest -Uri $Url -Method $Method -UseBasicParsing -TimeoutSec 90
-        $status = [int]$response.StatusCode
-        $contentLength = [string]$response.Headers["Content-Length"]
-        $contentType = [string]$response.Headers["Content-Type"]
-        if ($status -ne 200) {
-            throw "unexpected HTTP status $status"
+        if ($Method -eq "GetRange") {
+            $handler = [System.Net.Http.HttpClientHandler]::new()
+            $handler.AllowAutoRedirect = $true
+            $client = [System.Net.Http.HttpClient]::new($handler)
+            $client.Timeout = [TimeSpan]::FromSeconds(90)
+            try {
+                $request = [System.Net.Http.HttpRequestMessage]::new([System.Net.Http.HttpMethod]::Get, $Url)
+                $request.Headers.Range = [System.Net.Http.Headers.RangeHeaderValue]::new(0, 0)
+                $httpResponse = $client.SendAsync($request, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+                try {
+                    $status = [int]$httpResponse.StatusCode
+                    $contentLength = [string]$httpResponse.Content.Headers.ContentLength
+                    $contentType = [string]$httpResponse.Content.Headers.ContentType
+                    if ($status -ne 206 -and $status -ne 200) {
+                        throw "unexpected HTTP status $status"
+                    }
+                    if ($contentType -notmatch "application/vnd\.android\.package-archive|application/octet-stream") {
+                        throw "unexpected content type: $contentType"
+                    }
+                    Write-Host ("test_apk_download_probe=ready status={0} method=GET_RANGE content_length={1} content_type={2}" -f $status, $contentLength, $contentType)
+                    return
+                } finally {
+                    $httpResponse.Dispose()
+                }
+            } finally {
+                $client.Dispose()
+                $handler.Dispose()
+            }
+        } else {
+            $response = Invoke-WebRequest -Uri $Url -Method $Method -UseBasicParsing -TimeoutSec 90
+            $status = [int]$response.StatusCode
+            $contentLength = [string]$response.Headers["Content-Length"]
+            $contentType = [string]$response.Headers["Content-Type"]
+            if ($status -ne 200) {
+                throw "unexpected HTTP status $status"
+            }
+            if (-not [string]::IsNullOrWhiteSpace($contentLength) -and $contentLength -ne [string]$ExpectedSize) {
+                throw "content length mismatch: expected=$ExpectedSize actual=$contentLength"
+            }
+            if ($contentType -notmatch "application/vnd\.android\.package-archive|application/octet-stream") {
+                throw "unexpected content type: $contentType"
+            }
+            Write-Host ("test_apk_download_probe=ready status={0} content_length={1} content_type={2}" -f $status, $contentLength, $contentType)
         }
-        if (-not [string]::IsNullOrWhiteSpace($contentLength) -and $contentLength -ne [string]$ExpectedSize) {
-            throw "content length mismatch: expected=$ExpectedSize actual=$contentLength"
-        }
-        if ($contentType -notmatch "application/vnd\.android\.package-archive|application/octet-stream") {
-            throw "unexpected content type: $contentType"
-        }
-        Write-Host ("test_apk_download_probe=ready status={0} content_length={1} content_type={2}" -f $status, $contentLength, $contentType)
     } catch {
         throw "test APK public download probe failed for ${Url}: $($_.Exception.Message)"
     }
@@ -612,6 +643,7 @@ if ($useOssSignedDownloadEffective -and -not $SkipEcsDownloadPublish) {
 
 if ($useOssSignedDownloadEffective) {
     Test-PublicDownloadUrl -Url $ossSignedHeadUrl -ExpectedSize $apkItem.Length -Method "Head"
+    Test-PublicDownloadUrl -Url $ossSignedDownloadUrl -ExpectedSize $apkItem.Length -Method "GetRange"
 } elseif (-not $SkipEcsDownloadPublish) {
     Test-PublicDownloadUrl -Url $downloadUrl -ExpectedSize $apkItem.Length
 }

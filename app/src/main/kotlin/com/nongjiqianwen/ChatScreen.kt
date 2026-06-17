@@ -251,12 +251,12 @@ internal sealed interface ChatTimelineItem {
     }
 }
 @Immutable
-private data class FailedAssistantMessageState(
+internal data class FailedAssistantMessageState(
     val sourceUserMessageId: String,
     val reason: String? = null
 )
 @Immutable
-private data class LocalChatWindowSnapshot(
+internal data class LocalChatWindowSnapshot(
     val messages: List<ChatMessage> = emptyList(),
     val failedUserMessageStates: Map<String, String> = emptyMap(),
     val failedAssistantMessageStates: Map<String, FailedAssistantMessageState> = emptyMap(),
@@ -351,7 +351,14 @@ internal fun buildChatTimelineItems(
         }
     }
     if (validTodayAgriCard != null && !todayAgriCardInserted) {
-        val insertIndex = latestAssistantAnswerInsertIndex.takeIf { it >= 0 } ?: items.size
+        val insertIndex = if (requestedAfterMessageId != null && hiddenRoundCount > 0) {
+            items.indexOfFirst { item -> item is ChatTimelineItem.HistoryNotice }
+                .takeIf { it >= 0 }
+                ?.plus(1)
+                ?: 0
+        } else {
+            latestAssistantAnswerInsertIndex.takeIf { it >= 0 } ?: items.size
+        }
         items.add(insertIndex, ChatTimelineItem.TodayAgriCard(validTodayAgriCard))
     }
     return items
@@ -362,7 +369,8 @@ internal fun resolveTodayAgriContextDayForTimeline(
     currentTodayAgriCardDay: String,
     currentDayKey: String,
     remoteConfirmedDay: String?,
-    existingUserMessageId: String? = null
+    existingUserMessageId: String? = null,
+    failedUserMessageIds: Set<String> = emptySet()
 ): String? {
     val day = currentTodayAgriCardDay.takeIf { it.isNotBlank() && it == currentDayKey } ?: return null
     if (remoteConfirmedDay != day) return null
@@ -375,7 +383,8 @@ internal fun resolveTodayAgriContextDayForTimeline(
         .count { message ->
             message is ChatTimelineItem.Message &&
                 message.message.role == ChatRole.USER &&
-                message.message.id != existingUserMessageId
+                message.message.id != existingUserMessageId &&
+                message.message.id !in failedUserMessageIds
     }
     return day.takeIf { userMessagesAfterAnchor < 3 }
 }
@@ -395,7 +404,7 @@ internal fun shouldShowTodayAgriMainCard(
         (shownThisRuntime || hasSavedItem || hasAssistantAnswerTail) &&
         cardDay.isNotBlank() &&
         cardDay == normalizedCurrentDay &&
-        (!suppressedThisRuntime || shownThisRuntime || hasSavedItem) &&
+        (!suppressedThisRuntime || shownThisRuntime) &&
         (shownThisRuntime || hasSavedItem || shownDayKey != cardDay)
 }
 
@@ -504,7 +513,7 @@ private fun markLocalImageUploadPendingAsFailed(
 }
 
 @Immutable
-private data class LocalStreamingDraft(
+internal data class LocalStreamingDraft(
     val messageId: String,
     val content: String,
     val revealBuffer: String,
@@ -569,6 +578,8 @@ private const val TODAY_AGRI_CARD_CACHE_DAY_KEY_PREFIX = "today_agri_card_cache_
 private const val TODAY_AGRI_CARD_CACHE_KEY_PREFIX = "today_agri_card_cache_"
 private const val TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX = "today_agri_main_shown_day_"
 private const val TODAY_AGRI_CARD_FETCH_RETRY_DELAY_MS = 5_000L
+private const val TODAY_AGRI_ITEM_SAVE_MAX_ATTEMPTS = 3
+private const val TODAY_AGRI_ITEM_SAVE_RETRY_DELAY_MS = 1_500L
 private const val TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS = 15 * 60 * 1000L
 private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
@@ -1554,7 +1565,7 @@ private fun retainLocalRecoverySnapshotForRemoteFallback(
     )
 }
 
-private fun recoverStreamingDraftAsInterruptedSnapshot(
+internal fun recoverStreamingDraftAsInterruptedSnapshot(
     localSnapshot: LocalChatWindowSnapshot,
     draft: LocalStreamingDraft?
 ): LocalChatWindowSnapshot {
@@ -1574,7 +1585,6 @@ private fun recoverStreamingDraftAsInterruptedSnapshot(
         content = safeDraft.content,
         revealBuffer = safeDraft.revealBuffer
     )
-    if (partialContent.isBlank()) return sanitizedSnapshot
     val assistantMessageId = safeDraft.messageId
         .takeIf { it.isNotBlank() }
         ?: assistantMessageIdForSourceUser(sourceUserMessageId)
@@ -2162,7 +2172,7 @@ private suspend fun prewarmAssistantMarkdown(messages: List<ChatMessage>) = with
     messages
         .filter { it.role == ChatRole.ASSISTANT && it.content.isNotBlank() }
         .takeLast(12)
-        .forEach { getCachedMarkdownUiBlocks(it.content) }
+        .forEach { buildRendererStructureStats(it.content) }
 }
 
 private fun snapshotRoundsToMessages(rounds: List<ARound>): List<ChatMessage> {
@@ -2621,6 +2631,7 @@ fun ChatScreen() {
     var todayAgriAutoInsertSuppressedThisRuntime by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(false)
     }
+    var todayAgriUserSendEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var hiddenRemoteRoundCount by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val currentTodayAgriCardDay = todayAgriCardDayKey(todayAgriCard)
     val currentTodayAgriMainItem by remember(todayAgriMainItem) {
@@ -2800,7 +2811,8 @@ fun ChatScreen() {
             currentTodayAgriCardDay = currentTodayAgriCardDay,
             currentDayKey = currentChinaDateKey(),
             remoteConfirmedDay = todayAgriRemoteConfirmedDay,
-            existingUserMessageId = existingUserMessageId
+            existingUserMessageId = existingUserMessageId,
+            failedUserMessageIds = failedUserMessageStates.keys
         )
     }
     fun persistedTodayAgriContextDayForUserMessage(userMessageId: String?): String? {
@@ -2822,6 +2834,7 @@ fun ChatScreen() {
     }
     fun suppressPendingTodayAgriAutoInsertForUserSend() {
         if (!todayAgriShownThisRuntime && !hasTodayAgriCard) {
+            todayAgriUserSendEpoch++
             todayAgriAutoInsertSuppressedThisRuntime = true
         }
     }
@@ -2831,6 +2844,7 @@ fun ChatScreen() {
         context.saveTodayAgriMainShownDaySync(chatScopeId, todayAgriMainShownDay)
         todayAgriShownThisRuntime = false
         todayAgriAutoInsertSuppressedThisRuntime = false
+        todayAgriUserSendEpoch = 0
         todayAgriMainItem = null
         todayAgriCard = null
         todayAgriRemoteConfirmedDay = null
@@ -3261,6 +3275,8 @@ fun ChatScreen() {
         chatHistoryClearEpochRef.incrementAndGet()
     }
     var todayAgriItemSaveInFlightKey by remember(uiRuntimeResetKey) { mutableStateOf("") }
+    var todayAgriItemSaveRetryKey by remember(uiRuntimeResetKey) { mutableStateOf("") }
+    var todayAgriItemSaveRetryAttempt by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     LaunchedEffect(
         shouldShowTodayAgriCard,
         currentTodayAgriCardDay,
@@ -3270,7 +3286,8 @@ fun ChatScreen() {
         isStreaming,
         hasStreamingItem,
         hasStartedConversation,
-        latestCompletedAssistantTailId
+        latestCompletedAssistantTailId,
+        todayAgriItemSaveRetryAttempt
     ) {
         if (!shouldShowTodayAgriCard || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (shouldHydrateRemoteHistory && !remoteSnapshotHydrationComplete) return@LaunchedEffect
@@ -3284,6 +3301,14 @@ fun ChatScreen() {
         }
         val saveKey = "$currentTodayAgriCardDay|$anchorMessageId"
         if (todayAgriItemSaveInFlightKey == saveKey) return@LaunchedEffect
+        val retryAttempt = if (todayAgriItemSaveRetryKey == saveKey) todayAgriItemSaveRetryAttempt else 0
+        val saveUserSendEpoch = todayAgriUserSendEpoch
+        if (retryAttempt > 0) {
+            delay(TODAY_AGRI_ITEM_SAVE_RETRY_DELAY_MS * retryAttempt)
+        }
+        if (saveUserSendEpoch != todayAgriUserSendEpoch) {
+            return@LaunchedEffect
+        }
         todayAgriItemSaveInFlightKey = saveKey
         val saveClearEpoch = chatHistoryClearEpoch
         if (hasRemoteHistorySource) {
@@ -3296,23 +3321,46 @@ fun ChatScreen() {
                 if (todayAgriItemSaveInFlightKey == saveKey) {
                     todayAgriItemSaveInFlightKey = ""
                 }
-                if (saved && saveClearEpoch == chatHistoryClearEpoch) {
+                if (saved &&
+                    saveClearEpoch == chatHistoryClearEpoch &&
+                    saveUserSendEpoch == todayAgriUserSendEpoch
+                ) {
+                    todayAgriItemSaveRetryKey = ""
+                    todayAgriItemSaveRetryAttempt = 0
                     todayAgriMainItem = TodayAgriMainItem(
                         day_cn = currentTodayAgriCardDay,
                         anchor_client_msg_id = anchorMessageId,
                         card = cardToSave,
                         updated_at = System.currentTimeMillis()
                     )
+                } else if (!saved &&
+                    saveClearEpoch == chatHistoryClearEpoch &&
+                    saveUserSendEpoch == todayAgriUserSendEpoch &&
+                    !currentTodayAgriCardHasSavedItem &&
+                    retryAttempt < TODAY_AGRI_ITEM_SAVE_MAX_ATTEMPTS
+                ) {
+                    val nextRetryAttempt =
+                        if (todayAgriItemSaveRetryKey == saveKey) {
+                            todayAgriItemSaveRetryAttempt + 1
+                        } else {
+                            1
+                        }
+                    todayAgriItemSaveRetryKey = saveKey
+                    todayAgriItemSaveRetryAttempt = nextRetryAttempt
                 }
             }
         } else {
             todayAgriItemSaveInFlightKey = ""
-            todayAgriMainItem = TodayAgriMainItem(
-                day_cn = currentTodayAgriCardDay,
-                anchor_client_msg_id = anchorMessageId,
-                card = cardToSave,
-                updated_at = System.currentTimeMillis()
-            )
+            todayAgriItemSaveRetryKey = ""
+            todayAgriItemSaveRetryAttempt = 0
+            if (saveUserSendEpoch == todayAgriUserSendEpoch) {
+                todayAgriMainItem = TodayAgriMainItem(
+                    day_cn = currentTodayAgriCardDay,
+                    anchor_client_msg_id = anchorMessageId,
+                    card = cardToSave,
+                    updated_at = System.currentTimeMillis()
+                )
+            }
         }
     }
     val startupHydrationBarrierSatisfied by remember(
@@ -3553,6 +3601,7 @@ fun ChatScreen() {
                 todayAgriItemSaveInFlightKey = ""
                 todayAgriShownThisRuntime = false
                 todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
+                todayAgriUserSendEpoch = 0
                 todayAgriMainCardLoadedLogged = false
                 todayAgriMainCardVisibleLogged = false
             }
@@ -3569,6 +3618,7 @@ fun ChatScreen() {
             todayAgriItemSaveInFlightKey = ""
             todayAgriShownThisRuntime = false
             todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
+            todayAgriUserSendEpoch = 0
             todayAgriMainCardLoadedLogged = false
             todayAgriMainCardVisibleLogged = false
         }
@@ -4935,6 +4985,16 @@ fun ChatScreen() {
             }
             val snapshot = awaitRemoteSnapshot()
             val remoteSnapshotLoaded = snapshot != null
+            if (hydrateClearEpoch != chatHistoryClearEpoch) {
+                historyHydrationComplete = true
+                remoteSnapshotHydrationComplete = remoteSnapshotLoaded
+                localSnapshotForMergeDeferred.cancel()
+                localStreamingDraftForMergeDeferred.cancel()
+                todayAgriMainItem = null
+                todayAgriCard = null
+                todayAgriRemoteConfirmedDay = null
+                return@LaunchedEffect
+            }
             if (snapshot != null) {
                 val item = snapshot.today_agri_items
                     .firstOrNull { item ->
@@ -4966,11 +5026,6 @@ fun ChatScreen() {
                 localSnapshot = localSnapshotForMergeDeferred.await(),
                 draft = localStreamingDraftForMerge
             )
-            if (hydrateClearEpoch != chatHistoryClearEpoch) {
-                historyHydrationComplete = true
-                remoteSnapshotHydrationComplete = remoteSnapshotLoaded
-                return@LaunchedEffect
-            }
             val shouldKeepPendingUserMessage: (String) -> Boolean = { messageId ->
                 PendingChatSendStore.has(context, chatScopeId, messageId)
             }
@@ -8310,6 +8365,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
                     UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
+                    UiCopyPreviewItem("更新权限大字体", "1.6x 字体下真实更新弹窗", UiCopyPreviewKind.AppUpdatePermissionLargeFont),
+                    UiCopyPreviewItem("账号管理大字体", "1.6x 字体下账号和危险操作", UiCopyPreviewKind.HamburgerAccountLargeFont),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("礼品卡失败提示", "失败原因停留在兑换页内", UiCopyPreviewKind.HamburgerGiftCardFailure),
                     UiCopyPreviewItem("协议与隐私目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
@@ -8342,7 +8399,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
                     UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方三轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
-                    UiCopyPreviewItem("农情历史页", "按日期分组，旧简报先展示后刷新", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
+                    UiCopyPreviewItem("农情历史页", "日期收进卡片内，旧简报先展示后刷新", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
             ),
@@ -8350,7 +8407,7 @@ private fun UiCopyPreviewOverlay(
                 title = "文本渲染",
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
-                    UiCopyPreviewItem("AI 表格", "Markdown 表格横向可滑，并带复制按钮", UiCopyPreviewKind.AssistantTableSample),
+                    UiCopyPreviewItem("AI 表格", "Markdown 表格按移动端分组展示，并保留复制表格按钮", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
             ),
@@ -8623,6 +8680,8 @@ private enum class UiCopyPreviewKind {
     HamburgerAppUpdateDownloading,
     AppUpdateInstallPermissionHint,
     AppUpdateInstallNotCompletedHint,
+    AppUpdatePermissionLargeFont,
+    HamburgerAccountLargeFont,
     HamburgerGiftCardPage,
     HamburgerGiftCardFailure,
     HamburgerLegalHubPage,
@@ -9086,10 +9145,20 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     HamburgerAppUpdateDialogPreview(downloading = true)
                 }
                 UiCopyPreviewKind.AppUpdateInstallPermissionHint -> {
-                    UiCopyPreviewHint("允许安装未知应用后，返回本页继续更新")
+                    HamburgerAppUpdateDialogPreview(installPermissionPending = true)
                 }
                 UiCopyPreviewKind.AppUpdateInstallNotCompletedHint -> {
                     UiCopyPreviewHint("更新未完成，可稍后继续安装")
+                }
+                UiCopyPreviewKind.AppUpdatePermissionLargeFont -> {
+                    UiCopyPreviewLargeFont {
+                        HamburgerAppUpdateDialogPreview(installPermissionPending = true)
+                    }
+                }
+                UiCopyPreviewKind.HamburgerAccountLargeFont -> {
+                    UiCopyPreviewLargeFont {
+                        HamburgerAccountManagementPagePreview()
+                    }
                 }
                 UiCopyPreviewKind.HamburgerGiftCardPage -> {
                     HamburgerRedeemCodePagePreview()
@@ -10007,6 +10076,19 @@ private fun UiCopyPreviewPlainText(lines: List<String>) {
                 lineHeight = 18.sp
             )
         }
+    }
+}
+
+@Composable
+private fun UiCopyPreviewLargeFont(content: @Composable () -> Unit) {
+    val currentDensity = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(
+            density = currentDensity.density,
+            fontScale = 1.6f
+        )
+    ) {
+        content()
     }
 }
 

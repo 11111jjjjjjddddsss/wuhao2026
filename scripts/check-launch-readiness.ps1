@@ -431,12 +431,21 @@ if (-not $SkipCloud) {
         )
     }
     Invoke-GateStep -Name "public blackbox" -ScriptBlock {
-        Invoke-Native -FilePath "powershell.exe" -Arguments @(
+        $blackboxArgs = @(
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
             "-File",
             "scripts/check-public-blackbox.ps1"
+        )
+        if ($AppUpdateReleaseGate -and $AppUpdatePreviousVersionCode -gt 0) {
+            $blackboxArgs += @(
+                "-PreviousAndroidVersionCode",
+                "$AppUpdatePreviousVersionCode"
+            )
+        }
+        Invoke-Native -FilePath "powershell.exe" -Arguments @(
+            $blackboxArgs
         )
     }
     Invoke-GateStep -Name "sls alert readiness" -ScriptBlock {

@@ -24,11 +24,13 @@ npm run build
 官网不在代码里写死 APK 链接。构建时通过环境变量注入：
 
 ```powershell
-$env:VITE_ANDROID_APK_URL="https://example.com/nongjiqiancha.apk"
+$env:VITE_ANDROID_APK_URL="https://download.nongjiqiancha.cn/android/releases/<versionCode>/nongjiqiancha-<versionName>.apk"
 npm run build
 ```
 
 未设置合法 `https://...apk` 下载地址时，页面保留下载按钮视觉入口，但按钮不可点击，也不展示内部准备状态。
+
+正式下载地址只能使用自有下载域名 `download.nongjiqiancha.cn` 下的 `/android/releases/...apk` 稳定 release 路径。内部测试包 `test-apks/debug/...`、短期签名 URL、OSS 默认公网域名和外部 APK 域名不能写进官网正式下载按钮。部署官网正式下载按钮前，先按 App 更新 runbook 完成 release APK 校验、下载回验和后台物料对账，并在部署脚本中显式使用 `-AllowOfficialDownloadUrl`。
 
 ## 备案展示
 

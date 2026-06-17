@@ -256,7 +256,7 @@ object SessionApi {
         }
     }
 
-    private fun isStableAppUpdateApkUrl(raw: String): Boolean {
+    internal fun isStableAppUpdateApkUrl(raw: String): Boolean {
         val parsed = raw.toHttpUrlOrNull() ?: return false
         if (parsed.scheme != "https") return false
         if (!parsed.host.equals(APP_UPDATE_OFFICIAL_APK_HOST, ignoreCase = true)) return false
@@ -500,6 +500,11 @@ object SessionApi {
     }
 
     private fun clearLocalAuthRuntimeSession(notifyListeners: Boolean = false) {
+        val previousAuthUserId = IdManager.getAuthenticatedUserId()
+        val appContext = IdManager.applicationContextOrNull()
+        if (!previousAuthUserId.isNullOrBlank() && appContext != null) {
+            PendingChatSendWorkScheduler.cancelAllForAuthUserId(appContext, previousAuthUserId)
+        }
         IdManager.clearAuthSession()
         sessionGeneration.set(-1)
         runtimeGeneration.incrementAndGet()
@@ -2317,7 +2322,7 @@ object SessionApi {
             "gift_card_invalid_code", "gift_card_not_found" -> "礼品卡码不正确，请核对后重试"
             "gift_card_inactive" -> "这张礼品卡已被兑换或已作废"
             "gift_card_expired" -> "这张礼品卡已过期"
-            "gift_card_lower_tier" -> "当前会员档位更高，不能兑换较低档位礼品卡"
+            "gift_card_lower_tier" -> "当前已是更高档会员，这张礼品卡不能叠加使用"
             "gift_card_not_configured" -> "礼品卡服务暂时不可用，请稍后再试"
             "rate_limited" -> "尝试太频繁，请稍后再试"
             "unauthorized" -> "请先登录后兑换"

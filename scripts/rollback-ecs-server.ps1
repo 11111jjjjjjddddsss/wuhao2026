@@ -182,11 +182,29 @@ active_service="nongji-server-`$active_port.service"
 inactive_service="nongji-server-`$inactive_port.service"
 echo "active_port=`$active_port inactive_port=`$inactive_port"
 cancel_stale_drains
+switch_completed=0
+installed_rollback_binary=0
+pre_rollback_bin_backup=''
+
+restore_pre_switch_rollback() {
+  if [ "`$installed_rollback_binary" != "1" ] || [ "`$switch_completed" = "1" ]; then
+    return 0
+  fi
+  echo "restore pre-switch binary after failed rollback" >&2
+  if [ -n "`$pre_rollback_bin_backup" ] && [ -f "`$pre_rollback_bin_backup" ]; then
+    cp -a "`$pre_rollback_bin_backup" "`$install_dir/nongji-server" || true
+  fi
+  systemctl stop "`$inactive_service" 2>/dev/null || true
+}
+
+trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_pre_switch_rollback; fi; exit "`$status"' EXIT
 
 echo rollback "$BackupName"
-cp -a "`$install_dir/nongji-server" "`$install_dir/nongji-server.pre-rollback-`$(date +%Y%m%d%H%M%S)"
+pre_rollback_bin_backup="`$install_dir/nongji-server.pre-rollback-`$(date +%Y%m%d%H%M%S)"
+cp -a "`$install_dir/nongji-server" "`$pre_rollback_bin_backup"
 install -m 0755 -o nongji -g nongji "`$backup" "`$install_dir/nongji-server.new"
 mv "`$install_dir/nongji-server.new" "`$install_dir/nongji-server"
+installed_rollback_binary=1
 
 write_slot_unit() {
   port="`$1"
@@ -323,6 +341,7 @@ if [ "`$admin_status" != "401" ]; then
   restore_nginx_after_switch
   exit 32
 fi
+switch_completed=1
 systemctl enable "`$inactive_service" >/dev/null
 systemctl disable "`$active_service" >/dev/null 2>&1 || true
 systemctl disable "`$legacy_service" >/dev/null 2>&1 || true

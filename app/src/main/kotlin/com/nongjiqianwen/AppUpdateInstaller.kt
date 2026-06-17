@@ -30,6 +30,9 @@ object AppUpdateInstaller {
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
+    private fun isAllowedReleaseApkUrl(rawUrl: String): Boolean =
+        SessionApi.isStableAppUpdateApkUrl(rawUrl)
+
     enum class DownloadFailureReason {
         InvalidUrl,
         MissingReleaseMetadata,
@@ -94,7 +97,7 @@ object AppUpdateInstaller {
     suspend fun downloadApkDetailed(context: Context, update: SessionApi.AppUpdateInfo): DownloadResult =
         withContext(Dispatchers.IO) {
             val apkUrl = update.apkUrl?.trim().orEmpty()
-            if (!apkUrl.startsWith("https://")) {
+            if (!isAllowedReleaseApkUrl(apkUrl)) {
                 return@withContext DownloadResult(reason = DownloadFailureReason.InvalidUrl)
             }
             if (!update.usableUpdate) {
@@ -122,7 +125,7 @@ object AppUpdateInstaller {
                             httpStatus = response.code
                         )
                     }
-                    if (!response.request.url.isHttps) {
+                    if (!response.request.url.isHttps || !isAllowedReleaseApkUrl(response.request.url.toString())) {
                         return@withContext DownloadResult(reason = DownloadFailureReason.NonHttpsRedirect)
                     }
                     val body = response.body

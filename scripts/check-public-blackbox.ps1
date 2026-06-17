@@ -1,10 +1,14 @@
 param(
     [int]$TimeoutSec = 12,
+    [int]$ExpectedAndroidUpdateVersionCode = 0,
+    [int]$PreviousAndroidVersionCode = 0,
     [switch]$SkipHttpRedirectChecks,
     [switch]$SkipSecurityHeaderChecks
 )
 
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
 
 $errors = New-Object System.Collections.Generic.List[string]
 $warnings = New-Object System.Collections.Generic.List[string]
@@ -218,14 +222,23 @@ Invoke-HttpProbe `
         '"redis":"ok"',
         '"upload_storage":"oss"'
     )
+$appUpdateProbeVersionCode = [Math]::Max(0, $PreviousAndroidVersionCode)
+$appUpdateRequiredMarkers = @(
+    '"platform":"android"'
+)
+if ($ExpectedAndroidUpdateVersionCode -gt 0) {
+    $appUpdateRequiredMarkers += '"has_update":true'
+    $appUpdateRequiredMarkers += ('"latest_version_code":' + $ExpectedAndroidUpdateVersionCode)
+} elseif ($PreviousAndroidVersionCode -gt 0) {
+    $appUpdateRequiredMarkers += '"has_update":true'
+} else {
+    $appUpdateRequiredMarkers += '"has_update":false'
+}
 Invoke-HttpProbe `
     -Name "api_app_update_public_probe" `
-    -Url "https://api.nongjiqiancha.cn/api/app/update?platform=android&version_code=0&version_name=blackbox" `
+    -Url "https://api.nongjiqiancha.cn/api/app/update?platform=android&version_code=$appUpdateProbeVersionCode&version_name=blackbox" `
     -ExpectedStatus @(200) `
-    -RequiredBodyMarkers @(
-        '"platform":"android"',
-        '"has_update":false'
-    )
+    -RequiredBodyMarkers $appUpdateRequiredMarkers
 Invoke-HttpProbe `
     -Name "api_upload_missing_file_probe" `
     -Url "https://api.nongjiqiancha.cn/uploads/blackbox-missing-file.jpg" `
@@ -247,11 +260,12 @@ Invoke-HttpProbe `
         "2026031728",
         "11010602202723"
     )
-Invoke-HttpProbe -Name "site_user_agreement" -Url "https://nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement")
-Invoke-HttpProbe -Name "site_privacy_policy" -Url "https://nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy")
+Invoke-HttpProbe -Name "site_user_agreement" -Url "https://nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement", 'name="nongji-legal-version" content="20260618"', 'name="nongji-legal-section" content="user-agreement-usage-norms"')
+Invoke-HttpProbe -Name "site_privacy_policy" -Url "https://nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy", 'name="nongji-legal-version" content="20260618"', 'name="nongji-privacy-section" content="long-term-memory"')
 Invoke-HttpProbe -Name "site_gongan_icon" -Url "https://nongjiqiancha.cn/gongan.png" -ExpectedStatus @(200)
-Invoke-HttpProbe -Name "site_www_user_agreement" -Url "https://www.nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement")
-Invoke-HttpProbe -Name "site_www_privacy_policy" -Url "https://www.nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy")
+Invoke-HttpProbe -Name "site_test_apks_disabled" -Url "https://nongjiqiancha.cn/test-apks/" -ExpectedStatus @(404)
+Invoke-HttpProbe -Name "site_www_user_agreement" -Url "https://www.nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement", 'name="nongji-legal-version" content="20260618"', 'name="nongji-legal-section" content="user-agreement-usage-norms"')
+Invoke-HttpProbe -Name "site_www_privacy_policy" -Url "https://www.nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy", 'name="nongji-legal-version" content="20260618"', 'name="nongji-privacy-section" content="long-term-memory"')
 Invoke-HttpProbe -Name "site_www_gongan_icon" -Url "https://www.nongjiqiancha.cn/gongan.png" -ExpectedStatus @(200)
 Invoke-HttpProbe -Name "admin_https_root" -Url "https://admin.nongjiqiancha.cn/" -ExpectedStatus @(200) -RequiredBodyMarkers @('id="app"', "/assets/")
 Invoke-AdminAssetProbe

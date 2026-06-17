@@ -67,6 +67,12 @@ internal object PendingChatSendWorkScheduler {
         }
     }
 
+    fun cancelAllForAuthUserId(context: Context, authUserId: String) {
+        PendingChatSendStore.keysForAuthUserId(context, authUserId).forEach { (chatScopeId, userMessageId) ->
+            cancelAndRemove(context, chatScopeId, userMessageId)
+        }
+    }
+
     private fun uniqueName(chatScopeId: String, userMessageId: String): String =
         "$UNIQUE_PREFIX$chatScopeId:$userMessageId"
 }

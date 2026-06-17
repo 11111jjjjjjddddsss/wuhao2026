@@ -16,6 +16,7 @@ local.properties
 
 # Logs
 *.log
+__pycache__/
 
 # Node server
 server/node_modules/
@@ -29,6 +30,7 @@ site/dist/
 # Local diagnostics / temp artifacts
 .codex-remote-attachments/
 compat_results/
+logs/
 tmp/
 tmp_*/
 tmp_*.png

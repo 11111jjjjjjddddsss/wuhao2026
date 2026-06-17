@@ -147,6 +147,27 @@ func TestTopupPackStatusAfterConsumeUsesRemainingBeforeConsume(t *testing.T) {
 	}
 }
 
+func TestCountPendingQuotaConsumeOutboxForUserCountsPendingAndFailedRows(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	userID := "acct_pending_quota"
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM quota_consume_outbox WHERE user_id = ? AND status IN ('pending','failed')")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
+
+	count, err := store.CountPendingQuotaConsumeOutboxForUser(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("CountPendingQuotaConsumeOutboxForUser failed: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("pending count = %d, want 2", count)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 func TestConsumeOnDoneAtDoesNotUseBenefitsCreatedAfterCompletion(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()

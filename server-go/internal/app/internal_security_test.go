@@ -20,6 +20,34 @@ func TestAdminLoginRateLimiterUsesEnv(t *testing.T) {
 	}
 }
 
+func TestInternalProbeRateLimiterUsesTighterEnv(t *testing.T) {
+	t.Setenv("INTERNAL_PROBE_RATE_LIMIT_WINDOW_SECONDS", "45")
+	t.Setenv("INTERNAL_PROBE_RATE_LIMIT_MAX_HITS", "2")
+	t.Setenv("INTERNAL_PROBE_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "120")
+
+	limiter, ok := newInternalProbeRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newInternalProbeRateLimiter returned %T, want *chatRateLimiter fallback", newInternalProbeRateLimiter(nil))
+	}
+	if limiter.window != 45*time.Second || limiter.maxHits != 2 || limiter.pruneInterval != 120*time.Second {
+		t.Fatalf("internal probe limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
+	}
+}
+
+func TestTodayAgriItemSaveRateLimiterUsesEnv(t *testing.T) {
+	t.Setenv("TODAY_AGRI_ITEM_RATE_LIMIT_WINDOW_SECONDS", "60")
+	t.Setenv("TODAY_AGRI_ITEM_RATE_LIMIT_MAX_HITS", "4")
+	t.Setenv("TODAY_AGRI_ITEM_RATE_LIMIT_PRUNE_INTERVAL_SECONDS", "180")
+
+	limiter, ok := newTodayAgriItemSaveRateLimiter(nil).(*chatRateLimiter)
+	if !ok {
+		t.Fatalf("newTodayAgriItemSaveRateLimiter returned %T, want *chatRateLimiter fallback", newTodayAgriItemSaveRateLimiter(nil))
+	}
+	if limiter.window != 60*time.Second || limiter.maxHits != 4 || limiter.pruneInterval != 180*time.Second {
+		t.Fatalf("today agri item limiter config mismatch: window=%s max=%d prune=%s", limiter.window, limiter.maxHits, limiter.pruneInterval)
+	}
+}
+
 func TestAdminLoginRateLimitKeyHashesUsernameAndIP(t *testing.T) {
 	t.Setenv("APP_SECRET", "test-secret")
 
@@ -32,5 +60,17 @@ func TestAdminLoginRateLimitKeyHashesUsernameAndIP(t *testing.T) {
 	}
 	if got := adminLoginRateLimitKey("owner@example.com", "203.0.113.9"); got != key {
 		t.Fatalf("admin login key should normalize username: %q != %q", got, key)
+	}
+}
+
+func TestTodayAgriItemSaveRateLimitKeyHashesUserAndIP(t *testing.T) {
+	t.Setenv("APP_SECRET", "test-secret")
+
+	key := todayAgriItemSaveRateLimitKey("acct_123", "203.0.113.9")
+	if key == "" || !strings.HasPrefix(key, "today_agri_item:") {
+		t.Fatalf("today agri item key prefix mismatch: %q", key)
+	}
+	if strings.Contains(key, "acct_123") || strings.Contains(key, "203.0.113.9") {
+		t.Fatalf("today agri item key leaked raw user or ip: %q", key)
 	}
 }

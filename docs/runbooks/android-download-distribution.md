@@ -99,10 +99,10 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 后台“检查更新”启用前继续跑：
 
 ```powershell
-.\scripts\check-app-update-release-match.ps1 -RequireEnabled
+.\scripts\check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload
 ```
 
-需要验证公网下载本体时，再加 `-VerifyDownload`。
+正式对外下发时必须保留 `-VerifyDownload`，并在旧包自更新场景追加 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate` 或直接跑 `check-launch-readiness.ps1 -AppUpdateReleaseGate -AppUpdatePreviousVersionCode <旧包版本号>`；普通 `-ReleaseGate` 不能替代检查更新发版门禁。
 
 ## 后续什么时候上 CDN
 

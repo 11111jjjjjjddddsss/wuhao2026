@@ -74,6 +74,13 @@ func (s *Store) AppendSessionRoundComplete(
 		if err != nil {
 			return false, nil, err
 		}
+		if snapshot != nil {
+			generation, err := s.currentSessionGenerationForUpdateTx(ctx, tx, userID)
+			if err != nil {
+				return false, nil, err
+			}
+			snapshot.SessionGeneration = generation
+		}
 		if err := tx.Commit(); err != nil {
 			return false, nil, err
 		}
@@ -117,6 +124,13 @@ func (s *Store) AppendSessionRoundComplete(
 	if err != nil {
 		return false, nil, err
 	}
+	if snapshot != nil {
+		generation, err := s.currentSessionGenerationForUpdateTx(ctx, tx, userID)
+		if err != nil {
+			return false, nil, err
+		}
+		snapshot.SessionGeneration = generation
+	}
 	if err := tx.Commit(); err != nil {
 		return false, nil, err
 	}
@@ -126,28 +140,32 @@ func (s *Store) AppendSessionRoundComplete(
 func (s *Store) GetSessionRoundCompletion(ctx context.Context, userID string, clientMsgID string) (SessionRoundCompletion, error) {
 	var completion SessionRoundCompletion
 	var requestHash sql.NullString
+	var archiveExists int
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT l.created_at, l.request_hash
+		`SELECT l.created_at,
+		        l.request_hash,
+		        CASE WHEN a.client_msg_id IS NULL THEN 0 ELSE 1 END AS archive_exists
 		 FROM session_round_ledger l
+		 LEFT JOIN session_round_archive a
+		   ON a.user_id = l.user_id AND a.client_msg_id = l.client_msg_id
 		 WHERE l.user_id = ? AND l.client_msg_id = ?
-		   AND EXISTS (
-		     SELECT 1
-		     FROM session_round_archive a
-		     WHERE a.user_id = l.user_id AND a.client_msg_id = l.client_msg_id
-		   )
 		 LIMIT 1`,
 		userID,
 		clientMsgID,
-	).Scan(&completion.CreatedAt, &requestHash)
+	).Scan(&completion.CreatedAt, &requestHash, &archiveExists)
 	if err == sql.ErrNoRows {
 		return SessionRoundCompletion{}, nil
 	}
 	if err != nil {
 		return SessionRoundCompletion{}, err
 	}
-	completion.Completed = true
 	completion.RequestHash = nullStringValue(requestHash)
+	if archiveExists <= 0 {
+		completion.ArchiveMissing = true
+		return completion, nil
+	}
+	completion.Completed = true
 	return completion, nil
 }
 
@@ -168,20 +186,74 @@ func (s *Store) sessionRoundArchiveExistsTx(ctx context.Context, tx *sql.Tx, use
 	return exists == 1, nil
 }
 
-func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int) (bool, error) {
+func (s *Store) CountSessionRoundsAfterClientMsgID(ctx context.Context, userID string, clientMsgID string) (int64, bool, error) {
+	userID = strings.TrimSpace(userID)
+	clientMsgID = strings.TrimSpace(clientMsgID)
+	if userID == "" || clientMsgID == "" {
+		return 0, false, nil
+	}
+
+	var (
+		anchorID        int64
+		anchorCreatedAt int64
+	)
+	err := s.db.QueryRowContext(
+		ctx,
+		"SELECT id, created_at FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1",
+		userID,
+		clientMsgID,
+	).Scan(&anchorID, &anchorCreatedAt)
+	if err == sql.ErrNoRows {
+		return 0, false, nil
+	}
+	if err != nil {
+		return 0, false, err
+	}
+
+	var count sql.NullInt64
+	err = s.db.QueryRowContext(
+		ctx,
+		`SELECT COUNT(*)
+		 FROM session_round_archive
+		 WHERE user_id = ?
+		   AND (created_at > ? OR (created_at = ? AND id > ?))`,
+		userID,
+		anchorCreatedAt,
+		anchorCreatedAt,
+		anchorID,
+	).Scan(&count)
+	if err != nil {
+		return 0, false, err
+	}
+	return count.Int64, true, nil
+}
+
+func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error) {
 	normalized := strings.TrimSpace(memoryDocument)
 	if normalized == "" {
 		return false, fmt.Errorf("memory_document empty")
+	}
+	if expectedUpdatedAt <= 0 {
+		return false, nil
 	}
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE session_ab
 		 SET b_summary = ?, pending_retry_b = 0, updated_at = ?
-		 WHERE user_id = ? AND round_total = ?`,
+		 WHERE user_id = ?
+		   AND round_total = ?
+		   AND updated_at = ?
+		   AND COALESCE((SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1), 0) = ?
+		   AND COALESCE((SELECT cleared_at FROM session_generation WHERE user_id = ? LIMIT 1), 0) <= ?`,
 		normalized,
 		time.Now().UnixMilli(),
 		userID,
 		expectedRoundTotal,
+		expectedUpdatedAt,
+		userID,
+		expectedSessionGeneration,
+		userID,
+		expectedUpdatedAt,
 	)
 	if err != nil {
 		return false, err
@@ -213,6 +285,43 @@ func (s *Store) SetUserMemoryPending(ctx context.Context, userID string, pending
 	return err
 }
 
+func (s *Store) SetUserMemoryPendingIfCurrent(ctx context.Context, userID string, pending bool, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error) {
+	if expectedUpdatedAt <= 0 {
+		return false, nil
+	}
+	pendingMemory := 0
+	if pending {
+		pendingMemory = 1
+	}
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE session_ab
+		 SET pending_retry_b = ?, updated_at = ?
+		 WHERE user_id = ?
+		   AND round_total = ?
+		   AND updated_at = ?
+		   AND COALESCE((SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1), 0) = ?
+		   AND COALESCE((SELECT cleared_at FROM session_generation WHERE user_id = ? LIMIT 1), 0) <= ?`,
+		pendingMemory,
+		time.Now().UnixMilli(),
+		userID,
+		expectedRoundTotal,
+		expectedUpdatedAt,
+		userID,
+		expectedSessionGeneration,
+		userID,
+		expectedUpdatedAt,
+	)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return affected > 0, nil
+}
+
 func (s *Store) GetSessionSnapshot(ctx context.Context, userID string) (*SessionSnapshot, error) {
 	return s.readSnapshotRow(
 		s.db.QueryRowContext(
@@ -238,6 +347,22 @@ func (s *Store) GetSessionGenerationState(ctx context.Context, userID string) (S
 		return SessionGenerationState{}, err
 	}
 	return state, nil
+}
+
+func (s *Store) currentSessionGenerationForUpdateTx(ctx context.Context, tx *sql.Tx, userID string) (int, error) {
+	var generation int
+	err := tx.QueryRowContext(
+		ctx,
+		"SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1 FOR UPDATE",
+		userID,
+	).Scan(&generation)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	return generation, nil
 }
 
 func (s *Store) ClearSessionHistory(ctx context.Context, userID string) (int, error) {

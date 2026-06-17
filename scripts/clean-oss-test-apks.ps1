@@ -8,6 +8,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+if ($Bucket -ne "nongjiqiancha-prod") {
+    throw "refusing to clean unexpected OSS bucket: $Bucket"
+}
+if ($Endpoint -ne "oss-cn-beijing.aliyuncs.com") {
+    throw "refusing to clean unexpected OSS endpoint: $Endpoint"
+}
+
 if ($KeepNewest -lt 0 -or $KeepNewest -gt 10) {
     throw "KeepNewest must be between 0 and 10"
 }
@@ -17,8 +24,11 @@ if ([string]::IsNullOrWhiteSpace($normalizedOssPrefix)) {
     throw "OssPrefix must not be empty"
 }
 $normalizedOssPrefixForCheck = $normalizedOssPrefix.Replace("\", "/").ToLowerInvariant()
-if (-not $normalizedOssPrefixForCheck.StartsWith("test-apks/")) {
-    throw "refusing to clean outside test-apks/"
+if ($normalizedOssPrefixForCheck -ne "test-apks/debug" -and -not $normalizedOssPrefixForCheck.StartsWith("test-apks/debug/")) {
+    throw "refusing to clean outside test-apks/debug/"
+}
+if ($normalizedOssPrefixForCheck.Contains("..") -or $normalizedOssPrefixForCheck.Contains("//")) {
+    throw "refusing unsafe OSS prefix: $normalizedOssPrefix"
 }
 
 if (-not (Get-Command aliyun -ErrorAction SilentlyContinue)) {
@@ -31,7 +41,7 @@ function Get-OssObjectKey {
     if ([string]::IsNullOrWhiteSpace($text)) {
         return $null
     }
-    if ($text -match "(test-apks/\S+?\.apk)") {
+    if ($text -match "(test-apks/debug/\S+?\.apk)") {
         return $Matches[1]
     }
     return $null
@@ -64,6 +74,10 @@ Write-Host ("oss_test_apk_found={0}" -f $objects.Count)
 Write-Host ("oss_test_apk_delete={0}" -f $toDelete.Count)
 
 foreach ($key in $toDelete) {
+    $normalizedKeyForCheck = $key.Replace("\", "/").ToLowerInvariant()
+    if (-not $normalizedKeyForCheck.StartsWith("test-apks/debug/") -or $normalizedKeyForCheck.Contains("..") -or $normalizedKeyForCheck.Contains("//")) {
+        throw "refusing unsafe OSS object key: $key"
+    }
     $objectUrl = "oss://$Bucket/$key"
     if ($DryRun) {
         Write-Host ("dry_run_delete={0}" -f $objectUrl)

@@ -206,9 +206,13 @@ class ChatStreamingRendererTest {
             table.toPlainCopyText()
         )
         assertEquals(
-            "维度\t成品肥\t自配方案\t销售提示\n" +
-                "便利性\t高\t中\t需要讲清配比\n" +
-                "灵活性\t固定\t可调整\t",
+            "便利性：\n" +
+                "成品肥：高\n" +
+                "自配方案：中\n" +
+                "销售提示：需要讲清配比\n\n" +
+                "灵活性：\n" +
+                "成品肥：固定\n" +
+                "自配方案：可调整",
             buildRendererPlainCopyText(
                 "|维度|成品肥|自配方案|销售提示|\n" +
                     "|---|---|---|---|\n" +
@@ -235,14 +239,29 @@ class ChatStreamingRendererTest {
             table.toPlainCopyText()
         )
         assertEquals(
-            "维度\t成品肥\t自配方案\t链接\n" +
-                "便利性\t开袋即用\t配比\t保留",
+            "便利性：\n" +
+                "成品肥：开袋即用\n" +
+                "自配方案：配比\n" +
+                "链接：保留",
             buildRendererPlainCopyText(
                 "|维度|**成品肥**|自配方案|链接|\n" +
                     "|---|---|---|---|\n" +
                     "|便利性|`开袋即用`|[配比](https://example.com)|保留|\n"
             )
         )
+    }
+
+    @Test
+    fun tildeCodeFenceDoesNotRenderPipeTextAsTable() {
+        val stats = buildRendererStructureStats(
+            "~~~\n" +
+                "|项目|建议|\n" +
+                "|---|---|\n" +
+                "|水分|控水|\n" +
+                "~~~"
+        )
+
+        assertEquals(0, stats.tableCount)
     }
 
     @Test
@@ -292,14 +311,14 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun markdownTableShellAppearsAsSoonAsSeparatorArrives() {
+    fun markdownTableWaitsForFirstBodyRowBeforeRenderingTable() {
         val state = splitStreamingBlockState("|维度|成品|自配|\n|---|---|---|")
         val model = classifyActiveStreamingLine(state.activeBlock.orEmpty())
 
-        assertTrue(model is StreamingLineModel.Table)
+        assertTrue(model is StreamingLineModel.Paragraph)
         assertEquals(
-            listOf("维度", "成品", "自配"),
-            (model as StreamingLineModel.Table).table.headers
+            "|维度|成品|自配|\n|---|---|---|",
+            (model as StreamingLineModel.Paragraph).text
         )
     }
 

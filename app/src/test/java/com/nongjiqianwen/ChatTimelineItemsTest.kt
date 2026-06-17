@@ -18,6 +18,27 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun interruptedBlankStreamingDraftRestoresRetryAssistantPlaceholder() {
+        val user = userMessage("u1")
+        val recovered = recoverStreamingDraftAsInterruptedSnapshot(
+            localSnapshot = LocalChatWindowSnapshot(messages = listOf(user)),
+            draft = LocalStreamingDraft(
+                messageId = "a1",
+                content = "",
+                revealBuffer = "尚未显示的完整尾巴",
+                anchoredUserMessageId = user.id,
+                savedAtMs = 1700000000000
+            )
+        )
+
+        assertEquals(
+            listOf(user, ChatMessage(id = "a1", role = ChatRole.ASSISTANT, content = "")),
+            recovered.messages
+        )
+        assertEquals(user.id, recovered.failedAssistantMessageStates["a1"]?.sourceUserMessageId)
+    }
+
+    @Test
     fun todayAgriCardDoesNotOccupyEmptyWelcomeState() {
         val unanchoredItems = buildChatTimelineItems(
             messages = emptyList(),
@@ -83,9 +104,37 @@ class ChatTimelineItemsTest {
         )
 
         assertTrue(items[0] is ChatTimelineItem.HistoryNotice)
-        assertEquals(ChatTimelineItem.Message(first), items[1])
-        assertEquals(ChatTimelineItem.Message(second), items[2])
-        assertTrue(items[3] is ChatTimelineItem.TodayAgriCard)
+        assertTrue(items[1] is ChatTimelineItem.TodayAgriCard)
+        assertEquals(ChatTimelineItem.Message(first), items[2])
+        assertEquals(ChatTimelineItem.Message(second), items[3])
+    }
+
+    @Test
+    fun todayAgriMissingAnchorFallbackDoesNotRestartContextWindow() {
+        val items = buildChatTimelineItems(
+            messages = listOf(
+                userMessage("u1"),
+                assistantMessage("a1"),
+                userMessage("u2"),
+                assistantMessage("a2"),
+                userMessage("u3")
+            ),
+            todayAgriCard = todayAgriCard(),
+            todayAgriAfterMessageId = "trimmed-old-message",
+            hiddenRoundCount = 10
+        )
+
+        assertTrue(items[0] is ChatTimelineItem.HistoryNotice)
+        assertTrue(items[1] is ChatTimelineItem.TodayAgriCard)
+        assertEquals(
+            null,
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items,
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615"
+            )
+        )
     }
 
     @Test
@@ -225,6 +274,38 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriContextDayIgnoresFailedLocalUserMessages() {
+        val items = listOf(
+            ChatTimelineItem.TodayAgriCard(todayAgriCard()),
+            ChatTimelineItem.Message(userMessage("u1")),
+            ChatTimelineItem.Message(assistantMessage("a1")),
+            ChatTimelineItem.Message(userMessage("u2")),
+            ChatTimelineItem.Message(assistantMessage("a2")),
+            ChatTimelineItem.Message(userMessage("failed-local"))
+        )
+
+        assertEquals(
+            null,
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items,
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615"
+            )
+        )
+        assertEquals(
+            "20260615",
+            resolveTodayAgriContextDayForTimeline(
+                chatListItems = items,
+                currentTodayAgriCardDay = "20260615",
+                currentDayKey = "20260615",
+                remoteConfirmedDay = "20260615",
+                failedUserMessageIds = setOf("failed-local")
+            )
+        )
+    }
+
+    @Test
     fun todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime() {
         assertFalse(
             shouldShowTodayAgriMainCard(
@@ -279,6 +360,18 @@ class ChatTimelineItemsTest {
                 hasAssistantAnswerTail = true,
                 hasSavedItem = true,
                 suppressedThisRuntime = false
+            )
+        )
+
+        assertFalse(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "20260615",
+                shownThisRuntime = false,
+                hasAssistantAnswerTail = true,
+                hasSavedItem = true,
+                suppressedThisRuntime = true
             )
         )
 

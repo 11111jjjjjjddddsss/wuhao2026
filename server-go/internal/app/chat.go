@@ -172,6 +172,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if completion.ArchiveMissing {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "CLIENT_MSG_ID_CONFLICT",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
 	if completion.Completed {
 		if completion.RequestHash != "" && completion.RequestHash != requestHash {
 			s.writeJSON(w, http.StatusConflict, map[string]any{
@@ -239,6 +246,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	if completion.ArchiveMissing {
+		s.writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "CLIENT_MSG_ID_CONFLICT",
+			"client_msg_id": clientMsgID,
+		})
+		return
+	}
 	if completion.Completed {
 		if completion.RequestHash != "" && completion.RequestHash != requestHash {
 			s.writeJSON(w, http.StatusConflict, map[string]any{
@@ -286,6 +300,23 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pendingQuotaConsume, err := s.store.CountPendingQuotaConsumeOutboxForUser(ctx, auth.UserID)
+	if err != nil {
+		s.logger.Error("count pending quota consume failed", "userId", auth.UserID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if pendingQuotaConsume > 0 {
+		const retryAfterSec = 3
+		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSec))
+		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+			"error":           "QUOTA_SETTLEMENT_PENDING",
+			"message":         "上次回答正在结算，请稍后再试",
+			"retry_after_sec": retryAfterSec,
+		})
+		return
+	}
+
 	before, err := s.store.GetDailyStatus(ctx, auth.UserID, tier, dayCN)
 	if err != nil {
 		s.logger.Error("get daily status failed", "userId", auth.UserID, "error", err)
@@ -327,7 +358,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	injectedTime := FormatShanghaiNowToSecond(s.shanghai, time.Now())
 	contextHeader := fmt.Sprintf("当前时间：%s（Asia/Shanghai）；用户地点：%s；地点可信度：%s", injectedTime, region.Region, region.Reliability)
-	todayAgriContext := s.resolveTodayAgriChatContext(ctx, todayAgriContextDay, dayCN)
+	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
 	promptChars := countBailianMessageContentRunes(promptMessages)
 
@@ -838,22 +869,47 @@ func normalizeTodayAgriContextDay(raw string) string {
 	return string(digits)
 }
 
-func (s *Server) resolveTodayAgriChatContext(ctx context.Context, requestedDay string, currentDayCN string) string {
+func normalizeTodayAgriAnchorClientMsgID(raw string) string {
+	anchor := strings.TrimSpace(raw)
+	if strings.HasPrefix(anchor, "assistant_") {
+		return strings.TrimSpace(strings.TrimPrefix(anchor, "assistant_"))
+	}
+	return anchor
+}
+
+func (s *Server) resolveTodayAgriChatContext(ctx context.Context, userID string, requestedDay string, currentDayCN string) string {
 	dayCN := normalizeTodayAgriContextDay(requestedDay)
-	if dayCN == "" || dayCN != currentDayCN || s.dailyAgri == nil || s.dailyAgri.store == nil {
+	if dayCN == "" || dayCN != currentDayCN || strings.TrimSpace(userID) == "" || s.store == nil {
 		return ""
 	}
 	lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
-	card, status, err := s.dailyAgri.store.GetDailyAgriCard(lookupCtx, dayCN, dailyAgriDefaultScope)
+	items, err := s.store.GetTodayAgriUserItems(lookupCtx, userID, dayCN, 1)
 	if err != nil {
-		s.logger.Warn("load today agri context failed", "day_cn", dayCN, "error", err)
+		if s.logger != nil {
+			s.logger.Warn("load saved today agri context failed", "userId", userID, "day_cn", dayCN, "error", err)
+		}
 		return ""
 	}
-	if status != "ready" || card == nil || card.DateCN != dayCN {
+	if len(items) == 0 || items[0].DayCN != dayCN {
 		return ""
 	}
-	return formatTodayAgriChatContext(card)
+	anchorClientMsgID := normalizeTodayAgriAnchorClientMsgID(items[0].AnchorClientMsgID)
+	if anchorClientMsgID == "" {
+		return ""
+	}
+	roundsAfterAnchor, foundAnchor, err := s.store.CountSessionRoundsAfterClientMsgID(lookupCtx, userID, anchorClientMsgID)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Warn("count today agri anchor rounds failed", "userId", userID, "day_cn", dayCN, "error", err)
+		}
+		return ""
+	}
+	if !foundAnchor || roundsAfterAnchor >= 3 {
+		return ""
+	}
+	card := items[0].Card
+	return formatTodayAgriChatContext(&card)
 }
 
 func formatTodayAgriChatContext(card *DailyAgriCard) string {

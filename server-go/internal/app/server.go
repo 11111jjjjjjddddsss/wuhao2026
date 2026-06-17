@@ -52,6 +52,8 @@ type Server struct {
 	supportMessageLimiter rateLimiter
 	uploadLimiter         rateLimiter
 	internalSecretLimiter rateLimiter
+	internalProbeLimiter  rateLimiter
+	todayAgriItemLimiter  rateLimiter
 	adminLoginLimiter     rateLimiter
 	giftCardRedeemLimiter rateLimiter
 	backgroundStop        chan struct{}
@@ -170,6 +172,8 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		supportMessageLimiter: newSupportMessageRateLimiter(redisClient),
 		uploadLimiter:         newUploadRateLimiter(redisClient),
 		internalSecretLimiter: newInternalSecretRateLimiter(redisClient),
+		internalProbeLimiter:  newInternalProbeRateLimiter(redisClient),
+		todayAgriItemLimiter:  newTodayAgriItemSaveRateLimiter(redisClient),
 		adminLoginLimiter:     newAdminLoginRateLimiter(redisClient),
 		giftCardRedeemLimiter: newGiftCardRedeemRateLimiter(redisClient),
 		backgroundStop:        make(chan struct{}),

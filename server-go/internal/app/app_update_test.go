@@ -1,6 +1,14 @@
 package app
 
-import "testing"
+import (
+	"context"
+	"crypto/sha256"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"testing"
+)
 
 func TestBuildAndroidUpdateInfoNoConfig(t *testing.T) {
 	info := buildAndroidUpdateInfo(3, "1.0.3", androidUpdateConfig{})
@@ -39,6 +47,86 @@ func TestBuildAndroidUpdateInfoHasHTTPSUpdate(t *testing.T) {
 	if info.APKChecksumSHA256 == "" {
 		t.Fatalf("expected apk checksum")
 	}
+}
+
+func TestVerifyAndroidReleaseAPKDownloadChecksReachabilitySizeAndSHA(t *testing.T) {
+	apkBytes := []byte("fake release apk bytes")
+	sum := sha256.Sum256(apkBytes)
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: fmt.Sprintf("%x", sum),
+		FileSizeBytes:     int64(len(apkBytes)),
+	}
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode:    http.StatusOK,
+				ContentLength: int64(len(apkBytes)),
+				Body:          io.NopCloser(strings.NewReader(string(apkBytes))),
+				Header:        make(http.Header),
+				Request:       req,
+			}, nil
+		}),
+	}
+	if got := verifyAndroidReleaseAPKDownloadWithClient(context.Background(), cfg, client); got != "" {
+		t.Fatalf("verifyAndroidReleaseAPKDownloadWithClient = %q, want empty", got)
+	}
+}
+
+func TestVerifyAndroidReleaseAPKDownloadRejectsUnavailableAPK(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: strings.Repeat("0", 64),
+		FileSizeBytes:     1,
+	}
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusForbidden,
+				Body:       io.NopCloser(strings.NewReader("forbidden")),
+				Header:     make(http.Header),
+				Request:    req,
+			}, nil
+		}),
+	}
+	if got := verifyAndroidReleaseAPKDownloadWithClient(context.Background(), cfg, client); got != "release_apk_unavailable" {
+		t.Fatalf("verifyAndroidReleaseAPKDownloadWithClient = %q, want release_apk_unavailable", got)
+	}
+}
+
+func TestVerifyAndroidReleaseAPKDownloadRejectsSizeMismatch(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: strings.Repeat("0", 64),
+		FileSizeBytes:     20,
+	}
+	client := &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode:    http.StatusOK,
+				ContentLength: 5,
+				Body:          io.NopCloser(strings.NewReader("short")),
+				Header:        make(http.Header),
+				Request:       req,
+			}, nil
+		}),
+	}
+	if got := verifyAndroidReleaseAPKDownloadWithClient(context.Background(), cfg, client); got != "release_apk_size_mismatch" {
+		t.Fatalf("verifyAndroidReleaseAPKDownloadWithClient = %q, want release_apk_size_mismatch", got)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
 }
 
 func TestReadAndroidUpdateConfigRequiresExplicitEnvEnable(t *testing.T) {
@@ -156,6 +244,30 @@ func TestBuildAndroidUpdateInfoRejectsEscapedInternalTestAPKURL(t *testing.T) {
 	}
 	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
 		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+}
+
+func TestBuildAndroidUpdateInfoRejectsParentPathAPKURL(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.nongjiqiancha.cn/android/releases/4/%2e%2e/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	}
+	info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+	if info.HasUpdate {
+		t.Fatalf("expected parent path apk url to disable update, got %#v", info)
+	}
+	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+	if androidUpdateConfigValid(cfg) {
+		t.Fatalf("parent path apk config must be invalid")
+	}
+	if androidUpdateDownloadArtifactsComplete(cfg) {
+		t.Fatalf("parent path apk must not count as complete release artifact")
 	}
 }
 

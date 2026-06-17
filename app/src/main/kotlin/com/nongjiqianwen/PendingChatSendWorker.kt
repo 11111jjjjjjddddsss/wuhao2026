@@ -32,6 +32,7 @@ class PendingChatSendWorker(
             ?: return@withContext Result.success()
         if (PendingChatSendStore.isStaleForCurrentSession(pending)) {
             PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+            PendingChatSendRuntime.markInactive(userMessageId)
             return@withContext Result.success()
         }
         val now = System.currentTimeMillis()
@@ -67,6 +68,11 @@ class PendingChatSendWorker(
         if (PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId) == null) {
             return@withContext Result.success()
         }
+        if (PendingChatSendStore.isStaleForCurrentSession(pending)) {
+            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+            PendingChatSendRuntime.markInactive(userMessageId)
+            return@withContext Result.success()
+        }
 
         PendingChatSendStore.updateImageUrls(
             applicationContext,
@@ -75,6 +81,11 @@ class PendingChatSendWorker(
             imageUrls
         )
         if (PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId) == null) {
+            return@withContext Result.success()
+        }
+        if (PendingChatSendStore.isStaleForCurrentSession(pending)) {
+            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+            PendingChatSendRuntime.markInactive(userMessageId)
             return@withContext Result.success()
         }
         PendingChatSendStore.markRemoteStarted(applicationContext, chatScopeId, userMessageId)
