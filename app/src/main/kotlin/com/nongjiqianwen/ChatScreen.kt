@@ -345,9 +345,50 @@ internal fun resolveTodayAgriContextDayForTimeline(
             message is ChatTimelineItem.Message &&
                 message.message.role == ChatRole.USER &&
                 message.message.id != existingUserMessageId
-        }
+    }
     return day.takeIf { userMessagesAfterAnchor < 3 }
 }
+
+internal fun shouldRevealChatMessageList(
+    startupHydrationBarrierSatisfied: Boolean,
+    historyHydrationComplete: Boolean,
+    shouldHydrateRemoteHistory: Boolean,
+    hasStartedConversation: Boolean,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    hasTodayAgriCard: Boolean,
+    messageCount: Int
+): Boolean {
+    val waitingForRemoteStartupHydration =
+        shouldHydrateRemoteHistory &&
+            !historyHydrationComplete &&
+            !hasStartedConversation &&
+            !isStreaming &&
+            !hasStreamingItem &&
+            !hasTodayAgriCard &&
+            messageCount <= 0
+    return when {
+        waitingForRemoteStartupHydration -> false
+        messageCount > 0 -> true
+        hasTodayAgriCard -> true
+        hasStreamingItem -> true
+        !hasStartedConversation -> true
+        startupHydrationBarrierSatisfied -> true
+        else -> false
+    }
+}
+
+internal fun shouldShowChatWelcomePlaceholder(
+    startupHydrationBarrierSatisfied: Boolean,
+    hasStartedConversation: Boolean,
+    hasStreamingItem: Boolean,
+    hasTodayAgriCard: Boolean,
+    messageCount: Int
+): Boolean =
+    messageCount == 0 &&
+        !hasTodayAgriCard &&
+        !hasStreamingItem &&
+        (startupHydrationBarrierSatisfied || !hasStartedConversation)
 
 @Composable
 private fun ChatHistoryWindowNotice(
@@ -3139,8 +3180,6 @@ fun ChatScreen() {
         startupHydrationBarrierSatisfied,
         historyHydrationComplete,
         shouldHydrateRemoteHistory,
-        initialBottomSnapDone,
-        hasStartupLocalMessages,
         messages.size,
         hasTodayAgriCard,
         isStreaming,
@@ -3148,56 +3187,33 @@ fun ChatScreen() {
         hasStartedConversation
     ) {
         derivedStateOf {
-            val waitingForRemoteStartupHydration =
-                shouldHydrateRemoteHistory &&
-                    !historyHydrationComplete &&
-                    !hasStartedConversation &&
-                    !isStreaming &&
-                    !hasStreamingItem &&
-                    !hasTodayAgriCard
-            val waitingForStaticTimelineBottomSnap =
-                startupHydrationBarrierSatisfied &&
-                    !hasStartupLocalMessages &&
-                    !initialBottomSnapDone &&
-                    !hasStartedConversation &&
-                    !isStreaming &&
-                    !hasStreamingItem &&
-                    messages.isNotEmpty()
-            when {
-                waitingForRemoteStartupHydration -> false
-                waitingForStaticTimelineBottomSnap -> false
-                messages.isNotEmpty() -> true
-                hasTodayAgriCard -> true
-                hasStreamingItem -> true
-                !hasStartedConversation -> true
-                startupHydrationBarrierSatisfied -> true
-                else -> false
-            }
+            shouldRevealChatMessageList(
+                startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
+                historyHydrationComplete = historyHydrationComplete,
+                shouldHydrateRemoteHistory = shouldHydrateRemoteHistory,
+                hasStartedConversation = hasStartedConversation,
+                isStreaming = isStreaming,
+                hasStreamingItem = hasStreamingItem,
+                hasTodayAgriCard = hasTodayAgriCard,
+                messageCount = messages.size
+            )
         }
     }
     val showWelcomePlaceholder by remember(
         startupHydrationBarrierSatisfied,
-        historyHydrationComplete,
-        shouldHydrateRemoteHistory,
         messages.size,
         hasTodayAgriCard,
-        isStreaming,
         hasStreamingItem,
         hasStartedConversation
     ) {
         derivedStateOf {
-            val waitingForRemoteStartupHydration =
-                shouldHydrateRemoteHistory &&
-                    !historyHydrationComplete &&
-                    !hasStartedConversation &&
-                    !isStreaming &&
-                    !hasStreamingItem &&
-                    !hasTodayAgriCard
-            messages.isEmpty() &&
-                !hasTodayAgriCard &&
-                !hasStreamingItem &&
-                !waitingForRemoteStartupHydration &&
-                (startupHydrationBarrierSatisfied || !hasStartedConversation)
+            shouldShowChatWelcomePlaceholder(
+                startupHydrationBarrierSatisfied = startupHydrationBarrierSatisfied,
+                hasStartedConversation = hasStartedConversation,
+                hasStreamingItem = hasStreamingItem,
+                hasTodayAgriCard = hasTodayAgriCard,
+                messageCount = messages.size
+            )
         }
     }
     LaunchedEffect(
@@ -3314,8 +3330,7 @@ fun ChatScreen() {
     var membershipRefreshNonce by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var membershipRefreshEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var todayAgriRefreshDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(currentChinaDateKey()) }
-    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete) {
-        if (!historyHydrationComplete) return@LaunchedEffect
+    LaunchedEffect(uiRuntimeResetKey) {
         while (isActive) {
             delay(TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS)
             val currentDay = currentChinaDateKey()
@@ -3327,8 +3342,8 @@ fun ChatScreen() {
             }
         }
     }
-    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete) {
-        if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
+    LaunchedEffect(uiRuntimeResetKey) {
+        if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
         if (todayAgriRefreshDayKey != currentChinaDateKey()) {
             todayAgriRefreshDayKey = currentChinaDateKey()
             todayAgriCard = null
@@ -3336,8 +3351,8 @@ fun ChatScreen() {
             todayAgriBottomAnchorAppliedKey = ""
         }
     }
-    LaunchedEffect(uiRuntimeResetKey, historyHydrationComplete, todayAgriRefreshDayKey) {
-        if (!historyHydrationComplete || !SessionApi.hasBackendConfigured()) return@LaunchedEffect
+    LaunchedEffect(uiRuntimeResetKey, todayAgriRefreshDayKey) {
+        if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
         val refreshDayKey = todayAgriRefreshDayKey
         var attempt = 0
         while (isActive && refreshDayKey == currentChinaDateKey()) {

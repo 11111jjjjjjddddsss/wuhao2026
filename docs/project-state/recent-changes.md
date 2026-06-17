@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 修复卸载重装 / 清数据后首屏整屏空白的启动显示门：远端历史 snapshot 仍可在没有任何本地视觉内容时短暂等待，但等待期会显示普通欢迎壳，不再整屏空白；一旦 `messages`、今日农情视觉项或 streaming item 已进入同一个正向 `LazyColumn`，列表必须立即显示，启动贴底只作为后续校准继续运行，不再用 `initialBottomSnapDone` 把已有静态内容整屏透明隐藏。今日农情视觉拉取也不再等待聊天历史 hydrate 完成，先给清安装首屏一个可见内容；锚点保存仍等远端历史回来后按真实消息尾部或起始位置确定。用户手势“一扒就显示”的原因是旧链路会在拖动时把 `initialBottomSnapDone=true` 放开透明门；现在 `shouldRevealChatMessageList(...)`、`shouldShowChatWelcomePlaceholder(...)` 和 `ChatTimelineItemsTest` 已锁住“远端消息已存在就显示 / 等待远端时不空白”，`check-android-build-parity.ps1` 也禁止 `waitingForStaticTimelineBottomSnap` 回潮。本轮不改变正向列表、工作线、今日农情三轮上下文、三份提示词、官网首页文案、模型输出限制或真实支付。
+
 - 补回普通 AI 回复的标题轻分割线触发：近期模型更多输出 `**处理建议**`、`**注意事项：**` 这类独立加粗标题，旧渲染器只识别 `# / ##` 标题，所以正常 AI 回复看起来没有分割线。现在 `ChatStreamingRenderer.kt` 同时识别 `# / ## / ###` 标题、独立短加粗标题和 streaming 中正在吐出的未闭合加粗标题；行内加粗正文和连续标题不触发多余分割线。debug-only 预览面板已加入独立加粗标题样例，单测和 `check-android-build-parity.ps1` 已锁住该口径。本轮不修改三份提示词、官网首页文案、真实支付、主聊天滚动主方案或模型输出硬限制。
 
 - 补回今日农情普通文本里的轻分割线：当前主聊天今日农情仍是 `ChatTimelineItem.TodayAgriCard` 普通视觉文本项，不加黑框、不恢复卡片、不进入真实消息 / 历史 / 记忆 / 归档 / 扣次；只在“今日农情 · 日期”主标题下方加一条浅灰分割线，把标题和三条资讯轻轻隔开。`check-android-build-parity.ps1` 已新增门禁，锁住它必须保持普通 selectable 文本、标题加粗、轻分割线和“复制 / 全文复制”路径。本轮不修改三份提示词、官网首页文案、真实支付、主聊天滚动主方案或今日农情三轮临时上下文规则。

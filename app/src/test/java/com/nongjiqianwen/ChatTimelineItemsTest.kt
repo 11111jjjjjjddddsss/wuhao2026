@@ -1,6 +1,7 @@
 package com.nongjiqianwen
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -161,6 +162,81 @@ class ChatTimelineItemsTest {
                 currentDayKey = "20260616",
                 remoteConfirmedDay = "20260615",
                 existingUserMessageId = "u1"
+            )
+        )
+    }
+
+    @Test
+    fun startupRevealWaitsOnlyWhileRemoteHistoryHasNoVisualContent() {
+        assertFalse(
+            shouldRevealChatMessageList(
+                startupHydrationBarrierSatisfied = true,
+                historyHydrationComplete = false,
+                shouldHydrateRemoteHistory = true,
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                hasTodayAgriCard = false,
+                messageCount = 0
+            )
+        )
+
+        assertTrue(
+            shouldRevealChatMessageList(
+                startupHydrationBarrierSatisfied = true,
+                historyHydrationComplete = false,
+                shouldHydrateRemoteHistory = true,
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                hasTodayAgriCard = false,
+                messageCount = 2
+            )
+        )
+
+        assertTrue(
+            shouldRevealChatMessageList(
+                startupHydrationBarrierSatisfied = false,
+                historyHydrationComplete = false,
+                shouldHydrateRemoteHistory = true,
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                hasTodayAgriCard = true,
+                messageCount = 0
+            )
+        )
+    }
+
+    @Test
+    fun welcomePlaceholderShowsWhileRemoteHistoryHydrates() {
+        assertTrue(
+            shouldShowChatWelcomePlaceholder(
+                startupHydrationBarrierSatisfied = false,
+                hasStartedConversation = false,
+                hasStreamingItem = false,
+                hasTodayAgriCard = false,
+                messageCount = 0
+            )
+        )
+
+        assertFalse(
+            shouldShowChatWelcomePlaceholder(
+                startupHydrationBarrierSatisfied = false,
+                hasStartedConversation = false,
+                hasStreamingItem = false,
+                hasTodayAgriCard = false,
+                messageCount = 1
+            )
+        )
+
+        assertFalse(
+            shouldShowChatWelcomePlaceholder(
+                startupHydrationBarrierSatisfied = false,
+                hasStartedConversation = false,
+                hasStreamingItem = false,
+                hasTodayAgriCard = true,
+                messageCount = 0
             )
         )
     }

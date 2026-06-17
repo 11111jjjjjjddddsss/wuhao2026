@@ -86,12 +86,13 @@ $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Lo
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $hamburgerMenuSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
 $membershipCenterSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MembershipCenterSheet.kt"
+$chatTimelineItemsTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatTimelineItemsTest.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile, $chatTimelineItemsTestFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -123,6 +124,7 @@ if ($failures.Count -eq 0) {
     $chatScreen = Read-SourceFile $chatScreenFile
     $hamburgerMenuSheet = Read-SourceFile $hamburgerMenuSheetFile
     $membershipCenterSheet = Read-SourceFile $membershipCenterSheetFile
+    $chatTimelineItemsTest = Read-SourceFile $chatTimelineItemsTestFile
 
     Require-Match $failures $build 'val\s+defaultUploadBaseUrl\s*=\s*"https://api\.nongjiqiancha\.cn"' `
         "Android default UPLOAD_BASE_URL must remain https://api.nongjiqiancha.cn."
@@ -358,8 +360,20 @@ if ($failures.Count -eq 0) {
         "Chat startup bottom calibration must always start pending, even when local messages exist."
     Require-NoMatch $failures $chatScreen 'initialBottomSnapDone\s+by\s+remember\s*\([^)]*\)\s*\{\s*mutableStateOf\s*\(\s*initialLocalMessages\.isNotEmpty\s*\(\s*\)' `
         "Chat startup must not treat local cached messages as if bottom snapping had already completed."
-    Require-Match $failures $chatScreen 'waitingForStaticTimelineBottomSnap(?s:.*?)!hasStartupLocalMessages(?s:.*?)!initialBottomSnapDone' `
-        "Chat startup may keep cached local messages visible, but only after separating that from the bottom-snap guard."
+    Require-NoMatch $failures $chatScreen 'waitingForStaticTimelineBottomSnap' `
+        "Chat startup must not hide hydrated static messages while waiting for bottom snapping."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldRevealChatMessageList(?s:.*?)messageCount\s*>\s*0\s*->\s*true(?s:.*?)hasTodayAgriCard\s*->\s*true' `
+        "Chat startup must reveal real messages or today agri content as soon as they exist; bottom snapping continues as calibration."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowChatWelcomePlaceholder(?s:.*?)startupHydrationBarrierSatisfied\s*\|\|\s*!hasStartedConversation' `
+        "Clean installs must show a nonblank welcome shell while remote history is still hydrating."
+    Require-NoMatch $failures $chatScreen 'showWelcomePlaceholder(?s:.*?)waitingForRemoteStartupHydration' `
+        "The welcome shell must not be hidden solely because remote history hydration is pending."
+    Require-NoMatch $failures $chatScreen 'LaunchedEffect\s*\(\s*uiRuntimeResetKey\s*,\s*historyHydrationComplete\s*,\s*todayAgriRefreshDayKey\s*\)(?s:.*?)awaitTodayAgriCard' `
+        "Today agri fetch must not wait for chat history hydration before giving the clean-start screen visual content."
+    Require-Match $failures $chatTimelineItemsTest 'startupRevealWaitsOnlyWhileRemoteHistoryHasNoVisualContent' `
+        "Chat startup reveal behavior must have a unit test for remote hydration returning visual content before bottom snap completes."
+    Require-Match $failures $chatTimelineItemsTest 'welcomePlaceholderShowsWhileRemoteHistoryHydrates' `
+        "Clean install startup must have a unit test that prevents a blank screen while remote history hydrates."
     Require-Match $failures $chatScreen 'ui\.chat_startup_state' `
         "Chat startup must keep a safe client log for diagnosing clean-state, hydration and reveal behavior."
     Require-Match $failures $chatScreen 'ui\.chat_startup_bottom_snap_done' `
