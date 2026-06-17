@@ -46,6 +46,9 @@ class PendingChatSendWorker(
             PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
             return@withContext Result.failure()
         }
+        if (!applicationContext.hasActiveNetworkConnection()) {
+            return@withContext Result.retry()
+        }
         if (isStopped) return@withContext Result.retry()
 
         val imageUrls = if (pending.imageUrls.isNotEmpty()) {

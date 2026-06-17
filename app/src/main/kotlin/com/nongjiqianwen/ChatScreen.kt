@@ -2009,13 +2009,14 @@ private fun Context.clearLocalComposerDraftSync(chatScopeId: String) {
     }
 }
 
-private fun Context.hasActiveNetworkConnection(): Boolean {
+internal fun Context.hasActiveNetworkConnection(): Boolean {
     val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
     val network = connectivityManager.activeNetwork ?: return false
     val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
     val hasInternetCapability = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    val hasValidatedConnection = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     val isCaptivePortal = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
-    return hasInternetCapability && !isCaptivePortal
+    return hasInternetCapability && hasValidatedConnection && !isCaptivePortal
 }
 
 internal fun Context.readImageBytes(uri: Uri): ByteArray? {
@@ -3372,24 +3373,36 @@ fun ChatScreen() {
         currentTodayAgriCardDay,
         todayAgriCardAnchorForRender,
         shouldRevealMessageList,
+        remoteSnapshotHydrationComplete,
+        shouldHydrateRemoteHistory,
         chatListItems.size,
         messages.size
     ) {
         if (
             !hasTodayAgriCard ||
             !shouldShowTodayAgriCard ||
-            !shouldRevealMessageList ||
-            todayAgriMainCardVisibleLogged
+            !shouldRevealMessageList
         ) {
             return@LaunchedEffect
         }
-        todayAgriMainCardVisibleLogged = true
-        todayAgriShownThisRuntime = true
         val canPersistTodayAgriShownDay =
             !shouldHydrateRemoteHistory || remoteSnapshotHydrationComplete
-        if (canPersistTodayAgriShownDay && todayAgriMainShownDay != currentTodayAgriCardDay) {
+        val shouldPersistTodayAgriShownDay =
+            canPersistTodayAgriShownDay && todayAgriMainShownDay != currentTodayAgriCardDay
+        val shouldLogTodayAgriVisible = !todayAgriMainCardVisibleLogged
+        if (!shouldLogTodayAgriVisible && !shouldPersistTodayAgriShownDay) {
+            return@LaunchedEffect
+        }
+        if (shouldLogTodayAgriVisible) {
+            todayAgriMainCardVisibleLogged = true
+        }
+        todayAgriShownThisRuntime = true
+        if (shouldPersistTodayAgriShownDay) {
             todayAgriMainShownDay = currentTodayAgriCardDay
             context.saveTodayAgriMainShownDaySync(chatScopeId, currentTodayAgriCardDay)
+        }
+        if (!shouldLogTodayAgriVisible) {
+            return@LaunchedEffect
         }
         val anchorState = when {
             todayAgriCardAnchorForRender == TODAY_AGRI_CARD_ANCHOR_START -> "legacy_start"
@@ -4601,7 +4614,7 @@ fun ChatScreen() {
         if (!pendingStreamingFinalizeMessageId.isNullOrBlank()) return
         val sourceUserMessageId = anchoredUserMessageId ?: return
         val assistantMessageId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
-        val fallbackContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
+        val fallbackContent = normalizeAssistantText(streamingMessageContent)
         scheduleRemoteAssistantRecovery(
             sourceUserMessageId = sourceUserMessageId,
             assistantMessageId = assistantMessageId,
@@ -4925,6 +4938,10 @@ fun ChatScreen() {
                         ),
                         suppressedThisRuntime = todayAgriAutoInsertSuppressedThisRuntime
                     )
+                    if (!hydratedTodayAgriVisualContent) {
+                        todayAgriShownThisRuntime = false
+                        todayAgriMainCardVisibleLogged = false
+                    }
                     initialWorklinePhase = restoredStartupWorklinePhase(
                         messageCount = hydratedSnapshot.messages.size,
                         hasTodayAgriVisualContent = hydratedTodayAgriVisualContent,
@@ -5505,7 +5522,7 @@ fun ChatScreen() {
                 quotaExhaustedDayKey = currentQuotaDayKey()
             }
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
-            val finalContent = normalizeAssistantText(streamingMessageContent + streamingRevealBuffer)
+            val finalContent = normalizeAssistantText(streamingMessageContent)
             clearPendingStreamingFinalize()
             streamRevealJob?.cancel()
             streamRevealJob = null
@@ -8162,7 +8179,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("删除历史对话确认", "二次确认，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("注销申请确认", "提交申请并退出登录", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
-                    UiCopyPreviewItem("检查更新", "普通更新弹窗，稍后 / 立即更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
+                    UiCopyPreviewItem("检查更新", "物料完整且版本更高才提示更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
                     UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
@@ -8197,7 +8214,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("今日农情", "主聊天普通文本项，标题加粗、正文可复制", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
-                    UiCopyPreviewItem("农情上下文规则", "空态不显示，安静历史后参考", UiCopyPreviewKind.TodayAgriContextRule),
+                    UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方三轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
                     UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
@@ -8244,7 +8261,7 @@ private fun UiCopyPreviewOverlay(
                 title = "主界面中部浮层",
                 items = listOf(
                     UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽中部短提示", UiCopyPreviewKind.Quota),
-                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网络发送 / 重试浮层", UiCopyPreviewKind.Network),
+                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "未验证联网 / 门户 Wi-Fi / 无网络", UiCopyPreviewKind.Network),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
                     UiCopyPreviewItem(SERVICE_UNAVAILABLE_HINT_TEXT, "服务临时不可用浮层", UiCopyPreviewKind.ServiceUnavailable),
                     UiCopyPreviewItem(ACTIVE_STREAM_HINT_TEXT, "上一条仍在处理浮层", UiCopyPreviewKind.ActiveStream),
@@ -9018,7 +9035,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             "无真实聊天时只显示欢迎语，今日农情不占空态",
                             "安静打开且已有完整 AI 回答历史时，才跟在最后一条回答后",
                             "如果用户本次开始问了而农情还没显示，本次运行不突然插入",
-                            "用户在它后面发送的后三轮，会临时带当天农情标记",
+                            "远端确认当天 ready 后，用户在它后面发送的后三轮会临时带当天农情标记",
                             "后端只在日期等于服务器当天时读取农情正文作为临时背景",
                             "第四轮起自动不带；记忆整理、聊天归档和扣次都不写入农情正文"
                         )

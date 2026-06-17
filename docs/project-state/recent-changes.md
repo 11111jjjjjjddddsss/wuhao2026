@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 按代理全盘复查继续收口主界面滚动 / 顺序 / 极端恢复边角：今日农情主聊天项只有真正进入可见 timeline 后才打可见日志，且当天已展示日期必须等远端 snapshot hydrate 完成后才落盘；远端 hydrate 成功但不应显示今日农情时，会清掉运行时可见 / 记录门，避免本地旧窗口短暂显示后把当天误记为已展示。前台 SSE 中断和后台远端恢复 fallback 不再把还没按打字节奏 reveal 的 `streamingRevealBuffer` 拼进可见正文，正常 DONE 仍由原 drain 节奏负责尾段吐字，降低弱网 / replay 边界“后半段一口气冒出来”的风险。前台发送和后台 pending Worker 的网络门禁收紧到 Android `NET_CAPABILITY_VALIDATED`，假 Wi-Fi / 门户 Wi-Fi 不再被当成可用公网直接上传或 streaming。debug-only 预览面板最后同步检查更新、今日农情上下文和网络浮层说明，并用 `check-android-build-parity.ps1` 锁住。本轮不修改三份提示词、官网首页定稿文案、真实支付、模型输出硬限制或主聊天正向滚动主方案。
+
 - 按“成熟 App 逻辑”继续收口主界面、检查更新和运营边界：今日农情主聊天口径同步为“空态不显示，安静历史后参考”，没有真实聊天消息时只显示欢迎语，只有可见尾部是完整 AI 回答时才在同一正向 `LazyColumn` 中跟随展示，失败 / 未完成 assistant 尾巴不算完成回答；用户已开始发送而农情未显示时，本次运行不突然插入。Android 检查更新遇到后端返回有更新但 APK 物料不完整时，用户侧统一提示“当前没有可用更新”，内部原因只留日志 / 后台排查；App 本地、后端、后台、官网和 release-match 脚本都把正式 APK URL 收紧到 `https://download.nongjiqiancha.cn/android/releases/...apk`，并继续拒绝测试包路径、短签名参数和外部 APK 域名。帮助与反馈弱网发送成功回调不再清掉用户随后输入的新草稿；礼品卡兑换中输入框不可编辑，配置异常文案改为普通不可用提示。后端 replay 完成态改为必须同时存在 `session_round_archive`，不再仅凭 ledger 向客户端发完成恢复，避免极端脏数据下用户收到 DONE 但恢复不到正文。本轮不修改主对话锚点、记忆文档提示词、今日农情提示词、官网首页定稿文案、真实支付或主聊天滚动主方案。
 
 - 按主界面发送 / 收尾专项复查继续收口：前台 SSE 因 `stream_in_progress`、replay 或网络中断进入远端 snapshot 恢复时，如果当时 assistant 还没有正文，Android 不再直接移除这条 assistant placeholder，而是保留同一条尾巴并显示现有“正在重试...”状态；远端恢复成功后替换成完整答案，恢复失败后回到统一的“回复未完成 · 点击重试”。这只修用户视觉链不断裂，不新增第三套黑色胶囊，不改变后端 `[DONE]`、归档、扣次、replay 或模型输出口径。debug-only 设置预览面板补上 App 备案号 footer，今日农情预览文案同步成“空态不显示，安静历史后参考”，`check-android-build-parity.ps1` 已加门禁；本轮不修改三份提示词、官网首页文案、真实支付、模型输出硬限制或主聊天滚动主方案。

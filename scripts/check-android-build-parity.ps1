@@ -543,8 +543,8 @@ if ($failures.Count -eq 0) {
         "Today agri must have unit coverage proving failed assistant tails do not count as completed answers."
     Require-Match $failures $chatScreen 'fun\s+suppressPendingTodayAgriAutoInsertForUserSend\(\)(?s:.*?)!\s*todayAgriShownThisRuntime\s*&&\s*!\s*hasTodayAgriCard(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*true' `
         "Today agri pending auto-insert must be suppressed when the user starts a chat before the card is visible."
-    Require-Match $failures $chatScreen '!shouldRevealMessageList(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*true(?s:.*?)todayAgriShownThisRuntime\s*=\s*true(?s:.*?)saveTodayAgriMainShownDaySync' `
-        "Today agri should be marked shown only after it is inserted into the visible main-chat timeline."
+    Require-Match $failures $chatScreen 'LaunchedEffect\((?s:.*?)remoteSnapshotHydrationComplete(?s:.*?)shouldHydrateRemoteHistory(?s:.*?)!shouldRevealMessageList(?s:.*?)shouldPersistTodayAgriShownDay\s*=(?s:.*?)canPersistTodayAgriShownDay(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*true(?s:.*?)todayAgriShownThisRuntime\s*=\s*true(?s:.*?)saveTodayAgriMainShownDaySync' `
+        "Today agri should be marked shown only after it is inserted into the visible main-chat timeline, and must persist the shown day after remote snapshot hydration completes."
     Require-Match $failures $chatScreen 'todayAgriRefreshDayKey\s*!=\s*currentDay(?s:.*?)todayAgriShownThisRuntime\s*=\s*false(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*hasStartedConversation(?s:.*?)todayAgriMainCardLoadedLogged\s*=\s*false(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*false' `
         "Today agri same-runtime day rollover must reset shown/log gates and avoid surprise insertion if the user is already chatting."
     Require-Match $failures $chatScreen 'if\s*\(\s*!\s*todayAgriShownThisRuntime\s*&&\s*todayAgriMainShownDay\s*==\s*refreshDayKey\s*\)\s*\{\s*return@LaunchedEffect\s*\}' `
@@ -623,12 +623,18 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must include standalone bold heading lines so ordinary AI text dividers can be checked."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.TodayAgriNarrow(?s:.*?)TodayAgriNewsText\((?s:.*?)horizontalPadding\s*=\s*0\.dp(?s:.*?)maxContentWidth\s*=\s*280\.dp' `
         "Today agri narrow preview must exercise the 280dp ordinary-text layout."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"空态不显示，安静历史后参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
-        "Debug UI copy preview must include the today-agri empty-state, completed-tail, three-round temporary context, and anti-surprise-insert rule."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("检查更新",\s*"物料完整且版本更高才提示更新",\s*UiCopyPreviewKind\.HamburgerAppUpdateDialog\)' `
+        "Debug UI copy preview must show that app updates only prompt when release metadata is complete and the version is newer."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"远端确认后显示，后方三轮临时参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
+        "Debug UI copy preview must include the today-agri empty-state, completed-tail, remote-ready three-round temporary context, and anti-surprise-insert rule."
     Require-Match $failures $chatScreen '"无真实聊天时只显示欢迎语，今日农情不占空态"' `
         "Debug UI copy preview must explicitly show that today agri does not occupy the empty welcome state."
     Require-Match $failures $chatScreen '"如果用户本次开始问了而农情还没显示，本次运行不突然插入"' `
         "Debug UI copy preview must explicitly show that today agri is not inserted mid-chat before it has appeared."
+    Require-Match $failures $chatScreen '"远端确认当天 ready 后，用户在它后面发送的后三轮会临时带当天农情标记"' `
+        "Debug UI copy preview must explicitly show that today-agri context is only carried after the remote card is confirmed ready."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\(NETWORK_UNAVAILABLE_HINT_TEXT,\s*"未验证联网 / 门户 Wi-Fi / 无网络",\s*UiCopyPreviewKind\.Network\)' `
+        "Debug UI copy preview must show that network unavailable covers unvalidated networks and captive portal Wi-Fi."
     Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
         "Message action menu buttons must expose button semantics for accessibility and UI automation."
     Require-Match $failures $chatScreen 'if\s*\(\s*canAttemptRemoteAssistantRecovery\(reason\)\s*\)(?s:.*?)upsertAssistantMessagePlaceholder(?s:.*?)failedAssistantMessageStates\[finalId\]\s*=\s*FailedAssistantMessageState(?s:.*?)retryingAssistantMessageIds\[finalId\]\s*=\s*true' `
@@ -660,6 +666,8 @@ if ($failures.Count -eq 0) {
     }
     Require-NoMatch $failures ($chatScreen + "`n" + $chatStreamingRenderer) 'freshSuffixEnabled|streamingFreshStart|streamingFreshEnd|streamingFreshTick|lastStreamingFreshRevealMs|currentFreshTick|lastFreshRevealMs' `
         "Streaming renderer must not restore the removed fresh-suffix highlight chain."
+    Require-NoMatch $failures $chatScreen 'streamingMessageContent\s*\+\s*streamingRevealBuffer' `
+        "Interrupted or background recovery paths must not flush unrevealed streaming buffer into visible assistant text; normal DONE drain owns buffer reveal."
     Require-Match $failures $chatScreen 'verticalArrangement\s*=\s*if\s*\(\s*shouldUseTopArrangementForConversation\s*\(\s*\)\s*\)\s*\{(?s:.*?)Arrangement\.Top(?s:.*?)\}\s*else\s*\{(?s:.*?)Arrangement\.Bottom' `
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `
@@ -680,8 +688,10 @@ if ($failures.Count -eq 0) {
         "Assistant Markdown links and bare URLs must keep real URL annotations that open through the system URI handler."
     Require-Match $failures $chatStreamingRenderer 'ui\.link_open_failed(?s:.*?)substringBefore\(":"(?s:.*?)exception' `
         "Assistant link open failures must remain user-visible and logged only as a safe summary, not as full URLs."
-    Require-Match $failures $chatScreen 'hasActiveNetworkConnection(?s:.*?)NET_CAPABILITY_INTERNET(?s:.*?)NET_CAPABILITY_CAPTIVE_PORTAL(?s:.*?)hasInternetCapability\s*&&\s*!isCaptivePortal' `
-        "Chat offline precheck must reject captive-portal networks instead of treating every INTERNET-capable network as usable."
+    Require-Match $failures $chatScreen 'hasActiveNetworkConnection(?s:.*?)NET_CAPABILITY_INTERNET(?s:.*?)NET_CAPABILITY_VALIDATED(?s:.*?)NET_CAPABILITY_CAPTIVE_PORTAL(?s:.*?)hasInternetCapability\s*&&\s*hasValidatedConnection\s*&&\s*!isCaptivePortal' `
+        "Chat offline precheck must require a validated internet connection and reject captive-portal networks instead of treating every INTERNET-capable network as usable."
+    Require-Match $failures $pendingWorker 'hasActiveNetworkConnection\(\)(?s:.*?)Result\.retry\(\)' `
+        "Pending chat send worker must wait for a validated internet connection before uploading or streaming a background retry."
     Require-Match $failures $hamburgerMenuSheet 'BackHandler\s*\(\s*enabled\s*=\s*visible\s*\)(?s:.*?)handleBackClick\s*\(\s*\)' `
         "Settings shell must let Android back close the main settings page as well as nested pages."
     Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*Unit\s*\)(?s:.*?)onDispose\s*\{(?s:.*?)imagesForCleanup\.forEach\s*\(\s*contextForCleanup::deleteComposerImageAttachment\s*\)(?s:.*?)cleanupPendingComposerCameraImage' `
