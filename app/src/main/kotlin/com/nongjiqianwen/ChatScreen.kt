@@ -8062,10 +8062,10 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "今日农情",
                 items = listOf(
-                    UiCopyPreviewItem("今日农情", "主聊天里的 3 条种植侧普通文本资讯", UiCopyPreviewKind.TodayAgriCard),
+                    UiCopyPreviewItem("今日农情", "主聊天普通文本项，标题加粗、正文可复制", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
-                    UiCopyPreviewItem("农情上下文规则", "仅后三轮临时参考，不进记忆", UiCopyPreviewKind.TodayAgriContextRule),
+                    UiCopyPreviewItem("农情上下文规则", "远端当天确认后，后方连续三轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
                     UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )

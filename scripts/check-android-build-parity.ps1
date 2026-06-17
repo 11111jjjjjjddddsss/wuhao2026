@@ -551,7 +551,7 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must include a narrow today-agri layout case."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.TodayAgriNarrow(?s:.*?)TodayAgriNewsText\((?s:.*?)horizontalPadding\s*=\s*0\.dp(?s:.*?)maxContentWidth\s*=\s*280\.dp' `
         "Today agri narrow preview must exercise the 280dp ordinary-text layout."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"仅后三轮临时参考，不进记忆",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"远端当天确认后，后方连续三轮临时参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
         "Debug UI copy preview must include the today-agri three-round temporary context rule."
     Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
         "Message action menu buttons must expose button semantics for accessibility and UI automation."

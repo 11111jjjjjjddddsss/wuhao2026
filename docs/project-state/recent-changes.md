@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 更新 debug-only 预览面板的今日农情说明：预览项明确今日农情是主聊天普通文本项、标题加粗、正文可复制；上下文规则说明改为“远端当天确认后，后方连续三轮临时参考”。`check-android-build-parity.ps1` 已同步锁住这条新文案，防止预览面板和真实三轮临时上下文口径漂移。该改动只影响调试预览和质检门禁，不改变正式用户 UI、主聊天滚动链、三份提示词、后端模型输出限制或真实支付状态。
+
 - 修复 GitHub Web CI 红灯：Vite 8 / Rolldown optional peer 依赖在 GitHub Linux `npm ci` 下比 Windows 本机更严格，先后报缺 `@emnapi/*`。当前已在 `admin/package.json`、`site/package.json` 显式声明 `@emnapi/core` 和 `@emnapi/runtime` 为开发期构建依赖，并刷新两份 lockfile，补齐 `@emnapi` 和 `@rolldown/binding-wasm32-wasi` 相关层级依赖；本机已分别在 `admin`、`site` 跑通 `npm ci` 与 `npm run build`。该改动只修前端构建依赖声明和锁文件，不改官网首页定稿文案、管理后台业务代码、Android、Go 后端、三份提示词、支付或主聊天滚动链。
 
 - 修复内部测试包 OSS 清理脚本兼容性：当前阿里云 CLI 的 `aliyun oss ls` 不支持 `--recursive`，而直接列 `test-apks/debug/` 前缀已经能返回日期子目录里的 APK；`scripts/clean-oss-test-apks.ps1` 已改为直接前缀列举。实测 dry-run 能识别 3 个内部测试 APK 并只删除旧 2 个，实际清理后云端只剩最新 `8dee8475` debug/internal 测试包；这不影响正式 release 包、检查更新、官网正式下载或应用商店链路。
