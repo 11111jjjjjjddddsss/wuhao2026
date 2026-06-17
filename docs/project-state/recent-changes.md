@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 修复 GitHub Web CI 红灯：`admin/package-lock.json` 和 `site/package-lock.json` 在 Vite 8 / Rolldown optional 依赖上与 `package.json` 不同步，GitHub Linux `npm ci` 报缺 `@emnapi/*`。当前已刷新两份 lockfile，补齐 `@emnapi` 和 `@rolldown/binding-wasm32-wasi` 相关层级依赖；本机已分别在 `admin`、`site` 跑通 `npm ci` 与 `npm run build`。该改动只修前端构建锁文件，不改官网首页定稿文案、管理后台业务代码、Android、Go 后端、三份提示词、支付或主聊天滚动链。
+
 - 修复内部测试包 OSS 清理脚本兼容性：当前阿里云 CLI 的 `aliyun oss ls` 不支持 `--recursive`，而直接列 `test-apks/debug/` 前缀已经能返回日期子目录里的 APK；`scripts/clean-oss-test-apks.ps1` 已改为直接前缀列举。实测 dry-run 能识别 3 个内部测试 APK 并只删除旧 2 个，实际清理后云端只剩最新 `8dee8475` debug/internal 测试包；这不影响正式 release 包、检查更新、官网正式下载或应用商店链路。
 
 - 继续按最后巡检发现的实风险收口：Android 今日农情去掉专用提前回底 effect，只在已经交给 `WorklineOwned` 的正常聊天流里做视觉尾部回底；首屏只有今日农情时继续走普通文本的 `TopUnreached -> TopAnchoring -> WorklineOwned` 安全交接，避免清数据后提前切 `Arrangement.Bottom` 造成下坠。修正 hydrated snapshot 恢复时旧命名参数导致的 Kotlin 编译失败；顶部“更早若干轮”提示和删除历史弹窗去掉“记忆承接”内部词。会员开发期 Plus 升 Pro 补偿计算统一用同一个 `now` 派生上海日期，避免极端跨午夜时今日剩余次数和剩余整天数不一致。`check_project_memory.py` 已把 `admin/`、`site/` 纳入 watched/current-status 覆盖；`check-app-update-release-match.ps1` 也会对 APK URL 做 URL 解码后再拦 `test-apks / debug / internal / staging`，和后端、官网的测试包护栏保持一致。本轮仍不修改主对话锚点、记忆提示词、今日农情提示词、官网首页文案、模型输出限制或真实支付。
