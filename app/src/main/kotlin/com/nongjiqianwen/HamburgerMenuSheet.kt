@@ -43,6 +43,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -1626,7 +1627,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "九、本地缓存和平台保存",
-            body = "App 会在本机保存必要运行缓存，包括本机用户标识、聊天窗口快照、未发送文字草稿、待发送任务、私有图片副本、图片预览缓存和更新安装包缓存。平台会保存会话、记忆摘要、问答记录、权益使用记录、帮助与反馈、今日农情、上传图片地址和必要日志，用于历史恢复、权益核对、服务处理和故障排查。问诊上传图片通常 3 天后自动删除，帮助与反馈图片通常 30 天后自动删除，主聊天归档和记忆承接按当前规则滚动保留约 30 天；App 自动日志只保存脱敏事件和安全诊断字段，通常按约 30 天排障窗口控制；服务端运行日志通常保留 7 天；订单、额度、礼品卡、审计、安全风控、注销申请和依法需要留存的记录，会按交易、合规和安全需要保存或去标识化处理。"
+            body = "App 会在本机保存必要运行缓存，包括本机用户标识、聊天窗口快照、未发送文字草稿、待发送任务、私有图片副本、图片预览缓存和更新安装包缓存。平台会保存会话、对话摘要、问答记录、权益使用记录、帮助与反馈、今日农情、上传图片地址和必要日志，用于历史恢复、权益核对、服务处理和故障排查。问诊上传图片通常 3 天后自动删除，帮助与反馈图片通常 30 天后自动删除，主聊天记录和对话承接按当前规则滚动保留约 30 天；App 自动日志只保存脱敏事件和安全诊断字段，通常按约 30 天排障窗口控制；服务端运行日志通常保留 7 天；订单、额度、礼品卡、审计、安全风控、注销申请和依法需要留存的记录，会按交易、合规和安全需要保存或去标识化处理。"
         )
         HamburgerAgreementSection(
             title = "十、第三方和系统能力清单",
@@ -3587,8 +3588,15 @@ private fun HamburgerSupportMessageImageStrip(
             .forEach { unavailableImages.remove(it) }
     }
     Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
+        horizontalArrangement = if (isUser) {
+            Arrangement.spacedBy(8.dp, Alignment.End)
+        } else {
+            Arrangement.spacedBy(8.dp)
+        },
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
     ) {
         previewImages.forEachIndexed { index, imageUrl ->
             HamburgerSupportMessageImageThumb(
@@ -3862,7 +3870,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "将删除当前账号的历史对话和记忆承接，不影响会员、礼品卡和反馈记录。",
+                text = "将删除当前账号的历史对话，不影响会员、礼品卡和反馈记录。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
@@ -3909,7 +3917,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Text(
-                            text = if (deleting) "删除中" else "确定",
+                            text = if (deleting) "删除中" else "确认删除",
                             color = if (deleting) Color(0xFF777B82) else Color.White,
                             fontSize = 15.sp,
                             lineHeight = 20.sp,

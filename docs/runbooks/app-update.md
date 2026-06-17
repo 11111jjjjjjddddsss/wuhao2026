@@ -10,7 +10,7 @@
 
 内部测试包不走本 runbook 的正式检查更新链路。用户只说“给我一个测试包 / 代理测试 / 管理层试用”时，使用 [android-test-package.md](D:/wuhao/docs/runbooks/android-test-package.md) 和 [publish-android-test-apk.ps1](D:/wuhao/scripts/publish-android-test-apk.ps1) 生成 debug/internal 临时下载链接。
 
-测试包链接禁止写入管理后台“检查更新”、`APP_ANDROID_APK_URL`、`APP_ANDROID_*` 环境变量、官网 `VITE_ANDROID_APK_URL` 或正式下载按钮。正式发版校验脚本会拒绝包含 `test-apks`、`debug`、`internal` 或 `staging` 的 APK URL，避免把测试包误下发给用户。
+测试包链接禁止写入管理后台“检查更新”、`APP_ANDROID_APK_URL`、`APP_ANDROID_*` 环境变量、官网 `VITE_ANDROID_APK_URL` 或正式下载按钮。正式发版校验脚本会对原始 URL 和 URL 解码后的路径一起拒绝包含 `test-apks`、`debug`、`internal` 或 `staging` 的 APK URL，避免把测试包误下发给用户。
 
 ## 正式包留存与本地清理
 
@@ -60,7 +60,7 @@ Codex 默认按下面流程处理：
 2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
 3. Codex 负责运行 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用最终 `app-release.apk` 本体校验包名、`versionCode`、`versionName`、release 不可调试、权限白名单、签名证书指纹，并输出 APK 文件大小和 SHA-256；更新说明默认留空，展示统一默认文案
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://...apk` 下载链接
-5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
+5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；启用更新时页面和服务端都要求输入本次 `versionCode` 作为确认，停更时页面和服务端都要求输入“停更”作为确认；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
 6. 保存后台配置后，Codex 负责运行 [check-app-update-release-match.ps1](D:/wuhao/scripts/check-app-update-release-match.ps1) 只读核对：本地最终 APK 的 `versionCode / versionName / SHA-256 / 文件大小` 必须和后台“检查更新”配置一致；需要连公网下载包体验证时加 `-VerifyDownload`，脚本会确认最终下载地址仍是 HTTPS
 7. 如果这是要给旧包用户推送的自更新包，必须带上旧包 `versionCode` 跑 `-PreviousVersionCode <旧包版本号> -ProbePreviousVersionUpdate`，证明本地 APK、后台配置和公网 `/api/app/update` 都会对这个旧版本返回可更新
 8. 真机回归至少覆盖登录、文字问诊、图片问诊、历史恢复、帮助与反馈、会员中心、检查更新和系统安装页
@@ -105,7 +105,7 @@ Codex 默认按下面流程处理：
 - APK 文件大小不能超过 200MB；Android、后端用户接口、后台保存入口和发版校验都按这个上限处理，避免后台保存了一个客户端永远不会下载 / 安装的包
 - `APP_ANDROID_UPDATE_ENABLED`：兼容环境变量开关；只有显式配置为 `true / yes / on / 1` 才会启用环境变量兜底更新。未配置时即使版本号、APK URL、SHA-256 和文件大小都存在，也不会下发更新，避免残留环境变量绕过后台发布开关
 
-管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明和是否对外启用。后台保存后会在同一事务里更新 `app_release_configs` 并追加 `app_release_events` 发布历史，`/api/app/update` 会优先按当前配置对外返回；取消“对外启用更新”并保存，就是停更，也会留下停更记录。发布历史只记录版本、物料状态、操作人、时间和更新说明，不替代 APK 文件上传、真机覆盖安装验收或正式回滚演练。
+管理后台“检查更新”页现在已经可以直接维护 Android 更新配置：版本号、版本名、HTTPS APK、SHA-256、文件大小、更新说明和是否对外启用。启用更新时前端会要求输入本次 `versionCode`，停更时要求输入“停更”；服务端 `POST /admin-api/v1/app-update/android` 也会校验同一个确认字段，绕过前端直接调 API 也不能无确认写入启用 / 停更配置。后台保存后会在同一事务里更新 `app_release_configs` 并追加 `app_release_events` 发布历史，`/api/app/update` 会优先按当前配置对外返回；取消“对外启用更新”并保存，就是停更，也会留下停更记录。发布历史只记录版本、物料状态、操作人、时间和更新说明，不替代 APK 文件上传、真机覆盖安装验收或正式回滚演练。
 
 管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL / 文件大小上限这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有 HTTPS APK、SHA-256 和 1 到 200MB 的文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts` 或 `apk_too_large`。
 

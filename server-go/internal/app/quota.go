@@ -25,7 +25,7 @@ var tierLimits = map[Tier]int{
 	TierPro:  40,
 }
 
-var ErrOrderIDConflict = errors.New("order id already belongs to another user")
+var ErrOrderIDConflict = errors.New("order id already belongs to another user or product")
 
 type sqlExecer interface {
 	ExecContext(context.Context, string, ...any) (sql.Result, error)
@@ -367,7 +367,7 @@ func (s *Store) BuyTopupPack(ctx context.Context, userID string, orderID string)
 	}
 	defer rollbackQuietly(tx)
 
-	if replay, payload, err := s.readOrderReplay(ctx, tx, orderID, userID); err != nil {
+	if replay, payload, err := s.readOrderReplay(ctx, tx, orderID, userID, "buy_topup"); err != nil {
 		return false, "", nil, 0, err
 	} else if replay {
 		if err := tx.Commit(); err != nil {
@@ -455,7 +455,7 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 	}
 	defer rollbackQuietly(tx)
 
-	if replay, payload, err := s.readOrderReplay(ctx, tx, orderID, userID); err != nil {
+	if replay, payload, err := s.readOrderReplay(ctx, tx, orderID, userID, "upgrade_plus_to_pro"); err != nil {
 		return false, 0, "", 0, 0, err
 	} else if replay {
 		if err := tx.Commit(); err != nil {
@@ -480,7 +480,8 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 		return false, 0, "", 0, 0, err
 	}
 
-	now := time.Now().UnixMilli()
+	nowTime := time.Now()
+	now := nowTime.UnixMilli()
 	effectiveTier, _, err := effectiveTierFromRow(currentTier, tierExpireAt, TierFree, now)
 	if err != nil {
 		return false, 0, "", 0, 0, err
@@ -493,7 +494,7 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 		return false, 0, "", 0, 0, fmt.Errorf("FORBIDDEN_TIER")
 	}
 
-	dayCN := GetTodayKeyCN(s.shanghai, time.Now())
+	dayCN := GetTodayKeyCN(s.shanghai, nowTime)
 	usedToday, err := s.getOrCreateDailyUsage(ctx, tx, userID, dayCN)
 	if err != nil {
 		return false, 0, "", 0, 0, err
@@ -575,7 +576,7 @@ func (s *Store) renewTier(ctx context.Context, userID string, orderID string, ta
 	}
 	defer rollbackQuietly(tx)
 
-	if replay, payload, err := s.readOrderReplay(ctx, tx, orderID, userID); err != nil {
+	if replay, payload, err := s.readOrderReplay(ctx, tx, orderID, userID, orderTypeForTierRenew(targetTier)); err != nil {
 		return false, "", 0, err
 	} else if replay {
 		if err := tx.Commit(); err != nil {
@@ -625,10 +626,9 @@ func (s *Store) renewTier(ctx context.Context, userID string, orderID string, ta
 	}
 
 	amount := plusTierPrice
-	orderType := "renew_plus"
+	orderType := orderTypeForTierRenew(targetTier)
 	if targetTier == TierPro {
 		amount = proTierPrice
-		orderType = "renew_pro"
 	}
 	result := map[string]any{
 		"tier":           string(targetTier),
@@ -772,14 +772,15 @@ func (s *Store) getOrCreateDailyUsage(ctx context.Context, tx *sql.Tx, userID st
 	return int(used.Int64), nil
 }
 
-func (s *Store) readOrderReplay(ctx context.Context, tx *sql.Tx, orderID string, userID string) (bool, map[string]any, error) {
+func (s *Store) readOrderReplay(ctx context.Context, tx *sql.Tx, orderID string, userID string, expectedType string) (bool, map[string]any, error) {
 	var existingUserID sql.NullString
+	var existingType sql.NullString
 	var resultJSON sql.NullString
 	err := tx.QueryRowContext(
 		ctx,
-		"SELECT user_id, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE",
+		"SELECT user_id, type, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE",
 		orderID,
-	).Scan(&existingUserID, &resultJSON)
+	).Scan(&existingUserID, &existingType, &resultJSON)
 	if err == sql.ErrNoRows {
 		return false, nil, nil
 	}
@@ -787,6 +788,9 @@ func (s *Store) readOrderReplay(ctx context.Context, tx *sql.Tx, orderID string,
 		return false, nil, err
 	}
 	if existingUserID.Valid && strings.TrimSpace(existingUserID.String) != strings.TrimSpace(userID) {
+		return false, nil, ErrOrderIDConflict
+	}
+	if strings.TrimSpace(expectedType) != "" && strings.TrimSpace(existingType.String) != strings.TrimSpace(expectedType) {
 		return false, nil, ErrOrderIDConflict
 	}
 
@@ -797,6 +801,13 @@ func (s *Store) readOrderReplay(ctx context.Context, tx *sql.Tx, orderID string,
 		}
 	}
 	return true, payload, nil
+}
+
+func orderTypeForTierRenew(targetTier Tier) string {
+	if targetTier == TierPro {
+		return "renew_pro"
+	}
+	return "renew_plus"
 }
 
 func GetTodayKeyCN(loc *time.Location, date time.Time) string {

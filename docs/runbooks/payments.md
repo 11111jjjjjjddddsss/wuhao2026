@@ -1,6 +1,6 @@
 # 支付与会员订单 Runbook
 
-最后更新：2026-06-16
+最后更新：2026-06-17
 
 ## 目的
 
@@ -19,6 +19,8 @@
 - 生产环境或环境名缺失时，即使误设 `ALLOW_DEV_ORDER_ENDPOINTS=true`，后端也会强制关闭开发期订单接口。
 - 生产 readiness 会硬拦 `ALLOW_DEV_ORDER_ENDPOINTS=true`，避免公开环境误开开发期直改会员接口。
 - 当前 `orders` 表只记录开发期成功结果，字段包括 `order_id / user_id / type / amount / created_at / status / result_json`；它不是正式支付订单表。
+- 开发期订单 replay 会同时校验 `order_id`、账号ID和商品类型；同一 `order_id` 不能跨账号，也不能跨 Plus / Pro / Plus 升 Pro / 加油包复用，避免假测试把旧订单回放到错误权益上。
+- 当前权益口径已经按用户拍板固化：加油包次数和 Plus 升 Pro 生成的升级补偿次数都按永久有效处理，不随会员到期清零；每日额度是自然日额度，不跨天结转。Plus 升 Pro 不做剩余 Plus 折成现金抵扣，用户按 Pro 开通价升级，Plus 剩余每日权益折成永久升级补偿次数，后续按每日额度 -> 升级补偿 -> 加油包顺序消耗。
 - 管理后台已接只读订单核查：`GET /admin-api/v1/orders` 可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录，用来辅助核查权益来源；该页面不提供补发、退款、对账或手动改权益。
 - 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android 购买 / 加油包入口仍关闭、Android 没有调用开发期订单接口、后端开发期订单接口有 `PAYMENT_NOT_CONFIGURED` 防线、支付回调 URL 已写入 runbook，并探测公网 `/healthz` 的 `dev_order_endpoints=false`。脚本还会检查后台订单页保持只读文案、没有补发 / 退款 / 手动改权益 / 模拟支付成功按钮，且服务端只注册 `GET /admin-api/v1/orders`、没有订单写路由。脚本还会只检查本机环境变量是否具备支付宝沙箱和微信 App 支付联调所需前置项，只输出缺少哪一类配置，不打印任何密钥值。该脚本只证明“当前未开放收费时是安全占位”，不代表真实支付已接入。
 
@@ -104,8 +106,8 @@
 
 - `POST /api/tier/renew_plus`：开发期续 Plus。
 - `POST /api/tier/renew_pro`：开发期续 Pro。
-- `POST /api/tier/upgrade_plus_to_pro`：开发期 Plus 升 Pro，并计算升级补偿。
-- `POST /api/topup/buy`：开发期购买加油包，仍要求当前有效档位为 Plus / Pro。
+- `POST /api/tier/upgrade_plus_to_pro`：开发期 Plus 升 Pro，并计算永久升级补偿次数。
+- `POST /api/topup/buy`：开发期购买加油包，仍要求当前有效档位为 Plus / Pro；当前只允许同时存在 1 个 active 加油包，用完后再买。
 
 这些接口只允许本地 / 内测调试，不允许公开生产使用。真实支付接入后，应移除、继续硬隔离，或只保留受控测试环境。
 
@@ -157,8 +159,8 @@
 - 支付回调可能重复到达，必须幂等。
 - 支付回调和用户刷新 `/api/me` 是异步关系，Android 要允许短暂“支付处理中”。
 - 退款、撤销、失败和超时关闭不能和成功订单混在一起。
-- Plus 升 Pro 仍要保留当前“不坑用户”的补偿口径：Plus 剩余价值不能被 Pro 覆盖后静默丢失。
-- 加油包仍只允许 Plus / Pro 有效会员购买；已有未用完加油包时是否允许叠加，需要产品再拍板。
+- Plus 升 Pro 仍要保留当前“不坑用户”的补偿口径：Plus 剩余每日权益折成永久升级补偿次数，不能被 Pro 覆盖后静默丢失；当前不做现金折扣抵扣。
+- 加油包仍只允许 Plus / Pro 有效会员购买；当前同一时刻只允许 1 个 active 加油包，用完后再买。未来如果要叠加多个加油包，需要另行产品拍板并补权益流水 / 后台说明。
 - 自动续费如果未来接入，必须单独做签约、解约、续费通知、扣款失败、到期和协议文案；当前产品没有自动续费。
 - 支付密钥、商户私钥、平台证书、APIv3 密钥等只能放服务端密钥管理或环境变量，不能进 APK，不能写仓库。
 

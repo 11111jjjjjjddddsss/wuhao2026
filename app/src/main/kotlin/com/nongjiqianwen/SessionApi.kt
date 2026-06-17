@@ -255,7 +255,7 @@ object SessionApi {
     fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
         val base = baseUrl()
         if (base.isEmpty()) {
-            onResult(false, "后端地址未配置")
+            onResult(false, "服务暂时不可用，请稍后再试")
             return
         }
         val payload = gson.toJson(mapOf("phone_number" to phoneNumber.trim()))
@@ -299,8 +299,8 @@ object SessionApi {
                                 it.isSuccessful -> null
                                 statusCode == 429 -> "操作太频繁，请稍后再试"
                                 statusCode == 400 -> "请输入正确的手机号"
-                                errorCode == "sms_send_not_configured" -> "短信服务暂未配置，请稍后再试"
-                                errorCode == "sms_provider_config_invalid" -> "短信模板配置异常，请稍后再试"
+                                errorCode == "sms_send_not_configured" -> "验证码暂时发送失败，请稍后再试"
+                                errorCode == "sms_provider_config_invalid" -> "验证码暂时发送失败，请稍后再试"
                                 errorCode == "sms_provider_rate_limited" -> "验证码发送太频繁，请稍后再试"
                                 else -> "验证码暂时发送失败，请稍后再试"
                             }
@@ -780,7 +780,7 @@ object SessionApi {
     ) {
         val base = baseUrl()
         if (base.isEmpty()) {
-            onResult(false, "后端地址未配置")
+            onResult(false, "服务暂时不可用，请稍后再试")
             return
         }
         val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
@@ -1549,7 +1549,7 @@ object SessionApi {
         val base = baseUrl()
         val trimmedCode = code.trim()
         if (base.isEmpty()) {
-            postToMain { onResult(null, "后端地址未配置") }
+            postToMain { onResult(null, "服务暂时不可用，请稍后再试") }
             return
         }
         if (trimmedCode.isEmpty()) {

@@ -272,12 +272,12 @@ private data class LocalChatWindowSnapshotPayload(
 )
 
 private fun restoredInitialWorklinePhase(
-    hasMessages: Boolean,
+    hasStaticVisualContent: Boolean,
     hasStreamingDraft: Boolean,
     initialWorklineOwned: Boolean?
 ): InitialWorklinePhase =
     when {
-        !hasMessages && !hasStreamingDraft -> InitialWorklinePhase.WaitingForFirstSend
+        !hasStaticVisualContent && !hasStreamingDraft -> InitialWorklinePhase.WaitingForFirstSend
         initialWorklineOwned == false -> InitialWorklinePhase.TopUnreached
         else -> InitialWorklinePhase.WorklineOwned
     }
@@ -368,7 +368,7 @@ private fun ChatHistoryWindowNotice(
             border = BorderStroke(1.dp, Color(0xFFE1E4E8))
         ) {
             Text(
-                text = "仅显示最近 30 轮；更早 ${hiddenRoundCount} 轮会由记忆承接，后续对话会尽量接上",
+                text = "仅显示最近 30 轮；更早 ${hiddenRoundCount} 轮已收起，后续对话会尽量接上",
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall.copy(
                     fontSize = 12.sp,
@@ -505,7 +505,6 @@ private val BOTTOM_POSITION_TOLERANCE = 16.dp
 private val STATIC_BOTTOM_POSITION_TOLERANCE = 0.dp
 private val INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW = 56.dp
 private val CHAT_MESSAGE_ITEM_VERTICAL_PADDING = 8.dp
-private val TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING = 16.dp
 private const val BOTTOM_BAR_HEIGHT_JITTER_TOLERANCE_PX = 10
 private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
@@ -2479,7 +2478,7 @@ fun ChatScreen() {
     var initialWorklinePhase by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(
             restoredInitialWorklinePhase(
-                hasMessages = initialLocalMessages.isNotEmpty(),
+                hasStaticVisualContent = initialLocalMessages.isNotEmpty(),
                 hasStreamingDraft = false,
                 initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
             )
@@ -2584,6 +2583,23 @@ fun ChatScreen() {
     val hasTodayAgriCard by remember(chatListItems) {
         derivedStateOf {
             chatListItems.any { it is ChatTimelineItem.TodayAgriCard }
+        }
+    }
+    LaunchedEffect(
+        hasTodayAgriCard,
+        messages.size,
+        isStreaming,
+        hasStreamingItem,
+        initialWorklinePhase
+    ) {
+        if (
+            hasTodayAgriCard &&
+            messages.isEmpty() &&
+            !isStreaming &&
+            !hasStreamingItem &&
+            initialWorklinePhase == InitialWorklinePhase.WaitingForFirstSend
+        ) {
+            initialWorklinePhase = InitialWorklinePhase.TopUnreached
         }
     }
     fun todayAgriContextDayForNextSend(existingUserMessageId: String? = null): String? {
@@ -2840,21 +2856,18 @@ fun ChatScreen() {
         initialWorklinePhase == InitialWorklinePhase.TopUnreached ||
             initialWorklinePhase == InitialWorklinePhase.TopAnchoring
 
+    fun hasStaticVisualTimeline(): Boolean =
+        messages.isNotEmpty() || hasTodayAgriCard
+
     fun shouldUseTopArrangementForConversation(): Boolean =
-        isInitialWorklineTopFlow() ||
-            (
-                messages.isEmpty() &&
-                    hasTodayAgriCard &&
-                    !isStreaming &&
-                    !hasStreamingItem
-                )
+        isInitialWorklineTopFlow()
 
     fun shouldSuppressAutomaticBottomAnchor(): Boolean =
         isInitialWorklineTopFlow()
 
     fun shouldStartInitialWorklineTopFlow(): Boolean =
         initialWorklinePhase == InitialWorklinePhase.WaitingForFirstSend &&
-            messages.isEmpty() &&
+            !hasStaticVisualTimeline() &&
             !isStreaming &&
             !hasStreamingItem
 
@@ -2914,7 +2927,7 @@ fun ChatScreen() {
     }
 
     fun currentInitialDocumentFlowBottomPx(): Int {
-        if (messages.isEmpty()) return -1
+        if (chatListItems.isEmpty()) return -1
         val currentMessageIds = messages.mapTo(mutableSetOf()) { message -> message.id }
         var bottomPx = currentLastMessageContentBottomPx()
         fun includeBounds(bounds: Rect?) {
@@ -2929,7 +2942,11 @@ fun ChatScreen() {
         }
         bottomPx = bottomPx.coerceAtLeast(currentStreamingContentBottomPx())
         chatListState.layoutInfo.visibleItemsInfo.forEach { item ->
-            if (chatListItems.getOrNull(item.index) is ChatTimelineItem.Message) {
+            val timelineItem = chatListItems.getOrNull(item.index)
+            if (
+                timelineItem is ChatTimelineItem.Message ||
+                timelineItem is ChatTimelineItem.TodayAgriCard
+            ) {
                 bottomPx = bottomPx.coerceAtLeast(item.offset + item.size)
             }
         }
@@ -3840,7 +3857,7 @@ fun ChatScreen() {
         pendingStreamingFinalizeShouldRestoreBottomAnchor = false
         anchoredUserMessageId = null
         initialWorklinePhase = restoredInitialWorklinePhase(
-            hasMessages = initialLocalMessages.isNotEmpty(),
+            hasStaticVisualContent = initialLocalMessages.isNotEmpty(),
             hasStreamingDraft = false,
             initialWorklineOwned = initialLocalSnapshot.initialWorklineOwned
         )
@@ -4767,7 +4784,7 @@ fun ChatScreen() {
                     replaceMessages(hydratedSnapshot.messages)
                     if (hydratedSnapshot.messages.isNotEmpty()) {
                         initialWorklinePhase = restoredInitialWorklinePhase(
-                            hasMessages = true,
+                            hasStaticVisualContent = true,
                             hasStreamingDraft = false,
                             initialWorklineOwned = hydratedSnapshot.initialWorklineOwned
                         )
@@ -4991,11 +5008,13 @@ fun ChatScreen() {
         chatListUserDragging,
         recyclerScrollInProgress,
         scrollRuntime.userInteracting.value,
-        scrollMode
+        scrollMode,
+        initialWorklinePhase
     ) {
         if (!hasTodayAgriCard || !shouldShowTodayAgriCard) return@LaunchedEffect
         if (!startupLayoutReady || !shouldRevealMessageList) return@LaunchedEffect
-        if (messages.isEmpty() || scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
+        if (scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
+        if (initialWorklinePhase != InitialWorklinePhase.WorklineOwned) return@LaunchedEffect
         if (isStreaming || hasStreamingItem) return@LaunchedEffect
         if (chatListUserDragging || recyclerScrollInProgress || scrollRuntime.userInteracting.value) {
             return@LaunchedEffect
@@ -5007,7 +5026,6 @@ fun ChatScreen() {
         ).joinToString("|")
         if (todayAgriBottomAnchorAppliedKey == anchorKey) return@LaunchedEffect
         todayAgriBottomAnchorAppliedKey = anchorKey
-        releaseInitialWorklineToBottom()
         scrollMode = ScrollMode.AutoFollow
         withFrameNanos { }
         if (
@@ -5044,7 +5062,7 @@ fun ChatScreen() {
         chatListState.canScrollForward
     ) {
         if (initialWorklinePhase != InitialWorklinePhase.TopUnreached) return@LaunchedEffect
-        if (!startupLayoutReady || messages.isEmpty()) return@LaunchedEffect
+        if (!startupLayoutReady || !hasStaticVisualTimeline()) return@LaunchedEffect
         if (!hasInitialDocumentFlowReachedWorkline()) return@LaunchedEffect
         if (userIsActivelyBrowsingInitialWorkline()) {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
@@ -5068,7 +5086,7 @@ fun ChatScreen() {
         scrollMode
     ) {
         if (initialWorklinePhase != InitialWorklinePhase.TopAnchoring) return@LaunchedEffect
-        if (!startupLayoutReady || messages.isEmpty()) return@LaunchedEffect
+        if (!startupLayoutReady || !hasStaticVisualTimeline()) return@LaunchedEffect
         if (userIsActivelyBrowsingInitialWorkline()) {
             initialWorklinePhase = InitialWorklinePhase.WorklineOwned
             return@LaunchedEffect
@@ -5928,14 +5946,12 @@ fun ChatScreen() {
         if (!startupHydrationBarrierSatisfied || !startupLayoutReady) {
             return@LaunchedEffect
         }
-        val hasOnlyTodayAgriVisualTimeline =
-            messages.isEmpty() && hasTodayAgriCard && !isStreaming && !hasStreamingItem
-        if (hasOnlyTodayAgriVisualTimeline) {
+        val hasStaticVisualTimeline = hasStaticVisualTimeline()
+        if (!hasStaticVisualTimeline && !hasStreamingItem) {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
-        val hasStaticVisualTimeline = messages.isNotEmpty()
-        if (!hasStaticVisualTimeline && !hasStreamingItem) {
+        if (isInitialWorklineTopFlow() && !hasInitialDocumentFlowReachedWorkline()) {
             initialBottomSnapDone = true
             return@LaunchedEffect
         }
@@ -5995,7 +6011,7 @@ fun ChatScreen() {
         if (postInitialSnapCorrectionDone) return@LaunchedEffect
         if (!startupBottomReserveReady) return@LaunchedEffect
         if (hasStartedConversation) return@LaunchedEffect
-        if (messages.isEmpty() || isStreaming || hasStreamingItem) {
+        if (!hasStaticVisualTimeline() || isStreaming || hasStreamingItem) {
             return@LaunchedEffect
         }
         if (chatListUserDragging || recyclerScrollInProgress || scrollRuntime.userInteracting.value) {
@@ -6186,8 +6202,6 @@ fun ChatScreen() {
         val userBubbleMaxWidth = if (chromeMaxWidth < 440.dp) chromeMaxWidth * 0.84f else 448.dp
         val topBarReservedHeight = topInset + topButtonTouchSize + TOP_CHROME_MASK_EXTRA
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
-        val todayAgriCardOnlyTopExtraPaddingPx =
-            with(density) { TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING.roundToPx() }
         suspend fun uploadComposerImagesForSend(
             images: List<ComposerImageAttachment>
         ): Pair<List<String>?, String?> = withContext(Dispatchers.IO) {
@@ -6894,17 +6908,6 @@ fun ChatScreen() {
                     .takeIf { sendStartBottomPaddingLockActive && it >= 0 }
                     ?.let { lockedPaddingPx -> lockedPaddingPx }
                     ?: listBottomPaddingPx
-            val cardOnlyTopPaddingPx =
-                if (
-                    messages.isEmpty() &&
-                    hasTodayAgriCard &&
-                    !isStreaming &&
-                    !hasStreamingItem
-                ) {
-                    todayAgriCardOnlyTopExtraPaddingPx
-                } else {
-                    0
-                }
             val forwardListBottomPaddingPx =
                 (effectiveBottomPaddingPx - chatMessageItemVerticalPaddingPx).coerceAtLeast(0)
             SideEffect {
@@ -6942,7 +6945,7 @@ fun ChatScreen() {
                             is ChatTimelineItem.TodayAgriCard -> "today_agri_card"
                         }
                     },
-                    topPaddingPx = chatListTopPaddingPx + cardOnlyTopPaddingPx,
+                    topPaddingPx = chatListTopPaddingPx,
                     bottomPaddingPx = forwardListBottomPaddingPx,
                     verticalArrangement = if (shouldUseTopArrangementForConversation()) {
                         Arrangement.Top
@@ -8009,7 +8012,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：Free不可订购", "Plus / Pro 可订购置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
                     UiCopyPreviewItem("加油包：Free剩余", "按钮显示“剩余次数可用”", UiCopyPreviewKind.MembershipTopupFreeActive),
                     UiCopyPreviewItem("加油包：付费档位未开放", "展示“暂未开放”而不是可直接购买", UiCopyPreviewKind.MembershipTopupBuyable),
-                    UiCopyPreviewItem("加油包：未用完", "用完再续置灰状态", UiCopyPreviewKind.MembershipTopupActive),
+                    UiCopyPreviewItem("加油包：未用完", "续购暂未开放状态", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
                     UiCopyPreviewItem("权益生效提示", "支付未开放，仅预览后续权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
@@ -8682,9 +8685,17 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     )
                 }
                 UiCopyPreviewKind.MembershipFailedSummary -> {
-                    UiCopyPreviewMembershipSummary(
-                        entitlement = null,
-                        loadState = MembershipLoadState.Failed
+                    MembershipCenterBody(
+                        entitlement = SessionApi.EntitlementSnapshot(
+                            tier = "plus",
+                            tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 12),
+                            dailyRemaining = 18,
+                            topupRemaining = 20
+                        ),
+                        loadState = MembershipLoadState.Failed,
+                        paymentNoticeResetKey = UiCopyPreviewKind.MembershipFailedSummary,
+                        onPaymentUnavailable = {},
+                        onRetryLoad = {}
                     )
                 }
                 UiCopyPreviewKind.MembershipPlanUnknown -> {

@@ -259,3 +259,37 @@ func TestAndroidUpdateEventAction(t *testing.T) {
 		})
 	}
 }
+
+func TestAdminAppUpdateWriteConfirmationRequiresVersionCodeForEnabledRelease(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 8,
+	}
+	body := adminAppUpdateWriteRequest{
+		Enabled:           true,
+		LatestVersionCode: 8,
+		Confirmation:      "7",
+	}
+	if got := adminAppUpdateWriteConfirmationError(body, cfg); got != "release_confirmation_required" {
+		t.Fatalf("confirmation error = %q, want release_confirmation_required", got)
+	}
+	body.Confirmation = "8"
+	if got := adminAppUpdateWriteConfirmationError(body, cfg); got != "" {
+		t.Fatalf("confirmation error = %q, want empty", got)
+	}
+}
+
+func TestAdminAppUpdateWriteConfirmationRequiresDisableText(t *testing.T) {
+	cfg := androidUpdateConfig{Enabled: false}
+	body := adminAppUpdateWriteRequest{
+		Enabled:      false,
+		Confirmation: "stop",
+	}
+	if got := adminAppUpdateWriteConfirmationError(body, cfg); got != "disable_confirmation_required" {
+		t.Fatalf("confirmation error = %q, want disable_confirmation_required", got)
+	}
+	body.Confirmation = "停更"
+	if got := adminAppUpdateWriteConfirmationError(body, cfg); got != "" {
+		t.Fatalf("confirmation error = %q, want empty", got)
+	}
+}

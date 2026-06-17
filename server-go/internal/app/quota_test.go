@@ -157,11 +157,11 @@ func TestReadOrderReplayReturnsConflictForOtherUserOrderID(t *testing.T) {
 		t.Fatalf("BeginTx failed: %v", err)
 	}
 
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT user_id, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT user_id, type, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE")).
 		WithArgs("order_shared").
-		WillReturnRows(sqlmock.NewRows([]string{"user_id", "result_json"}).AddRow("acct_other", `{"tier":"plus","tier_expire_at":1700000000000}`))
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "type", "result_json"}).AddRow("acct_other", "renew_plus", `{"tier":"plus","tier_expire_at":1700000000000}`))
 
-	replay, payload, err := store.readOrderReplay(context.Background(), tx, "order_shared", "acct_current")
+	replay, payload, err := store.readOrderReplay(context.Background(), tx, "order_shared", "acct_current", "renew_plus")
 	if !errors.Is(err, ErrOrderIDConflict) {
 		t.Fatalf("readOrderReplay err = %v, want ErrOrderIDConflict", err)
 	}
@@ -170,6 +170,39 @@ func TestReadOrderReplayReturnsConflictForOtherUserOrderID(t *testing.T) {
 	}
 	if payload != nil {
 		t.Fatalf("cross-user conflict payload = %#v, want nil", payload)
+	}
+	mock.ExpectRollback()
+	if err := tx.Rollback(); err != nil {
+		t.Fatalf("rollback failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestReadOrderReplayReturnsConflictForDifferentProductType(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	mock.ExpectBegin()
+	tx, err := store.db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("BeginTx failed: %v", err)
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT user_id, type, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs("order_reused").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "type", "result_json"}).AddRow("acct_current", "renew_plus", `{"tier":"plus","tier_expire_at":1700000000000}`))
+
+	replay, payload, err := store.readOrderReplay(context.Background(), tx, "order_reused", "acct_current", "buy_topup")
+	if !errors.Is(err, ErrOrderIDConflict) {
+		t.Fatalf("readOrderReplay err = %v, want ErrOrderIDConflict", err)
+	}
+	if replay {
+		t.Fatal("cross-product order should not be treated as replay")
+	}
+	if payload != nil {
+		t.Fatalf("cross-product conflict payload = %#v, want nil", payload)
 	}
 	mock.ExpectRollback()
 	if err := tx.Rollback(); err != nil {

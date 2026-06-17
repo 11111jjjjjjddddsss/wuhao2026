@@ -1018,6 +1018,7 @@ type adminAppUpdateWriteRequest struct {
 	ReleaseNotes      string `json:"release_notes"`
 	ForceUpdate       bool   `json:"force_update"`
 	FileSizeBytes     int64  `json:"file_size_bytes"`
+	Confirmation      string `json:"confirmation"`
 }
 
 func buildAdminAppUpdateConfig(record androidUpdateConfigRecord) AdminAppUpdateConfig {
@@ -1105,6 +1106,11 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		s.writeError(w, http.StatusBadRequest, "missing_release_artifacts")
 		return
 	}
+	if code := adminAppUpdateWriteConfirmationError(body, cfg); code != "" {
+		s.recordAdminAppUpdateValidationFailure(r, admin.User.Username, cfg, code)
+		s.writeError(w, http.StatusBadRequest, code)
+		return
+	}
 	nowMs := time.Now().UnixMilli()
 	if err := s.store.UpsertAndroidUpdateConfigRecord(r.Context(), cfg, admin.User.Username, nowMs); err != nil {
 		s.logger.Error("admin app update write failed", "error", err)
@@ -1129,6 +1135,23 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 		"force_update":        result.ForceUpdate,
 	})
 	s.writeJSON(w, http.StatusOK, result)
+}
+
+func adminAppUpdateWriteConfirmationError(body adminAppUpdateWriteRequest, cfg androidUpdateConfig) string {
+	confirmation := strings.TrimSpace(body.Confirmation)
+	if cfg.Enabled {
+		if cfg.LatestVersionCode <= 0 {
+			return "latest_version_code_required"
+		}
+		if confirmation != strconv.Itoa(cfg.LatestVersionCode) {
+			return "release_confirmation_required"
+		}
+		return ""
+	}
+	if confirmation != "停更" {
+		return "disable_confirmation_required"
+	}
+	return ""
 }
 
 func (s *Server) recordAdminAppUpdateValidationFailure(r *http.Request, actor string, cfg androidUpdateConfig, code string) {

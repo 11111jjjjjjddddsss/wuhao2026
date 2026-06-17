@@ -17,8 +17,11 @@ MEMORY_FILES = {
 }
 
 WATCHED_PREFIXES = (
+    "admin/",
     "app/src/main/kotlin/com/nongjiqianwen/",
+    "site/",
     "server-go/",
+    ".github/workflows/",
     "docs/adr/",
     "docs/runbooks/",
 )
@@ -32,11 +35,17 @@ WATCHED_EXACT = {
 WATCHED_SCRIPT_EXACT = {
     "scripts/check_project_memory.py",
     "scripts/check-android-build-parity.ps1",
+    "scripts/check-android-release-artifact.ps1",
+    "scripts/check-app-update-release-match.ps1",
     "scripts/check-ecs-readiness.ps1",
+    "scripts/check-launch-readiness.ps1",
     "scripts/deploy-ecs-server.ps1",
     "scripts/rollback-ecs-server.ps1",
     "scripts/deploy-ecs-admin.ps1",
     "scripts/deploy-ecs-site.ps1",
+    "scripts/publish-android-test-apk.ps1",
+    "scripts/clean-local-android-apks.ps1",
+    "scripts/clean-oss-test-apks.ps1",
     "scripts/check-sls-alert-readiness.ps1",
     "scripts/check-sls-cost-guard.ps1",
     "scripts/check-data-retention-cost.ps1",
@@ -47,29 +56,36 @@ WATCHED_SCRIPT_EXACT = {
     "scripts/check-auth-usage.ps1",
     "scripts/check-sms-usage.ps1",
     "scripts/check-resource-capacity.ps1",
-    "scripts/upload-android-release.ps1",
 }
 
 IGNORED_PREFIXES = (
     "docs/project-state/",
-    ".github/",
     ".git",
 )
 
 CURRENT_STATUS_PREFIXES = (
+    "admin/",
     "app/src/main/kotlin/com/nongjiqianwen/",
+    "site/",
     "server-go/",
+    ".github/workflows/",
     "docs/adr/",
     "docs/runbooks/",
 )
 
 CURRENT_STATUS_SCRIPT_EXACT = {
     "scripts/check-android-build-parity.ps1",
+    "scripts/check-android-release-artifact.ps1",
+    "scripts/check-app-update-release-match.ps1",
     "scripts/check-ecs-readiness.ps1",
+    "scripts/check-launch-readiness.ps1",
     "scripts/deploy-ecs-server.ps1",
     "scripts/rollback-ecs-server.ps1",
     "scripts/deploy-ecs-admin.ps1",
     "scripts/deploy-ecs-site.ps1",
+    "scripts/publish-android-test-apk.ps1",
+    "scripts/clean-local-android-apks.ps1",
+    "scripts/clean-oss-test-apks.ps1",
     "scripts/check-sls-alert-readiness.ps1",
     "scripts/check-sls-cost-guard.ps1",
     "scripts/check-data-retention-cost.ps1",
@@ -80,7 +96,6 @@ CURRENT_STATUS_SCRIPT_EXACT = {
     "scripts/check-auth-usage.ps1",
     "scripts/check-sms-usage.ps1",
     "scripts/check-resource-capacity.ps1",
-    "scripts/upload-android-release.ps1",
 }
 
 RISK_SENSITIVE_KEYWORDS = (

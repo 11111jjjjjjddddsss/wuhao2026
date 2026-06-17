@@ -1,0 +1,46 @@
+name: Web CI
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'admin/**'
+      - 'site/**'
+      - '.github/workflows/web-ci.yml'
+  pull_request:
+    branches: [master]
+    paths:
+      - 'admin/**'
+      - 'site/**'
+      - '.github/workflows/web-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  web-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: |
+            admin/package-lock.json
+            site/package-lock.json
+
+      - name: Build admin
+        run: |
+          npm ci
+          npm run build
+        working-directory: admin
+
+      - name: Build website
+        run: |
+          npm ci
+          npm run build
+        working-directory: site

@@ -5,13 +5,23 @@
 
 ## 2026-06-17
 
+- 继续按最后巡检发现的实风险收口：Android 今日农情去掉专用提前回底 effect，只在已经交给 `WorklineOwned` 的正常聊天流里做视觉尾部回底；首屏只有今日农情时继续走普通文本的 `TopUnreached -> TopAnchoring -> WorklineOwned` 安全交接，避免清数据后提前切 `Arrangement.Bottom` 造成下坠。修正 hydrated snapshot 恢复时旧命名参数导致的 Kotlin 编译失败；顶部“更早若干轮”提示和删除历史弹窗去掉“记忆承接”内部词。会员开发期 Plus 升 Pro 补偿计算统一用同一个 `now` 派生上海日期，避免极端跨午夜时今日剩余次数和剩余整天数不一致。`check_project_memory.py` 已把 `admin/`、`site/` 纳入 watched/current-status 覆盖；`check-app-update-release-match.ps1` 也会对 APK URL 做 URL 解码后再拦 `test-apks / debug / internal / staging`，和后端、官网的测试包护栏保持一致。本轮仍不修改主对话锚点、记忆提示词、今日农情提示词、官网首页文案、模型输出限制或真实支付。
+
+- 按用户最新会员口径固化开发期权益规则：加油包和 Plus 升 Pro 生成的升级补偿次数都按永久有效处理，不随会员到期清零；每日额度仍是自然日额度，不跨天结转。Plus 升 Pro 不做“剩余 Plus 折成现金抵扣”的复杂折扣，用户按 Pro 开通价升级，后端把 Plus 剩余每日权益折成永久升级补偿次数；消耗顺序继续是每日额度 -> 升级补偿 -> 加油包。开发期订单 replay 已按账号和商品类型一起校验，同一 `order_id` 不能跨账号或跨 Plus / Pro / 升级 / 加油包复用，减少假测试把旧订单回放到错误权益上的风险。检查更新后台写入口也从前端确认加固到服务端确认：启用时必须提交当前 `versionCode`，停更时必须提交“停更”。真实支付仍未开放，正式下发新版本仍等用户口令。
+
+- 按用户“测试包只留最新、老的删除”的口径继续收口内部测试包链路：新增 `scripts/clean-oss-test-apks.ps1`，只允许清理 `test-apks/` 前缀，默认云端只保留最新 1 个内部测试 APK；`publish-android-test-apk.ps1` 上传成功后会自动调用该清理脚本，并要求 `OssPrefix` 必须位于 `test-apks/` 下，避免误传到没有短生命周期的正式路径。`site/src/main.ts` 的 APK URL 校验改为原始地址和 decoded 地址一起拦截 `test-apks / debug / internal / staging`，减少绕过部署脚本时测试包误挂官网的风险。新增独立 GitHub `Project Memory` workflow，并把测试包 / 正式 APK / release-match / launch-readiness / workflow 相关脚本纳入 `check_project_memory.py`，后端-only 或脚本-only 改动也会触发项目记忆门禁。本轮仍不生成正式 release 包、不配置检查更新、不改官网首页定稿文案。
+
+- 继续按代理最后巡检收口 Android 可见细节：帮助与反馈历史消息图片条改为横向滚动，避免 320dp 窄屏下 4 张 70dp 缩略图挤出卡片；删除历史确认按钮从“确定”改为“确认删除”；会员中心未知权益状态下按钮不再写“同步后开通”，统一显示购买暂未开放；登录页配置类错误不再把“后端地址 / 短信模板配置”这类工程口径直出用户。聊天回归 runbook 和当前状态文档同步清掉今日农情旧 card-only top padding 口径。该轮不修改三份提示词、不接真实支付、不改变主聊天滚动主方案。
+
 - 补齐 GitHub Android CI 失败对应的项目记忆：上一笔只改了 APK 清理脚本和 Android parity 门禁提示，未同步 `current-status.md` / `recent-changes.md`，被项目记忆门禁按规则拦下。现已记录 `clean-local-android-apks.ps1` 的 PowerShell 路径数组修复、dry-run / 实际清理验证，以及 `check-android-build-parity.ps1` 今日农情三轮上下文门禁文案同步；该失败不是 Android 编译、单测、打包或后端测试失败，也不涉及三份提示词、正式发版或线上服务变更。
+
+- 按用户最新口径把今日农情滚动链收成普通视觉文本项：`TodayAgriCard` 仍只是 UI-only timeline item，不进入真实消息、远端历史、记忆、归档或扣次；但首屏布局、工作线触线判断、启动贴底和静态视觉尾部锚定不再保留旧“只有今日农情就跳过底部贴底 / 额外顶部 padding”的特殊分支。没有真实消息时，今日农情作为首条视觉内容从顶部自然向下排；内容底边到达 / 超过 96dp 工作线后，走同一套 `InitialWorklinePhase` 交接和视觉尾部底部锚定。`check-android-build-parity.ps1` 已改为禁止旧 card-only 顶部特例回潮，同时继续锁住正向列表、视觉尾部锚点和三轮临时上下文。本轮不修改主对话锚点、记忆提示词、今日农情提示词、官网首页文案、模型输出限制、真实支付或主聊天滚动主方案。
 
 - 继续按正式上线口径收口后端和门禁：主聊天归档成功后先写 `quota_consume_outbox`，扣次成功标记 done，扣次临时失败时先短重试，仍失败则由后台 worker 按回答完成时的档位、自然日和完成时间补偿；replay 只恢复已归档答案，不按当前日期 / 当前会员档位补扣旧轮次，监控面板和总览会显示“待补扣”。模型输出方向仍只靠提示词控制，不新增 `max_tokens`、主题词过滤或内容硬限制；SSE 只加 256KiB 单行传输保护，防异常长行拖垮转发。历史轮次时间优先用请求开始时间，定位只在 GPS 来源时标可靠，IP / unknown 降级低可信。检查更新日常黑盒恢复要求 `/api/app/update` 返回 `has_update=false`，readiness 会拦误开的更新环境变量和强更开关；正式对外下发仍等用户口令。本地已跑 Go、Android、后台和官网构建门禁，并继续用子代理只读巡检辅助收口。
 
 - 按用户“先不打正式包、先给内部测试包下载链接，测试包存的时间短点，本地别留太多安装包”的要求，新增独立 debug/internal 测试包发布脚本和 runbook：测试包上传到私有 OSS `test-apks/debug/...` 并生成限时签名链接，只用于人工下载验证，不进入 App 检查更新、官网正式下载、后台发布历史或应用商店。OSS `test-apks/` 生命周期已设为 3 天；脚本会读取 APK 本体确认包名 `com.nongjiqiancha` 且 `application-debuggable=true`，避免只靠文件名判断。正式更新配置、后台保存、release-match 脚本和官网下载入口都拒绝原始或 URL 编码后的 `test-apks / debug / internal / staging` 路径，正式发布仍必须等用户口令。正式 release 包云端 / 发布记录用于回滚和审计，不按测试包 3 天删除；本机新增 `clean-local-android-apks.ps1`，只清理仓库内 Gradle / tmp 生成 APK，避免本地长期堆包。官网手机竖排问题同步按兼容性收口：新增 `site/vite.config.ts`，关闭官网 CSS 压缩，避免 Vite / Lightning CSS 把传统 `max-width` 媒体查询压成部分旧安卓浏览器不识别的 `width<=` 范围语法；官网首页文案不改。
 
-- 继续收口 APP 全链路巡检里发现的低风险但关键细节：今日农情本地当天缓存可以先稳定展示，但 `today_agri_context_day` 只有在远端成功确认同一天 ready 内容后才会进入视觉项后的连续三轮用户发送，且只有今日农情、没有真实消息时不再参与启动历史贴底；进入正常聊天流后，用户未主动浏览时最新视觉尾部仍按工作线贴底。这样避免“旧缓存看得到、模型却按今日上下文理解”的错位，也避免清数据 / 首屏只有农情时被贴底逻辑拉动。App 自动日志和后台审计日志脱敏继续加严：崩溃诊断复用敏感文本过滤，11 位以上整数型 attrs 默认丢弃，后台审计 User-Agent 走统一脱敏，避免手机号、token 或 URL 形态内容混进日志。本轮仍不修改主对话锚点、记忆提示词、今日农情提示词、官网首页文案、模型输出限制、真实支付或主聊天滚动主方案。
+- 继续收口 APP 全链路巡检里发现的低风险但关键细节：今日农情本地当天缓存可以先稳定展示，但 `today_agri_context_day` 只有在远端成功确认同一天 ready 内容后才会进入视觉项后的连续三轮用户发送；进入正常聊天流后，用户未主动浏览时最新视觉尾部仍按工作线贴底。这样避免“旧缓存看得到、模型却按今日上下文理解”的错位，也让今日农情作为普通文本视觉项随列表自然排版和回底。App 自动日志和后台审计日志脱敏继续加严：崩溃诊断复用敏感文本过滤，11 位以上整数型 attrs 默认丢弃，后台审计 User-Agent 走统一脱敏，避免手机号、token 或 URL 形态内容混进日志。本轮仍不修改主对话锚点、记忆提示词、今日农情提示词、官网首页文案、模型输出限制、真实支付或主聊天滚动主方案。
 
 ## 2026-06-16
 
@@ -177,7 +187,7 @@
 
 - 继续按真机截图微调今日农情首屏卡片：在不改变 `ChatTimelineItem.TodayAgriCard` 正常列表项身份、不改滚动链和不做 overlay 的前提下，把只有农情卡片时的顶部安全距略增，卡片外层 / 内部横向和垂直间距再收紧一点，让黑色边框避开顶部标题栏遮挡，同时让摘要正文吃到更多宽度。后续仍需用户重新安装新包，在清数据后无真实消息、有后续消息、上下滑动三个场景真机看一眼。
 
-- 按用户换窗口前确认的“今日农情卡片必须像正常消息列表项一样上下滑动”做小范围 UI 收口：继续保留 `ChatTimelineItem.TodayAgriCard` 插入同一个正向 `LazyColumn` 视觉时间线，不改成 overlay、浮层、sticky 尾卡或关闭动画；仅在首屏没有真实消息、只有今日农情卡片时给列表顶部增加少量安全距，避免卡片顶边被顶部标题栏遮住。同步收窄今日农情卡片外层横向 padding、内部横向 padding、编号圆点和编号到正文间距，让 90-130 字摘要在常见手机宽度上吃到更多正文宽度。`./gradlew.bat :app:compileDebugKotlin` 和 `:app:assembleDebug` 已通过，只有既有弃用 warning。`scripts/check-android-build-parity.ps1` 同步显式按 UTF-8 读取源码，避免 Windows PowerShell 把 Kotlin 中文文案读成乱码后误报设置页 / 账号管理默认项缺失。
+- 按用户换窗口前确认的“今日农情卡片必须像正常消息列表项一样上下滑动”做过一轮卡片时代的小范围 UI 收口：当时继续保留 `ChatTimelineItem.TodayAgriCard` 插入同一个正向 `LazyColumn` 视觉时间线，不改成 overlay、浮层、sticky 尾卡或关闭动画，并收窄卡片间距让摘要正文更宽。该条是历史记录，当前最新口径已在 2026-06-17 改为普通 AI 文本视觉项和首屏文档流工作线交接，不再沿用旧 card-only 顶部特例。`./gradlew.bat :app:compileDebugKotlin` 和 `:app:assembleDebug` 已通过，只有既有弃用 warning。`scripts/check-android-build-parity.ps1` 同步显式按 UTF-8 读取源码，避免 Windows PowerShell 把 Kotlin 中文文案读成乱码后误报设置页 / 账号管理默认项缺失。
 
 - 按用户继续追问“滚动链有没有被误伤、UI 回退有没有日志”补齐 Android 可查证据：复核最近几波主聊天滚动改动后，确认没有恢复反向列表、overlay、raw delta、小分割等旧链，首屏贴底仍是正向列表同一视觉尾部锚点；新增 `ui.chat_startup_state`、`ui.chat_startup_bottom_snap_done`、`ui.chat_startup_bottom_snap_pending`、`ui.settings_main_opened` 和 `ui.account_management_opened` App 自动日志，用布尔状态、数量和阶段追踪清数据 / 登录后首屏 reveal、贴底校准、设置页默认入口和账号页默认条目是否走当前 APK 代码，不上传聊天正文、手机号、图片 URL 或 token。Android parity 脚本同步要求这些日志事件保留，防止后续排障点被误删。
 

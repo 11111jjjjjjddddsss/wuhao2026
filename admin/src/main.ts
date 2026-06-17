@@ -1446,6 +1446,7 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
         release_notes: releaseNotes,
         force_update: forceUpdate,
         file_size_bytes: fileSizeBytes,
+        confirmation: typedConfirmation.trim(),
       },
     });
     await render();
@@ -1485,6 +1486,7 @@ async function disableAppUpdate(button: HTMLElement): Promise<void> {
         release_notes: releaseNotes,
         force_update: false,
         file_size_bytes: fileSizeBytes,
+        confirmation: typedConfirmation.trim(),
       },
     });
     await render();

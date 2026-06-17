@@ -3,9 +3,26 @@ import './styles.css';
 const androidApkUrl = String(import.meta.env.VITE_ANDROID_APK_URL ?? '').trim();
 const downloadLinks = document.querySelectorAll<HTMLAnchorElement>('[data-download]');
 
+const decodeUrlText = (value: string): string => {
+  let current = value;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) {
+        break;
+      }
+      current = decoded;
+    } catch {
+      break;
+    }
+  }
+  return current;
+};
+
 const isValidApkUrl = (value: string): boolean => {
   try {
-    const normalized = value.toLowerCase();
+    const url = new URL(value);
+    const normalized = `${value}\n${decodeUrlText(value)}\n${url.pathname}\n${decodeUrlText(url.pathname)}`.toLowerCase();
     if (
       normalized.includes('test-apks') ||
       normalized.includes('debug') ||
@@ -14,7 +31,6 @@ const isValidApkUrl = (value: string): boolean => {
     ) {
       return false;
     }
-    const url = new URL(value);
     return url.protocol === 'https:' && url.pathname.toLowerCase().endsWith('.apk');
   } catch {
     return false;

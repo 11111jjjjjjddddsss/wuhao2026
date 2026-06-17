@@ -276,6 +276,12 @@ if ([string]::IsNullOrWhiteSpace($adminApkUrl)) {
 } else {
     Write-Host ("admin_apk_url_host={0}" -f $parsedApkUrl.Host)
     $apkUrlText = $adminApkUrl.ToLowerInvariant()
+    try {
+        $apkUrlText = $apkUrlText + " " + [System.Uri]::UnescapeDataString($parsedApkUrl.AbsolutePath).ToLowerInvariant()
+        $apkUrlText = $apkUrlText + " " + [System.Uri]::UnescapeDataString($adminApkUrl).ToLowerInvariant()
+    } catch {
+        Add-Failure $failures "admin APK URL contains invalid percent-encoding"
+    }
     if ($apkUrlText -match "test-apks|debug|internal|staging") {
         Add-Failure $failures "admin APK URL looks like an internal test APK URL; do not configure debug/internal/staging/test-apks links for app update"
     }

@@ -585,13 +585,13 @@ private fun MembershipPlanSection(
     onPaymentUnavailable: () -> Unit
 ) {
     val plusActionText = when (activeTier) {
-        "unknown" -> "同步后开通"
+        "unknown" -> "暂未开放"
         "plus" -> "当前套餐"
         "pro" -> "当前为 Pro"
         else -> "暂未开放"
     }
     val proActionText = when (activeTier) {
-        "unknown" -> "同步后开通"
+        "unknown" -> "暂未开放"
         "plus" -> "支付升级暂未开放"
         "pro" -> "当前套餐"
         else -> "暂未开放"
@@ -609,7 +609,7 @@ private fun MembershipPlanSection(
             highlights = listOf("每天${MEMBERSHIP_PLUS_DAILY_LIMIT}次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = plusActionText,
             actionEnabled = false,
-            actionClickableWhenDisabled = plusActionText == "暂未开放" || plusActionText == "同步后开通",
+            actionClickableWhenDisabled = plusActionText == "暂未开放",
             onActionClick = onPaymentUnavailable
         )
         MembershipPlanCard(
@@ -620,7 +620,7 @@ private fun MembershipPlanSection(
             highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = proActionText,
             actionEnabled = false,
-            actionClickableWhenDisabled = proActionText == "暂未开放" || proActionText == "支付升级暂未开放" || proActionText == "同步后开通",
+            actionClickableWhenDisabled = proActionText == "暂未开放" || proActionText == "支付升级暂未开放",
             onActionClick = onPaymentUnavailable
         )
     }
@@ -833,7 +833,7 @@ private fun MembershipTopupCard(
             )
             MembershipActionButton(
                 text = when {
-                    hasActiveTopup && isPaidTier -> "用完再续"
+                    hasActiveTopup && isPaidTier -> "续购暂未开放"
                     hasActiveTopup -> "剩余次数可用"
                     else -> "暂未开放"
                 },
@@ -926,7 +926,7 @@ private fun MembershipRulesSection() {
             ) {
                 MembershipRuleLine(
                     title = "Plus升级Pro",
-                    body = "升级 Pro 后，Plus 剩余权益会自动折成补偿次数；礼品卡会员同样适用。"
+                    body = "通过礼品卡或后续支付升级 Pro 后，Plus 剩余权益会自动折成补偿次数。"
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(

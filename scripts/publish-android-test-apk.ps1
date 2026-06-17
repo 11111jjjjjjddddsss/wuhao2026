@@ -6,6 +6,7 @@ param(
     [string]$Endpoint = "oss-cn-beijing.aliyuncs.com",
     [string]$ExpectedPackageName = "com.nongjiqiancha",
     [int]$ExpireHours = 72,
+    [int]$KeepNewestRemote = 1,
     [switch]$NoBuild,
     [switch]$AllowDirty
 )
@@ -122,6 +123,18 @@ function Assert-DebugApk {
 if ($ExpireHours -lt 1 -or $ExpireHours -gt 168) {
     throw "ExpireHours must be between 1 and 168"
 }
+if ($KeepNewestRemote -lt 1 -or $KeepNewestRemote -gt 10) {
+    throw "KeepNewestRemote must be between 1 and 10"
+}
+
+$normalizedOssPrefix = $OssPrefix.Trim().Trim("/")
+if ([string]::IsNullOrWhiteSpace($normalizedOssPrefix)) {
+    throw "OssPrefix must not be empty"
+}
+$normalizedOssPrefixForCheck = $normalizedOssPrefix.Replace("\", "/").ToLowerInvariant()
+if (-not $normalizedOssPrefixForCheck.StartsWith("test-apks/")) {
+    throw "internal test APKs must be stored under test-apks/ so the short lifecycle policy applies"
+}
 
 Require-Command "git"
 Require-Command "aliyun"
@@ -166,7 +179,7 @@ $sha256 = (Get-FileHash -Path $ApkPath -Algorithm SHA256).Hash.ToLowerInvariant(
 $dateDir = Get-Date -Format "yyyyMMdd"
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $fileName = "nongjiqiancha-debug-internal-$stamp-$commit.apk"
-$objectKey = (($OssPrefix.Trim("/")), $dateDir, $fileName) -join "/"
+$objectKey = ($normalizedOssPrefix, $dateDir, $fileName) -join "/"
 $ossUrl = "oss://$Bucket/$objectKey"
 
 Write-Host ("test_apk_local_path={0}" -f $ApkPath)
@@ -196,7 +209,16 @@ if ($signedUrl.StartsWith("http://")) {
     $signedUrl = "https://" + $signedUrl.Substring(7)
 }
 
+$cleanupScript = Join-Path $PSScriptRoot "clean-oss-test-apks.ps1"
+if (Test-Path -LiteralPath $cleanupScript -PathType Leaf) {
+    & $cleanupScript -Bucket $Bucket -OssPrefix $normalizedOssPrefix -Endpoint $Endpoint -KeepNewest $KeepNewestRemote
+    if ($LASTEXITCODE -ne 0) {
+        throw "clean-oss-test-apks.ps1 failed with exit code $LASTEXITCODE"
+    }
+}
+
 Write-Host "test_apk_status=ready"
 Write-Host "test_apk_build_type=debug"
 Write-Host ("test_apk_expires_hours={0}" -f $ExpireHours)
+Write-Host ("test_apk_remote_keep_newest={0}" -f $KeepNewestRemote)
 Write-Host ("test_apk_url={0}" -f $signedUrl)

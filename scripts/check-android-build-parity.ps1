@@ -368,8 +368,10 @@ if ($failures.Count -eq 0) {
         "Chat startup must log when the today agri main card is loaded for diagnostics."
     Require-Match $failures $chatScreen 'today_agri\.main_card_visible' `
         "Chat startup must log when the today agri main card is inserted into the visible timeline."
-    Require-Match $failures $chatScreen 'val\s+hasOnlyTodayAgriVisualTimeline\s*=\s*(?s:.*?)messages\.isEmpty\(\)\s*&&\s*hasTodayAgriCard\s*&&\s*!\s*isStreaming\s*&&\s*!\s*hasStreamingItem(?s:.*?)initialBottomSnapDone\s*=\s*true' `
-        "A timeline containing only today agri must reveal at the top instead of being forced through startup history bottom snapping."
+    Require-Match $failures $chatScreen 'fun\s+hasStaticVisualTimeline\s*\(\s*\)\s*:\s*Boolean\s*=\s*(?s:.*?)messages\.isNotEmpty\(\)\s*\|\|\s*hasTodayAgriCard' `
+        "Today agri must count as an ordinary static visual timeline item for startup layout and bottom anchoring."
+    Require-NoMatch $failures $chatScreen 'hasOnlyTodayAgriVisualTimeline|todayAgriCardOnlyTopExtraPaddingPx|TODAY_AGRI_CARD_ONLY_TOP_EXTRA_PADDING|cardOnlyTopPaddingPx' `
+        "Today agri must not keep the old card-only top padding or skip-bottom-snap special case."
     Require-Match $failures $chatScreen 'fun\s+bottomAnchorIndexOrMinusOne\s*\(\s*\)\s*:\s*Int\s*=\s*(?s:.*?)if\s*\(\s*isStreaming\s*\|\|\s*hasStreamingItem\s*\)(?s:.*?)latestMessageIndexOrMinusOne\(\)(?s:.*?)latestVisualTailIndexOrMinusOne\(\)' `
         "When not streaming, bottom anchoring must target the visual tail so today agri can participate in back-to-bottom behavior when it follows real messages."
     Require-Match $failures $chatScreen 'fun\s+currentVisualTailContentBottomPx\s*\(\s*\)\s*:\s*Int(?s:.*?)ChatTimelineItem\.TodayAgriCard(?s:.*?)currentLastMessageContentBottomPx\(\)' `
