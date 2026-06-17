@@ -16,9 +16,9 @@ if ($MaxAgeDays -lt 1 -or $MaxAgeDays -gt 365) {
 
 $repoFull = (Resolve-Path -LiteralPath $RepoRoot).Path
 $allowedRoots = @(
-    Join-Path $repoFull "app\build\outputs\apk",
-    Join-Path $repoFull "app\build\intermediates\apk",
-    Join-Path $repoFull "tmp"
+    (Join-Path $repoFull "app\build\outputs\apk"),
+    (Join-Path $repoFull "app\build\intermediates\apk"),
+    (Join-Path $repoFull "tmp")
 ) | ForEach-Object {
     if (Test-Path -LiteralPath $_ -PathType Container) {
         (Resolve-Path -LiteralPath $_).Path
