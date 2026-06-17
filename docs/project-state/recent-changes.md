@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 最后一轮收尾代理复查结果：Android 主界面、Android 设置 / 会员 / 礼品卡、后端 stream / 会员 / 礼品卡、发布 / 下载 / 运维四个方向均未发现 P0/P1。代理确认 `5a863bf7` 不影响“后端已有完整答案自动恢复”，因为远端 snapshot 完整答案优先于本地 streaming draft 兜底；后端模型流使用独立超时上下文，客户端断开不会必然取消后端生成，已归档答案仍可通过 snapshot 恢复。只修了一处旧巡检文档漂移：`pre-server-feature-audit.md` 不再建议补并行 `app_releases` 主表或把强更写成当前默认能力，改为当前 `app_release_configs + app_release_events` 主链、普通更新默认口径。本轮不改代码、不改三份提示词、不发布正式包、不部署。
+
 - 拉满代理做收尾前全盘复查后，修掉一个主界面冷启动恢复边角：本地保存的 streaming draft 被恢复成“回复未完成”尾巴时，只使用已经显示过的 `content`，不再把尚未按打字节奏 reveal 的 `revealBuffer` 一次性拼进可见正文；正常 `[DONE]` 后尾段仍按原 drain 节奏吐字。新增单测和 `check-android-build-parity.ps1` 门禁，防止恢复路径再次把未显示缓冲吐出来。同步校准项目文档：当前设置页不再包含“当前账号”入口，礼品卡输入是有占位提示、空白归一化和 64 字符长度上限；上线手册明确检查更新日常发布以后台 `app_release_configs` / 发布历史为主，`APP_ANDROID_*` 只作无数据库记录时兜底。本轮不修改三份提示词、不发布正式包、不部署后端或官网。
 
 - 按代理全盘复查继续收口主界面滚动 / 顺序 / 极端恢复边角：今日农情主聊天项只有真正进入可见 timeline 后才打可见日志，且当天已展示日期必须等远端 snapshot hydrate 完成后才落盘；远端 hydrate 成功但不应显示今日农情时，会清掉运行时可见 / 记录门，避免本地旧窗口短暂显示后把当天误记为已展示。前台 SSE 中断和后台远端恢复 fallback 不再把还没按打字节奏 reveal 的 `streamingRevealBuffer` 拼进可见正文，正常 DONE 仍由原 drain 节奏负责尾段吐字，降低弱网 / replay 边界“后半段一口气冒出来”的风险。前台发送和后台 pending Worker 的网络门禁收紧到 Android `NET_CAPABILITY_VALIDATED`，假 Wi-Fi / 门户 Wi-Fi 不再被当成可用公网直接上传或 streaming。debug-only 预览面板最后同步检查更新、今日农情上下文和网络浮层说明，并用 `check-android-build-parity.ps1` 锁住。本轮不修改三份提示词、官网首页定稿文案、真实支付、模型输出硬限制或主聊天正向滚动主方案。
