@@ -42,7 +42,7 @@ Write-Host ("oss_prefix={0}" -f $normalizedOssPrefix)
 Write-Host ("keep_newest={0}" -f $KeepNewest)
 
 $ossPrefixUrl = "oss://$Bucket/$normalizedOssPrefix/"
-$listOutput = @(& aliyun oss ls $ossPrefixUrl --recursive --endpoint $Endpoint 2>&1)
+$listOutput = @(& aliyun oss ls $ossPrefixUrl --endpoint $Endpoint 2>&1)
 if ($LASTEXITCODE -ne 0) {
     $joined = ($listOutput | ForEach-Object { $_.ToString() }) -join "`n"
     throw "aliyun oss ls failed with exit code $LASTEXITCODE`n$joined"
