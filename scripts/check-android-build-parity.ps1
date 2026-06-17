@@ -668,6 +668,10 @@ if ($failures.Count -eq 0) {
         "Streaming renderer must not restore the removed fresh-suffix highlight chain."
     Require-NoMatch $failures $chatScreen 'streamingMessageContent\s*\+\s*streamingRevealBuffer' `
         "Interrupted or background recovery paths must not flush unrevealed streaming buffer into visible assistant text; normal DONE drain owns buffer reveal."
+    Require-NoMatch $failures $chatScreen 'safeDraft\.content\s*\+\s*safeDraft\.revealBuffer' `
+        "Cold-start interrupted streaming draft recovery must not flush the saved unrevealed buffer into visible assistant text."
+    Require-Match $failures $chatScreen 'visibleContentForInterruptedStreamingDraft(?s:.*?)return\s+normalizeAssistantText\(content\)' `
+        "Cold-start interrupted streaming draft recovery must keep only the content that was already visible."
     Require-Match $failures $chatScreen 'verticalArrangement\s*=\s*if\s*\(\s*shouldUseTopArrangementForConversation\s*\(\s*\)\s*\)\s*\{(?s:.*?)Arrangement\.Top(?s:.*?)\}\s*else\s*\{(?s:.*?)Arrangement\.Bottom' `
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `

@@ -7,6 +7,17 @@ import org.junit.Test
 
 class ChatTimelineItemsTest {
     @Test
+    fun interruptedStreamingDraftRecoveryDoesNotExposeUnrevealedBuffer() {
+        assertEquals(
+            "已显示的内容",
+            visibleContentForInterruptedStreamingDraft(
+                content = "已显示的内容",
+                revealBuffer = "还没吐出来的尾巴"
+            )
+        )
+    }
+
+    @Test
     fun todayAgriCardDoesNotOccupyEmptyWelcomeState() {
         val startAnchoredItems = buildChatTimelineItems(
             messages = emptyList(),

@@ -66,7 +66,7 @@
 - 官网首版代码已在 `site` 目录准备好并通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，包含 App 介绍、安卓下载入口和备案 footer；网站 ICP 备案号已展示在公开页脚并链接工信部备案系统。App 内设置页、服务协议和隐私政策已补 App 备案号 `京ICP备2026031728号-2A`。
 - App 备案已通过，后续重点改为 App 公安备案、软著 / 电子版权和应用商店物料一致性。
 - `api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、后端公开 API 基地址、图片公开基地址、`admin.nongjiqiancha.cn` 后台 HTTPS 和 `download.nongjiqiancha.cn` OSS 下载域名 HTTPS 已完成；下载域名证书使用免费 Let’s Encrypt，ECS 自动续期后需同步到 OSS CNAME 配置。
-- 确认 `APP_ANDROID_*` 检查更新环境变量指向正确 APK、版本号、文件大小、SHA-256 和更新说明。
+- 通过后台“检查更新”发布配置确认 `app_release_configs` 已写入正确 APK、版本号、文件大小、SHA-256 和更新说明，并保留发布历史；`APP_ANDROID_*` 环境变量只作为无数据库记录时的兜底，不作为日常发版主入口。
 - 做一次完整真机回归：清数据、登录、文字问诊、图片问诊、历史恢复、删除历史对话、帮助与反馈、检查更新、会员中心、礼品卡页、协议页、今日农情。
 - 网站公安联网备案号已于 2026-06-10 下发，官网 footer 使用真实编号 `京公网安备11010602202723号`、警徽图标和查询链接。App 备案已通过并取得编号，下一步按实际要求补 App 对应公安备案信息。
 

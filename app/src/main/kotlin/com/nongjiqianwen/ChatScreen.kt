@@ -509,6 +509,12 @@ private data class LocalStreamingDraft(
     val sessionGeneration: Int? = null
 )
 
+@Suppress("UNUSED_PARAMETER")
+internal fun visibleContentForInterruptedStreamingDraft(content: String, revealBuffer: String): String {
+    // The buffer has not been rendered yet; interrupted recovery must not expose it at once.
+    return normalizeAssistantText(content)
+}
+
 private data class MessageSelectionToolbarState(
     val messageId: String,
     val anchorX: Int,
@@ -1577,7 +1583,10 @@ private fun recoverStreamingDraftAsInterruptedSnapshot(
     ) {
         return sanitizedSnapshot
     }
-    val partialContent = normalizeAssistantText(safeDraft.content + safeDraft.revealBuffer)
+    val partialContent = visibleContentForInterruptedStreamingDraft(
+        content = safeDraft.content,
+        revealBuffer = safeDraft.revealBuffer
+    )
     if (partialContent.isBlank()) return sanitizedSnapshot
     val assistantMessageId = safeDraft.messageId
         .takeIf { it.isNotBlank() }
