@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 补齐 GitHub Android CI 失败对应的项目记忆：上一笔只改了 APK 清理脚本和 Android parity 门禁提示，未同步 `current-status.md` / `recent-changes.md`，被项目记忆门禁按规则拦下。现已记录 `clean-local-android-apks.ps1` 的 PowerShell 路径数组修复、dry-run / 实际清理验证，以及 `check-android-build-parity.ps1` 今日农情三轮上下文门禁文案同步；该失败不是 Android 编译、单测、打包或后端测试失败，也不涉及三份提示词、正式发版或线上服务变更。
+
 - 继续按正式上线口径收口后端和门禁：主聊天归档成功后先写 `quota_consume_outbox`，扣次成功标记 done，扣次临时失败时先短重试，仍失败则由后台 worker 按回答完成时的档位、自然日和完成时间补偿；replay 只恢复已归档答案，不按当前日期 / 当前会员档位补扣旧轮次，监控面板和总览会显示“待补扣”。模型输出方向仍只靠提示词控制，不新增 `max_tokens`、主题词过滤或内容硬限制；SSE 只加 256KiB 单行传输保护，防异常长行拖垮转发。历史轮次时间优先用请求开始时间，定位只在 GPS 来源时标可靠，IP / unknown 降级低可信。检查更新日常黑盒恢复要求 `/api/app/update` 返回 `has_update=false`，readiness 会拦误开的更新环境变量和强更开关；正式对外下发仍等用户口令。本地已跑 Go、Android、后台和官网构建门禁，并继续用子代理只读巡检辅助收口。
 
 - 按用户“先不打正式包、先给内部测试包下载链接，测试包存的时间短点，本地别留太多安装包”的要求，新增独立 debug/internal 测试包发布脚本和 runbook：测试包上传到私有 OSS `test-apks/debug/...` 并生成限时签名链接，只用于人工下载验证，不进入 App 检查更新、官网正式下载、后台发布历史或应用商店。OSS `test-apks/` 生命周期已设为 3 天；脚本会读取 APK 本体确认包名 `com.nongjiqiancha` 且 `application-debuggable=true`，避免只靠文件名判断。正式更新配置、后台保存、release-match 脚本和官网下载入口都拒绝原始或 URL 编码后的 `test-apks / debug / internal / staging` 路径，正式发布仍必须等用户口令。正式 release 包云端 / 发布记录用于回滚和审计，不按测试包 3 天删除；本机新增 `clean-local-android-apks.ps1`，只清理仓库内 Gradle / tmp 生成 APK，避免本地长期堆包。官网手机竖排问题同步按兼容性收口：新增 `site/vite.config.ts`，关闭官网 CSS 压缩，避免 Vite / Lightning CSS 把传统 `max-width` 媒体查询压成部分旧安卓浏览器不识别的 `width<=` 范围语法；官网首页文案不改。
