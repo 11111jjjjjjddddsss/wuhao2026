@@ -25,7 +25,10 @@ function Get-GitOutput {
     if ($LASTEXITCODE -ne 0) {
         return ""
     }
-    return ([string]$output).Trim()
+    if ($null -eq $output) {
+        return ""
+    }
+    return (($output | Out-String).Trim())
 }
 
 function Ensure-CleanGitTree {
