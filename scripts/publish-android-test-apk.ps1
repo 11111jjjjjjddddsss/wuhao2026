@@ -4,11 +4,17 @@ param(
     [string]$Bucket = "nongjiqiancha-prod",
     [string]$OssPrefix = "test-apks/debug",
     [string]$Endpoint = "oss-cn-beijing.aliyuncs.com",
+    [string]$OssInternalEndpoint = "oss-cn-beijing-internal.aliyuncs.com",
+    [string]$DownloadDomain = "nongjiqiancha.cn",
+    [string]$EcsRegionId = "cn-beijing",
+    [string]$EcsInstanceId = "i-2ze5nrem0jrchln4f0eh",
+    [string]$EcsTestApkRoot = "/var/www/nongjiqiancha-test-apks",
     [string]$ExpectedPackageName = "com.nongjiqiancha",
     [int]$ExpireHours = 72,
     [int]$KeepNewestRemote = 1,
     [switch]$NoBuild,
-    [switch]$AllowDirty
+    [switch]$AllowDirty,
+    [switch]$SkipEcsDownloadPublish
 )
 
 $ErrorActionPreference = "Stop"
@@ -54,6 +60,127 @@ function Extract-FirstUrl {
         }
     }
     return ""
+}
+
+function Invoke-JsonCommand {
+    param([string[]]$CommandArgs)
+    if ($CommandArgs.Length -eq 0) {
+        throw "Command failed: empty command"
+    }
+    $exe = $CommandArgs[0]
+    $arguments = @()
+    if ($CommandArgs.Length -gt 1) {
+        $arguments = $CommandArgs[1..($CommandArgs.Length - 1)]
+    }
+    if ($exe -eq "aliyun") {
+        $arguments += @(
+            "--connect-timeout", "20",
+            "--read-timeout", "120",
+            "--retry-count", "3"
+        )
+    }
+    $stderrPath = [IO.Path]::GetTempFileName()
+    $stdout = @()
+    $stderr = ""
+    $exitCode = 0
+    $oldErrorActionPreference = $ErrorActionPreference
+    $oldNativeErrorPreference = $null
+    $hasNativeErrorPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    try {
+        $ErrorActionPreference = "Continue"
+        if ($null -ne $hasNativeErrorPreference) {
+            $oldNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        $stdout = & $exe @arguments 2> $stderrPath
+        $exitCode = $LASTEXITCODE
+        if (Test-Path -LiteralPath $stderrPath) {
+            $stderr = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
+        }
+    } finally {
+        $ErrorActionPreference = $oldErrorActionPreference
+        if ($null -ne $hasNativeErrorPreference) {
+            $PSNativeCommandUseErrorActionPreference = $oldNativeErrorPreference
+        }
+        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
+    }
+    if ($exitCode -ne 0) {
+        $safeOutput = (($stdout | Out-String) + "`n" + $stderr) `
+            -replace '(?i)(AccessKeyId=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(AccessKeySecret=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
+            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
+        $safeCommand = if ($CommandArgs.Length -ge 3) {
+            "$($CommandArgs[0]) $($CommandArgs[1]) $($CommandArgs[2])"
+        } else {
+            $CommandArgs -join " "
+        }
+        throw "Command failed: $safeCommand`n$safeOutput"
+    }
+    $jsonText = $stdout | Out-String
+    if ([string]::IsNullOrWhiteSpace($jsonText)) {
+        return $null
+    }
+    return $jsonText | ConvertFrom-Json
+}
+
+function Wait-RunCommand {
+    param(
+        [string]$RegionId,
+        [string]$InvokeId
+    )
+    for ($i = 0; $i -lt 120; $i++) {
+        Start-Sleep -Seconds 5
+        $result = Invoke-JsonCommand @(
+            "aliyun", "ecs", "DescribeInvocationResults",
+            "--RegionId", $RegionId,
+            "--InvokeId", $InvokeId
+        )
+        $item = $result.Invocation.InvocationResults.InvocationResult[0]
+        if ($item.InvokeRecordStatus -eq "Finished") {
+            $decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($item.Output))
+            [pscustomobject]@{
+                Status = $item.InvocationStatus
+                ExitCode = [int]$item.ExitCode
+                Output = $decoded
+            }
+            return
+        }
+    }
+    throw "Timed out waiting for RunCommand $InvokeId"
+}
+
+function Escape-BashSingleQuoted {
+    param([string]$Value)
+    return $Value.Replace("'", "'\''")
+}
+
+function Test-PublicDownloadUrl {
+    param(
+        [string]$Url,
+        [long]$ExpectedSize
+    )
+    try {
+        $response = Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 30
+        $status = [int]$response.StatusCode
+        $contentLength = [string]$response.Headers["Content-Length"]
+        $contentType = [string]$response.Headers["Content-Type"]
+        if ($status -ne 200) {
+            throw "unexpected HTTP status $status"
+        }
+        if ($contentLength -ne [string]$ExpectedSize) {
+            throw "content length mismatch: expected=$ExpectedSize actual=$contentLength"
+        }
+        if ($contentType -notmatch "application/vnd\.android\.package-archive|application/octet-stream") {
+            throw "unexpected content type: $contentType"
+        }
+        Write-Host ("test_apk_download_probe=ready status={0} content_length={1} content_type={2}" -f $status, $contentLength, $contentType)
+    } catch {
+        throw "test APK public download probe failed for ${Url}: $($_.Exception.Message)"
+    }
 }
 
 function Invoke-AndroidTool {
@@ -138,6 +265,7 @@ if (-not $normalizedOssPrefixForCheck.StartsWith("test-apks/")) {
 
 Require-Command "git"
 Require-Command "aliyun"
+. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
 
 Write-Host "== android test apk publish =="
 Write-Host ("repo_root={0}" -f $RepoRoot)
@@ -181,11 +309,15 @@ $stamp = Get-Date -Format "yyyyMMdd-HHmmss"
 $fileName = "nongjiqiancha-debug-internal-$stamp-$commit.apk"
 $objectKey = ($normalizedOssPrefix, $dateDir, $fileName) -join "/"
 $ossUrl = "oss://$Bucket/$objectKey"
+$downloadRelativePath = ($normalizedOssPrefix, $dateDir, $fileName) -join "/"
+$downloadPathUnderTestApks = $downloadRelativePath -replace '^test-apks/', ''
+$downloadUrl = "https://$DownloadDomain/test-apks/$downloadPathUnderTestApks"
 
 Write-Host ("test_apk_local_path={0}" -f $ApkPath)
 Write-Host ("test_apk_size_bytes={0}" -f $apkItem.Length)
 Write-Host ("test_apk_sha256={0}" -f $sha256)
 Write-Host ("test_apk_oss_object={0}" -f $ossUrl)
+Write-Host ("test_apk_download_object={0}" -f $downloadRelativePath)
 Write-Host "test_apk_retention_days=3"
 
 & aliyun oss cp $ApkPath $ossUrl --endpoint $Endpoint --force
@@ -193,20 +325,102 @@ if ($LASTEXITCODE -ne 0) {
     throw "aliyun oss cp failed with exit code $LASTEXITCODE"
 }
 
-$timeoutSeconds = $ExpireHours * 3600
-$signOutput = @(& aliyun oss sign $ossUrl --endpoint $Endpoint --timeout $timeoutSeconds 2>&1)
-if ($LASTEXITCODE -ne 0) {
-    $joined = ($signOutput | ForEach-Object { $_.ToString() }) -join "`n"
-    throw "aliyun oss sign failed with exit code $LASTEXITCODE`n$joined"
-}
+if (-not $SkipEcsDownloadPublish) {
+    $internalSignOutput = @(& aliyun oss sign $ossUrl --endpoint $OssInternalEndpoint --timeout 3600 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        $joined = ($internalSignOutput | ForEach-Object { $_.ToString() }) -join "`n"
+        throw "aliyun oss internal sign failed with exit code $LASTEXITCODE`n$joined"
+    }
+    $internalSignedUrl = Extract-FirstUrl $internalSignOutput
+    if ([string]::IsNullOrWhiteSpace($internalSignedUrl)) {
+        $joined = ($internalSignOutput | ForEach-Object { $_.ToString() }) -join "`n"
+        throw "failed to parse internal signed URL from aliyun oss sign output`n$joined"
+    }
+    if ($internalSignedUrl.StartsWith("http://")) {
+        $internalSignedUrl = "https://" + $internalSignedUrl.Substring(7)
+    }
 
-$signedUrl = Extract-FirstUrl $signOutput
-if ([string]::IsNullOrWhiteSpace($signedUrl)) {
-    $joined = ($signOutput | ForEach-Object { $_.ToString() }) -join "`n"
-    throw "failed to parse signed URL from aliyun oss sign output`n$joined"
-}
-if ($signedUrl.StartsWith("http://")) {
-    $signedUrl = "https://" + $signedUrl.Substring(7)
+    $remoteDownloadUrl = Escape-BashSingleQuoted $internalSignedUrl
+    $remoteRoot = Escape-BashSingleQuoted ($EcsTestApkRoot.TrimEnd("/"))
+    $remoteRelative = Escape-BashSingleQuoted $downloadPathUnderTestApks
+    $remoteSha = Escape-BashSingleQuoted $sha256
+    $remoteSize = [string]$apkItem.Length
+    $remoteScript = @"
+set -euo pipefail
+download_url='$remoteDownloadUrl'
+download_root='$remoteRoot'
+relative_path='$remoteRelative'
+expected_sha='$remoteSha'
+expected_size='$remoteSize'
+target="`$download_root/`$relative_path"
+tmp="`$target.tmp.`$$"
+nginx_site='/etc/nginx/sites-available/nongjiqiancha-site'
+nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-site'
+mkdir -p "`$(dirname "`$target")"
+curl -fsSL --retry 3 --connect-timeout 10 --max-time 300 -o "`$tmp" "`$download_url"
+actual_size=`$(stat -c '%s' "`$tmp")
+if [ "`$actual_size" != "`$expected_size" ]; then
+  echo "apk size mismatch: expected=`$expected_size actual=`$actual_size" >&2
+  rm -f "`$tmp"
+  exit 20
+fi
+actual_sha=`$(sha256sum "`$tmp" | awk '{print `$1}')
+if [ "`$actual_sha" != "`$expected_sha" ]; then
+  echo "apk sha256 mismatch: expected=`$expected_sha actual=`$actual_sha" >&2
+  rm -f "`$tmp"
+  exit 21
+fi
+chmod 0644 "`$tmp"
+mv -f "`$tmp" "`$target"
+find "`$download_root" -type f -name '*.apk' ! -path "`$target" -delete 2>/dev/null || true
+find "`$download_root" -type d -empty -delete 2>/dev/null || true
+if [ -f "`$nginx_site" ] && ! grep -q 'location \^~ /test-apks/' "`$nginx_site"; then
+  cp -f "`$nginx_site" "`$nginx_site.test-apks-bak.`$(date +%Y%m%d%H%M%S)"
+  python3 - "`$nginx_site" "`$download_root" <<'PY'
+import sys
+path, root = sys.argv[1], sys.argv[2].rstrip("/")
+with open(path, "r", encoding="utf-8") as f:
+    text = f.read()
+if "location ^~ /test-apks/" not in text:
+    marker = "    location / {\n        try_files `$uri `$uri/ /index.html;\n    }\n"
+    block = f"""    location ^~ /test-apks/ {{
+        alias {root}/;
+        default_type application/vnd.android.package-archive;
+        add_header Cache-Control \"private, max-age=300\" always;
+        add_header X-Robots-Tag \"noindex, nofollow\" always;
+    }}
+
+"""
+    if marker not in text:
+        raise SystemExit("site nginx marker not found")
+    text = text.replace(marker, block + marker, 1)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+PY
+  ln -sfn "`$nginx_site" "`$nginx_enabled"
+  nginx -t
+  systemctl reload nginx
+fi
+echo "ecs_test_apk_path=`$target"
+echo "ecs_test_apk_sha256=`$actual_sha"
+echo "ecs_test_apk_size=`$actual_size"
+"@
+    $remoteScriptPath = "/tmp/nongji-test-apk-publish-$commit.sh"
+    Send-CloudAssistantScriptFile -RegionId $EcsRegionId -InstanceId $EcsInstanceId -RemotePath $remoteScriptPath -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
+    $run = Invoke-JsonCommand @(
+        "aliyun", "ecs", "RunCommand",
+        "--RegionId", $EcsRegionId,
+        "--Type", "RunShellScript",
+        "--InstanceId.1", $EcsInstanceId,
+        "--Name", "publish-test-apk-$commit",
+        "--CommandContent", "bash $remoteScriptPath",
+        "--Timeout", "600"
+    )
+    $runResult = Wait-RunCommand -RegionId $EcsRegionId -InvokeId $run.InvokeId
+    Write-Host $runResult.Output.Trim()
+    if ($runResult.Status -ne "Success" -or $runResult.ExitCode -ne 0) {
+        throw "ECS test APK publish failed: status=$($runResult.Status) exit=$($runResult.ExitCode)`n$($runResult.Output)"
+    }
 }
 
 $cleanupScript = Join-Path $PSScriptRoot "clean-oss-test-apks.ps1"
@@ -217,8 +431,12 @@ if (Test-Path -LiteralPath $cleanupScript -PathType Leaf) {
     }
 }
 
+if (-not $SkipEcsDownloadPublish) {
+    Test-PublicDownloadUrl -Url $downloadUrl -ExpectedSize $apkItem.Length
+}
+
 Write-Host "test_apk_status=ready"
 Write-Host "test_apk_build_type=debug"
 Write-Host ("test_apk_expires_hours={0}" -f $ExpireHours)
 Write-Host ("test_apk_remote_keep_newest={0}" -f $KeepNewestRemote)
-Write-Host ("test_apk_url={0}" -f $signedUrl)
+Write-Host ("test_apk_url={0}" -f $downloadUrl)

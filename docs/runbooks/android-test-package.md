@@ -9,8 +9,8 @@
 - 测试包默认使用 `debug` 构建，包名仍是 `com.nongjiqiancha`，后端仍接 `https://api.nongjiqiancha.cn`。
 - 测试包可以包含 debug-only 预览面板和调试日志；除此之外，业务链路应尽量和正式包一致。
 - 测试包文件名和 OSS 路径必须显式包含 `debug`、`internal` 或 `test-apks`，避免和正式 release 物料混淆。
-- 测试包链接默认使用 OSS 私有对象临时签名 URL，到期后失效；它只用于当次测试，不作为长期下载地址。
-- 上传脚本默认会清理 OSS `test-apks/debug/` 下旧测试包，云端只保留最新 1 个；OSS `test-apks/` 前缀 3 天游走期只是兜底，签名链接过期不等于对象立即删除。
+- 测试包默认先上传到 OSS 私有对象作为短期 staging，再通过 ECS 官网域名单独的 `/test-apks/` 静态路径提供下载链接；阿里云 OSS 默认公网 endpoint 不允许直接分发 APK，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。
+- 上传脚本默认会清理 OSS `test-apks/debug/` 和 ECS `/test-apks/` 下旧测试包，云端只保留最新 1 个；OSS `test-apks/` 前缀 3 天游走期只是兜底。ECS 测试包路径只用于人工测试，不挂官网正式下载按钮。
 - 没有用户明确发版口令时，不生成并对外发布正式 release APK，不配置 App 内检查更新，不改官网正式下载按钮。
 
 ## 生成测试包
@@ -28,8 +28,9 @@
 3. 读取 `app/build/outputs/apk/debug/app-debug.apk`。
 4. 计算 SHA-256 和文件大小。
 5. 上传到私有 OSS `test-apks/debug/<日期>/nongjiqiancha-debug-internal-<时间>-<commit>.apk`。
-6. 清理云端旧测试包，默认只保留最新 1 个。
-7. 输出临时签名下载链接、commit、SHA-256、文件大小和有效期。
+6. 让 ECS 通过 OSS 内网签名 URL 拉取 APK，校验 SHA-256 和文件大小后发布到 `https://nongjiqiancha.cn/test-apks/debug/<日期>/...apk`。
+7. 清理云端旧测试包，默认只保留最新 1 个。
+8. 输出自有域名测试下载链接、commit、SHA-256、文件大小和有效期口径。
 
 如果只是本机已构建好的 APK，可传 `-NoBuild -ApkPath <path>`，但脚本仍会读取 APK 本体确认它是 debuggable debug 包；release APK 不能通过这个脚本发给用户或代理。如果确实要发布未提交工作区的临时包，必须显式传 `-AllowDirty`，并在对外说明中标注这是未提交测试包。日常不要这样做。若临时需要多保留几个云端测试包，可显式传 `-KeepNewestRemote <1-10>`，默认不要改。
 

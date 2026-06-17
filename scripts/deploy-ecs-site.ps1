@@ -325,6 +325,7 @@ sha_prefix='$shaPrefix'
 chunks='/tmp/nongji-site-chunks-$shaPrefix'
 archive='/tmp/nongjiqiancha-site.tgz'
 site_base='/var/www/nongjiqiancha-site'
+test_apks_root='/var/www/nongjiqiancha-test-apks'
 release_dir="`$site_base/releases/`$sha_prefix"
 current_link="`$site_base/current"
 nginx_site='/etc/nginx/sites-available/nongjiqiancha-site'
@@ -410,6 +411,13 @@ server {
     add_header Content-Security-Policy "default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none'; upgrade-insecure-requests" always;
     add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
 
+    location ^~ /test-apks/ {
+        alias `$test_apks_root/;
+        default_type application/vnd.android.package-archive;
+        add_header Cache-Control "private, max-age=300" always;
+        add_header X-Robots-Tag "noindex, nofollow" always;
+    }
+
     location / {
         try_files \`$uri \`$uri/ /index.html;
     }
@@ -429,7 +437,7 @@ fi
 
 echo install-site
 rm -rf "`$release_dir"
-mkdir -p "`$release_dir" "`$site_base/releases" "`$cert_root"
+mkdir -p "`$release_dir" "`$site_base/releases" "`$cert_root" "`$test_apks_root"
 tar -xzf "`$archive" -C "`$release_dir"
 ln -sfn "`$release_dir" "`$current_link"
 chown -R www-data:www-data "`$site_base" "`$cert_root"
