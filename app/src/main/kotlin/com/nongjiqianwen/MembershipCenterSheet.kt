@@ -935,6 +935,11 @@ private fun MembershipRulesSection() {
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(
+                    title = "补偿和加油包",
+                    body = "升级补偿和加油包未用完不随会员到期清零。"
+                )
+                HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
+                MembershipRuleLine(
                     title = "每日次数",
                     body = "每日额度不结转；会员到期后按基础额度计算。"
                 )

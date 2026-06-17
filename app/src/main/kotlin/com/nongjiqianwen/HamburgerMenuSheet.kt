@@ -1324,7 +1324,7 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
-                title = "服务协议",
+                title = "协议与隐私",
                 showChevron = false,
                 onClick = onOpenLegalHub
             )
@@ -2126,7 +2126,7 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
-            title = "服务协议",
+            title = "协议与隐私",
             showChevron = false,
             onClick = {}
         )
@@ -2206,8 +2206,7 @@ private fun HamburgerAccountManagementContent(
         HamburgerAccountGroup {
             HamburgerAccountInfoRow(
                 title = "手机号",
-                value = phoneMask ?: "未登录",
-                onClick = { onPendingAction(if (phoneMask != null) "当前账号已登录" else "请先登录") }
+                value = phoneMask ?: "未登录"
             )
         }
 
@@ -4601,19 +4600,13 @@ private fun HamburgerAccountGroup(
 @Composable
 private fun HamburgerAccountInfoRow(
     title: String,
-    value: String,
-    onClick: () -> Unit
+    value: String
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 58.dp)
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = onClick
-            )
-            .padding(start = 20.dp, end = 16.dp, top = 15.dp, bottom = 15.dp),
+            .padding(horizontal = 20.dp, vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -4635,12 +4628,6 @@ private fun HamburgerAccountInfoRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 16.dp)
-        )
-        HamburgerChevronIcon(
-            tint = Color(0xFFAAAEB5),
-            modifier = Modifier
-                .padding(start = 10.dp)
-                .size(16.dp)
         )
     }
 }
