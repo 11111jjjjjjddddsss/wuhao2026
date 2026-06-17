@@ -2470,57 +2470,118 @@ private fun HamburgerTodayAgriHistoryContent(
             )
         }
 
-        Surface(
-            color = Color(0xFFF5F6F8),
-            shape = RoundedCornerShape(18.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 16.dp)
-        ) {
+        if (cards.isNotEmpty()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(top = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(18.dp)
             ) {
-                when {
-                    cards.isNotEmpty() -> {
-                        cards.forEach { card ->
-                            HamburgerTodayAgriHistoryCard(card = card)
+                cards.forEachIndexed { index, card ->
+                    HamburgerTodayAgriHistoryDaySection(
+                        card = card,
+                        showTopDivider = index > 0
+                    )
+                }
+            }
+        } else {
+            Surface(
+                color = Color(0xFFF5F6F8),
+                shape = RoundedCornerShape(18.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 14.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    when {
+                        loading -> {
+                            HamburgerSupportStatusText(text = "正在同步农情...")
                         }
-                    }
-                    loading -> {
-                        HamburgerSupportStatusText(text = "正在同步农情...")
-                    }
-                    loadFailed -> {
-                        HamburgerSupportStatusText(text = "农情同步失败")
-                        Surface(
-                            color = Color.White,
-                            shape = RoundedCornerShape(999.dp),
-                            border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .clickable(
-                                    interactionSource = remember { MutableInteractionSource() },
-                                    indication = null,
-                                    onClick = onRetry
+                        loadFailed -> {
+                            HamburgerSupportStatusText(text = "农情同步失败")
+                            Surface(
+                                color = Color.White,
+                                shape = RoundedCornerShape(999.dp),
+                                border = BorderStroke(0.8.dp, Color(0xFFE1E4E8)),
+                                modifier = Modifier
+                                    .align(Alignment.CenterHorizontally)
+                                    .clickable(
+                                        interactionSource = remember { MutableInteractionSource() },
+                                        indication = null,
+                                        onClick = onRetry
+                                    )
+                            ) {
+                                Text(
+                                    text = "重试",
+                                    color = Color(0xFF111111),
+                                    fontSize = 14.sp,
+                                    lineHeight = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
                                 )
-                        ) {
-                            Text(
-                                text = "重试",
-                                color = Color(0xFF111111),
-                                fontSize = 14.sp,
-                                lineHeight = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = 18.dp, vertical = 8.dp)
-                            )
+                            }
                         }
-                    }
-                    cards.isEmpty() -> {
-                        HamburgerTodayAgriEmptyState()
+                        else -> {
+                            HamburgerTodayAgriEmptyState()
+                        }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun HamburgerTodayAgriHistoryDaySection(
+    card: SessionApi.TodayAgriCard,
+    showTopDivider: Boolean
+) {
+    val dateText = hamburgerTodayAgriDateText(card.dateCn).ifBlank { "日期未明" }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (showTopDivider) {
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth(),
+                thickness = 1.dp,
+                color = Color(0xFFE4E6EA)
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                text = dateText,
+                color = Color(0xFF6F747C),
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.Medium
+            )
+            HorizontalDivider(
+                modifier = Modifier.weight(1f),
+                thickness = 1.dp,
+                color = Color(0xFFE7E9ED)
+            )
+        }
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(14.dp),
+            border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            HamburgerTodayAgriHistoryCard(
+                card = card,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)
+            )
         }
     }
 }
@@ -2566,27 +2627,28 @@ private fun HamburgerTodayAgriEmptyState() {
 }
 
 @Composable
-private fun HamburgerTodayAgriHistoryCard(card: SessionApi.TodayAgriCard) {
-    val dateText = hamburgerTodayAgriDateText(card.dateCn)
+private fun HamburgerTodayAgriHistoryCard(
+    card: SessionApi.TodayAgriCard,
+    modifier: Modifier = Modifier
+) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = buildString {
-                append("今日农情")
-                if (dateText.isNotEmpty()) {
-                    append(" · ")
-                    append(dateText)
-                }
-            },
-            color = Color(0xFF111111),
-            fontSize = 18.sp,
-            lineHeight = 25.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "今日农情",
+                color = Color(0xFF111111),
+                fontSize = 17.sp,
+                lineHeight = 24.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth(),
+                thickness = 1.dp,
+                color = Color(0xFFE9EBEF)
+            )
+        }
         card.items.orEmpty().take(3).forEachIndexed { index, item ->
             HamburgerTodayAgriHistoryItem(item = item, index = index)
         }
@@ -3876,7 +3938,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "将删除当前账号的历史对话，不影响会员、礼品卡和反馈记录。",
+                text = "将删除当前账号的历史对话，并清除用于承接对话的记忆；会员、礼品卡和反馈记录不受影响。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp

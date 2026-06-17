@@ -8211,7 +8211,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号 / 清理临时缓存 / 历史 / 退出 / 申请注销", UiCopyPreviewKind.HamburgerAccountPage),
                     UiCopyPreviewItem("退出登录确认", "退出当前设备，不删除资产", UiCopyPreviewKind.HamburgerLogoutConfirm),
-                    UiCopyPreviewItem("删除历史对话确认", "二次确认，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
+                    UiCopyPreviewItem("删除历史对话确认", "提示会清除对话记忆，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
                     UiCopyPreviewItem("注销申请确认", "提交申请并退出登录", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "物料完整且版本更高才提示更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
@@ -8250,7 +8250,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
                     UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方三轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
-                    UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
+                    UiCopyPreviewItem("农情历史页", "按日期分组，旧简报先展示后刷新", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
             ),
