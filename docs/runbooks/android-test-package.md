@@ -10,7 +10,7 @@
 - 测试包可以包含 debug-only 预览面板和调试日志；除此之外，业务链路应尽量和正式包一致。
 - 测试包文件名和 OSS 路径必须显式包含 `debug`、`internal` 或 `test-apks`，避免和正式 release 物料混淆。
 - 测试包默认先上传到 OSS 私有对象作为短期 staging，再通过 ECS 官网域名单独的 `/test-apks/` 静态路径提供下载链接；阿里云 OSS 默认公网 endpoint 不允许直接分发 APK，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。
-- 上传脚本默认会清理 OSS `test-apks/debug/` 和 ECS `/test-apks/` 下旧测试包，云端只保留最新 1 个；OSS `test-apks/` 前缀 3 天游走期只是兜底。ECS 测试包路径只用于人工测试，不挂官网正式下载按钮。
+- 上传脚本默认会清理 OSS `test-apks/debug/` 和 ECS `/test-apks/` 下旧测试包，云端只保留最新 1 个；ECS 同时写入每日清理任务，默认删除 72 小时以上的内部测试 APK；OSS `test-apks/` 前缀 3 天游走期只是兜底。ECS 测试包路径只用于人工测试，不挂官网正式下载按钮。
 - 没有用户明确发版口令时，不生成并对外发布正式 release APK，不配置 App 内检查更新，不改官网正式下载按钮。
 
 ## 生成测试包

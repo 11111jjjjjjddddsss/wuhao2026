@@ -5,7 +5,7 @@
 
 ## 2026-06-17
 
-- 修正内部测试包下载链路：实测阿里云 OSS 默认公网 endpoint 会对 APK 返回 `ApkDownloadForbidden`，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。`publish-android-test-apk.ps1` 现在仍先把 debug/internal APK 上传私有 OSS `test-apks/debug/...` 作为短期 staging，但会让 ECS 通过 OSS 内网签名 URL 拉取、校验 SHA-256 / 文件大小后发布到 `https://nongjiqiancha.cn/test-apks/debug/...apk`，同时清理 ECS 和 OSS 旧测试包只留最新 1 个；官网 Nginx 部署脚本也保留 `/test-apks/` 静态路径。该路径只用于代理 / 管理层人工安装测试包，不挂官网正式下载按钮、不进入 App 检查更新、不替代正式 release 包。
+- 修正内部测试包下载链路：实测阿里云 OSS 默认公网 endpoint 会对 APK 返回 `ApkDownloadForbidden`，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。`publish-android-test-apk.ps1` 现在仍先把 debug/internal APK 上传私有 OSS `test-apks/debug/...` 作为短期 staging，但会让 ECS 通过 OSS 内网签名 URL 拉取、校验 SHA-256 / 文件大小后发布到 `https://nongjiqiancha.cn/test-apks/debug/...apk`，同时清理 ECS 和 OSS 旧测试包只留最新 1 个，并写入每日清理任务删除 72 小时以上内部测试 APK；官网 Nginx 部署脚本也保留 `/test-apks/` 静态路径。该路径只用于代理 / 管理层人工安装测试包，不挂官网正式下载按钮、不进入 App 检查更新、不替代正式 release 包。
 
 - 更新 debug-only 预览面板的今日农情说明：预览项明确今日农情是主聊天普通文本项、标题加粗、正文可复制；上下文规则说明改为“远端当天确认后，后方连续三轮临时参考”。`check-android-build-parity.ps1` 已同步锁住这条新文案，防止预览面板和真实三轮临时上下文口径漂移。该改动只影响调试预览和质检门禁，不改变正式用户 UI、主聊天滚动链、三份提示词、后端模型输出限制或真实支付状态。
 

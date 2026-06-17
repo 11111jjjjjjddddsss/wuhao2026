@@ -345,6 +345,7 @@ if (-not $SkipEcsDownloadPublish) {
     $remoteRelative = Escape-BashSingleQuoted $downloadPathUnderTestApks
     $remoteSha = Escape-BashSingleQuoted $sha256
     $remoteSize = [string]$apkItem.Length
+    $remoteExpireMinutes = [string]($ExpireHours * 60)
     $remoteScript = @"
 set -euo pipefail
 download_url='$remoteDownloadUrl'
@@ -352,10 +353,12 @@ download_root='$remoteRoot'
 relative_path='$remoteRelative'
 expected_sha='$remoteSha'
 expected_size='$remoteSize'
+expire_minutes='$remoteExpireMinutes'
 target="`$download_root/`$relative_path"
 tmp="`$target.tmp.`$$"
 nginx_site='/etc/nginx/sites-available/nongjiqiancha-site'
 nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-site'
+cleanup_cron='/etc/cron.d/nongjiqiancha-test-apks-clean'
 mkdir -p "`$(dirname "`$target")"
 curl -fsSL --retry 3 --connect-timeout 10 --max-time 300 -o "`$tmp" "`$download_url"
 actual_size=`$(stat -c '%s' "`$tmp")
@@ -373,7 +376,14 @@ fi
 chmod 0644 "`$tmp"
 mv -f "`$tmp" "`$target"
 find "`$download_root" -type f -name '*.apk' ! -path "`$target" -delete 2>/dev/null || true
+find "`$download_root" -type f -name '*.apk' -mmin "+`$expire_minutes" -delete 2>/dev/null || true
 find "`$download_root" -type d -empty -delete 2>/dev/null || true
+cat > "`$cleanup_cron" <<EOF
+# Managed by nongjiqiancha publish-android-test-apk.ps1.
+# Internal debug APKs are short-lived and must not become official downloads.
+17 3 * * * root find "`$download_root" -type f -name '*.apk' -mmin +`$expire_minutes -delete 2>/dev/null; find "`$download_root" -mindepth 1 -type d -empty -delete 2>/dev/null
+EOF
+chmod 0644 "`$cleanup_cron"
 if [ -f "`$nginx_site" ] && ! grep -q 'location \^~ /test-apks/' "`$nginx_site"; then
   cp -f "`$nginx_site" "`$nginx_site.test-apks-bak.`$(date +%Y%m%d%H%M%S)"
   python3 - "`$nginx_site" "`$download_root" <<'PY'
