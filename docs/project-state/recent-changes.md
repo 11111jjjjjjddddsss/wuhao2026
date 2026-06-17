@@ -5,6 +5,8 @@
 
 ## 2026-06-17
 
+- 按主界面发送 / 收尾专项复查继续收口：前台 SSE 因 `stream_in_progress`、replay 或网络中断进入远端 snapshot 恢复时，如果当时 assistant 还没有正文，Android 不再直接移除这条 assistant placeholder，而是保留同一条尾巴并显示现有“正在重试...”状态；远端恢复成功后替换成完整答案，恢复失败后回到统一的“回复未完成 · 点击重试”。这只修用户视觉链不断裂，不新增第三套黑色胶囊，不改变后端 `[DONE]`、归档、扣次、replay 或模型输出口径。debug-only 设置预览面板补上 App 备案号 footer，今日农情预览文案同步成“已显示后三轮参考，发送中不突插”，`check-android-build-parity.ps1` 已加门禁；本轮不修改三份提示词、官网首页文案、真实支付、模型输出硬限制或主聊天滚动主方案。
+
 - 按用户“到底啥时间出现合适 / 用户刚发送完消息突然弹今日农情突兀”的最终口径，把主聊天今日农情从“每天可见就插入”收成“后端清晨生成，用户当天第一次进入主聊天时展示一次，且只在未打断当前问诊的空闲窗口插入”：有历史记录时跟在历史后，没有真实聊天消息时欢迎语仍是空态兜底且不会被今日农情压掉；今日农情一旦插入可见 timeline，Android 会写入本地已展示日期，同日关闭重开不再反复插入主聊天；如果用户先开始发送 / 生成且今日农情还没显示，本次运行抑制自动插入，不写已展示日期，避免刚发送完消息时突然弹出。当前运行时仍保持 `ChatTimelineItem.TodayAgriCard` 普通视觉文本项，不写入真实 `messages`、远端聊天历史、记忆、归档或扣次；设置页“今日农情”历史入口仍可查看最近记录。`ChatTimelineItemsTest` 新增“一天一次但本轮不消失 / 已开始问诊则本次不插入”单测，`check-android-build-parity.ps1` 新增 shown-day 和 suppress 门禁；本轮不修改三份提示词、不新增模型输出限制、不改变正向 `LazyColumn` 滚动主方案。
 
 - 跑通并固化低成本 Android 下载链路：`download.nongjiqiancha.cn` 已 CNAME 到 OSS Bucket 并绑定 HTTPS，测试包发布脚本现在可用 `-UseOssSignedDownload` 生成自有下载域名签名链接，不再推荐走 ECS 5Mbps `/test-apks/` 路径；发布脚本会让 OSS `test-apks/debug/` 只保留最新内部测试包，并在走 OSS 签名下载时清掉 ECS 旧测试包镜像。新增 `check-android-download-domain.ps1`、`sign-oss-cname-url.py` 和 `sync-oss-download-certificate.ps1`，用于检查下载域名、生成 CNAME 签名 URL、以及 Let’s Encrypt 证书续期后同步 OSS CNAME 证书；本机也创建了每周续费 / 证书巡检自动化，只巡检和必要同步证书，不购买、不续费、不退订、不删除付费资源。正式发版仍等用户口令，且不能把 72 小时测试签名链接写进检查更新。

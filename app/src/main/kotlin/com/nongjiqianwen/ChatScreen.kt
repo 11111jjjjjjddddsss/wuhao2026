@@ -4344,7 +4344,10 @@ fun ChatScreen() {
         failedAssistantMessageStates.entries
             .toList()
             .filter { it.value.sourceUserMessageId == messageId }
-            .forEach { failedAssistantMessageStates.remove(it.key) }
+            .forEach { (assistantMessageId, _) ->
+                failedAssistantMessageStates.remove(assistantMessageId)
+                retryingAssistantMessageIds.remove(assistantMessageId)
+            }
     }
 
     fun hasSettledAssistantMessageForUser(sourceUserMessageId: String): Boolean {
@@ -4434,6 +4437,7 @@ fun ChatScreen() {
         reason: String,
         showHint: Boolean = true
     ) {
+        retryingAssistantMessageIds.remove(assistantMessageId)
         if (reason == "quota") {
             quotaExhaustedDayKey = currentQuotaDayKey()
         }
@@ -5507,8 +5511,17 @@ fun ChatScreen() {
                         content = finalContent
                     )
                 } else {
-                    removeMessageById(finalId)
+                    upsertAssistantMessagePlaceholder(
+                        messageId = finalId,
+                        sourceUserMessageId = sourceUserMessageId
+                    )
                 }
+                failedAssistantMessageStates[finalId] = FailedAssistantMessageState(
+                    sourceUserMessageId = sourceUserMessageId,
+                    reason = reason
+                )
+                retryingAssistantMessageIds[finalId] = true
+                persistTick++
                 val recoveryMaxAttempts =
                     if (reason == "stream_in_progress" || reason == "replay") {
                         REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS
@@ -8189,7 +8202,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("今日农情", "主聊天普通文本项，标题加粗、正文可复制", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
-                    UiCopyPreviewItem("农情上下文规则", "远端当天确认后，后方连续三轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
+                    UiCopyPreviewItem("农情上下文规则", "已显示后三轮参考，发送中不突插", UiCopyPreviewKind.TodayAgriContextRule),
                     UiCopyPreviewItem("农情历史页", "旧简报先展示，后台刷新近30天", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
@@ -9008,6 +9021,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     UiCopyPreviewPlainText(
                         listOf(
                             "当天今日农情仍是主聊天时间线里的普通视觉文本",
+                            "如果用户发送前农情还没显示，本次运行不突然插入",
                             "用户在它后面发送的后三轮，会临时带当天农情标记",
                             "后端只在日期等于服务器当天时读取农情正文作为临时背景",
                             "第四轮起自动不带；记忆整理、聊天归档和扣次都不写入农情正文"

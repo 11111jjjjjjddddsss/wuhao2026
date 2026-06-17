@@ -450,6 +450,10 @@ if ($failures.Count -eq 0) {
         "Settings/legal pages must keep the approved App ICP filing number visible in the APK."
     Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+AppFilingFooter(?s:.*?)App备案号：\$APP_ICP_RECORD_NUMBER' `
         "Settings main page must keep a low-noise App ICP filing footer with only the approved filing number."
+    Require-Match $failures $hamburgerMenuSheet 'internal\s+fun\s+HamburgerMenuSheetPreview(?s:.*?)HamburgerMenuPreviewGroups\(\)(?s:.*?)AppFilingFooter' `
+        "Debug UI preview for settings must render the same App ICP filing footer as production."
+    Require-Match $failures $hamburgerMenuSheet 'internal\s+fun\s+HamburgerMenuShellPreview(?s:.*?)HamburgerMenuPreviewGroups\(\)(?s:.*?)AppFilingFooter' `
+        "Debug UI shell preview for settings must render the same App ICP filing footer as production."
     Require-NoMatch $failures $hamburgerMenuSheet '备案查询' `
         "Settings footer must not show a separate filing-query row."
     Require-Match $failures $hamburgerMenuSheet 'showNotice\("当前没有可用更新"\)' `
@@ -605,10 +609,16 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must include standalone bold heading lines so ordinary AI text dividers can be checked."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.TodayAgriNarrow(?s:.*?)TodayAgriNewsText\((?s:.*?)horizontalPadding\s*=\s*0\.dp(?s:.*?)maxContentWidth\s*=\s*280\.dp' `
         "Today agri narrow preview must exercise the 280dp ordinary-text layout."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"远端当天确认后，后方连续三轮临时参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
-        "Debug UI copy preview must include the today-agri three-round temporary context rule."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"已显示后三轮参考，发送中不突插",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
+        "Debug UI copy preview must include the today-agri three-round temporary context and anti-surprise-insert rule."
+    Require-Match $failures $chatScreen '"如果用户发送前农情还没显示，本次运行不突然插入"' `
+        "Debug UI copy preview must explicitly show that today agri is not inserted mid-chat before it has appeared."
     Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
         "Message action menu buttons must expose button semantics for accessibility and UI automation."
+    Require-Match $failures $chatScreen 'if\s*\(\s*canAttemptRemoteAssistantRecovery\(reason\)\s*\)(?s:.*?)upsertAssistantMessagePlaceholder(?s:.*?)failedAssistantMessageStates\[finalId\]\s*=\s*FailedAssistantMessageState(?s:.*?)retryingAssistantMessageIds\[finalId\]\s*=\s*true' `
+        "Recoverable stream interruptions must keep the assistant tail visible as a retrying footer while snapshot recovery runs."
+    Require-Match $failures $chatScreen 'fun\s+finalizeInterruptedAssistant(?s:.*?)retryingAssistantMessageIds\.remove\(assistantMessageId\)' `
+        "Assistant recovery must clear retrying footer state before settling into completed or retryable failed state."
     Require-Match $failures $chatComposerPanel 'InputActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
         "Input action menu buttons must expose button semantics for accessibility and UI automation."
     Require-Match $failures $chatComposerPanel 'ComposerSendActionButton(?s:.*?)contentDescription\s*=\s*"发送"(?s:.*?)role\s*=\s*Role\.Button' `

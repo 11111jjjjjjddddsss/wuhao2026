@@ -2021,6 +2021,7 @@ internal fun HamburgerMenuSheetPreview(userId: String) {
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             HamburgerMenuPreviewGroups()
+            AppFilingFooter(modifier = Modifier.fillMaxWidth())
         }
     }
 }
@@ -2072,6 +2073,7 @@ internal fun HamburgerMenuShellPreview(userId: String) {
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 HamburgerMenuPreviewGroups()
+                AppFilingFooter(modifier = Modifier.fillMaxWidth())
             }
         }
     }
