@@ -202,7 +202,7 @@ function Clear-EcsTestApkMirror {
     }
     $safeRoot = Escape-BashSingleQuoted $remoteRoot
     $remoteScript = @"
-set -euo pipefail
+set -eu
 download_root='$safeRoot'
 if [ -d "`$download_root" ]; then
   find "`$download_root" -type f -name '*.apk' -delete 2>/dev/null || true
@@ -460,7 +460,7 @@ if (-not $SkipEcsDownloadPublish -and -not $UseOssSignedDownload) {
     $remoteSize = [string]$apkItem.Length
     $remoteExpireMinutes = [string]($ExpireHours * 60)
     $remoteScript = @"
-set -euo pipefail
+set -eu
 download_url='$remoteDownloadUrl'
 download_root='$remoteRoot'
 relative_path='$remoteRelative'
