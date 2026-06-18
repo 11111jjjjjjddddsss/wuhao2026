@@ -13,7 +13,7 @@
 - 认证 / 短信 / 上传 / 帮助与反馈 / App 日志 / 主聊天用户级限流已支持 Redis 分布式限流
 - 主聊天同用户单流控制使用 MySQL `GET_LOCK` + `chat_stream_inflight`，可跨多台 ECS 生效
 - 数据库迁移启动时使用 MySQL 全局锁，降低多实例同时跑 DDL 风险
-- 记忆文档摘要失败重试标记已经落在 MySQL `session_ab.pending_retry_b`：模型失败、超时、写库失败或旧快照写回过期时都会保留 pending，后续轮次完成后继续补提取；成功写回且 `round_total` 匹配后才清 pending
+- 记忆文档摘要失败重试标记已经落在 MySQL `session_ab.pending_retry_b`，待提取窗口队列保存在 `session_ab.pending_memory_jobs_json`：Free / Plus 每 6 条完整 AI 回复、Pro 每 9 条完整 AI 回复触发时冻结当时 A 层 6 / 9 轮窗口为一个 job；模型失败、超时、写库失败、旧快照写回过期或 Redis 租约暂不可用时都会保留 pending 和队首冻结 job，后续每一条新的完整 AI 回复归档后都会马上补提取，不等下一个 6 / 9 轮整除点；补提取仍只读取该冻结 6 / 9 轮窗口 + 旧记忆文档，不扩大到 30 轮归档输入，成功写回且 `round_total + updated_at + session_generation + cleared_at` 匹配后只弹出队首 job，还有剩余 job 时继续 pending
 - 当前记忆文档摘要的同用户运行中保护是“单进程 `running` guard + Redis TTL 租约”；没有配置 Redis 的本地 / 简化环境会回退到单进程保护。扩多台 ECS 前应灰度验证 Redis 租约、pending 重试和 `round_total` 写回保护，而不是再复制一份纯进程内 map
 - 部署脚本已支持本机打包后通过 Cloud Assistant 下发，不依赖 ECS 上保存 GitHub 凭据
 
@@ -89,7 +89,7 @@
 - `AUTH_STRICT=true`
 
 仍需补的准备：
-- 记忆文档摘要已从本进程 map 进一步加了 Redis TTL 租约，lease key 按账号维度脱敏派生；抢到 lease 的实例才允许调用摘要模型，写回仍必须保留现有 `round_total` 校验，失败、超时或 Redis 租约暂不可用继续保留 `pending_retry_b`
+- 记忆文档摘要已从本进程 map 进一步加了 Redis TTL 租约，lease key 按账号维度脱敏派生；抢到 lease 的实例才允许调用摘要模型，写回仍必须保留现有 `round_total + updated_at + session_generation + cleared_at` 校验，失败、超时或 Redis 租约暂不可用继续保留 `pending_retry_b`
 - 发布脚本支持多实例滚动发布和逐台 healthz 验证
 - SLS 统一采集所有 ECS 的 `nongji-server` 和 Nginx 日志
 - Nginx / SLB 后的真实 IP 链路必须复核：当前单 ECS 直连公网阶段，Nginx 覆盖 `X-Real-IP $remote_addr` 和 `X-Forwarded-For $remote_addr`，不把客户端自带 XFF 链传给 Go；Go `GetClientIP` 只信任本机 / 内网代理来源的转发头。后续接 SLB / ALB / CDN / WAF 时，必须先配置可信上游 `real_ip_header` / `set_real_ip_from` 并重新验证 `X-Forwarded-For`、`X-Real-IP`、Go `GetClientIP`、Redis 限流 IP hash、地区推断都取到真实客户端 IP，不能把 SLB 内网 IP 当成所有用户来源，也不能重新信任公网客户端伪造的 XFF

@@ -369,6 +369,69 @@ func TestProcessSessionSummariesKeepsPendingWhenSnapshotStale(t *testing.T) {
 	}
 }
 
+func TestProcessSessionSummariesUsesFrozenPendingJobWindow(t *testing.T) {
+	var captured map[string]any
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"短期承接：已整理冻结窗口。\n农业重点事件：继续核对番茄。"}}],"usage":{"prompt_tokens":120,"completion_tokens":30}}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	store := &summaryFakeStore{writeOK: true}
+	service := &SummaryService{
+		store:   store,
+		prompts: summaryTestPromptLoader(t),
+		bailian: NewBailianClient(),
+		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	snapshot := &SessionSnapshot{
+		UserID:            "u1",
+		PendingMemory:     true,
+		MemoryDocument:    "短期承接：旧短期",
+		RoundTotal:        7,
+		UpdatedAt:         1700000000000,
+		SessionGeneration: 1,
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{
+				RoundTotal: 6,
+				Rounds: []SessionRound{
+					{User: "冻结第六轮番茄问题", Assistant: "冻结第六轮回答"},
+				},
+			},
+		},
+		ARoundsFull: []SessionRound{
+			{User: "第七轮新问题不应混入旧窗口", Assistant: "第七轮回答"},
+		},
+	}
+
+	service.ProcessSessionSummaries("u1", snapshot)
+
+	if store.writeCalls != 1 {
+		t.Fatalf("expected memory write, got %d", store.writeCalls)
+	}
+	if snapshot.PendingMemory || len(snapshot.PendingMemoryJobs) != 0 {
+		t.Fatalf("successful extraction should pop the frozen job: %#v", snapshot.PendingMemoryJobs)
+	}
+	messages, ok := captured["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages mismatch: %#v", captured["messages"])
+	}
+	userMessage, _ := messages[1].(map[string]any)
+	userContent, _ := userMessage["content"].(string)
+	if !strings.Contains(userContent, "冻结第六轮番茄问题") {
+		t.Fatalf("summary input should include frozen job window: %q", userContent)
+	}
+	if strings.Contains(userContent, "第七轮新问题") {
+		t.Fatalf("summary input should not slide into later A window: %q", userContent)
+	}
+}
+
 func summaryTestPromptLoader(t *testing.T) *PromptLoader {
 	t.Helper()
 	dir := t.TempDir()

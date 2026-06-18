@@ -240,16 +240,65 @@ func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID str
 	if expectedUpdatedAt <= 0 {
 		return false, nil
 	}
-	result, err := s.db.ExecContext(
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer rollbackQuietly(tx)
+
+	var pendingJobsRaw sql.NullString
+	err = tx.QueryRowContext(
+		ctx,
+		`SELECT pending_memory_jobs_json
+		   FROM session_ab
+		  WHERE user_id = ?
+		    AND round_total = ?
+		    AND updated_at = ?
+		    AND COALESCE((SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1), 0) = ?
+		    AND COALESCE((SELECT cleared_at FROM session_generation WHERE user_id = ? LIMIT 1), 0) <= ?
+		  LIMIT 1
+		  FOR UPDATE`,
+		userID,
+		expectedRoundTotal,
+		expectedUpdatedAt,
+		userID,
+		expectedSessionGeneration,
+		userID,
+		expectedUpdatedAt,
+	).Scan(&pendingJobsRaw)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	pendingJobs, err := parseMemoryExtractionJobs(pendingJobsRaw.String)
+	if err != nil {
+		return false, err
+	}
+	remainingJobs := pendingJobs
+	if len(pendingJobs) > 0 {
+		remainingJobs = pendingJobs[1:]
+	}
+	encodedRemainingJobs, err := encodeMemoryExtractionJobs(remainingJobs)
+	if err != nil {
+		return false, err
+	}
+	nextPendingMemory := len(remainingJobs) > 0
+	result, err := tx.ExecContext(
 		ctx,
 		`UPDATE session_ab
-		 SET b_summary = ?, pending_retry_b = 0, updated_at = ?
+		 SET b_summary = ?, pending_retry_b = ?, pending_memory_jobs_json = ?, updated_at = ?
 		 WHERE user_id = ?
 		   AND round_total = ?
 		   AND updated_at = ?
 		   AND COALESCE((SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1), 0) = ?
 		   AND COALESCE((SELECT cleared_at FROM session_generation WHERE user_id = ? LIMIT 1), 0) <= ?`,
 		normalized,
+		boolToInt(nextPendingMemory),
+		encodedRemainingJobs,
 		time.Now().UnixMilli(),
 		userID,
 		expectedRoundTotal,
@@ -266,7 +315,13 @@ func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID str
 	if err != nil {
 		return false, err
 	}
-	return affected > 0, nil
+	if affected == 0 {
+		return false, nil
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Store) SetUserMemoryPending(ctx context.Context, userID string, pending bool) error {
@@ -277,9 +332,12 @@ func (s *Store) SetUserMemoryPending(ctx context.Context, userID string, pending
 
 	_, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO session_ab(user_id, a_json, b_summary, pending_retry_b, round_total, updated_at)
-		 VALUES (?, ?, ?, ?, 0, ?)
-		 ON DUPLICATE KEY UPDATE pending_retry_b = VALUES(pending_retry_b), updated_at = VALUES(updated_at)`,
+		`INSERT INTO session_ab(user_id, a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at)
+		 VALUES (?, ?, ?, ?, NULL, 0, ?)
+		 ON DUPLICATE KEY UPDATE
+		   pending_retry_b = VALUES(pending_retry_b),
+		   pending_memory_jobs_json = IF(VALUES(pending_retry_b) = 0, NULL, pending_memory_jobs_json),
+		   updated_at = VALUES(updated_at)`,
 		userID,
 		"[]",
 		"",
@@ -300,12 +358,13 @@ func (s *Store) SetUserMemoryPendingIfCurrent(ctx context.Context, userID string
 	result, err := s.db.ExecContext(
 		ctx,
 		`UPDATE session_ab
-		 SET pending_retry_b = ?, updated_at = ?
+		 SET pending_retry_b = ?, pending_memory_jobs_json = IF(? = 0, NULL, pending_memory_jobs_json), updated_at = ?
 		 WHERE user_id = ?
 		   AND round_total = ?
 		   AND updated_at = ?
 		   AND COALESCE((SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1), 0) = ?
 		   AND COALESCE((SELECT cleared_at FROM session_generation WHERE user_id = ? LIMIT 1), 0) <= ?`,
+		pendingMemory,
 		pendingMemory,
 		time.Now().UnixMilli(),
 		userID,
@@ -330,7 +389,7 @@ func (s *Store) GetSessionSnapshot(ctx context.Context, userID string) (*Session
 	return s.readSnapshotRow(
 		s.db.QueryRowContext(
 			ctx,
-			"SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1",
+			"SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1",
 			userID,
 		),
 		userID,
@@ -382,7 +441,7 @@ func (s *Store) GetSessionSnapshotForUI(ctx context.Context, userID string, toda
 	snapshot, err := s.readSnapshotRow(
 		tx.QueryRowContext(
 			ctx,
-			"SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1",
+			"SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1",
 			userID,
 		),
 		userID,
@@ -392,12 +451,13 @@ func (s *Store) GetSessionSnapshotForUI(ctx context.Context, userID string, toda
 	}
 	if snapshot == nil {
 		snapshot = &SessionSnapshot{
-			UserID:         userID,
-			ARoundsFull:    []SessionRound{},
-			MemoryDocument: "",
-			PendingMemory:  false,
-			RoundTotal:     0,
-			UpdatedAt:      time.Now().UnixMilli(),
+			UserID:            userID,
+			ARoundsFull:       []SessionRound{},
+			MemoryDocument:    "",
+			PendingMemory:     false,
+			PendingMemoryJobs: []MemoryExtractionJob{},
+			RoundTotal:        0,
+			UpdatedAt:         time.Now().UnixMilli(),
 		}
 	}
 	snapshot.SessionGeneration = generation
@@ -621,18 +681,19 @@ func (s *Store) appendRoundAndUpsertSnapshotTx(
 	memoryEveryRounds int,
 ) (*SessionSnapshot, error) {
 	var (
-		aJSON         sql.NullString
-		memoryDoc     sql.NullString
-		pendingMemory sql.NullInt64
-		roundTotal    sql.NullInt64
-		updatedAt     sql.NullInt64
+		aJSON          sql.NullString
+		memoryDoc      sql.NullString
+		pendingMemory  sql.NullInt64
+		pendingJobsRaw sql.NullString
+		roundTotal     sql.NullInt64
+		updatedAt      sql.NullInt64
 	)
 
 	err := tx.QueryRowContext(
 		ctx,
-		"SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE",
+		"SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE",
 		userID,
-	).Scan(&aJSON, &memoryDoc, &pendingMemory, &roundTotal, &updatedAt)
+	).Scan(&aJSON, &memoryDoc, &pendingMemory, &pendingJobsRaw, &roundTotal, &updatedAt)
 	if err != nil && err != sql.ErrNoRows {
 		return nil, err
 	}
@@ -651,7 +712,25 @@ func (s *Store) appendRoundAndUpsertSnapshotTx(
 	nextRoundTotal := int(roundTotal.Int64) + 1
 	nextUpdatedAt := time.Now().UnixMilli()
 	nextMemoryDocument := memoryDoc.String
-	nextPendingMemory := pendingMemory.Int64 != 0 || (memoryEveryRounds > 0 && nextRoundTotal%memoryEveryRounds == 0)
+	pendingJobs, err := parseMemoryExtractionJobs(pendingJobsRaw.String)
+	if err != nil {
+		return nil, err
+	}
+	shouldCreateMemoryJob := memoryEveryRounds > 0 && nextRoundTotal%memoryEveryRounds == 0
+	if pendingMemory.Int64 != 0 && len(pendingJobs) == 0 {
+		shouldCreateMemoryJob = true
+	}
+	if shouldCreateMemoryJob {
+		pendingJobs = appendMemoryExtractionJobIfMissing(pendingJobs, MemoryExtractionJob{
+			RoundTotal: nextRoundTotal,
+			Rounds:     cloneSessionRounds(rounds),
+		})
+	}
+	nextPendingMemory := len(pendingJobs) > 0
+	encodedPendingJobs, err := encodeMemoryExtractionJobs(pendingJobs)
+	if err != nil {
+		return nil, err
+	}
 
 	encodedRounds, err := json.Marshal(rounds)
 	if err != nil {
@@ -660,17 +739,19 @@ func (s *Store) appendRoundAndUpsertSnapshotTx(
 
 	if _, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO session_ab(user_id, a_json, b_summary, pending_retry_b, round_total, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?)
+		`INSERT INTO session_ab(user_id, a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?)
 		 ON DUPLICATE KEY UPDATE
 		   a_json = VALUES(a_json),
 		   pending_retry_b = VALUES(pending_retry_b),
+		   pending_memory_jobs_json = VALUES(pending_memory_jobs_json),
 		   round_total = VALUES(round_total),
 		   updated_at = VALUES(updated_at)`,
 		userID,
 		string(encodedRounds),
 		nextMemoryDocument,
 		boolToInt(nextPendingMemory),
+		encodedPendingJobs,
 		nextRoundTotal,
 		nextUpdatedAt,
 	); err != nil {
@@ -678,12 +759,13 @@ func (s *Store) appendRoundAndUpsertSnapshotTx(
 	}
 
 	return &SessionSnapshot{
-		UserID:         userID,
-		ARoundsFull:    rounds,
-		MemoryDocument: nextMemoryDocument,
-		PendingMemory:  nextPendingMemory,
-		RoundTotal:     nextRoundTotal,
-		UpdatedAt:      nextUpdatedAt,
+		UserID:            userID,
+		ARoundsFull:       rounds,
+		MemoryDocument:    nextMemoryDocument,
+		PendingMemory:     nextPendingMemory,
+		PendingMemoryJobs: pendingJobs,
+		RoundTotal:        nextRoundTotal,
+		UpdatedAt:         nextUpdatedAt,
 	}, nil
 }
 
@@ -756,7 +838,7 @@ func (s *Store) readSnapshotForUpdateTx(ctx context.Context, tx *sql.Tx, userID 
 	snapshot, err := s.readSnapshotRow(
 		tx.QueryRowContext(
 			ctx,
-			"SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE",
+			"SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1 FOR UPDATE",
 			userID,
 		),
 		userID,
@@ -769,17 +851,18 @@ func (s *Store) readSnapshotForUpdateTx(ctx context.Context, tx *sql.Tx, userID 
 	}
 
 	empty := &SessionSnapshot{
-		UserID:         userID,
-		ARoundsFull:    []SessionRound{},
-		MemoryDocument: "",
-		PendingMemory:  false,
-		RoundTotal:     0,
-		UpdatedAt:      time.Now().UnixMilli(),
+		UserID:            userID,
+		ARoundsFull:       []SessionRound{},
+		MemoryDocument:    "",
+		PendingMemory:     false,
+		PendingMemoryJobs: []MemoryExtractionJob{},
+		RoundTotal:        0,
+		UpdatedAt:         time.Now().UnixMilli(),
 	}
 	if _, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO session_ab(user_id, a_json, b_summary, pending_retry_b, round_total, updated_at)
-		 VALUES (?, ?, ?, 0, 0, ?)
+		`INSERT INTO session_ab(user_id, a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at)
+		 VALUES (?, ?, ?, 0, NULL, 0, ?)
 		 ON DUPLICATE KEY UPDATE updated_at = VALUES(updated_at)`,
 		userID,
 		"[]",
@@ -793,14 +876,15 @@ func (s *Store) readSnapshotForUpdateTx(ctx context.Context, tx *sql.Tx, userID 
 
 func (s *Store) readSnapshotRow(row *sql.Row, userID string) (*SessionSnapshot, error) {
 	var (
-		aJSON         sql.NullString
-		memoryDoc     sql.NullString
-		pendingMemory sql.NullInt64
-		roundTotal    sql.NullInt64
-		updatedAt     sql.NullInt64
+		aJSON          sql.NullString
+		memoryDoc      sql.NullString
+		pendingMemory  sql.NullInt64
+		pendingJobsRaw sql.NullString
+		roundTotal     sql.NullInt64
+		updatedAt      sql.NullInt64
 	)
 
-	err := row.Scan(&aJSON, &memoryDoc, &pendingMemory, &roundTotal, &updatedAt)
+	err := row.Scan(&aJSON, &memoryDoc, &pendingMemory, &pendingJobsRaw, &roundTotal, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -814,14 +898,20 @@ func (s *Store) readSnapshotRow(row *sql.Row, userID string) (*SessionSnapshot, 
 			return nil, err
 		}
 	}
+	pendingJobs, err := parseMemoryExtractionJobs(pendingJobsRaw.String)
+	if err != nil {
+		return nil, err
+	}
+	pending := pendingMemory.Int64 != 0 || len(pendingJobs) > 0
 
 	return &SessionSnapshot{
-		UserID:         userID,
-		ARoundsFull:    rounds,
-		MemoryDocument: memoryDoc.String,
-		PendingMemory:  pendingMemory.Int64 != 0,
-		RoundTotal:     int(roundTotal.Int64),
-		UpdatedAt:      updatedAt.Int64,
+		UserID:            userID,
+		ARoundsFull:       rounds,
+		MemoryDocument:    memoryDoc.String,
+		PendingMemory:     pending,
+		PendingMemoryJobs: pendingJobs,
+		RoundTotal:        int(roundTotal.Int64),
+		UpdatedAt:         updatedAt.Int64,
 	}, nil
 }
 
@@ -837,6 +927,68 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func parseMemoryExtractionJobs(raw string) ([]MemoryExtractionJob, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return []MemoryExtractionJob{}, nil
+	}
+	var jobs []MemoryExtractionJob
+	if err := json.Unmarshal([]byte(raw), &jobs); err != nil {
+		return nil, err
+	}
+	cleaned := make([]MemoryExtractionJob, 0, len(jobs))
+	for _, job := range jobs {
+		if len(job.Rounds) == 0 {
+			continue
+		}
+		cleaned = append(cleaned, MemoryExtractionJob{
+			RoundTotal: job.RoundTotal,
+			Rounds:     cloneSessionRounds(job.Rounds),
+		})
+	}
+	return cleaned, nil
+}
+
+func encodeMemoryExtractionJobs(jobs []MemoryExtractionJob) (any, error) {
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(jobs)
+	if err != nil {
+		return nil, err
+	}
+	return string(encoded), nil
+}
+
+func appendMemoryExtractionJobIfMissing(jobs []MemoryExtractionJob, job MemoryExtractionJob) []MemoryExtractionJob {
+	if len(job.Rounds) == 0 {
+		return jobs
+	}
+	for _, current := range jobs {
+		if current.RoundTotal == job.RoundTotal {
+			return jobs
+		}
+	}
+	return append(jobs, MemoryExtractionJob{
+		RoundTotal: job.RoundTotal,
+		Rounds:     cloneSessionRounds(job.Rounds),
+	})
+}
+
+func cloneSessionRounds(rounds []SessionRound) []SessionRound {
+	if len(rounds) == 0 {
+		return []SessionRound{}
+	}
+	cloned := make([]SessionRound, len(rounds))
+	copy(cloned, rounds)
+	for index := range cloned {
+		if len(cloned[index].UserImages) > 0 {
+			cloned[index].UserImages = append([]string(nil), cloned[index].UserImages...)
+		}
+	}
+	return cloned
 }
 
 func nullString(value string) sql.NullString {

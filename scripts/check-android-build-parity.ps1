@@ -526,7 +526,7 @@ if ($failures.Count -eq 0) {
         "Account management page must keep its logout row in the default code path."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*"' + $accountLabelPhone + '"(?s:.*?)title\s*=\s*if\s*\(\s*cacheCleanupSubmitting\s*\)\s*"' + $accountLabelClearing + '"\s*else\s*"' + $accountLabelClearCache + '"(?s:.*?)title\s*=\s*"' + $accountLabelDeleteHistory + '"(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"(?s:.*?)title\s*=\s*if\s*\(\s*accountDeletionSubmitting\s*\)\s*"' + $accountLabelSubmitting + '"\s*else\s*"' + $accountLabelDeleteAccount + '"') `
         "Account management defaults must include phone, scoped cache cleanup, history deletion, logout, and account deletion application rows after app data is cleared."
-    Require-Match $failures $hamburgerMenuSheet ([regex]::Escape("将删除当前账号历史对话，并清除长期记忆。会员礼品卡反馈记录不受影响。")) `
+    Require-Match $failures $hamburgerMenuSheet ([regex]::Escape("将删除当前账号历史对话，并清除长期记忆。会员、礼品卡、反馈记录不受影响。")) `
         "Delete-history confirmation must keep the concise user-approved wording and mention long-term memory."
     Require-Match $failures $hamburgerMenuSheet 'title\s*=\s*"六、使用规范、责任和协议更新"(?s:.*?)请您在合法、真实、合理的范围内使用本服务' `
         "Service agreement section 6 must use the calmer formal usage-norms wording."

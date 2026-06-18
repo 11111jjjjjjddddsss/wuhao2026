@@ -22,10 +22,10 @@ func TestGetSessionSnapshotForUIUsesReadOnlyConsistentTransaction(t *testing.T) 
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"generation"}).AddRow(3))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "round_total", "updated_at"}).
-			AddRow(aJSON, "memory", 0, 1, int64(1700000000100)))
+		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "pending_memory_jobs_json", "round_total", "updated_at"}).
+			AddRow(aJSON, "memory", 0, nil, 1, int64(1700000000100)))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
 		 FROM session_round_archive
 		 WHERE user_id = ? AND created_at >= ?
@@ -78,9 +78,9 @@ func TestGetSessionSnapshotForUINewUserDoesNotCreateGenerationRow(t *testing.T) 
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"generation"}))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "round_total", "updated_at"}))
+		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "pending_memory_jobs_json", "round_total", "updated_at"}))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
 		 FROM session_round_archive
 		 WHERE user_id = ? AND created_at >= ?
@@ -127,10 +127,10 @@ func TestGetSessionSnapshotForUIDegradesArchiveReadFailure(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"generation"}).AddRow(4))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "round_total", "updated_at"}).
-			AddRow(aJSON, "memory", 0, 1, int64(1700000000100)))
+		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "pending_memory_jobs_json", "round_total", "updated_at"}).
+			AddRow(aJSON, "memory", 0, nil, 1, int64(1700000000100)))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
 		 FROM session_round_archive
 		 WHERE user_id = ? AND created_at >= ?
@@ -177,10 +177,10 @@ func TestGetSessionSnapshotForUIDegradesTodayAgriReadFailure(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"generation"}).AddRow(5))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1")).
 		WithArgs(userID).
-		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "round_total", "updated_at"}).
-			AddRow(aJSON, "memory", 0, 1, int64(1700000000100)))
+		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "pending_memory_jobs_json", "round_total", "updated_at"}).
+			AddRow(aJSON, "memory", 0, nil, 1, int64(1700000000100)))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT client_msg_id, user_text, user_images_json, assistant_text, created_at, region, region_source, region_reliability
 		 FROM session_round_archive
 		 WHERE user_id = ? AND created_at >= ?

@@ -818,9 +818,17 @@ func safeSnapshot(userID string, snapshot *SessionSnapshot) SessionSnapshot {
 }
 
 func cloneSessionSnapshot(snapshot SessionSnapshot) SessionSnapshot {
-	clonedRounds := make([]SessionRound, len(snapshot.ARoundsFull))
-	copy(clonedRounds, snapshot.ARoundsFull)
-	snapshot.ARoundsFull = clonedRounds
+	snapshot.ARoundsFull = cloneSessionRounds(snapshot.ARoundsFull)
+	if len(snapshot.PendingMemoryJobs) > 0 {
+		clonedJobs := make([]MemoryExtractionJob, len(snapshot.PendingMemoryJobs))
+		for index, job := range snapshot.PendingMemoryJobs {
+			clonedJobs[index] = MemoryExtractionJob{
+				RoundTotal: job.RoundTotal,
+				Rounds:     cloneSessionRounds(job.Rounds),
+			}
+		}
+		snapshot.PendingMemoryJobs = clonedJobs
+	}
 	if len(snapshot.TodayAgriItems) > 0 {
 		clonedItems := make([]TodayAgriUserItem, len(snapshot.TodayAgriItems))
 		copy(clonedItems, snapshot.TodayAgriItems)

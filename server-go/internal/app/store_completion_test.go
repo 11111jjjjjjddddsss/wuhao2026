@@ -104,10 +104,11 @@ func TestAppendSessionRoundCompleteReturnsCurrentGeneration(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("DELETE FROM session_round_archive").
 		WillReturnResult(sqlmock.NewResult(0, 0))
-	mock.ExpectQuery("SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab").
+	mock.ExpectQuery("SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab").
 		WithArgs("acct_generation").
-		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "round_total", "updated_at"}))
+		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "pending_memory_jobs_json", "round_total", "updated_at"}))
 	mock.ExpectExec("INSERT INTO session_ab").
+		WithArgs("acct_generation", sqlmock.AnyArg(), "", 1, sqlmock.AnyArg(), 1, sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectQuery("SELECT generation FROM session_generation").
 		WithArgs("acct_generation").
@@ -135,6 +136,70 @@ func TestAppendSessionRoundCompleteReturnsCurrentGeneration(t *testing.T) {
 	}
 	if !snapshot.PendingMemory {
 		t.Fatalf("snapshot should be pending memory at memoryEveryRounds=1")
+	}
+	if len(snapshot.PendingMemoryJobs) != 1 || snapshot.PendingMemoryJobs[0].RoundTotal != 1 || len(snapshot.PendingMemoryJobs[0].Rounds) != 1 {
+		t.Fatalf("snapshot should freeze one memory extraction job at trigger round: %#v", snapshot.PendingMemoryJobs)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestAppendSessionRoundCompleteKeepsPendingMemoryOnNonIntervalRound(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	userID := "acct_pending_memory"
+	nowMs := int64(1800000000000)
+	pendingJobsJSON := `[{"round_total":6,"rounds":[{"client_msg_id":"cm_pending_6","user":"冻结第六轮","assistant":"冻结答案","created_at":1700000000000}]}]`
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT id, request_hash FROM session_round_ledger").
+		WithArgs(userID, "cm_pending_7").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "request_hash"}))
+	mock.ExpectExec("INSERT INTO session_round_ledger").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO session_round_archive").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO quota_consume_outbox").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("DELETE FROM session_round_archive").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectQuery("SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab").
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"a_json", "b_summary", "pending_retry_b", "pending_memory_jobs_json", "round_total", "updated_at"}).
+			AddRow(`[]`, "短期承接：旧记忆", 1, pendingJobsJSON, 6, int64(1700000000000)))
+	mock.ExpectExec("INSERT INTO session_ab").
+		WithArgs(userID, sqlmock.AnyArg(), "短期承接：旧记忆", 1, sqlmock.AnyArg(), 7, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery("SELECT generation FROM session_generation").
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"generation"}).AddRow(1))
+	mock.ExpectCommit()
+
+	_, snapshot, err := store.AppendSessionRoundComplete(
+		context.Background(),
+		userID,
+		"cm_pending_7",
+		"hash-pending-7",
+		SessionRound{ClientMsgID: "cm_pending_7", User: "继续问番茄", Assistant: "继续承接", CreatedAt: nowMs},
+		6,
+		6,
+		nowMs,
+		TierFree,
+		"20260618",
+		"stream",
+	)
+	if err != nil {
+		t.Fatalf("AppendSessionRoundComplete failed: %v", err)
+	}
+	if snapshot == nil || snapshot.RoundTotal != 7 || !snapshot.PendingMemory {
+		t.Fatalf("pending memory should survive non-interval round: %#v", snapshot)
+	}
+	if len(snapshot.PendingMemoryJobs) != 1 || snapshot.PendingMemoryJobs[0].RoundTotal != 6 {
+		t.Fatalf("old frozen memory job should survive non-interval round: %#v", snapshot.PendingMemoryJobs)
+	}
+	if got := snapshot.PendingMemoryJobs[0].Rounds[0].User; got != "冻结第六轮" {
+		t.Fatalf("retry job should keep frozen trigger window, got %q", got)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet SQL expectations: %v", err)

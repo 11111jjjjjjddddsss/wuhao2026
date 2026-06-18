@@ -1339,7 +1339,7 @@ async function submitSupportReply(form: HTMLFormElement): Promise<void> {
     pageState.supportUserID = userID;
     await render();
   } catch (error) {
-    window.alert(`发送失败：${errorMessage(error)}`);
+    window.alert(`发送失败：${supportReplyErrorMessage(error)}`);
   } finally {
     if (button) button.disabled = false;
   }
@@ -1461,7 +1461,7 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     });
     await render();
   } catch (error) {
-    window.alert(`保存失败：${errorMessage(error)}`);
+    window.alert(appUpdateSaveErrorMessage(error));
   } finally {
     if (button) button.disabled = false;
   }
@@ -1678,7 +1678,7 @@ async function withButtonBusy(
   try {
     await action();
   } catch (error) {
-    window.alert(`${failureTitle}：${errorMessage(error)}`);
+    window.alert(`${failureTitle}：${actionErrorMessage(error)}`);
   } finally {
     if (button) {
       button.disabled = false;
@@ -2399,6 +2399,7 @@ function supportFilterForm(): string {
       <label class="field wide">
         <span>搜索</span>
         <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 最近消息" />
+        <span class="small muted">搜索账号ID、手机号或会话最新消息。</span>
       </label>
       <button class="button primary" type="submit">筛选</button>
     </form>
@@ -2462,7 +2463,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
             <input type="hidden" name="user_id" value="${escapeAttr(userID)}" />
             <label class="field">
               <span>后台回复</span>
-              <textarea class="textarea" name="body" placeholder="只写必要的客服回复，不包含密钥、手机号全文或内部排障细节。"></textarea>
+              <textarea class="textarea" name="body" maxlength="2000" placeholder="只写必要的客服回复，不包含密钥、手机号全文或内部排障细节。"></textarea>
             </label>
             <button class="button primary" type="submit">发送给用户（生产）</button>
           </form>
@@ -2608,7 +2609,7 @@ function todayAgriManualPublishCard(): string {
       <div class="card-head">
         <div>
           <div class="card-title">人工发布</div>
-          <div class="small muted">适合晚上准备次日内容；发布后会锁定这一天，清晨自动生成只做兜底，不覆盖人工内容。</div>
+          <div class="small muted">默认按北京时间计算，18:00 后自动填次日；发布后会锁定这一天，清晨自动生成只做兜底，不覆盖人工内容。</div>
         </div>
       </div>
       <form id="today-agri-manual-form" class="today-agri-manual-form">
@@ -2642,14 +2643,26 @@ function todayAgriManualItemEditor(index: number): string {
 }
 
 function defaultManualTodayAgriDay(): string {
-  const now = new Date();
-  const target = new Date(now);
-  if (now.getHours() >= 18) {
-    target.setDate(target.getDate() + 1);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || "";
+  const yearNumber = Number(value("year"));
+  const monthNumber = Number(value("month"));
+  const dayNumber = Number(value("day"));
+  const hourNumber = Number(value("hour"));
+  const target = new Date(Date.UTC(yearNumber, monthNumber - 1, dayNumber));
+  if (hourNumber >= 18) {
+    target.setUTCDate(target.getUTCDate() + 1);
   }
-  const year = target.getFullYear();
-  const month = String(target.getMonth() + 1).padStart(2, "0");
-  const day = String(target.getDate()).padStart(2, "0");
+  const year = target.getUTCFullYear();
+  const month = String(target.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(target.getUTCDate()).padStart(2, "0");
   return `${year}${month}${day}`;
 }
 
@@ -4254,10 +4267,48 @@ function errorMessage(error: unknown): string {
   return "unknown_error";
 }
 
+function actionErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === "csrf_required") return "安全校验已过期，请刷新页面或重新登录。";
+    if (error.status === 401) return "登录状态已失效，请重新登录后台。";
+    if (error.status === 403) return "当前账号没有权限执行这个操作。";
+    if (error.status === 429) return "操作太频繁，请稍等一会儿再试。";
+  }
+  return errorMessage(error);
+}
+
+function supportReplyErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.code === "body_too_long") return "回复内容太长，请控制在 2000 字以内。";
+    if (error.code === "body_contains_sensitive_value") return "回复里包含手机号、密钥、完整卡码等敏感内容，请删掉后再发送。";
+  }
+  return actionErrorMessage(error);
+}
+
+function appUpdateSaveErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const messages: Record<string, string> = {
+      invalid_apk_url: "保存失败：APK 地址不符合正式发布要求，请使用 download.nongjiqiancha.cn 下的稳定正式包链接。",
+      missing_release_artifacts: "保存失败：启用更新前必须补齐 APK 地址、SHA-256 和文件大小。",
+      release_apk_sha_mismatch: "保存失败：APK 的 SHA-256 与填写值不一致，请重新核对正式包。",
+      release_apk_size_mismatch: "保存失败：APK 文件大小与填写值不一致，请重新核对正式包。",
+      release_confirmation_required: "保存失败：确认文字不正确，启用更新请输入本次 versionCode，停更请输入“停更”。",
+      invalid_release_confirmation: "保存失败：确认文字不正确，启用更新请输入本次 versionCode，停更请输入“停更”。",
+      test_apk_url_not_allowed: "保存失败：内部测试包链接不能配置到正式检查更新。",
+      signed_apk_url_not_allowed: "保存失败：短期签名链接不能配置到正式检查更新，请使用稳定正式包地址。",
+    };
+    if (messages[error.code]) return messages[error.code];
+  }
+  return `保存失败：${actionErrorMessage(error)}`;
+}
+
 function friendlyError(error: unknown): { title: string; body: string } {
   if (error instanceof ApiError) {
     if (error.status === 401) {
       return { title: "登录状态已失效", body: "请重新登录后台，再打开这个页面。" };
+    }
+    if (error.code === "csrf_required") {
+      return { title: "安全校验已过期", body: "请刷新页面；如果仍然出现，请重新登录后台。" };
     }
     if (error.status === 403) {
       return { title: "当前账号没有权限", body: "这个模块或操作不对当前角色开放，需要换有权限的后台账号。" };

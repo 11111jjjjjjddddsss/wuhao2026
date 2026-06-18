@@ -114,7 +114,8 @@ private fun LoginScreen(
     var code by remember { mutableStateOf("") }
     val context = LocalContext.current
     var agreed by remember(context) { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
-    var busy by remember { mutableStateOf(false) }
+    var busyAction by remember { mutableStateOf<LoginBusyAction?>(null) }
+    val busy = busyAction != null
     var message by remember { mutableStateOf<String?>(null) }
     var countdown by remember { mutableIntStateOf(0) }
     var countdownPhone by remember { mutableStateOf<String?>(null) }
@@ -157,11 +158,11 @@ private fun LoginScreen(
         }
         val submittedPhone = phone
         AppCrashReporter.setAuthStage("auth.sms_send")
-        busy = true
+        busyAction = LoginBusyAction.SendSms
         message = null
         SessionApi.sendSmsCode(submittedPhone) { ok, error ->
             AppCrashReporter.clearAuthStage("auth.sms_send")
-            busy = false
+            busyAction = null
             if (ok) {
                 countdownPhone = submittedPhone
                 countdown = 60
@@ -182,11 +183,11 @@ private fun LoginScreen(
             return
         }
         AppCrashReporter.setAuthStage("auth.sms_login")
-        busy = true
+        busyAction = LoginBusyAction.Login
         message = null
         SessionApi.loginWithSms(phone, code) { ok, error ->
             AppCrashReporter.clearAuthStage("auth.sms_login")
-            busy = false
+            busyAction = null
             if (ok) {
                 onLoginSuccess()
             } else {
@@ -300,7 +301,11 @@ private fun LoginScreen(
                             .widthIn(min = 96.dp)
                     ) {
                         Text(
-                            text = if (activeCountdown > 0) "${activeCountdown}s" else "发送",
+                            text = when {
+                                busyAction == LoginBusyAction.SendSms -> "发送中"
+                                activeCountdown > 0 -> "${activeCountdown}s"
+                                else -> "发送"
+                            },
                             color = Color(0xFF111111),
                             letterSpacing = 0.sp
                         )
@@ -317,7 +322,11 @@ private fun LoginScreen(
                         .fillMaxWidth()
                         .height(52.dp)
                 ) {
-                    Text("登录", fontSize = 17.sp, letterSpacing = 0.sp)
+                    Text(
+                        if (busyAction == LoginBusyAction.Login) "登录中" else "登录",
+                        fontSize = 17.sp,
+                        letterSpacing = 0.sp
+                    )
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -565,6 +574,11 @@ private fun LoginLegalDialog(
 private enum class LoginLegalPage {
     ServiceAgreement,
     PrivacyPolicy
+}
+
+private enum class LoginBusyAction {
+    SendSms,
+    Login
 }
 
 private fun isValidMainlandPhone(value: String): Boolean =

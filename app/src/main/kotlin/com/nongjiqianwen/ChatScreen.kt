@@ -4603,7 +4603,6 @@ fun ChatScreen() {
 
     fun shouldShowInterruptedAssistantRetry(reason: String): Boolean =
         reason !in setOf(
-            "rate_limit",
             "stale_session"
         )
 

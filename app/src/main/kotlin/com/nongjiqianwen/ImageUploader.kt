@@ -51,6 +51,7 @@ object ImageUploader {
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
     const val DECODE_FAIL_MESSAGE = "图片无法读取，请重新选择"
     private const val UPLOAD_FAIL_MESSAGE = "图片上传失败，请稍后重试"
+    private const val UPLOAD_AUTH_EXPIRED_MESSAGE = "登录已失效，请重新登录后再上传图片"
 
     enum class UploadPurpose(val formValue: String?) {
         Chat(null),
@@ -355,7 +356,7 @@ object ImageUploader {
                                 "purpose" to purpose.name.lowercase()
                             )
                         )
-                        onError(UPLOAD_FAIL_MESSAGE)
+                        onError(if (code == 401) UPLOAD_AUTH_EXPIRED_MESSAGE else UPLOAD_FAIL_MESSAGE)
                         return@use
                     }
                     

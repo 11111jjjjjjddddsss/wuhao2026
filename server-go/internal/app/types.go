@@ -59,14 +59,20 @@ type SessionRound struct {
 }
 
 type SessionSnapshot struct {
-	UserID            string              `json:"user_id"`
-	ARoundsFull       []SessionRound      `json:"a_rounds_full"`
-	TodayAgriItems    []TodayAgriUserItem `json:"today_agri_items,omitempty"`
-	MemoryDocument    string              `json:"memory_document"`
-	PendingMemory     bool                `json:"pending_memory"`
-	RoundTotal        int                 `json:"round_total"`
-	UpdatedAt         int64               `json:"updated_at"`
-	SessionGeneration int                 `json:"session_generation"`
+	UserID            string                `json:"user_id"`
+	ARoundsFull       []SessionRound        `json:"a_rounds_full"`
+	TodayAgriItems    []TodayAgriUserItem   `json:"today_agri_items,omitempty"`
+	MemoryDocument    string                `json:"memory_document"`
+	PendingMemory     bool                  `json:"pending_memory"`
+	PendingMemoryJobs []MemoryExtractionJob `json:"-"`
+	RoundTotal        int                   `json:"round_total"`
+	UpdatedAt         int64                 `json:"updated_at"`
+	SessionGeneration int                   `json:"session_generation"`
+}
+
+type MemoryExtractionJob struct {
+	RoundTotal int            `json:"round_total"`
+	Rounds     []SessionRound `json:"rounds"`
 }
 
 type TodayAgriUserItem struct {

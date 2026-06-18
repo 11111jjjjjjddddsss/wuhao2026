@@ -552,6 +552,13 @@ const mergeSessionABSQL = `UPDATE session_ab AS target
        AND TRIM(target.b_summary) <> TRIM(source.b_summary) THEN 1
      ELSE target.pending_retry_b
    END,
+   target.pending_memory_jobs_json = CASE
+     WHEN JSON_LENGTH(COALESCE(target.pending_memory_jobs_json, JSON_ARRAY())) = 0
+       THEN source.pending_memory_jobs_json
+     WHEN JSON_LENGTH(COALESCE(source.pending_memory_jobs_json, JSON_ARRAY())) = 0
+       THEN target.pending_memory_jobs_json
+     ELSE JSON_MERGE_PRESERVE(target.pending_memory_jobs_json, source.pending_memory_jobs_json)
+   END,
    target.round_total = GREATEST(COALESCE(target.round_total, 0), COALESCE(source.round_total, 0)),
    target.updated_at = ?
  WHERE target.user_id = ?`

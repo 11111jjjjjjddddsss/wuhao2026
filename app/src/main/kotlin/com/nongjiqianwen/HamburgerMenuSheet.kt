@@ -3052,6 +3052,11 @@ private fun HamburgerSupportFeedbackPage(
                     onPendingAction(SUPPORT_SEND_FAILED_HINT)
                     return@sendSupportMessage
                 }
+                result.errorMessage?.takeIf { it.isNotBlank() }?.let { errorText ->
+                    sendingHint = errorText
+                    onPendingAction(errorText)
+                    return@sendSupportMessage
+                }
                 val sent = result.message ?: run {
                     sendingHint = SUPPORT_SEND_FAILED_HINT
                     onPendingAction(SUPPORT_SEND_FAILED_HINT)
@@ -3941,7 +3946,7 @@ private fun HamburgerDeleteHistoryConfirmCard(
                 fontWeight = FontWeight.SemiBold
             )
             Text(
-                text = "将删除当前账号历史对话，并清除长期记忆。会员礼品卡反馈记录不受影响。",
+                text = "将删除当前账号历史对话，并清除长期记忆。会员、礼品卡、反馈记录不受影响。",
                 color = Color(0xFF33363D),
                 fontSize = 15.sp,
                 lineHeight = 22.sp

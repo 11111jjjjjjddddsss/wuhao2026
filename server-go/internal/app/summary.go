@@ -94,7 +94,7 @@ func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *Sessio
 		return
 	}
 
-	dialogueText := buildDialogueText(snapshot.ARoundsFull)
+	dialogueText := buildDialogueText(memoryExtractionRounds(snapshot))
 	if dialogueText == "" {
 		s.log().Warn("summary extraction skipped: empty dialogue", "userId", userID)
 		return
@@ -129,8 +129,23 @@ func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *Sessio
 	}
 
 	snapshot.MemoryDocument = nextMemory.MemoryDocument
-	snapshot.PendingMemory = false
+	if len(snapshot.PendingMemoryJobs) > 0 {
+		snapshot.PendingMemoryJobs = snapshot.PendingMemoryJobs[1:]
+	}
+	snapshot.PendingMemory = len(snapshot.PendingMemoryJobs) > 0
 	s.log().Info("memory document extraction success", "userId", userID, "memory_chars", len(nextMemory.MemoryDocument))
+}
+
+func memoryExtractionRounds(snapshot *SessionSnapshot) []SessionRound {
+	if snapshot == nil {
+		return nil
+	}
+	for _, job := range snapshot.PendingMemoryJobs {
+		if len(job.Rounds) > 0 {
+			return job.Rounds
+		}
+	}
+	return snapshot.ARoundsFull
 }
 
 func (s *SummaryService) tryStart(userID string) bool {

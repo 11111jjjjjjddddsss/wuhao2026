@@ -175,7 +175,8 @@ object SessionApi {
 
     data class SupportSendResult(
         val message: SupportMessage? = null,
-        val autoReply: SupportMessage? = null
+        val autoReply: SupportMessage? = null,
+        val errorMessage: String? = null
     ) {
         val visibleMessages: List<SupportMessage>
             get() = listOfNotNull(message, autoReply)
@@ -1422,6 +1423,8 @@ object SessionApi {
             onResult = { response ->
                 response.use {
                     if (!it.isSuccessful) {
+                        val bodyText = it.body?.string().orEmpty()
+                        val errorCode = parseApiErrorCode(bodyText)
                         reportClientLog(
                             level = "warn",
                             event = "support.send_failed",
@@ -1432,7 +1435,7 @@ object SessionApi {
                                 "body_length" to body.length
                             )
                         )
-                        postToMain { onResult(null) }
+                        postToMain { onResult(SupportSendResult(errorMessage = supportSendErrorMessage(it.code, errorCode))) }
                         return@use
                     }
                     val bodyText = it.body?.string()
@@ -2332,6 +2335,15 @@ object SessionApi {
             else -> if (statusCode >= 500) "服务暂时不可用，请稍后再试" else "兑换失败，请稍后再试"
         }
     }
+
+    private fun supportSendErrorMessage(statusCode: Int, errorCode: String): String =
+        when {
+            statusCode == 429 || errorCode == "rate_limited" -> "发送太频繁，请稍后再试"
+            statusCode == 409 || errorCode == "support_message_in_progress" -> "上一条反馈仍在处理中，请稍后再试"
+            errorCode == "body_too_long" -> "反馈内容太长，请控制在2000字以内"
+            errorCode == "body_contains_sensitive_value" -> "反馈内容包含手机号、密钥或完整卡码等敏感信息，请删掉后再发送"
+            else -> "发送失败，请稍后重试"
+        }
 
     private fun postToMain(block: () -> Unit) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
