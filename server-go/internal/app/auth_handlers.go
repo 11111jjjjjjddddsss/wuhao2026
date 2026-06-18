@@ -38,7 +38,45 @@ const (
 
 	defaultFusionVerifiedPhoneTTL = 2 * time.Minute
 	defaultSMSCodeCacheTimeout    = time.Second
+	defaultSMSLoginProcessingTTL  = 30 * time.Second
 )
+
+const (
+	smsCodeReserveInvalid smsCodeReserveStatus = iota
+	smsCodeReserveOK
+	smsCodeReserveBusy
+)
+
+const smsLoginReserveScript = `
+local code = redis.call("GET", KEYS[1])
+if not code then
+  return 0
+end
+if code ~= ARGV[1] then
+  return 0
+end
+local locked = redis.call("SET", KEYS[2], ARGV[2], "NX", "PX", ARGV[3])
+if not locked then
+  return 2
+end
+return 1
+`
+
+const smsLoginReleaseScript = `
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+  return redis.call("DEL", KEYS[1])
+end
+return 0
+`
+
+type smsCodeReserveStatus int
+
+type smsCodeReservation struct {
+	phone   string
+	codeKey string
+	lockKey string
+	token   string
+}
 
 type authLoginRequest struct {
 	VerifyToken  string `json:"verify_token,omitempty"`
@@ -337,21 +375,28 @@ func (s *Server) handleAuthSMSLogin(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	ok, err := s.verifySMSCode(r.Context(), phone, body.VerifyCode)
+	reservation, verifyStatus, err := s.reserveSMSCodeForLogin(r.Context(), phone, body.VerifyCode)
 	if err != nil {
 		s.logger.Warn("sms login cache verify failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
 		s.writeError(w, http.StatusServiceUnavailable, "sms_cache_unavailable")
 		return
 	}
-	if !ok {
+	if verifyStatus == smsCodeReserveBusy {
+		s.logger.Warn("sms login duplicate submit blocked", "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
+		s.writeError(w, http.StatusConflict, "auth_login_in_progress")
+		return
+	}
+	if verifyStatus != smsCodeReserveOK {
 		s.logger.Warn("sms login verify failed", "phone_mask", maskPhone(phone), "masked_ip", maskIP(GetClientIP(r)))
 		s.writeError(w, http.StatusUnauthorized, "auth_verify_failed")
 		return
 	}
 	if s.finishPhoneLogin(w, r, phone, body.LegacyUserID, body.DeviceID) {
-		if err := s.clearSMSCode(r.Context(), phone); err != nil {
+		if err := s.clearSMSCodeReservation(r.Context(), reservation); err != nil {
 			s.logger.Warn("sms code clear after login failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
 		}
+	} else if err := s.releaseSMSCodeReservation(r.Context(), reservation); err != nil {
+		s.logger.Warn("sms login reservation release failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
 	}
 }
 
@@ -470,6 +515,50 @@ func (s *Server) verifySMSCode(ctx context.Context, phone string, code string) (
 	return true, nil
 }
 
+func (s *Server) reserveSMSCodeForLogin(ctx context.Context, phone string, code string) (*smsCodeReservation, smsCodeReserveStatus, error) {
+	if s == nil || s.redisClient == nil {
+		return nil, smsCodeReserveInvalid, fmt.Errorf("sms_cache_not_configured")
+	}
+	codeKey := smsCodeCacheKey(phone)
+	lockKey := smsLoginProcessingKey(phone)
+	digest := smsCodeDigest(phone, code)
+	if codeKey == "" || lockKey == "" || digest == "" {
+		return nil, smsCodeReserveInvalid, nil
+	}
+	token, err := randomURLSafeToken(16)
+	if err != nil {
+		return nil, smsCodeReserveInvalid, err
+	}
+	ttl := envDurationWithDefault("AUTH_SMS_LOGIN_PROCESSING_TTL_SECONDS", defaultSMSLoginProcessingTTL)
+	if ttl <= 0 {
+		ttl = defaultSMSLoginProcessingTTL
+	}
+	ttlMs := int64(ttl / time.Millisecond)
+	if ttlMs <= 0 {
+		ttlMs = int64(defaultSMSLoginProcessingTTL / time.Millisecond)
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", defaultSMSCodeCacheTimeout))
+	defer cancel()
+	result, err := s.redisClient.Eval(cacheCtx, smsLoginReserveScript, []string{codeKey, lockKey}, digest, token, ttlMs).Int64()
+	if err != nil {
+		return nil, smsCodeReserveInvalid, err
+	}
+	reservation := &smsCodeReservation{
+		phone:   normalizeMainlandPhone(phone),
+		codeKey: codeKey,
+		lockKey: lockKey,
+		token:   token,
+	}
+	switch result {
+	case 1:
+		return reservation, smsCodeReserveOK, nil
+	case 2:
+		return nil, smsCodeReserveBusy, nil
+	default:
+		return nil, smsCodeReserveInvalid, nil
+	}
+}
+
 func (s *Server) clearSMSCode(ctx context.Context, phone string) error {
 	if s == nil || s.redisClient == nil {
 		return nil
@@ -478,9 +567,40 @@ func (s *Server) clearSMSCode(ctx context.Context, phone string) error {
 	if key == "" {
 		return nil
 	}
+	lockKey := smsLoginProcessingKey(phone)
 	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", defaultSMSCodeCacheTimeout))
 	defer cancel()
-	return s.redisClient.Del(cacheCtx, key).Err()
+	keys := []string{key}
+	if lockKey != "" {
+		keys = append(keys, lockKey)
+	}
+	return s.redisClient.Del(cacheCtx, keys...).Err()
+}
+
+func (s *Server) clearSMSCodeReservation(ctx context.Context, reservation *smsCodeReservation) error {
+	if s == nil || s.redisClient == nil || reservation == nil {
+		return nil
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", defaultSMSCodeCacheTimeout))
+	defer cancel()
+	return s.redisClient.Del(cacheCtx, reservation.codeKey, reservation.lockKey).Err()
+}
+
+func (s *Server) releaseSMSCodeReservation(ctx context.Context, reservation *smsCodeReservation) error {
+	if s == nil || s.redisClient == nil || reservation == nil || reservation.lockKey == "" || reservation.token == "" {
+		return nil
+	}
+	cacheCtx, cancel := context.WithTimeout(ctx, envDurationWithDefault("REDIS_AUTH_CACHE_TIMEOUT_SECONDS", defaultSMSCodeCacheTimeout))
+	defer cancel()
+	return s.redisClient.Eval(cacheCtx, smsLoginReleaseScript, []string{reservation.lockKey}, reservation.token).Err()
+}
+
+func smsLoginProcessingKey(phone string) string {
+	phone = normalizeMainlandPhone(phone)
+	if phone == "" {
+		return ""
+	}
+	return "nj:auth:sms:login:" + rateLimitHash(phone, strings.TrimSpace(os.Getenv("APP_SECRET")))
 }
 
 func smsSendErrorCode(err error) string {

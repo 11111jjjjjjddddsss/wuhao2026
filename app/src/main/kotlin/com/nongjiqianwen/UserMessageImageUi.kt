@@ -168,7 +168,7 @@ private fun UserMessageImageThumb(
             }
         }
         bitmap = decoded.second
-        loadUnavailable = decoded.second == null && !remoteSource.isNullOrBlank()
+        loadUnavailable = decoded.second == null
         onDisplaySourceChanged(decoded.first ?: source.previewFallback, loadUnavailable)
     }
     Box(

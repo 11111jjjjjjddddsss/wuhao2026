@@ -1743,7 +1743,7 @@ private fun HamburgerLegalPageTitle(text: String) {
         maxLines = 2,
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 56.dp)
+            .heightIn(min = 64.dp)
             .padding(start = 76.dp, end = 76.dp, top = 14.dp)
     )
 }

@@ -405,14 +405,24 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return "", err
 	}
 
-	if err := copyRowsToNewUserID(ctx, tx, "quota_ledger", oldUserID, newUserID, "id"); err != nil {
+	copyConflicts := make([]copyRowsToNewUserIDResult, 0, 3)
+	quotaCopy, err := copyRowsToNewUserID(ctx, tx, "quota_ledger", oldUserID, newUserID, "id")
+	if err != nil {
 		return "", err
 	}
-	if err := copyRowsToNewUserID(ctx, tx, "session_round_ledger", oldUserID, newUserID, "id"); err != nil {
+	copyConflicts = append(copyConflicts, quotaCopy)
+	roundLedgerCopy, err := copyRowsToNewUserID(ctx, tx, "session_round_ledger", oldUserID, newUserID, "id")
+	if err != nil {
 		return "", err
 	}
-	if err := copyRowsToNewUserID(ctx, tx, "session_round_archive", oldUserID, newUserID, "id"); err != nil {
+	copyConflicts = append(copyConflicts, roundLedgerCopy)
+	roundArchiveCopy, err := copyRowsToNewUserID(ctx, tx, "session_round_archive", oldUserID, newUserID, "id")
+	if err != nil {
 		return "", err
+	}
+	copyConflicts = append(copyConflicts, roundArchiveCopy)
+	if totalCopyIgnored(copyConflicts) > 0 {
+		status += "_with_copy_conflicts"
 	}
 	if _, err := tx.ExecContext(
 		ctx,
@@ -640,17 +650,33 @@ func nullableInt64Ptr(value *int64) any {
 	return *value
 }
 
-func copyRowsToNewUserID(ctx context.Context, tx *sql.Tx, table string, oldUserID string, newUserID string, orderColumn string) error {
+type copyRowsToNewUserIDResult struct {
+	Table   string
+	Seen    int64
+	Copied  int64
+	Ignored int64
+}
+
+func totalCopyIgnored(results []copyRowsToNewUserIDResult) int64 {
+	var total int64
+	for _, result := range results {
+		total += result.Ignored
+	}
+	return total
+}
+
+func copyRowsToNewUserID(ctx context.Context, tx *sql.Tx, table string, oldUserID string, newUserID string, orderColumn string) (copyRowsToNewUserIDResult, error) {
+	result := copyRowsToNewUserIDResult{Table: table}
 	// Table names here are hard-coded by the caller; never pass user input as table.
 	rows, err := tx.QueryContext(ctx, "SELECT * FROM "+table+" WHERE user_id = ? ORDER BY "+orderColumn+" ASC", oldUserID)
 	if err != nil {
-		return err
+		return result, err
 	}
 	defer rows.Close()
 
 	columns, err := rows.Columns()
 	if err != nil {
-		return err
+		return result, err
 	}
 	userIDIndex := -1
 	for i, column := range columns {
@@ -660,7 +686,7 @@ func copyRowsToNewUserID(ctx context.Context, tx *sql.Tx, table string, oldUserI
 		}
 	}
 	if userIDIndex < 0 {
-		return fmt.Errorf("user_id column missing in %s", table)
+		return result, fmt.Errorf("user_id column missing in %s", table)
 	}
 
 	insertColumns := make([]string, 0, len(columns))
@@ -685,21 +711,35 @@ func copyRowsToNewUserID(ctx context.Context, tx *sql.Tx, table string, oldUserI
 			values[i] = nil
 		}
 		if err := rows.Scan(valuePtrs...); err != nil {
-			return err
+			return result, err
 		}
 		values[userIDIndex] = newUserID
 		for i, sourceIndex := range insertIndexes {
 			insertValues[i] = values[sourceIndex]
 		}
-		if _, err := tx.ExecContext(ctx, insertQuery, insertValues...); err != nil {
-			return err
+		result.Seen++
+		insertResult, err := tx.ExecContext(ctx, insertQuery, insertValues...)
+		if err != nil {
+			return result, err
+		}
+		affected, err := insertResult.RowsAffected()
+		if err != nil {
+			return result, err
+		}
+		if affected > 0 {
+			result.Copied += affected
+		} else {
+			result.Ignored++
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return err
+		return result, err
+	}
+	if result.Ignored > 0 {
+		return result, nil
 	}
 	_, err = tx.ExecContext(ctx, "DELETE FROM "+table+" WHERE user_id = ?", oldUserID)
-	return err
+	return result, err
 }
 
 func normalizeMainlandPhone(raw string) string {

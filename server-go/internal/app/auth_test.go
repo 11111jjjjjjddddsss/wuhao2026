@@ -302,6 +302,48 @@ func TestAuthSMSSendProviderFailureKeepsCachedCode(t *testing.T) {
 	}
 }
 
+func TestAuthSMSLoginUsesAtomicReservation(t *testing.T) {
+	source, err := os.ReadFile("auth_handlers.go")
+	if err != nil {
+		t.Fatalf("read auth_handlers.go: %v", err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"reserveSMSCodeForLogin",
+		"redis.call(\"SET\", KEYS[2], ARGV[2], \"NX\", \"PX\", ARGV[3])",
+		"auth_login_in_progress",
+		"clearSMSCodeReservation",
+		"releaseSMSCodeReservation",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("SMS login atomic reservation guard missing %q", want)
+		}
+	}
+}
+
+func TestLegacyCopyRowsKeepsSourceRowsOnInsertIgnoreConflict(t *testing.T) {
+	source, err := os.ReadFile("auth_accounts.go")
+	if err != nil {
+		t.Fatalf("read auth_accounts.go: %v", err)
+	}
+	text := string(source)
+	for _, want := range []string{
+		"RowsAffected()",
+		"result.Ignored++",
+		"status += \"_with_copy_conflicts\"",
+		"if result.Ignored > 0",
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("legacy copy conflict visibility guard missing %q", want)
+		}
+	}
+	ignoredBlock := strings.Index(text, "if result.Ignored > 0")
+	deleteBlock := strings.Index(text, "DELETE FROM \"+table+\" WHERE user_id")
+	if ignoredBlock < 0 || deleteBlock < 0 || ignoredBlock > deleteBlock {
+		t.Fatalf("legacy copy must check ignored rows before deleting source rows")
+	}
+}
+
 func TestAuthFusionCompatDisabledByDefault(t *testing.T) {
 	t.Setenv("AUTH_FUSION_COMPAT_ENABLED", "")
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}

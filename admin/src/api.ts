@@ -3,6 +3,7 @@ import type { AuthPayload } from "./types";
 const API_BASE = (import.meta.env.VITE_ADMIN_API_BASE || "").replace(/\/$/, "");
 const AUTH_STORAGE_KEY = "nq_admin_auth";
 const CSRF_COOKIE_NAME = "nq_admin_csrf";
+type StoredAuthMetadata = Pick<AuthPayload, "admin_user" | "expires_at"> & { csrf_token?: unknown };
 
 export class ApiError extends Error {
   status: number;
@@ -21,9 +22,16 @@ export function getStoredAuth(): AuthPayload | null {
   const raw = localStorage.getItem(AUTH_STORAGE_KEY);
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw) as AuthPayload;
-    if (!parsed.admin_user || !parsed.csrf_token) return null;
-    return parsed;
+    const parsed = JSON.parse(raw) as StoredAuthMetadata;
+    if (!parsed.admin_user) return null;
+    const metadata = {
+      admin_user: parsed.admin_user,
+      expires_at: Number(parsed.expires_at) || 0,
+    };
+    if ("csrf_token" in parsed) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(metadata));
+    }
+    return { ...metadata, csrf_token: readCookie(CSRF_COOKIE_NAME) };
   } catch {
     return null;
   }
@@ -34,12 +42,14 @@ export function setStoredAuth(payload: AuthPayload | null): void {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     return;
   }
-  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(payload));
+  const metadata: StoredAuthMetadata = {
+    admin_user: payload.admin_user,
+    expires_at: payload.expires_at,
+  };
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(metadata));
 }
 
 export function csrfToken(): string {
-  const stored = getStoredAuth()?.csrf_token;
-  if (stored) return stored;
   return readCookie(CSRF_COOKIE_NAME);
 }
 

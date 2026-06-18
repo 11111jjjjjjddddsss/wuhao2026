@@ -442,9 +442,11 @@ export interface AdminSupportMessage {
   sender_type: string;
   body?: string;
   body_excerpt: string;
+  body_redacted?: boolean;
   has_images: boolean;
   image_count: number;
   image_urls?: string[];
+  images_redacted?: boolean;
   created_at: number;
   read_by_user_at?: number;
 }

@@ -2438,6 +2438,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
                       <span>${formatTime(message.created_at)}</span>
                     </div>
                     <div>${escapeHTML(message.body || message.body_excerpt || "")}</div>
+                    ${message.body_redacted ? `<div class="small muted" style="margin-top:6px">当前角色仅显示反馈摘要，完整正文只对客服处理角色开放。</div>` : ""}
                     ${supportMessageImages(message)}
                   </article>
                 `,
@@ -2473,6 +2474,9 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
 
 function supportMessageImages(message: AdminSupportMessage): string {
   const urls = (message.image_urls ?? []).map((url) => safeAdminURL(url, true)).filter(Boolean);
+  if (message.images_redacted) {
+    return `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片，原图只对客服处理角色开放。</div>`;
+  }
   if (!message.has_images || !urls.length) {
     return message.has_images ? `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片，图片地址未通过后台安全展示校验。</div>` : "";
   }

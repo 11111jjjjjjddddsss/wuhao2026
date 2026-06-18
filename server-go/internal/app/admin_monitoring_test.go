@@ -575,6 +575,43 @@ func TestAdminCanViewAccountPhone(t *testing.T) {
 	}
 }
 
+func TestAdminCanViewSupportMessageBody(t *testing.T) {
+	allowed := []string{"owner", "support"}
+	for _, role := range allowed {
+		if !adminCanViewSupportMessageBody(role) {
+			t.Fatalf("role %q should view support message body", role)
+		}
+	}
+	blocked := []string{"ops_readonly", "auditor", "finance_ops", "content_ops", "release_ops", ""}
+	for _, role := range blocked {
+		if adminCanViewSupportMessageBody(role) {
+			t.Fatalf("role %q should not view support message body", role)
+		}
+	}
+}
+
+func TestAdminSupportMessageRedactsBodyAndImages(t *testing.T) {
+	message := SupportMessage{
+		ID:         12,
+		UserID:     "acct_test",
+		SenderType: "user",
+		Body:       "用户反馈正文和截图说明",
+		ImageURLs:  []string{"/uploads/support/a.jpg"},
+		CreatedAt:  123,
+	}
+	readonly := adminSupportMessageFromSupport(message, false)
+	if readonly.Body != "" || len(readonly.ImageURLs) != 0 {
+		t.Fatalf("readonly support message should not include full body or images: %#v", readonly)
+	}
+	if !readonly.BodyRedacted || !readonly.ImagesRedacted || readonly.BodyExcerpt == "" || !readonly.HasImages || readonly.ImageCount != 1 {
+		t.Fatalf("readonly support message redaction metadata mismatch: %#v", readonly)
+	}
+	full := adminSupportMessageFromSupport(message, true)
+	if full.Body != message.Body || len(full.ImageURLs) != 1 || full.BodyRedacted || full.ImagesRedacted {
+		t.Fatalf("support role should receive full message: %#v", full)
+	}
+}
+
 func TestAdminCanViewGiftCardCodes(t *testing.T) {
 	allowed := []string{"owner", "finance_ops"}
 	for _, role := range allowed {

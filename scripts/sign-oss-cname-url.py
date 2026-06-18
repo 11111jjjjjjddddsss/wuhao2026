@@ -56,8 +56,10 @@ def main() -> int:
             raise SystemExit("bucket must be nongjiqiancha-prod unless --allow-unsafe is set")
         if normalized_endpoint != "https://download.nongjiqiancha.cn":
             raise SystemExit("endpoint must be https://download.nongjiqiancha.cn unless --allow-unsafe is set")
-        if normalized_key != "test-apks/debug" and not normalized_key.startswith("test-apks/debug/"):
-            raise SystemExit("object-key must be under test-apks/debug/ unless --allow-unsafe is set")
+        safe_exact_keys = {"test-apks/debug", "download-probes"}
+        safe_prefixes = ("test-apks/debug/", "download-probes/")
+        if normalized_key not in safe_exact_keys and not normalized_key.startswith(safe_prefixes):
+            raise SystemExit("object-key must be under test-apks/debug/ or download-probes/ unless --allow-unsafe is set")
         if args.expires_seconds > 7 * 24 * 60 * 60:
             raise SystemExit("expires-seconds must be 7 days or less unless --allow-unsafe is set")
     access_key_id, access_key_secret = load_profile(args.profile)

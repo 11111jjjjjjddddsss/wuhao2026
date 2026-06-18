@@ -122,6 +122,7 @@ echo active_upstream_port="`$active_port"
     if (-not $Apply) {
         throw "Refusing to rollback without -Apply. To list backups, omit -BackupName."
     }
+    $backupSuffix = $BackupName.Substring("nongji-server.bak-".Length)
     $remoteScript = @"
 set -euo pipefail
 lock_file='/var/lock/nongji-deploy.lock'
@@ -137,6 +138,7 @@ admin_nginx_site='/etc/nginx/sites-available/nongjiqiancha-admin'
 legacy_service='nongji-server.service'
 drain_seconds=1800
 backup="`$install_dir/$BackupName"
+rollback_backup_suffix='$backupSuffix'
 if [ ! -f "`$backup" ]; then
   echo "backup not found: $BackupName" >&2
   exit 20
@@ -185,6 +187,10 @@ cancel_stale_drains
 switch_completed=0
 installed_rollback_binary=0
 pre_rollback_bin_backup=''
+pre_rollback_assets_backup=''
+pre_rollback_migrations_backup=''
+pre_rollback_gomod_backup=''
+pre_rollback_gosum_backup=''
 
 restore_pre_switch_rollback() {
   if [ "`$installed_rollback_binary" != "1" ] || [ "`$switch_completed" = "1" ]; then
@@ -194,17 +200,81 @@ restore_pre_switch_rollback() {
   if [ -n "`$pre_rollback_bin_backup" ] && [ -f "`$pre_rollback_bin_backup" ]; then
     cp -a "`$pre_rollback_bin_backup" "`$install_dir/nongji-server" || true
   fi
+  if [ -n "`$pre_rollback_assets_backup" ] && [ -d "`$pre_rollback_assets_backup" ]; then
+    rm -rf "`$install_dir/assets"
+    cp -a "`$pre_rollback_assets_backup" "`$install_dir/assets" || true
+  fi
+  if [ -n "`$pre_rollback_migrations_backup" ] && [ -d "`$pre_rollback_migrations_backup" ]; then
+    rm -rf "`$install_dir/migrations"
+    cp -a "`$pre_rollback_migrations_backup" "`$install_dir/migrations" || true
+  fi
+  if [ -n "`$pre_rollback_gomod_backup" ] && [ -f "`$pre_rollback_gomod_backup" ]; then
+    cp -a "`$pre_rollback_gomod_backup" "`$install_dir/go.mod" || true
+  fi
+  if [ -n "`$pre_rollback_gosum_backup" ] && [ -f "`$pre_rollback_gosum_backup" ]; then
+    cp -a "`$pre_rollback_gosum_backup" "`$install_dir/go.sum" || true
+  fi
+  chown -R nongji:nongji "`$install_dir/nongji-server" "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" 2>/dev/null || true
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
 
 trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_pre_switch_rollback; fi; exit "`$status"' EXIT
 
+restore_matching_runtime_backup() {
+  suffix="`$1"
+  if [ -d "`$install_dir/assets.bak-`$suffix" ]; then
+    rm -rf "`$install_dir/assets"
+    cp -a "`$install_dir/assets.bak-`$suffix" "`$install_dir/assets"
+    echo "restored assets.bak-`$suffix"
+  else
+    echo "assets backup not found for `$suffix; keeping current assets" >&2
+  fi
+  if [ -d "`$install_dir/migrations.bak-`$suffix" ]; then
+    rm -rf "`$install_dir/migrations"
+    cp -a "`$install_dir/migrations.bak-`$suffix" "`$install_dir/migrations"
+    echo "restored migrations.bak-`$suffix"
+  else
+    echo "migrations backup not found for `$suffix; keeping current migrations" >&2
+  fi
+  if [ -f "`$install_dir/go.mod.bak-`$suffix" ]; then
+    cp -a "`$install_dir/go.mod.bak-`$suffix" "`$install_dir/go.mod"
+    echo "restored go.mod.bak-`$suffix"
+  else
+    echo "go.mod backup not found for `$suffix; keeping current go.mod" >&2
+  fi
+  if [ -f "`$install_dir/go.sum.bak-`$suffix" ]; then
+    cp -a "`$install_dir/go.sum.bak-`$suffix" "`$install_dir/go.sum"
+    echo "restored go.sum.bak-`$suffix"
+  else
+    echo "go.sum backup not found for `$suffix; keeping current go.sum" >&2
+  fi
+  chown -R nongji:nongji "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" 2>/dev/null || true
+}
+
 echo rollback "$BackupName"
-pre_rollback_bin_backup="`$install_dir/nongji-server.pre-rollback-`$(date +%Y%m%d%H%M%S)"
+pre_rollback_suffix=`$(date +%Y%m%d%H%M%S)
+pre_rollback_bin_backup="`$install_dir/nongji-server.pre-rollback-`$pre_rollback_suffix"
 cp -a "`$install_dir/nongji-server" "`$pre_rollback_bin_backup"
+if [ -d "`$install_dir/assets" ]; then
+  pre_rollback_assets_backup="`$install_dir/assets.pre-rollback-`$pre_rollback_suffix"
+  cp -a "`$install_dir/assets" "`$pre_rollback_assets_backup"
+fi
+if [ -d "`$install_dir/migrations" ]; then
+  pre_rollback_migrations_backup="`$install_dir/migrations.pre-rollback-`$pre_rollback_suffix"
+  cp -a "`$install_dir/migrations" "`$pre_rollback_migrations_backup"
+fi
+if [ -f "`$install_dir/go.mod" ]; then
+  pre_rollback_gomod_backup="`$install_dir/go.mod.pre-rollback-`$pre_rollback_suffix"
+  cp -a "`$install_dir/go.mod" "`$pre_rollback_gomod_backup"
+fi
+if [ -f "`$install_dir/go.sum" ]; then
+  pre_rollback_gosum_backup="`$install_dir/go.sum.pre-rollback-`$pre_rollback_suffix"
+  cp -a "`$install_dir/go.sum" "`$pre_rollback_gosum_backup"
+fi
 install -m 0755 -o nongji -g nongji "`$backup" "`$install_dir/nongji-server.new"
 mv "`$install_dir/nongji-server.new" "`$install_dir/nongji-server"
 installed_rollback_binary=1
+restore_matching_runtime_backup "`$rollback_backup_suffix"
 
 write_slot_unit() {
   port="`$1"

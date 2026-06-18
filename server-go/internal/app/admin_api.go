@@ -409,16 +409,18 @@ type AdminSupportConversation struct {
 }
 
 type AdminSupportMessage struct {
-	ID           int64    `json:"id"`
-	UserID       string   `json:"user_id,omitempty"`
-	SenderType   string   `json:"sender_type"`
-	Body         string   `json:"body,omitempty"`
-	BodyExcerpt  string   `json:"body_excerpt"`
-	HasImages    bool     `json:"has_images"`
-	ImageCount   int      `json:"image_count"`
-	ImageURLs    []string `json:"image_urls,omitempty"`
-	CreatedAt    int64    `json:"created_at"`
-	ReadByUserAt *int64   `json:"read_by_user_at,omitempty"`
+	ID             int64    `json:"id"`
+	UserID         string   `json:"user_id,omitempty"`
+	SenderType     string   `json:"sender_type"`
+	Body           string   `json:"body,omitempty"`
+	BodyExcerpt    string   `json:"body_excerpt"`
+	BodyRedacted   bool     `json:"body_redacted,omitempty"`
+	HasImages      bool     `json:"has_images"`
+	ImageCount     int      `json:"image_count"`
+	ImageURLs      []string `json:"image_urls,omitempty"`
+	ImagesRedacted bool     `json:"images_redacted,omitempty"`
+	CreatedAt      int64    `json:"created_at"`
+	ReadByUserAt   *int64   `json:"read_by_user_at,omitempty"`
 }
 
 type AdminOrderEntry struct {
@@ -767,11 +769,12 @@ func (s *Server) handleAdminSupportMessages(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	includeBody := adminCanViewSupportMessageBody(admin.User.Role)
 	output := make([]AdminSupportMessage, 0, len(messages))
 	for _, message := range messages {
-		output = append(output, adminSupportMessageFromSupport(message, true))
+		output = append(output, adminSupportMessageFromSupport(message, includeBody))
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.messages", "support_messages", "", userID, true, http.StatusOK, map[string]any{"row_count": len(output)})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.messages", "support_messages", "", userID, true, http.StatusOK, map[string]any{"row_count": len(output), "body_visible": includeBody})
 	s.writeJSON(w, http.StatusOK, map[string]any{"messages": output})
 }
 
@@ -1340,6 +1343,10 @@ type AdminUserQuery struct {
 
 func adminCanViewAccountPhone(role string) bool {
 	return adminRoleAllowed(role, "support", "finance_ops")
+}
+
+func adminCanViewSupportMessageBody(role string) bool {
+	return adminRoleAllowed(role, "support")
 }
 
 func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus, dayCN string, sinceMs int64, nowMs int64) (AdminOverview, error) {
@@ -3554,6 +3561,9 @@ func adminSupportMessageFromSupport(message SupportMessage, includeBody bool) Ad
 	if includeBody {
 		result.Body = message.Body
 		result.ImageURLs = message.ImageURLs
+	} else {
+		result.BodyRedacted = strings.TrimSpace(message.Body) != ""
+		result.ImagesRedacted = len(message.ImageURLs) > 0
 	}
 	return result
 }

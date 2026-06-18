@@ -532,6 +532,22 @@ if ($timer -notmatch 'enabled' -or $timer -notmatch 'active') {
 }
 
 Write-Host
+Write-Host "== Android download domain =="
+$downloadDomainScript = Join-Path $PSScriptRoot "check-android-download-domain.ps1"
+if (Test-Path -LiteralPath $downloadDomainScript) {
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $downloadDomainScript
+    if ($LASTEXITCODE -ne 0) {
+        if ($Strict) {
+            Add-ErrorItem "android_download_domain_check_failed"
+        } else {
+            Add-WarningItem "android_download_domain_check_attention"
+        }
+    }
+} else {
+    Add-WarningItem "android_download_domain_script_missing"
+}
+
+Write-Host
 Write-Host "== CloudMonitor resource alerts =="
 $contactGroupName = "NongjiQianchaOps"
 try {
