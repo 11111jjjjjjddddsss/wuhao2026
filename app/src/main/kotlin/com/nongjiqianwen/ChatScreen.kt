@@ -417,6 +417,11 @@ internal fun shouldRenderTodayAgriMainCardInTimeline(
     shouldShowTodayAgriCard &&
         (!shouldHydrateRemoteHistory || remoteSnapshotHydrationComplete || shownThisRuntime)
 
+internal fun shouldClearTodayAgriMainItemAfterSnapshot(
+    restoredItemFound: Boolean,
+    todayAgriItemsUnavailable: Boolean
+): Boolean = !restoredItemFound && !todayAgriItemsUnavailable
+
 internal fun shouldRevealChatMessageList(
     startupHydrationBarrierSatisfied: Boolean,
     historyHydrationComplete: Boolean,
@@ -561,13 +566,6 @@ private object StaticMessageSelectionBringIntoViewSpec : BringIntoViewSpec {
     override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float = 0f
 }
 
-private sealed interface MarkdownBlock {
-    data class Heading(val level: Int, val text: String) : MarkdownBlock
-    data class Bullet(val text: String) : MarkdownBlock
-    data class Numbered(val number: String, val text: String) : MarkdownBlock
-    data class Paragraph(val text: String) : MarkdownBlock
-}
-
 private const val LOCAL_RENDER_ROUND_LIMIT = 30
 private const val CHAT_CACHE_PREFS = "chat_ui_cache"
 private const val CHAT_CACHE_KEY_PREFIX = "render_window_"
@@ -583,8 +581,6 @@ private const val TODAY_AGRI_ITEM_SAVE_RETRY_DELAY_MS = 1_500L
 private const val TODAY_AGRI_CARD_DAY_REFRESH_POLL_MS = 15 * 60 * 1000L
 private const val UNKNOWN_SESSION_GENERATION = Int.MIN_VALUE
 private const val CHAT_STARTUP_DIAG_TAG = "ChatStartup"
-private const val INLINE_MARKDOWN_CACHE_LIMIT = 180
-private const val BLOCK_MARKDOWN_CACHE_LIMIT = 120
 private const val JUMP_BUTTON_AUTO_HIDE_MS = 2200L
 private const val STREAM_DRAFT_SAVE_DEBOUNCE_MS = 180L
 internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 20L
@@ -659,23 +655,7 @@ private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
-private val headingRegex = Regex("^#{1,6}\\s+.*$")
-private val bulletRegex = Regex("^[*-]\\s+.*$")
-private val numberedRegex = Regex("^\\d+\\.\\s+.*$")
-
-private val quoteRegex = Regex("^>\\s+.*$")
-private val linkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
 private val bareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
-private val inlineMarkdownCache = object : LinkedHashMap<String, AnnotatedString>(INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, AnnotatedString>?): Boolean {
-        return size > INLINE_MARKDOWN_CACHE_LIMIT
-    }
-}
-private val blockMarkdownCache = object : LinkedHashMap<String, List<MarkdownUiBlock>>(BLOCK_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
-    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<MarkdownUiBlock>>?): Boolean {
-        return size > BLOCK_MARKDOWN_CACHE_LIMIT
-    }
-}
 
 private fun currentQuotaDayKey(): String {
     val calendar = java.util.Calendar.getInstance(
@@ -707,238 +687,6 @@ private fun normalizeAssistantText(content: String): String {
     return content
         .replace("\r\n", "\n")
         .trim()
-}
-
-internal data class StreamingMarkdownParts(
-    val completedContent: String,
-    val tailContent: String
-)
-
-private fun splitStreamingMarkdownParts(content: String): StreamingMarkdownParts {
-    val normalized = content
-        .replace("\r\n", "\n")
-    if (normalized.isBlank()) {
-        return StreamingMarkdownParts(completedContent = "", tailContent = "")
-    }
-
-    if (!normalized.contains('\n')) {
-        return StreamingMarkdownParts(completedContent = "", tailContent = normalized)
-    }
-
-    if (normalized.last() == '\n') {
-        val completed = normalized.dropLast(1)
-        return StreamingMarkdownParts(
-            completedContent = normalizeAssistantText(completed),
-            tailContent = ""
-        )
-    }
-
-    val splitIndex = normalized.lastIndexOf('\n')
-    val completed = normalized.substring(0, splitIndex)
-    val tail = normalized.substring(splitIndex + 1)
-    return StreamingMarkdownParts(
-        completedContent = normalizeAssistantText(completed),
-        tailContent = tail
-    )
-}
-
-private fun Char.isCjkUnifiedIdeograph(): Boolean {
-    val block = Character.UnicodeBlock.of(this)
-    return block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS ||
-        block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A ||
-        block == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B ||
-        block == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
-}
-
-private fun Char.isStrongPausePunctuation(): Boolean {
-    return this == '\n' || this == '。' || this == '！' || this == '？' || this == '!' || this == '?'
-}
-
-private fun Char.isWeakPausePunctuation(): Boolean {
-    return this == '，' || this == '；' || this == '：' || this == ',' || this == ';' || this == ':'
-}
-
-private fun hasStructuralMarkdownPrefix(text: String): Boolean {
-    val trimmed = text.trimStart()
-    return trimmed.startsWith("#") ||
-        trimmed.startsWith("- ") ||
-        trimmed.startsWith("* ") ||
-        trimmed.startsWith("> ") ||
-        numberedRegex.matches(trimmed)
-}
-
-private fun needsParagraphJoinSpace(previous: Char, next: Char): Boolean {
-    if (previous.isWhitespace() || next.isWhitespace()) return false
-    if (previous.isCjkUnifiedIdeograph() || next.isCjkUnifiedIdeograph()) return false
-    if (previous.isWeakPausePunctuation() || previous.isStrongPausePunctuation()) return true
-    return previous.isLetterOrDigit() && next.isLetterOrDigit()
-}
-
-private fun StringBuilder.appendParagraphLine(line: String) {
-    if (line.isBlank()) return
-    if (isNotEmpty()) {
-        val previous = this[lastIndex]
-        val next = line.first()
-        if (needsParagraphJoinSpace(previous, next)) {
-            append(' ')
-        }
-    }
-    append(line)
-}
-
-private fun splitMarkdownTableCells(line: String): List<String> {
-    val trimmed = line.trim().removePrefix("|").removeSuffix("|")
-    if (trimmed.isBlank()) return emptyList()
-    val cells = mutableListOf<String>()
-    val current = StringBuilder()
-    var escaped = false
-    trimmed.forEach { ch ->
-        when {
-            escaped -> {
-                if (ch != '|') current.append('\\')
-                current.append(ch)
-                escaped = false
-            }
-            ch == '\\' -> escaped = true
-            ch == '|' -> {
-                cells += current.toString().trim()
-                current.clear()
-            }
-            else -> current.append(ch)
-        }
-    }
-    if (escaped) current.append('\\')
-    cells += current.toString().trim()
-    return cells
-}
-
-private fun isMarkdownTableSeparatorLine(line: String): Boolean {
-    val trimmed = line.trim()
-    if (!trimmed.contains('|')) return false
-    val normalized = trimmed.replace("|", "").replace(" ", "")
-    return normalized.isNotEmpty() && normalized.all { it == '-' || it == ':' }
-}
-
-private fun looksLikeMarkdownTableRow(line: String): Boolean {
-    val trimmed = line.trim()
-    if (trimmed.isBlank() || !trimmed.contains('|')) return false
-    if (isMarkdownTableSeparatorLine(trimmed)) return false
-    return splitMarkdownTableCells(trimmed).size >= 2
-}
-
-private fun fallbackMarkdownTableHeaders(headerCells: List<String>): List<String> {
-    return headerCells.mapIndexed { index, cell ->
-        cell.ifBlank { "\u5217${index + 1}" }
-    }
-}
-
-private fun convertMarkdownTableBlock(headerLine: String, rowLines: List<String>): List<String> {
-    val headers = fallbackMarkdownTableHeaders(splitMarkdownTableCells(headerLine))
-    if (headers.isEmpty()) return emptyList()
-    return rowLines.mapNotNull { rowLine ->
-        val values = splitMarkdownTableCells(rowLine)
-        if (values.isEmpty()) {
-            null
-        } else {
-            val pairs = headers.mapIndexedNotNull { index, header ->
-                val value = values.getOrNull(index)?.trim().orEmpty()
-                if (value.isBlank()) null else "$header\uff1a$value"
-            }
-            when {
-                pairs.isNotEmpty() -> "- ${pairs.joinToString("\uff1b")}"
-                else -> "- ${values.joinToString(" | ").trim()}"
-            }
-        }
-    }
-}
-
-private fun normalizeMarkdownTables(content: String): String {
-    val normalized = content.replace("\r\n", "\n")
-    if (!normalized.contains('|')) return normalized
-    val lines = normalized.lines()
-    if (lines.isEmpty()) return normalized
-    val result = mutableListOf<String>()
-    var index = 0
-    var inCodeFence = false
-    while (index < lines.size) {
-        val current = lines[index]
-        val trimmed = current.trimStart()
-        if (trimmed.startsWith("```")) {
-            inCodeFence = !inCodeFence
-            result += current
-            index++
-            continue
-        }
-        if (inCodeFence) {
-            result += current
-            index++
-            continue
-        }
-        if (
-            index + 1 < lines.size &&
-            looksLikeMarkdownTableRow(current) &&
-            isMarkdownTableSeparatorLine(lines[index + 1])
-        ) {
-            val rowLines = mutableListOf<String>()
-            var cursor = index + 2
-            while (cursor < lines.size && looksLikeMarkdownTableRow(lines[cursor])) {
-                rowLines += lines[cursor]
-                cursor++
-            }
-            if (rowLines.isNotEmpty()) {
-                result += convertMarkdownTableBlock(current, rowLines)
-                index = cursor
-                continue
-            }
-        }
-        result += current
-        index++
-    }
-    return result.joinToString("\n")
-}
-
-private fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
-    val normalized = normalizeAssistantText(normalizeMarkdownTables(content))
-    if (normalized.isBlank()) return emptyList()
-    val blocks = mutableListOf<MarkdownBlock>()
-    val paragraph = StringBuilder()
-
-    fun flushParagraph() {
-        val text = paragraph.toString().trim()
-        if (text.isNotEmpty()) blocks += MarkdownBlock.Paragraph(text)
-        paragraph.clear()
-    }
-
-    normalized.lines().forEach { rawLine ->
-        val trimmed = rawLine.trim()
-        when {
-            trimmed.isBlank() -> flushParagraph()
-            trimmed.startsWith("```") -> Unit
-            trimmed.matches(headingRegex) -> {
-                flushParagraph()
-                val marker = trimmed.takeWhile { it == '#' }
-                blocks += MarkdownBlock.Heading(marker.length, trimmed.drop(marker.length).trim())
-            }
-            trimmed.matches(bulletRegex) -> {
-                flushParagraph()
-                blocks += MarkdownBlock.Bullet(trimmed.drop(1).trim())
-            }
-            trimmed.matches(numberedRegex) -> {
-                flushParagraph()
-                blocks += MarkdownBlock.Numbered(trimmed.substringBefore('.'), trimmed.substringAfter('.').trim())
-            }
-            trimmed.matches(quoteRegex) -> {
-                flushParagraph()
-                blocks += MarkdownBlock.Paragraph(trimmed.drop(1).trim())
-            }
-            else -> {
-                paragraph.appendParagraphLine(trimmed)
-            }
-        }
-    }
-
-    flushParagraph()
-    return blocks
 }
 
 private fun markdownInlineSpanStyle(
@@ -987,194 +735,6 @@ private fun trimBareUrlDisplayText(raw: String): String {
     return raw.trimEnd { it in trailingPunctuation }
 }
 
-private fun Char.isAsciiLetterOrDigit(): Boolean {
-    return this in '0'..'9' ||
-        this in 'a'..'z' ||
-        this in 'A'..'Z'
-}
-
-private fun Char.isMarkdownDelimiterBoundary(): Boolean {
-    return isWhitespace() ||
-        this in ".,;:!?，。；：！？、（）()[]{}<>《》“”\"'"
-}
-
-private fun isAsciiInlineOperatorRun(text: String, index: Int, length: Int): Boolean {
-    val previous = text.getOrNull(index - 1)
-    val next = text.getOrNull(index + length)
-    return previous?.isAsciiLetterOrDigit() == true &&
-        next?.isAsciiLetterOrDigit() == true
-}
-
-private fun isBoldOpeningDelimiter(text: String, index: Int): Boolean {
-    if (!text.startsWith("**", index)) return false
-    if (isAsciiInlineOperatorRun(text, index, length = 2)) return false
-    val next = text.getOrNull(index + 2)
-    return next != null && !next.isWhitespace()
-}
-
-private fun isBoldClosingDelimiter(text: String, index: Int): Boolean {
-    if (!text.startsWith("**", index)) return false
-    if (isAsciiInlineOperatorRun(text, index, length = 2)) return false
-    val previous = text.getOrNull(index - 1)
-    return previous != null && !previous.isWhitespace()
-}
-
-private fun isSingleAsterisk(text: String, index: Int): Boolean {
-    return text.getOrNull(index) == '*' &&
-        text.getOrNull(index - 1) != '*' &&
-        text.getOrNull(index + 1) != '*'
-}
-
-private fun isItalicOpeningDelimiter(text: String, index: Int): Boolean {
-    if (!isSingleAsterisk(text, index)) return false
-    val previous = text.getOrNull(index - 1)
-    val next = text.getOrNull(index + 1)
-    if (next == null || next.isWhitespace()) return false
-    return previous == null || previous.isMarkdownDelimiterBoundary()
-}
-
-private fun isItalicClosingDelimiter(text: String, index: Int): Boolean {
-    if (!isSingleAsterisk(text, index)) return false
-    val previous = text.getOrNull(index - 1)
-    val next = text.getOrNull(index + 1)
-    if (previous == null || previous.isWhitespace()) return false
-    return next == null || next.isMarkdownDelimiterBoundary()
-}
-
-private fun hasItalicClosingDelimiter(text: String, fromIndex: Int): Boolean {
-    var cursor = text.indexOf('*', fromIndex)
-    while (cursor >= 0) {
-        if (isItalicClosingDelimiter(text, cursor)) return true
-        cursor = text.indexOf('*', cursor + 1)
-    }
-    return false
-}
-
-private fun findNextBoldDelimiterIndex(text: String, startIndex: Int, isBold: Boolean): Int? {
-    var cursor = text.indexOf("**", startIndex)
-    while (cursor >= 0) {
-        val matches = if (isBold) {
-            isBoldClosingDelimiter(text, cursor)
-        } else {
-            isBoldOpeningDelimiter(text, cursor) &&
-                findNextBoldDelimiterIndex(text, cursor + 2, isBold = true) != null
-        }
-        if (matches) return cursor
-        cursor = text.indexOf("**", cursor + 2)
-    }
-    return null
-}
-
-private fun findNextCodeDelimiterIndex(text: String, startIndex: Int, isCode: Boolean): Int? {
-    var cursor = text.indexOf('`', startIndex)
-    while (cursor >= 0) {
-        if (isCode || text.indexOf('`', cursor + 1) >= 0) return cursor
-        cursor = text.indexOf('`', cursor + 1)
-    }
-    return null
-}
-
-private fun findNextItalicDelimiterIndex(text: String, startIndex: Int, isItalic: Boolean): Int? {
-    var cursor = text.indexOf('*', startIndex)
-    while (cursor >= 0) {
-        val matches = if (isItalic) {
-            isItalicClosingDelimiter(text, cursor)
-        } else {
-            isItalicOpeningDelimiter(text, cursor) && hasItalicClosingDelimiter(text, cursor + 1)
-        }
-        if (matches) return cursor
-        cursor = text.indexOf('*', cursor + 1)
-    }
-    return null
-}
-
-private fun buildMarkdownAnnotatedStringInternal(
-    text: String
-): AnnotatedString {
-    return buildAnnotatedString {
-        var index = 0
-        var bold = false
-        var italic = false
-        var code = false
-
-        fun appendStyled(chunk: String) {
-            if (chunk.isEmpty()) return
-            withStyle(markdownInlineSpanStyle(bold, italic, code)) {
-                append(chunk)
-            }
-        }
-
-        fun appendLinked(displayText: String, url: String) {
-            if (displayText.isEmpty()) return
-            withLink(LinkAnnotation.Url(normalizeLinkTarget(url))) {
-                withStyle(chatLinkSpanStyle(bold, italic, code)) {
-                    append(displayText)
-                }
-            }
-        }
-
-        while (index < text.length) {
-            if (!code) {
-                val markdownLink = linkRegex.find(text, index)?.takeIf { it.range.first == index }
-                if (markdownLink != null) {
-                    appendLinked(
-                        displayText = markdownLink.groupValues[1],
-                        url = markdownLink.groupValues[2]
-                    )
-                    index = markdownLink.range.last + 1
-                    continue
-                }
-                val bareUrl = bareUrlRegex.find(text, index)?.takeIf { it.range.first == index }
-                if (bareUrl != null) {
-                    val displayText = trimBareUrlDisplayText(bareUrl.value)
-                    if (displayText.isNotEmpty()) {
-                        appendLinked(displayText = displayText, url = displayText)
-                        index += displayText.length
-                        continue
-                    }
-                }
-            }
-            when {
-                !code && text.startsWith("**", index) && findNextBoldDelimiterIndex(text, index, bold) == index -> {
-                    bold = !bold
-                    index += 2
-                }
-                text[index] == '`' && findNextCodeDelimiterIndex(text, index, code) == index -> {
-                    code = !code
-                    index += 1
-                }
-                !code && text[index] == '*' && findNextItalicDelimiterIndex(text, index, italic) == index -> {
-                    italic = !italic
-                    index += 1
-                }
-                else -> {
-                    val nextSpecial = buildList {
-                        val markdownLinkIndex = if (!code) {
-                            linkRegex.find(text, index)?.range?.first?.takeIf { it >= index }
-                        } else {
-                            null
-                        }
-                        val bareUrlIndex = if (!code) {
-                            bareUrlRegex.find(text, index)?.range?.first?.takeIf { it >= index }
-                        } else {
-                            null
-                        }
-                        val boldIndex = if (!code) findNextBoldDelimiterIndex(text, index, bold) else null
-                        val codeIndex = findNextCodeDelimiterIndex(text, index, code)
-                        val italicIndex = if (!code) findNextItalicDelimiterIndex(text, index, italic) else null
-                        if (markdownLinkIndex != null) add(markdownLinkIndex)
-                        if (bareUrlIndex != null) add(bareUrlIndex)
-                        if (boldIndex != null) add(boldIndex)
-                        if (codeIndex != null) add(codeIndex)
-                        if (italicIndex != null) add(italicIndex)
-                    }.minOrNull() ?: text.length
-                    appendStyled(text.substring(index, nextSpecial))
-                    index = nextSpecial
-                }
-            }
-        }
-    }
-}
 private fun buildPlainLinkedAnnotatedString(
     text: String,
     linkColor: Color = Color(0xFF111111)
@@ -1204,42 +764,6 @@ private fun buildPlainLinkedAnnotatedString(
             index = bareUrl.range.first + displayText.length
         }
     }
-}
-private fun buildMarkdownAnnotatedString(text: String): AnnotatedString {
-    return buildMarkdownAnnotatedStringInternal(text = text)
-}
-
-private fun buildStreamingAnnotatedString(text: String): AnnotatedString {
-    return buildMarkdownAnnotatedStringInternal(text = text)
-}
-
-internal fun getCachedAnnotatedString(text: String): AnnotatedString {
-    synchronized(inlineMarkdownCache) {
-        inlineMarkdownCache[text]?.let { return it }
-    }
-    val built = buildMarkdownAnnotatedString(text)
-    synchronized(inlineMarkdownCache) {
-        inlineMarkdownCache[text] = built
-    }
-    return built
-}
-
-private fun getCachedMarkdownUiBlocks(content: String): List<MarkdownUiBlock> {
-    synchronized(blockMarkdownCache) {
-        blockMarkdownCache[content]?.let { return it }
-    }
-    val built = parseMarkdownBlocks(content).map { block ->
-        when (block) {
-            is MarkdownBlock.Heading -> MarkdownUiBlock.Heading(block.level, getCachedAnnotatedString(block.text))
-            is MarkdownBlock.Bullet -> MarkdownUiBlock.Bullet(getCachedAnnotatedString(block.text))
-            is MarkdownBlock.Numbered -> MarkdownUiBlock.Numbered(block.number, getCachedAnnotatedString(block.text))
-            is MarkdownBlock.Paragraph -> MarkdownUiBlock.Paragraph(getCachedAnnotatedString(block.text))
-        }
-    }
-    synchronized(blockMarkdownCache) {
-        blockMarkdownCache[content] = built
-    }
-    return built
 }
 
 private fun buildRenderedMessageCopyText(role: ChatRole, content: String): String {
@@ -2210,22 +1734,6 @@ internal fun shouldReplaceHydratedMessages(
             current.content != remote.content ||
             current.imageUrls.orEmpty() != remote.imageUrls.orEmpty()
     }
-}
-
-private sealed interface MarkdownUiBlock {
-    data class Heading(val level: Int, val text: AnnotatedString) : MarkdownUiBlock
-    data class Bullet(val text: AnnotatedString) : MarkdownUiBlock
-    data class Numbered(val number: String, val text: AnnotatedString) : MarkdownUiBlock
-    data class Paragraph(val text: AnnotatedString) : MarkdownUiBlock
-}
-
-private fun shouldShowMarkdownSectionDivider(
-    previous: MarkdownUiBlock?,
-    current: MarkdownUiBlock
-): Boolean {
-    if (previous == null) return false
-    val heading = current as? MarkdownUiBlock.Heading ?: return false
-    return heading.level <= 2
 }
 
 @Composable
@@ -4945,26 +4453,12 @@ fun ChatScreen() {
         messageSelectionBoundsCacheById.clear()
         messageSelectionBoundsById.clear()
         messageContentBoundsById.clear()
-        synchronized(inlineMarkdownCache) {
-            inlineMarkdownCache.clear()
-        }
-        synchronized(blockMarkdownCache) {
-            blockMarkdownCache.clear()
-        }
         snackbarScope.launch {
             context.deleteUnreferencedComposerImages(emptySet())
         }
     }
 
     LaunchedEffect(uiRuntimeResetKey) {
-        if (initialLocalMessages.isEmpty()) {
-            synchronized(inlineMarkdownCache) {
-                inlineMarkdownCache.clear()
-            }
-            synchronized(blockMarkdownCache) {
-                blockMarkdownCache.clear()
-            }
-        }
         if (initialLocalMessages.isNotEmpty()) {
             snackbarScope.launch {
                 prewarmAssistantMarkdown(initialLocalMessages)
@@ -5012,7 +4506,12 @@ fun ChatScreen() {
                             "from_snapshot" to true
                         )
                     )
-                } else {
+                } else if (
+                    shouldClearTodayAgriMainItemAfterSnapshot(
+                        restoredItemFound = false,
+                        todayAgriItemsUnavailable = snapshot.today_agri_items_unavailable
+                    )
+                ) {
                     todayAgriMainItem = null
                 }
             }

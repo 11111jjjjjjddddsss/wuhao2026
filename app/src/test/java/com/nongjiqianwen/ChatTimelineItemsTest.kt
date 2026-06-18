@@ -441,6 +441,28 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriSnapshotUnavailableDoesNotClearExistingMainItem() {
+        assertFalse(
+            shouldClearTodayAgriMainItemAfterSnapshot(
+                restoredItemFound = false,
+                todayAgriItemsUnavailable = true
+            )
+        )
+        assertTrue(
+            shouldClearTodayAgriMainItemAfterSnapshot(
+                restoredItemFound = false,
+                todayAgriItemsUnavailable = false
+            )
+        )
+        assertFalse(
+            shouldClearTodayAgriMainItemAfterSnapshot(
+                restoredItemFound = true,
+                todayAgriItemsUnavailable = false
+            )
+        )
+    }
+
+    @Test
     fun startupRevealWaitsOnlyWhileRemoteHistoryHasNoVisualContent() {
         assertFalse(
             shouldRevealChatMessageList(

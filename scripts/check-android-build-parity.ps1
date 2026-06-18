@@ -589,6 +589,8 @@ if ($failures.Count -eq 0) {
         "Today agri main-chat copy menu must stay aligned with assistant text copy/full-copy behavior."
     Require-NoMatch $failures $chatScreen 'todayAgriBottomAnchorAppliedKey' `
         "Today agri appearance must not keep a dedicated force-bottom anchor state; it should not pull the user to the bottom at the moment it appears."
+    Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
+        "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
         "Today agri context must be scoped to the next three user sends after its visual timeline anchor."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)failedUserMessageIds' `
@@ -639,6 +641,8 @@ if ($failures.Count -eq 0) {
         "Today agri main-chat item saves must include session generation."
     Require-Match $failures $chatScreen 'snapshot\.today_agri_items(?s:.*?)item\.card(?s:.*?)todayAgriMainItem\s*=\s*item' `
         "Today agri main-chat item must be restored from session snapshot with its saved card content."
+    Require-Match $failures ($sessionApi + "`n" + $chatScreen + "`n" + $chatTimelineItemsTest) 'today_agri_items_unavailable(?s:.*?)shouldClearTodayAgriMainItemAfterSnapshot(?s:.*?)todayAgriSnapshotUnavailableDoesNotClearExistingMainItem' `
+        "Today agri main item must not be cleared when the snapshot only failed to read the optional today_agri_user_items table."
     Require-Match $failures $chatScreen '"remote_snapshot_hydrated"\s+to\s+remoteSnapshotHydrationComplete' `
         "Chat startup diagnostics must distinguish local-first history hydration from remote snapshot completion."
     Require-NoMatch $failures $chatScreen 'persistedTodayAgriContextDayForUserMessage(?s:.*?)takeIf\s*\{\s*it\s*==\s*currentDay\s*\}' `
@@ -770,6 +774,12 @@ if ($failures.Count -eq 0) {
         "Assistant text divider tests must cover active bold text that continues as body text."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableSeparatorDoesNotCreateSectionDivider' `
         "Assistant text divider tests must prove Markdown table separators do not create section dividers."
+    Require-Match $failures $chatStreamingRenderer 'shouldEnableRendererMarkdownTableCopy(?s:.*?)messageSettled\s*&&\s*inlineMode\s*==\s*RendererInlineMode\.Settled' `
+        "Markdown table copy must wait for the whole assistant message to be settled, not only an earlier table block."
+    Require-Match $failures $chatStreamingRenderer 'RendererAssistantStreamingUnifiedBlockHost(?s:.*?)tableCopyEnabled\s*=\s*false' `
+        "Markdown tables may render during streaming, but their copy button must stay disabled until the whole message is settled."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableCopyWaitsForWholeMessageSettled' `
+        "Markdown table copy must have a unit test proving streaming messages cannot copy an earlier settled table block."
     Require-Match $failures $chatStreamingRenderer 'heading\.level\s*(<=\s*3|>\s*3\)\s*return\s+false)' `
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `

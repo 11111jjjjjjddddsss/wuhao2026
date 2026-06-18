@@ -572,6 +572,28 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun markdownTableCopyWaitsForWholeMessageSettled() {
+        assertFalse(
+            shouldEnableRendererMarkdownTableCopy(
+                messageSettled = false,
+                inlineMode = RendererInlineMode.Settled
+            )
+        )
+        assertFalse(
+            shouldEnableRendererMarkdownTableCopy(
+                messageSettled = true,
+                inlineMode = RendererInlineMode.Streaming
+            )
+        )
+        assertTrue(
+            shouldEnableRendererMarkdownTableCopy(
+                messageSettled = true,
+                inlineMode = RendererInlineMode.Settled
+            )
+        )
+    }
+
+    @Test
     fun pendingBoldMarkerDoesNotReplaceWaitingBallBeforeVisibleText() {
         val advanced = consumeStreamingRevealBatch(
             currentMessageId = null,

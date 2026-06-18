@@ -400,16 +400,17 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		uiRounds = mergeSessionRoundsForUI(safe.ARoundsFull, archivedRounds)
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"user_id":            safe.UserID,
-		"a_json":             safe.ARoundsFull,
-		"a_rounds_full":      safe.ARoundsFull,
-		"a_rounds_for_ui":    uiRounds,
-		"today_agri_items":   todayAgriItems,
-		"memory_document":    safe.MemoryDocument,
-		"b_summary":          safe.MemoryDocument,
-		"round_total":        safe.RoundTotal,
-		"updated_at":         safe.UpdatedAt,
-		"session_generation": safe.SessionGeneration,
+		"user_id":                      safe.UserID,
+		"a_json":                       safe.ARoundsFull,
+		"a_rounds_full":                safe.ARoundsFull,
+		"a_rounds_for_ui":              uiRounds,
+		"today_agri_items":             todayAgriItems,
+		"today_agri_items_unavailable": snapshotWarnings.TodayAgriErr != nil,
+		"memory_document":              safe.MemoryDocument,
+		"b_summary":                    safe.MemoryDocument,
+		"round_total":                  safe.RoundTotal,
+		"updated_at":                   safe.UpdatedAt,
+		"session_generation":           safe.SessionGeneration,
 	})
 }
 

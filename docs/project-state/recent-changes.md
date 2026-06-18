@@ -5,6 +5,8 @@
 
 ## 2026-06-18
 
+- 按用户“联网校准、学成熟渲染组件套路但不要直接替换主链”的口径继续全盘挑刺：新增 ADR-0005，记录 Markwon / commonmark-java / mikepenz / compose-markdown 的取舍，当前不把第三方 renderer 接进主聊天 UI，而是学习 AST/block model、stable block + active streaming block、结构节点组件化、复制/点击以整条消息 settled 为边界这些套路。代码侧同步清理 `ChatScreen.kt` 旧 Markdown parser、缓存和旧 block UI 残留，避免两套渲染口径并存；表格“复制表格”按钮改为整条 AI 消息完成后才可用，避免 streaming 中复制半截表格；`/api/session/snapshot` 增加 `today_agri_items_unavailable`，Android 区分“确定没有今日农情展示项”和“读取展示项失败”，读取失败时不清当前已显示农情。该改动不新增模型内容过滤、不改提示词、不改主聊天正向滚动主方案、不发布正式包。
+
 - 按用户“今日农情保留，但出现瞬间不要强制拉到底部；其他开机进入 / 手动回底 / AI 生成仍尽量贴底”的口径继续收口主界面：Android 已删除今日农情专用 `force=true` 回底 effect 和遗留滚动状态，今日农情进入 timeline 的那一拍不再主动抢用户视线；后续仍作为普通视觉尾部参与主聊天正向列表的回到底部、开机贴底和 AutoFollow。聊天正文轻分割线继续只跟随结构标题，补稳未闭合但已独立成行的短加粗标题，下一行正文到达后不会把分割线打掉；active 半截加粗内容若已经带空格、像继续写正文，则先按普通段落处理，减少分割线先出现又撤回。表格分隔行不会触发正文分割线，相关 Android renderer 单测和 `check-android-build-parity.ps1` 门禁已补。本轮不删除今日农情、不改三份提示词、不加模型输出过滤、不改主聊天正向滚动主方案、不发布正式包。
 
 - 继续按用户“Codex 自动化多一个时间、先判断明天有没有新闻、5.5 模型最高思维”的口径补今日农情人工发布：新增内部只读状态接口 `GET /internal/jobs/today-agri-card/status?day_cn=YYYYMMDD` 和脚本 `scripts/get-today-agri-manual-status.ps1`，自动化 / 人工发布前可先查目标日期是否已经 `source_type=manual / manual_locked=1`；`scripts/publish-today-agri-manual.ps1` 真实发布前也会重复检查，已人工锁定时输出 `skipped=true / reason=manual_locked` 并停止，避免 22:00 成功后 23:00 覆盖。后端 05:35 systemd timer 仍是每日一次，服务端内部最多 2 次模型尝试只用于解析失败重试；本机全局 Codex 自动化从每天 22:00 扩成 22:00 和 23:00，继续使用 `gpt-5.5`、`reasoning_effort=xhigh`。自动化只负责读 runbook、查公开新闻、写 3 条今日农情并通过脚本发布，不能修改仓库文件 / 本机配置 / 服务端提示词 / 项目文档 / 业务代码 / 脚本，不能 `apply_patch` 或 git 提交。

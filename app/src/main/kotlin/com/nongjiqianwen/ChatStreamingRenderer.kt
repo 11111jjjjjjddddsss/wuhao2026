@@ -256,6 +256,11 @@ internal fun RendererMarkdownTable.toReadableCopyText(): String {
         .trim()
 }
 
+internal fun shouldEnableRendererMarkdownTableCopy(
+    messageSettled: Boolean,
+    inlineMode: RendererInlineMode
+): Boolean = messageSettled && inlineMode == RendererInlineMode.Settled
+
 internal data class RendererStructureStats(
     val blockCount: Int,
     val headingCount: Int,
@@ -1422,6 +1427,7 @@ private fun RendererAssistantStreamingContentImpl(
                         lastIndex = unifiedModels.lastIndex,
                         model = model
                     ),
+                    tableCopyEnabled = false,
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1518,6 +1524,7 @@ private fun String.hasRendererUnclosedCodeDelimiter(): Boolean {
 private fun RendererAssistantStreamingUnifiedBlockHost(
     model: StreamingLineModel,
     inlineMode: RendererInlineMode,
+    tableCopyEnabled: Boolean,
     showLeadingSectionDivider: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -1529,6 +1536,7 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
             model = model,
             inlineMode = inlineMode,
             linksEnabled = false,
+            tableCopyEnabled = tableCopyEnabled,
             showLeadingSectionDivider = false,
             modifier = Modifier.fillMaxWidth()
         )
@@ -1930,6 +1938,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
     model: StreamingLineModel,
     inlineMode: RendererInlineMode,
     linksEnabled: Boolean,
+    tableCopyEnabled: Boolean,
     showLeadingSectionDivider: Boolean = false,
     modifier: Modifier = Modifier
 ) {
@@ -2009,6 +2018,10 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     table = model.table,
                     inlineMode = inlineMode,
                     linksEnabled = linksEnabled,
+                    copyEnabled = shouldEnableRendererMarkdownTableCopy(
+                        messageSettled = tableCopyEnabled,
+                        inlineMode = inlineMode
+                    ),
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -2031,11 +2044,11 @@ private fun RendererMarkdownTableImpl(
     table: RendererMarkdownTable,
     inlineMode: RendererInlineMode,
     linksEnabled: Boolean,
+    copyEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    val copyEnabled = inlineMode == RendererInlineMode.Settled
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2203,6 +2216,7 @@ private fun RendererAssistantMarkdownContentImpl(
                     model = model,
                     inlineMode = RendererInlineMode.Settled,
                     linksEnabled = true,
+                    tableCopyEnabled = true,
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = blockModifier
                 )
