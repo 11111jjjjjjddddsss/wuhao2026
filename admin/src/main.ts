@@ -55,7 +55,7 @@ const routes: RouteItem[] = [
   { key: "account-deletion", label: "注销申请", section: "运营工作台", hint: "待处理/核验", roles: ["support", "ops_readonly", "auditor", "finance_ops"] },
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "回复/查看", roles: ["support", "ops_readonly", "auditor"] },
   { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
-  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "状态/补跑", roles: ["content_ops", "ops_readonly", "auditor"] },
+  { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "人工/补跑", roles: ["content_ops", "ops_readonly", "auditor"] },
   { key: "app-update", label: "检查更新", section: "运营工作台", hint: "发布/停更", roles: ["release_ops", "ops_readonly", "auditor"] },
   { key: "audit", label: "审计", section: "安全与系统", hint: "可查", roles: ["auditor", "ops_readonly"] },
   { key: "account", label: "账号安全", section: "安全与系统", hint: "改密" },
@@ -818,8 +818,9 @@ async function todayAgriPage(): Promise<string> {
   const response = await apiFetch<{ cards: AdminDailyAgriEntry[] }>("/admin-api/v1/today-agri/cards?limit=14");
   const latestReady = response.cards.find(isPreviewableTodayAgriCard);
   return `
-    ${pageHead("今日农情", "查看生成状态、来源数量和失败原因；content_ops / owner 可直接补跑当天卡片。", "today-agri")}
+    ${pageHead("今日农情", "查看自动生成、人工发布和失败原因；人工发布优先，清晨自动生成兜底。", "today-agri")}
     ${latestReady ? todayAgriPreviewCard(latestReady) : notice("暂无可预览卡片", "最近记录里还没有可直接展示的 ready 卡片。可补跑当天，或查看下方失败原因。", "warn")}
+    ${canManageTodayAgri() ? todayAgriManualPublishCard() : ""}
     <section class="card">
       <div class="card-head">
         <div class="card-title">最近卡片</div>
@@ -1101,6 +1102,10 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
   }
   if (form.id === "gift-card-create-form") {
     await submitGiftCardBatch(form);
+    return;
+  }
+  if (form.id === "today-agri-manual-form") {
+    await submitManualTodayAgriCard(form);
     return;
   }
   if (form.id === "gift-card-filter-form") {
@@ -1500,7 +1505,7 @@ async function disableAppUpdate(button: HTMLElement): Promise<void> {
 
 async function generateTodayAgriCard(button?: HTMLElement): Promise<void> {
   if (!canManageTodayAgri()) return;
-  if (!window.confirm("确认补跑今天的今日农情？如果今天已经有 ready 卡片，系统会直接复用现有结果。")) {
+  if (!window.confirm("确认补跑今天的今日农情？已有 ready 或人工锁定内容时，系统会直接复用，不会覆盖。")) {
     return;
   }
   await withButtonBusy(button, "补跑中", async () => {
@@ -1513,6 +1518,44 @@ async function generateTodayAgriCard(button?: HTMLElement): Promise<void> {
     window.alert(`今日农情处理完成：${label}${suffix}`);
     await render();
   }, "补跑失败");
+}
+
+async function submitManualTodayAgriCard(form: HTMLFormElement): Promise<void> {
+  if (!canManageTodayAgri()) return;
+  const dayCN = formValue(form, "day_cn").replaceAll("-", "");
+  const items = [1, 2, 3].map((index) => ({
+    title: formValue(form, `item_title_${index}`),
+    summary: formValue(form, `item_summary_${index}`),
+    source: formValue(form, `item_source_${index}`),
+  }));
+  const confirmation = formValue(form, "confirmation");
+  const expectedConfirmation = `人工发布 ${dayCN}`;
+  if (!/^\d{8}$/.test(dayCN)) {
+    window.alert("日期请填写 8 位数字，例如 20260619。");
+    return;
+  }
+  const missingIndex = items.findIndex((item) => !item.title || !item.summary);
+  if (missingIndex >= 0) {
+    window.alert(`第 ${missingIndex + 1} 条标题和摘要都要填写。`);
+    return;
+  }
+  if (confirmation !== expectedConfirmation) {
+    window.alert(`请在确认文字里输入：${expectedConfirmation}`);
+    return;
+  }
+  const titles = items.map((item, index) => `${index + 1}. ${item.title}`).join("\n");
+  if (!window.confirm(`确认人工发布 ${dayCN} 今日农情，并锁定不让自动任务覆盖？\n\n${titles}`)) {
+    return;
+  }
+  const button = form.querySelector<HTMLButtonElement>("button[type='submit']");
+  await withButtonBusy(button ?? undefined, "发布中", async () => {
+    const result = await apiFetch<{ status?: string; item_count?: number; manual_locked?: boolean }>("/admin-api/v1/today-agri/manual", {
+      method: "POST",
+      json: { day_cn: dayCN, items, confirmation },
+    });
+    window.alert(`人工发布完成：${result.status || "ready"}，${result.item_count || 0} 条，已锁定。`);
+    await render();
+  }, "人工发布失败");
 }
 
 async function updateAccountDeletionStatus(requestID: string, status: string, button?: HTMLElement): Promise<void> {
@@ -2515,13 +2558,13 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
   if (!rows.length) return emptyState("没有今日农情记录", "后端未返回 daily_agri_cards。");
   return `
     <table class="table">
-      <thead><tr><th>日期</th><th>状态</th><th>标题</th><th>条目/来源</th><th>模型</th><th>生成时间</th><th>错误</th></tr></thead>
+      <thead><tr><th>日期</th><th>状态</th><th>来源</th><th>标题</th><th>条目/来源</th><th>模型</th><th>生成时间</th><th>错误</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.day_cn)}</td><td>${statusPill(row.status)}</td><td class="wrap">${escapeHTML(row.title || "未返回")}</td>
+                <td>${escapeHTML(row.day_cn)}</td><td>${statusPill(row.status)}</td><td>${todayAgriSourcePill(row)}</td><td class="wrap">${escapeHTML(row.title || "未返回")}</td>
                 <td>${row.item_count} / ${row.source_count}</td><td>${escapeHTML([row.model, row.search_strategy].filter(Boolean).join(" / "))}</td>
                 <td>${formatTime(row.generated_at || row.updated_at)}</td><td class="wrap">${escapeHTML(row.error || "")}</td>
               </tr>
@@ -2535,14 +2578,15 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
 
 function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
   const items = todayAgriItems(row.content);
+  const sourceMeta = todayAgriSourceMeta(row);
   return `
     <section class="card today-agri-preview">
       <div class="card-head">
         <div>
           <div class="card-title">${escapeHTML(row.title || "今日农情")}</div>
-          <div class="small muted">${escapeHTML(row.day_cn)} · ${row.item_count} 条 · 来源 ${row.source_count} 个 · ${formatTime(row.generated_at || row.updated_at)}</div>
+          <div class="small muted">${escapeHTML(row.day_cn)} · ${sourceMeta} · ${row.item_count} 条 · 来源 ${row.source_count} 个 · ${formatTime(row.generated_at || row.updated_at)}</div>
         </div>
-        ${statusPill(row.status)}
+        <div class="pill-row">${statusPill(row.status)}${todayAgriSourcePill(row)}</div>
       </div>
       <div class="card-body">
         <div class="today-agri-items">
@@ -2551,6 +2595,74 @@ function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
       </div>
     </section>
   `;
+}
+
+function todayAgriManualPublishCard(): string {
+  const dayCN = defaultManualTodayAgriDay();
+  return `
+    <section class="card today-agri-manual">
+      <div class="card-head">
+        <div>
+          <div class="card-title">人工发布</div>
+          <div class="small muted">适合晚上准备次日内容；发布后会锁定这一天，清晨自动生成只做兜底，不覆盖人工内容。</div>
+        </div>
+      </div>
+      <form id="today-agri-manual-form" class="today-agri-manual-form">
+        <div class="form-grid compact">
+          <label class="field"><span>日期 YYYYMMDD</span><input class="input" name="day_cn" value="${escapeAttr(dayCN)}" placeholder="20260619" maxlength="8" /></label>
+          <label class="field"><span>确认文字</span><input class="input" name="confirmation" placeholder="人工发布 ${escapeAttr(dayCN)}" /></label>
+        </div>
+        <div class="today-agri-manual-grid">
+          ${[1, 2, 3].map((index) => todayAgriManualItemEditor(index)).join("")}
+        </div>
+        <div class="form-actions">
+          <button class="button primary" type="submit">人工发布并锁定</button>
+          <span class="small muted">来源可填短来源名，不填也能发布；正文不会保存外部链接。</span>
+        </div>
+      </form>
+    </section>
+  `;
+}
+
+function todayAgriManualItemEditor(index: number): string {
+  return `
+    <div class="today-agri-manual-item">
+      <div class="today-agri-item-index">${index}</div>
+      <div class="today-agri-manual-fields">
+        <label class="field"><span>标题 ${index}</span><input class="input" name="item_title_${index}" maxlength="96" placeholder="例如：黄淮海夏玉米抢墒播种进入关键期" /></label>
+        <label class="field"><span>摘要 ${index}</span><textarea class="textarea" name="item_summary_${index}" rows="4" maxlength="420" placeholder="写清事实、影响和农事建议，避免夸张和营销话术。"></textarea></label>
+        <label class="field"><span>来源 ${index}</span><input class="input" name="item_source_${index}" maxlength="64" placeholder="例如：全国农技中心" /></label>
+      </div>
+    </div>
+  `;
+}
+
+function defaultManualTodayAgriDay(): string {
+  const now = new Date();
+  const target = new Date(now);
+  if (now.getHours() >= 18) {
+    target.setDate(target.getDate() + 1);
+  }
+  const year = target.getFullYear();
+  const month = String(target.getMonth() + 1).padStart(2, "0");
+  const day = String(target.getDate()).padStart(2, "0");
+  return `${year}${month}${day}`;
+}
+
+function todayAgriSourcePill(row: AdminDailyAgriEntry): string {
+  if (row.source_type === "manual" || row.manual_locked) {
+    return statusPill("人工锁定", "info");
+  }
+  return statusPill("自动", "ok");
+}
+
+function todayAgriSourceMeta(row: AdminDailyAgriEntry): string {
+  if (row.source_type === "manual" || row.manual_locked) {
+    const actor = row.manual_by ? ` · ${escapeHTML(row.manual_by)}` : "";
+    const at = row.manual_at ? ` · ${formatTime(row.manual_at)}` : "";
+    return `人工锁定${actor}${at}`;
+  }
+  return "自动生成";
 }
 
 function todayAgriItemCard(item: DailyAgriItem, index: number): string {

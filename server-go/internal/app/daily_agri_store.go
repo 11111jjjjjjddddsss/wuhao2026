@@ -4,12 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 	"unicode/utf8"
 )
 
-const dailyAgriDefaultScope = "CN"
+const (
+	dailyAgriDefaultScope     = "CN"
+	dailyAgriSourceTypeAuto   = "auto"
+	dailyAgriSourceTypeManual = "manual"
+)
+
+type ManualDailyAgriPublishInput struct {
+	DayCN       string
+	Scope       string
+	Items       []DailyAgriCardItem
+	PublishedBy string
+}
 
 func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string) (*DailyAgriCard, string, error) {
 	scope = normalizeDailyAgriScope(scope)
@@ -17,16 +29,20 @@ func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string
 		status     string
 		contentRaw sql.NullString
 		generated  sql.NullInt64
+		sourceType sql.NullString
+		manualLock bool
+		manualBy   sql.NullString
+		manualAt   sql.NullInt64
 	)
 	err := s.db.QueryRowContext(
 		ctx,
-		`SELECT status, content_json, generated_at
+		`SELECT status, content_json, generated_at, source_type, manual_locked, manual_by, manual_at
 		 FROM daily_agri_cards
 		 WHERE day_cn = ? AND scope = ?
 		 LIMIT 1`,
 		dayCN,
 		scope,
-	).Scan(&status, &contentRaw, &generated)
+	).Scan(&status, &contentRaw, &generated, &sourceType, &manualLock, &manualBy, &manualAt)
 	if err == sql.ErrNoRows {
 		return nil, "missing", nil
 	}
@@ -54,6 +70,12 @@ func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string
 	if card.GeneratedAt == 0 {
 		card.GeneratedAt = generated.Int64
 	}
+	card.SourceType = normalizeDailyAgriSourceType(nullStringValue(sourceType))
+	card.ManualLocked = manualLock
+	card.ManualBy = nullStringValue(manualBy)
+	if manualAt.Valid {
+		card.ManualAt = manualAt.Int64
+	}
 	return &card, status, nil
 }
 
@@ -64,7 +86,7 @@ func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string,
 	}
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT day_cn, content_json, generated_at
+		`SELECT day_cn, content_json, generated_at, source_type, manual_locked, manual_by, manual_at
 		 FROM daily_agri_cards
 		 WHERE scope = ? AND day_cn >= ? AND day_cn < ? AND status = 'ready' AND content_json IS NOT NULL
 		 ORDER BY day_cn DESC
@@ -85,8 +107,12 @@ func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string,
 			dayCN      string
 			contentRaw string
 			generated  sql.NullInt64
+			sourceType sql.NullString
+			manualLock bool
+			manualBy   sql.NullString
+			manualAt   sql.NullInt64
 		)
-		if err := rows.Scan(&dayCN, &contentRaw, &generated); err != nil {
+		if err := rows.Scan(&dayCN, &contentRaw, &generated, &sourceType, &manualLock, &manualBy, &manualAt); err != nil {
 			return nil, err
 		}
 		contentText := strings.TrimSpace(contentRaw)
@@ -109,6 +135,12 @@ func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string,
 		}
 		if card.GeneratedAt == 0 {
 			card.GeneratedAt = generated.Int64
+		}
+		card.SourceType = normalizeDailyAgriSourceType(nullStringValue(sourceType))
+		card.ManualLocked = manualLock
+		card.ManualBy = nullStringValue(manualBy)
+		if manualAt.Valid {
+			card.ManualAt = manualAt.Int64
 		}
 		cards = append(cards, card)
 	}
@@ -278,14 +310,15 @@ func (s *Store) TryAcquireDailyAgriCardGeneration(
 
 	if _, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO daily_agri_cards(day_cn, scope, status, model, search_strategy, prompt_version, lease_token, lease_until, created_at, updated_at)
-		 VALUES (?, ?, 'pending', ?, ?, ?, '', 0, ?, ?)
+		`INSERT INTO daily_agri_cards(day_cn, scope, status, model, search_strategy, prompt_version, source_type, manual_locked, lease_token, lease_until, created_at, updated_at)
+		 VALUES (?, ?, 'pending', ?, ?, ?, ?, 0, '', 0, ?, ?)
 		 ON DUPLICATE KEY UPDATE updated_at = updated_at`,
 		dayCN,
 		scope,
 		model,
 		searchStrategy,
 		promptVersion,
+		dailyAgriSourceTypeAuto,
 		now,
 		now,
 	); err != nil {
@@ -296,17 +329,24 @@ func (s *Store) TryAcquireDailyAgriCardGeneration(
 		status          string
 		existingLeaseTo int64
 		existingContent sql.NullString
+		manualLocked    bool
 	)
 	if err := tx.QueryRowContext(
 		ctx,
-		`SELECT status, lease_until, content_json
+		`SELECT status, lease_until, content_json, manual_locked
 		 FROM daily_agri_cards
 		 WHERE day_cn = ? AND scope = ?
 		 LIMIT 1 FOR UPDATE`,
 		dayCN,
 		scope,
-	).Scan(&status, &existingLeaseTo, &existingContent); err != nil {
+	).Scan(&status, &existingLeaseTo, &existingContent, &manualLocked); err != nil {
 		return false, err
+	}
+	if manualLocked {
+		if err := tx.Commit(); err != nil {
+			return false, err
+		}
+		return false, nil
 	}
 	if status == "ready" && isUsableDailyAgriContentJSON(existingContent) {
 		if err := tx.Commit(); err != nil {
@@ -328,6 +368,10 @@ func (s *Store) TryAcquireDailyAgriCardGeneration(
 		     model = ?,
 		     search_strategy = ?,
 		     prompt_version = ?,
+		     source_type = ?,
+		     manual_locked = 0,
+		     manual_by = NULL,
+		     manual_at = NULL,
 		     lease_token = ?,
 		     lease_until = ?,
 		     error = NULL,
@@ -336,6 +380,7 @@ func (s *Store) TryAcquireDailyAgriCardGeneration(
 		model,
 		searchStrategy,
 		promptVersion,
+		dailyAgriSourceTypeAuto,
 		leaseToken,
 		leaseUntil,
 		now,
@@ -388,6 +433,10 @@ func (s *Store) PublishDailyAgriCard(
 	card.DateCN = dayCN
 	card.Title = "今日农情"
 	card.GeneratedAt = now
+	card.SourceType = dailyAgriSourceTypeAuto
+	card.ManualLocked = false
+	card.ManualBy = ""
+	card.ManualAt = 0
 	contentJSON, err := json.Marshal(card)
 	if err != nil {
 		return err
@@ -402,6 +451,10 @@ func (s *Store) PublishDailyAgriCard(
 		 SET status = 'ready',
 		     content_json = ?,
 		     sources_json = ?,
+		     source_type = ?,
+		     manual_locked = 0,
+		     manual_by = NULL,
+		     manual_at = NULL,
 		     lease_token = NULL,
 		     lease_until = 0,
 		     generated_at = ?,
@@ -410,6 +463,7 @@ func (s *Store) PublishDailyAgriCard(
 		 WHERE day_cn = ? AND scope = ? AND lease_token = ?`,
 		string(contentJSON),
 		string(sourcesJSON),
+		dailyAgriSourceTypeAuto,
 		now,
 		now,
 		dayCN,
@@ -427,6 +481,120 @@ func (s *Store) PublishDailyAgriCard(
 		return sql.ErrNoRows
 	}
 	return nil
+}
+
+func (s *Store) PublishManualDailyAgriCard(ctx context.Context, input ManualDailyAgriPublishInput) (DailyAgriCard, error) {
+	dayCN := normalizeTodayAgriContextDay(input.DayCN)
+	if dayCN == "" {
+		return DailyAgriCard{}, fmt.Errorf("invalid_day_cn")
+	}
+	if _, err := time.Parse("20060102", dayCN); err != nil {
+		return DailyAgriCard{}, fmt.Errorf("invalid_day_cn")
+	}
+	scope := normalizeDailyAgriScope(input.Scope)
+	items, err := normalizeManualDailyAgriItems(input.Items)
+	if err != nil {
+		return DailyAgriCard{}, err
+	}
+	publishedBy := truncateUTF8Bytes(strings.TrimSpace(input.PublishedBy), 128)
+	if publishedBy == "" {
+		publishedBy = "admin"
+	}
+	now := time.Now().UnixMilli()
+	card := DailyAgriCard{
+		DateCN:       dayCN,
+		Title:        "今日农情",
+		Items:        items,
+		GeneratedAt:  now,
+		SourceType:   dailyAgriSourceTypeManual,
+		ManualLocked: true,
+		ManualBy:     publishedBy,
+		ManualAt:     now,
+	}
+	contentJSON, err := json.Marshal(card)
+	if err != nil {
+		return DailyAgriCard{}, err
+	}
+	sources := manualDailyAgriSources(items)
+	sourcesJSON, err := json.Marshal(sources)
+	if err != nil {
+		return DailyAgriCard{}, err
+	}
+	_, err = s.db.ExecContext(
+		ctx,
+		`INSERT INTO daily_agri_cards(
+		     day_cn, scope, status, content_json, sources_json,
+		     model, search_strategy, prompt_version, source_type, manual_locked, manual_by, manual_at,
+		     lease_token, lease_until, generated_at, error, created_at, updated_at
+		   )
+		   VALUES (?, ?, 'ready', ?, ?, 'manual', 'manual', 'manual', ?, 1, ?, ?, NULL, 0, ?, NULL, ?, ?)
+		   ON DUPLICATE KEY UPDATE
+		     status = 'ready',
+		     content_json = VALUES(content_json),
+		     sources_json = VALUES(sources_json),
+		     model = 'manual',
+		     search_strategy = 'manual',
+		     prompt_version = 'manual',
+		     source_type = VALUES(source_type),
+		     manual_locked = 1,
+		     manual_by = VALUES(manual_by),
+		     manual_at = VALUES(manual_at),
+		     lease_token = NULL,
+		     lease_until = 0,
+		     generated_at = VALUES(generated_at),
+		     error = NULL,
+		     updated_at = VALUES(updated_at)`,
+		dayCN,
+		scope,
+		string(contentJSON),
+		string(sourcesJSON),
+		dailyAgriSourceTypeManual,
+		publishedBy,
+		now,
+		now,
+		now,
+		now,
+	)
+	if err != nil {
+		return DailyAgriCard{}, err
+	}
+	return card, nil
+}
+
+func normalizeManualDailyAgriItems(rawItems []DailyAgriCardItem) ([]DailyAgriCardItem, error) {
+	if len(rawItems) != dailyAgriTargetItemCount {
+		return nil, fmt.Errorf("invalid_item_count")
+	}
+	items := make([]DailyAgriCardItem, 0, dailyAgriTargetItemCount)
+	for idx, raw := range rawItems {
+		title := truncateUTF8Bytes(strings.TrimSpace(raw.Title), 96)
+		summary := truncateUTF8Bytes(strings.TrimSpace(raw.Summary), 420)
+		source := sanitizeDailyAgriPublicSourceLabel(raw.Source)
+		if title == "" || summary == "" {
+			return nil, fmt.Errorf("invalid_item_%d", idx+1)
+		}
+		items = append(items, DailyAgriCardItem{
+			Title:   title,
+			Summary: summary,
+			Source:  source,
+		})
+	}
+	return items, nil
+}
+
+func manualDailyAgriSources(items []DailyAgriCardItem) []DailyAgriSearchSource {
+	sources := make([]DailyAgriSearchSource, 0, len(items))
+	for idx, item := range items {
+		if strings.TrimSpace(item.Source) == "" {
+			continue
+		}
+		sources = append(sources, DailyAgriSearchSource{
+			Index:    idx + 1,
+			Title:    item.Title,
+			SiteName: item.Source,
+		})
+	}
+	return sources
 }
 
 func (s *Store) MarkDailyAgriCardFailed(ctx context.Context, dayCN string, scope string, leaseToken string, message string) error {
@@ -480,4 +648,12 @@ func normalizeDailyAgriScope(scope string) string {
 		return normalized[:32]
 	}
 	return normalized
+}
+
+func normalizeDailyAgriSourceType(sourceType string) string {
+	normalized := strings.ToLower(strings.TrimSpace(sourceType))
+	if normalized == dailyAgriSourceTypeManual {
+		return dailyAgriSourceTypeManual
+	}
+	return dailyAgriSourceTypeAuto
 }

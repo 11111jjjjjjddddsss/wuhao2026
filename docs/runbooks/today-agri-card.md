@@ -12,8 +12,10 @@
 - 用户近 30 天回看接口：`GET /api/today-agri-cards`
 - 内部生成接口：`POST /internal/jobs/today-agri-card/generate`
 - 内部探针接口：`POST /internal/jobs/today-agri-card/probe?runs=3`，只测模型输出 / 来源 / 解析质量，不写 `daily_agri_cards`
+- 内部人工发布接口：`POST /internal/jobs/today-agri-card/manual`，只供本机脚本 / Codex 自动化使用，必须带 `DAILY_AGRI_JOB_SECRET`
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
-- 当前生产推荐主链：ECS systemd timer 每天自动触发一次生成，后台补跑只作为异常兜底
+- 后台人工发布接口：`POST /admin-api/v1/today-agri/manual`，仅 `owner / content_ops`；该接口仍写同一张 `daily_agri_cards`，不是第二套内容系统
+- 当前生产推荐主链：ECS systemd timer 每天自动触发一次生成，后台补跑只作为异常兜底；人工发布适合晚上准备次日 3 条内容，发布后会标记 `source_type=manual / manual_locked=1 / manual_by / manual_at`，同一天自动生成和补跑只复用缓存，不覆盖人工内容。没人人工发布时，原自动生成继续兜底
 - 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情固定独立走 OpenAI 兼容 `chat/completions + qwen3.5-plus + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true`，两条链路分开，不互相影响。`enable_thinking=false` 必须放在请求顶层。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和更长延迟，今日农情默认不使用；当前不保留 Flash、qwen-turbo、Responses、multimodal 或 DashScope `text-generation/generation` 作为生产候选，也不提供环境变量模型切换入口。用户端已经取消外部链接点击，公开接口只返回标题、摘要和短来源名称；URL、source_index 和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户文本
 
 ## 环境变量
@@ -212,6 +214,40 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 - 今天已经有 `ready` 卡片时，后台会直接复用现有结果
 - 今天是 `missing / failed / lease 过期 pending` 时，会重新生成
 - 真正密钥调用仍发生在服务端，不把 `DAILY_AGRI_JOB_SECRET` 下发给浏览器
+
+## 人工发布
+
+人工发布用于“晚上由 Codex 或人工整理好次日今日农情，直接写入后台并锁定”的场景。它不修改今日农情提示词，不调用模型，不绕过 `daily_agri_cards`，也不把内容写成聊天历史。
+
+- 页面：`https://admin.nongjiqiancha.cn/#today-agri`
+- 接口：`POST /admin-api/v1/today-agri/manual`
+- 脚本：`scripts/publish-today-agri-manual.ps1`
+- 内部脚本接口：`POST /internal/jobs/today-agri-card/manual`
+- 角色：`owner`、`content_ops`
+- 日期：8 位 `YYYYMMDD`，后台页面晚上 18:00 后默认填次日
+- 内容：固定 3 条，每条标题和摘要必填，来源可填短来源名
+- 确认：必须输入 `人工发布 YYYYMMDD`，防止手滑覆盖
+- 写入：`status=ready`、`model/search_strategy/prompt_version=manual`、`source_type=manual`、`manual_locked=1`
+
+Codex 自动化或本机命令行推荐走脚本。脚本默认 18:00 后发布次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本从环境变量 `DAILY_AGRI_JOB_SECRET` 或本机 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 读取内部密钥，输出只包含日期、状态、标题和来源，不打印密钥：
+
+本地检查参数和确认词时先加 `-DryRun`，dry run 不读密钥、不发送请求；确认内容没问题后再去掉 `-DryRun` 真实发布。
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\publish-today-agri-manual.ps1 `
+  -DayCN 20260618 `
+  -Title1 "全国冬小麦收获近九成" `
+  -Summary1 "据中央气象台夏收夏种服务信息，截至6月15日，全国冬小麦已收获3.04亿亩、进度89.48%。6月18日多数夏收区天气适宜机收，局地小雨地区要抢晴收晒、通风归仓，降低穗发芽和霉变风险。" `
+  -Source1 "中央气象台" `
+  -Title2 "黄淮海夏播玉米抓紧适墒播种" `
+  -Summary2 "全国农技中心近期发布黄淮海夏播玉米技术指导，提示小麦收后要疏通田间沟渠、根据墒情适时早播，北部地区力争6月20日前完成播种。墒情不足地块先造墒，雨后地块注意排水散墒，争取一播全苗。" `
+  -Source2 "全国农技中心" `
+  -Title3 "果蔬生产继续推进绿色提质" `
+  -Summary3 "全国农技中心6月14日在广西北海召开果树蔬菜专家指导组会议，研判果蔬产业形势并部署高质量发展。近期多地设施蔬菜观摩也集中展示番茄、豇豆等新品种和水肥一体化、绿色防控技术，夏季管理重点仍是控温降湿和减药增效。" `
+  -Source3 "全国农技中心"
+```
+
+人工发布后，当天 / 次日清晨自动任务和后台“补跑今天”看到 `manual_locked=1` 会直接跳过，不会覆盖人工内容。若要重新改人工内容，仍从后台“人工发布”再次提交同一天 3 条内容即可覆盖并继续锁定。若完全没人写，ECS 定时任务仍按 05:35 左右自动生成。
 
 ## 定时任务
 

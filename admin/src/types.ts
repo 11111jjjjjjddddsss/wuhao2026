@@ -606,6 +606,10 @@ export interface AdminDailyAgriEntry {
   day_cn: string;
   scope: string;
   status: string;
+  source_type?: string;
+  manual_locked?: boolean;
+  manual_by?: string;
+  manual_at?: number;
   title?: string;
   item_count: number;
   source_count: number;

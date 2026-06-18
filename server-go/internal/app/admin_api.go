@@ -445,6 +445,10 @@ type AdminDailyAgriEntry struct {
 	DayCN          string          `json:"day_cn"`
 	Scope          string          `json:"scope"`
 	Status         string          `json:"status"`
+	SourceType     string          `json:"source_type,omitempty"`
+	ManualLocked   bool            `json:"manual_locked,omitempty"`
+	ManualBy       string          `json:"manual_by,omitempty"`
+	ManualAt       *int64          `json:"manual_at,omitempty"`
 	Title          string          `json:"title,omitempty"`
 	ItemCount      int             `json:"item_count"`
 	SourceCount    int             `json:"source_count"`
@@ -458,6 +462,18 @@ type AdminDailyAgriEntry struct {
 	Error          string          `json:"error,omitempty"`
 	CreatedAt      int64           `json:"created_at"`
 	UpdatedAt      int64           `json:"updated_at"`
+}
+
+type adminManualTodayAgriRequest struct {
+	DayCN        string                     `json:"day_cn"`
+	Items        []adminManualTodayAgriItem `json:"items"`
+	Confirmation string                     `json:"confirmation"`
+}
+
+type adminManualTodayAgriItem struct {
+	Title   string `json:"title"`
+	Summary string `json:"summary"`
+	Source  string `json:"source,omitempty"`
 }
 
 type AdminAppUpdateConfig struct {
@@ -969,6 +985,145 @@ func (s *Server) handleAdminGenerateTodayAgriCard(w http.ResponseWriter, r *http
 		"item_count": itemCount,
 		"has_card":   card != nil,
 	})
+}
+
+func (s *Server) handleAdminPublishManualTodayAgriCard(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "owner", "content_ops")
+	if !ok {
+		return
+	}
+	var body adminManualTodayAgriRequest
+	if err := decodeJSONBodyLimited(r, &body, 16*1024); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	input, dayCN, expectedConfirmation, errorCode := manualDailyAgriPublishInputFromAdminRequest(body, admin.User.Username)
+	if errorCode != "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.today_agri.manual_publish", "daily_agri_cards", dayCN, "", false, http.StatusBadRequest, map[string]any{"error_code": errorCode})
+		if errorCode == "confirmation_required" {
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error":                 "confirmation_required",
+				"expected_confirmation": expectedConfirmation,
+			})
+			return
+		}
+		s.writeError(w, http.StatusBadRequest, errorCode)
+		return
+	}
+	card, err := s.publishManualTodayAgriCard(r.Context(), input)
+	if err != nil {
+		s.writeManualTodayAgriPublishError(w, r, admin.User.Username, "admin.today_agri.manual_publish", dayCN, err)
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.today_agri.manual_publish", "daily_agri_cards", dayCN, "", true, http.StatusOK, map[string]any{
+		"source_type":   dailyAgriSourceTypeManual,
+		"manual_locked": true,
+		"item_count":    len(card.Items),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"status":        "ready",
+		"source_type":   dailyAgriSourceTypeManual,
+		"manual_locked": true,
+		"item_count":    len(card.Items),
+		"card":          card,
+	})
+}
+
+func (s *Server) handleInternalPublishManualTodayAgriCard(w http.ResponseWriter, r *http.Request) {
+	if !validateInternalJobSecret(r) {
+		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_job") {
+		return
+	}
+	var body adminManualTodayAgriRequest
+	if err := decodeJSONBodyLimited(r, &body, 16*1024); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	actor := truncateUTF8Bytes(strings.TrimSpace(r.Header.Get("X-Admin-Actor")), 128)
+	if actor == "" {
+		actor = "codex_automation"
+	}
+	input, dayCN, expectedConfirmation, errorCode := manualDailyAgriPublishInputFromAdminRequest(body, actor)
+	if errorCode != "" {
+		s.recordAdminAuditLog(r, actor, "internal.today_agri.manual_publish", "daily_agri_cards", dayCN, "", false, http.StatusBadRequest, map[string]any{"error_code": errorCode})
+		if errorCode == "confirmation_required" {
+			s.writeJSON(w, http.StatusBadRequest, map[string]any{
+				"error":                 "confirmation_required",
+				"expected_confirmation": expectedConfirmation,
+			})
+			return
+		}
+		s.writeError(w, http.StatusBadRequest, errorCode)
+		return
+	}
+	card, err := s.publishManualTodayAgriCard(r.Context(), input)
+	if err != nil {
+		s.writeManualTodayAgriPublishError(w, r, actor, "internal.today_agri.manual_publish", dayCN, err)
+		return
+	}
+	s.recordAdminAuditLog(r, actor, "internal.today_agri.manual_publish", "daily_agri_cards", dayCN, "", true, http.StatusOK, map[string]any{
+		"source_type":   dailyAgriSourceTypeManual,
+		"manual_locked": true,
+		"item_count":    len(card.Items),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"status":        "ready",
+		"source_type":   dailyAgriSourceTypeManual,
+		"manual_locked": true,
+		"item_count":    len(card.Items),
+		"card":          card,
+	})
+}
+
+func manualDailyAgriPublishInputFromAdminRequest(body adminManualTodayAgriRequest, actor string) (ManualDailyAgriPublishInput, string, string, string) {
+	dayCN := normalizeTodayAgriContextDay(body.DayCN)
+	if dayCN == "" {
+		return ManualDailyAgriPublishInput{}, "", "", "invalid_day_cn"
+	}
+	if _, err := time.Parse("20060102", dayCN); err != nil {
+		return ManualDailyAgriPublishInput{}, dayCN, "", "invalid_day_cn"
+	}
+	expectedConfirmation := "人工发布 " + dayCN
+	if strings.TrimSpace(body.Confirmation) != expectedConfirmation {
+		return ManualDailyAgriPublishInput{}, dayCN, expectedConfirmation, "confirmation_required"
+	}
+	items := make([]DailyAgriCardItem, 0, len(body.Items))
+	for _, item := range body.Items {
+		items = append(items, DailyAgriCardItem{
+			Title:   item.Title,
+			Summary: item.Summary,
+			Source:  item.Source,
+		})
+	}
+	return ManualDailyAgriPublishInput{
+		DayCN:       dayCN,
+		Scope:       dailyAgriDefaultScope,
+		Items:       items,
+		PublishedBy: actor,
+	}, dayCN, expectedConfirmation, ""
+}
+
+func (s *Server) publishManualTodayAgriCard(ctx context.Context, input ManualDailyAgriPublishInput) (DailyAgriCard, error) {
+	ctx, cancel := context.WithTimeout(ctx, adminDashboardTimeout)
+	defer cancel()
+	return s.store.PublishManualDailyAgriCard(ctx, input)
+}
+
+func (s *Server) writeManualTodayAgriPublishError(w http.ResponseWriter, r *http.Request, actor string, action string, dayCN string, err error) {
+	code := strings.TrimSpace(err.Error())
+	if code == "" {
+		code = "internal_error"
+	}
+	status := http.StatusInternalServerError
+	if strings.HasPrefix(code, "invalid_") {
+		status = http.StatusBadRequest
+	}
+	s.logger.Error("manual publish today agri card failed", "day_cn", dayCN, "actor", actor, "action", action, "error", err)
+	s.recordAdminAuditLog(r, actor, action, "daily_agri_cards", dayCN, "", false, status, map[string]any{"error_code": code})
+	s.writeError(w, status, code)
 }
 
 func (s *Server) handleAdminAppUpdateAndroid(w http.ResponseWriter, r *http.Request) {
@@ -2408,7 +2563,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已处理 / 已关闭队列，按账号ID / 手机号 / 最近消息搜索，发送后台回复并关闭或重开会话。", Route: "support"},
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；完整卡码仅财务角色可见。", Route: "gift-cards"},
-		{Title: "今日农情", Status: "ready", Body: "可看生成状态、来源数量和失败原因；owner / content_ops 可直接补跑当天卡片。", Route: "today-agri"},
+		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
 		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
@@ -2442,7 +2597,7 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 			Title:            "今日农情",
 			Model:            dailyModel,
 			Protocol:         dailyAgriMonitoringProtocol(dailyModel),
-			Trigger:          "ECS 定时任务或后台补跑触发；用户打开 App 只读缓存",
+			Trigger:          "ECS 定时任务或后台补跑触发；人工发布锁定后自动任务只读缓存不覆盖",
 			SearchStrategy:   dailyAgriSearchStrategy,
 			ForcedSearch:     true,
 			ThinkingDisabled: dailyAgriMonitoringThinkingDisabled(dailyModel),
@@ -2460,7 +2615,7 @@ func dailyAgriMonitoringThinkingDisabled(model string) bool {
 }
 
 func dailyAgriMonitoringCostNote(model string) string {
-	return "当前生产默认链；固定 qwen3.5-plus，强制 turbo 联网并带来源；近7天、种植侧和去重靠主提示词控制，用户侧不点击外链，不扣问诊次数。"
+	return "当前生产默认链；自动生成固定 qwen3.5-plus，强制 turbo 联网并带来源，近7天、种植侧和去重靠主提示词控制；人工发布不调模型且会锁定当天内容；用户侧不点击外链，不扣问诊次数。"
 }
 
 func filterAdminMonitoringActionRoutes(items []AdminMonitoringActionItem, role string) []AdminMonitoringActionItem {
@@ -3238,7 +3393,7 @@ func (s *Store) ListAdminDailyAgriCards(ctx context.Context, scope string, limit
 	scope = normalizeDailyAgriScope(scope)
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT day_cn, scope, status, content_json, sources_json, model, search_strategy, prompt_version, lease_until, generated_at, error, created_at, updated_at
+		`SELECT day_cn, scope, status, content_json, sources_json, model, search_strategy, prompt_version, source_type, manual_locked, manual_by, manual_at, lease_until, generated_at, error, created_at, updated_at
 		   FROM daily_agri_cards
 		  WHERE scope = ?
 		  ORDER BY day_cn DESC
@@ -3253,14 +3408,19 @@ func (s *Store) ListAdminDailyAgriCards(ctx context.Context, scope string, limit
 	entries := []AdminDailyAgriEntry{}
 	for rows.Next() {
 		var entry AdminDailyAgriEntry
-		var content, sources, model, searchStrategy, promptVersion, errorText sql.NullString
-		var generated sql.NullInt64
-		if err := rows.Scan(&entry.DayCN, &entry.Scope, &entry.Status, &content, &sources, &model, &searchStrategy, &promptVersion, &entry.LeaseUntil, &generated, &errorText, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
+		var content, sources, model, searchStrategy, promptVersion, sourceType, manualBy, errorText sql.NullString
+		var manualAt, generated sql.NullInt64
+		if err := rows.Scan(&entry.DayCN, &entry.Scope, &entry.Status, &content, &sources, &model, &searchStrategy, &promptVersion, &sourceType, &entry.ManualLocked, &manualBy, &manualAt, &entry.LeaseUntil, &generated, &errorText, &entry.CreatedAt, &entry.UpdatedAt); err != nil {
 			return nil, err
 		}
 		entry.Model = nullStringValue(model)
 		entry.SearchStrategy = nullStringValue(searchStrategy)
 		entry.PromptVersion = nullStringValue(promptVersion)
+		entry.SourceType = normalizeDailyAgriSourceType(nullStringValue(sourceType))
+		entry.ManualBy = nullStringValue(manualBy)
+		if manualAt.Valid {
+			entry.ManualAt = int64Ptr(manualAt.Int64)
+		}
 		entry.Error = nullStringValue(errorText)
 		if generated.Valid {
 			entry.GeneratedAt = int64Ptr(generated.Int64)

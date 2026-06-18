@@ -1435,6 +1435,36 @@ button {
   margin-bottom: 12px;
 }
 
+.today-agri-manual {
+  margin-bottom: 12px;
+}
+
+.today-agri-manual-form {
+  display: grid;
+  gap: 12px;
+}
+
+.today-agri-manual-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.today-agri-manual-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fbfcfd;
+  padding: 12px;
+}
+
+.today-agri-manual-fields {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
 .today-agri-items {
   display: grid;
   gap: 10px;

@@ -45,7 +45,7 @@
 - 注销申请：`GET /admin-api/v1/account-deletion-requests`、`POST /admin-api/v1/account-deletion-requests/status`；用户侧 `POST /api/account/deletion-requests` 创建申请后会退出当前设备，后台可按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态。这里的已处理只表示线下核验和处理流程已收口，不代表系统已经自动物理删除或匿名化全部账号数据；会员、订单、礼品卡、反馈、日志和法定留存范围仍需按合规规则处理。
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，可按账号ID、精确事件名、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号、等级和时间范围筛选；精确 `event` 优先于前缀筛选，不展示聊天正文、图片 URL、手机号、token、APK URL 或 SHA-256 原文。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
-- 今日农情：`GET /admin-api/v1/today-agri/cards`、`POST /admin-api/v1/today-agri/generate`。
+- 今日农情：`GET /admin-api/v1/today-agri/cards`、`POST /admin-api/v1/today-agri/generate`、`POST /admin-api/v1/today-agri/manual`；Codex 自动化 / 本机命令行可通过 `scripts/publish-today-agri-manual.ps1` 调用内部 `POST /internal/jobs/today-agri-card/manual`，仍写同一张 `daily_agri_cards`。
 - 检查更新：`GET /admin-api/v1/app-update/android`、`POST /admin-api/v1/app-update/android`、`GET /admin-api/v1/app-update/android/events`；后台可直接维护 Android 版本号、HTTPS APK、SHA-256、文件大小和停更状态，每次保存会追加 `app_release_events` 发布历史，对外 `/api/app/update` 优先读取数据库表 `app_release_configs`，无记录时才回退环境变量。当前默认只做普通更新，`force_update` 兼容字段默认不生效，除非未来显式配置 `APP_UPDATE_ALLOW_FORCE_UPDATE=true`。
 - 账号安全：`POST /admin-api/v1/auth/change-password`；所有后台角色都可进入“账号安全”页修改自己的密码，强制改密账号登录后会先停留在该页。
 - 产品洞察：`GET /admin-api/v1/insights`，首版只读展示今日 / 24h / 7d / 30d 用户增长、登录 session、问诊、图片问诊、App 异常、登录排障、反馈、礼品卡和今日农情失败趋势；同时聚合反馈主题固定关键词命中、App 事件分类、Top App 事件和礼品卡失败原因。该接口只返回计数、比例、事件名和固定分类，不返回聊天全文、反馈正文、图片 URL、手机号、token、模型 Key 或礼品卡完整码。

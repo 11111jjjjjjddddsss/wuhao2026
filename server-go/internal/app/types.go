@@ -141,10 +141,14 @@ type DailyAgriCardItem struct {
 }
 
 type DailyAgriCard struct {
-	DateCN      string              `json:"date_cn"`
-	Title       string              `json:"title"`
-	Items       []DailyAgriCardItem `json:"items"`
-	GeneratedAt int64               `json:"generated_at,omitempty"`
+	DateCN       string              `json:"date_cn"`
+	Title        string              `json:"title"`
+	Items        []DailyAgriCardItem `json:"items"`
+	GeneratedAt  int64               `json:"generated_at,omitempty"`
+	SourceType   string              `json:"source_type,omitempty"`
+	ManualLocked bool                `json:"manual_locked,omitempty"`
+	ManualBy     string              `json:"manual_by,omitempty"`
+	ManualAt     int64               `json:"manual_at,omitempty"`
 }
 
 type DailyAgriSearchSource struct {

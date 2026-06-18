@@ -240,6 +240,12 @@ Invoke-HttpProbe `
     -ExpectedStatus @(200) `
     -RequiredBodyMarkers $appUpdateRequiredMarkers
 Invoke-HttpProbe `
+    -Name "api_internal_today_agri_manual_unauthorized" `
+    -Url "https://api.nongjiqiancha.cn/internal/jobs/today-agri-card/manual" `
+    -ExpectedStatus @(401) `
+    -Method "POST" `
+    -Body "{}"
+Invoke-HttpProbe `
     -Name "api_upload_missing_file_probe" `
     -Url "https://api.nongjiqiancha.cn/uploads/blackbox-missing-file.jpg" `
     -ExpectedStatus @(404)
@@ -291,7 +297,8 @@ foreach ($adminWritePath in @(
     "/admin-api/v1/gift-cards/void",
     "/admin-api/v1/support/messages",
     "/admin-api/v1/support/conversations/status",
-    "/admin-api/v1/today-agri/generate"
+    "/admin-api/v1/today-agri/generate",
+    "/admin-api/v1/today-agri/manual"
 )) {
     $probeName = "admin_protected_post_" + (
         $adminWritePath.Trim("/") -replace "^admin-api/v1/", "" -replace "[^A-Za-z0-9]+", "_"
