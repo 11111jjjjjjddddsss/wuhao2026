@@ -9,6 +9,8 @@
 
 - 继续按交互类 P1 修复 Android 登录态体验：图片上传 `/upload` 遇到 401 会调用统一登录失效链路，清本地登录态并回登录页，登录页显示“登录已失效，请重新登录后继续使用”；用户主动“退出当前设备”改为本机退出优先，远端吊销请求弱网 / 失败时仍清本地 token、取消当前账号 pending 任务并回登录页，远端失败只记脱敏日志。登录失效和主动退出用 `AuthSessionClearReason.Invalid / LocalLogout` 区分，避免主动退出也显示“登录已失效”。`check-android-build-parity.ps1` 已加入静态守卫，防止上传 401 回登录和弱网退出兜底回潮。本轮不发布 APK。
 
+- 提交 `c7b2b9dc` 已部署到 ECS：发布脚本在远端重新跑 `go test ./...` 并重建二进制，Nginx active upstream 切到 `3001`，后台 `/admin-api/` upstream 同步为 `3001`；readiness 显示公网 `/healthz` 返回 `revision=c7b2b9dc`、严格鉴权、百炼、短信、Redis 和 OSS 上传均正常，后台未登录接口继续 401。该部署只更新后端服务和运维发布链，不发布 Android APK、不配置检查更新。
+
 - 继续补运维假绿：`rollback-ecs-server.ps1` 回滚会同步恢复同后缀 `REVISION.bak-*`，有 revision 的备份会在 upstream 和 public healthz 两处校验 revision；legacy 老备份没有 revision 时只允许在生产健康检查通过后带提示放行，避免把回滚前的新 commit 误当作已回滚证据。`check-ecs-readiness.ps1` 缺 `server_revision` 会失败；`check-resource-capacity.ps1` 会解析短信巡检输出的 `sms_package_status`，只有 `confirmed` 才不提醒，避免普通短信套餐包余额仍需控制台确认时资源巡检汇总成 ready。
 
 - 按用户复核继续收口主聊天内部背景提示：`chat.go` 里历史轮次时间 / 地点前缀统一改成“后台背景时间 / 地点（仅供参考）”，不再写“仅供判断对话间隔 / 地区背景”。这是为了保留农业场景里按时间和地点判断农时、病虫窗口、区域管理建议的空间，同时继续避免模型主动扩展过往背景废话；不新增内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
