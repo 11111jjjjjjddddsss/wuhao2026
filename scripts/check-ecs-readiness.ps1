@@ -246,6 +246,8 @@ done
 server_revision=$(sed -nE 's/.*"revision":"([^"]*)".*/\1/p' "$health_body" 2>/dev/null | head -n 1)
 if [ -z "$server_revision" ]; then
   echo 'server_revision=missing'
+  echo 'healthz revision is missing' >&2
+  exit 12
 else
   echo "server_revision=$server_revision"
 fi

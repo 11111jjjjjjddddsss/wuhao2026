@@ -340,7 +340,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		region = &resolved
 	}
 	injectedTime := FormatShanghaiNowToSecond(s.shanghai, time.Now())
-	contextHeader := fmt.Sprintf("当前时间：%s（Asia/Shanghai）；用户地点：%s；地点可信度：%s", injectedTime, region.Region, region.Reliability)
+	contextHeader := fmt.Sprintf("后台背景时间：%s（Asia/Shanghai，仅供参考）；后台背景地点：%s；地点可信度：%s（仅供参考）", injectedTime, region.Region, region.Reliability)
 	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
 	promptChars := countBailianMessageContentRunes(promptMessages)
@@ -1033,14 +1033,14 @@ func (s *Server) roundToUserContent(round SessionRound, includeImages bool) any 
 func (round SessionRound) userTextWithContextTime(loc *time.Location) string {
 	contextLines := []string{}
 	if timestamp := FormatShanghaiUnixMilliToSecond(loc, round.CreatedAt); timestamp != "" {
-		contextLines = append(contextLines, "后台背景时间："+timestamp+"（Asia/Shanghai，仅供判断对话间隔）")
+		contextLines = append(contextLines, "后台背景时间："+timestamp+"（Asia/Shanghai，仅供参考）")
 	}
 	if region := strings.TrimSpace(round.Region); region != "" && region != "未知" {
 		reliability := strings.TrimSpace(string(round.RegionReliability))
 		if reliability == "" {
 			reliability = string(RegionUnreliable)
 		}
-		contextLines = append(contextLines, "后台背景地点："+region+"；地点可信度："+reliability+"（仅供判断地区背景）")
+		contextLines = append(contextLines, "后台背景地点："+region+"；地点可信度："+reliability+"（仅供参考）")
 	}
 	if len(contextLines) == 0 {
 		return round.User

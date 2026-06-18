@@ -80,9 +80,23 @@ fun LoginGate(
     onPrivacyAccepted: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    var loggedIn by remember { mutableStateOf(IdManager.isLoggedIn()) }
+    val initialLoggedIn = remember { IdManager.isLoggedIn() }
+    var loggedIn by remember { mutableStateOf(initialLoggedIn) }
+    var authInvalidMessage by remember {
+        mutableStateOf(
+            if (!initialLoggedIn && IdManager.consumeAuthInvalidLoginHint()) {
+                "登录已失效，请重新登录后继续使用"
+            } else {
+                null
+            }
+        )
+    }
     DisposableEffect(Unit) {
-        val removeListener = SessionApi.addAuthInvalidListener {
+        val removeListener = SessionApi.addAuthInvalidListener { reason ->
+            authInvalidMessage = when (reason) {
+                SessionApi.AuthSessionClearReason.Invalid -> "登录已失效，请重新登录后继续使用"
+                SessionApi.AuthSessionClearReason.LocalLogout -> null
+            }
             loggedIn = false
         }
         onDispose { removeListener() }
@@ -96,7 +110,11 @@ fun LoginGate(
     } else {
         LoginScreen(
             onPrivacyAccepted = ::handlePrivacyAccepted,
-            onLoginSuccess = { loggedIn = true }
+            initialMessage = authInvalidMessage,
+            onLoginSuccess = {
+                authInvalidMessage = null
+                loggedIn = true
+            }
         )
     }
 }
@@ -104,6 +122,7 @@ fun LoginGate(
 @Composable
 private fun LoginScreen(
     onPrivacyAccepted: () -> Unit,
+    initialMessage: String? = null,
     onLoginSuccess: () -> Unit
 ) {
     LaunchedEffect(Unit) {
@@ -116,7 +135,7 @@ private fun LoginScreen(
     var agreed by remember(context) { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
     var busyAction by remember { mutableStateOf<LoginBusyAction?>(null) }
     val busy = busyAction != null
-    var message by remember { mutableStateOf<String?>(null) }
+    var message by remember { mutableStateOf(initialMessage) }
     var countdown by remember { mutableIntStateOf(0) }
     var countdownPhone by remember { mutableStateOf<String?>(null) }
     var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
@@ -202,6 +221,11 @@ private fun LoginScreen(
             countdown -= 1
         } else {
             countdownPhone = null
+        }
+    }
+    LaunchedEffect(initialMessage) {
+        if (!initialMessage.isNullOrBlank()) {
+            message = initialMessage
         }
     }
 

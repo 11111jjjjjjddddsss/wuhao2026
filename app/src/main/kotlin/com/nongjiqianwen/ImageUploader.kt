@@ -47,6 +47,15 @@ object ImageUploader {
 
     private fun maskRemoteUrl(url: String): String =
         url.replace(Regex("/([^/]+)$"), "/***")
+
+    private fun recordUploadError(errorRef: AtomicReference<String?>, error: String?) {
+        val normalized = error?.takeIf { it.isNotBlank() } ?: UPLOAD_FAIL_MESSAGE
+        if (normalized == UPLOAD_AUTH_EXPIRED_MESSAGE) {
+            errorRef.set(normalized)
+        } else {
+            errorRef.compareAndSet(null, normalized)
+        }
+    }
     
     /** 解码失败时调用方使用的固定提示文案（不得改语义） */
     const val DECODE_FAIL_MESSAGE = "图片无法读取，请重新选择"
@@ -361,6 +370,9 @@ object ImageUploader {
                                 "purpose" to purpose.name.lowercase()
                             )
                         )
+                        if (code == 401) {
+                            SessionApi.notifyAuthInvalid()
+                        }
                         onError(if (code == 401) UPLOAD_AUTH_EXPIRED_MESSAGE else UPLOAD_FAIL_MESSAGE)
                         return@use
                     }
@@ -457,13 +469,13 @@ object ImageUploader {
                         purpose = purpose,
                         onError = { error ->
                             Log.e(TAG, "图片[$index] 上传失败")
-                            errorRef.set(error)
+                            recordUploadError(errorRef, error)
                             latch.countDown()
                         }
                     )
                 } catch (e: Exception) {
                     Log.e(TAG, "图片[$index] 上传异常：${e.javaClass.simpleName}")
-                    errorRef.set(UPLOAD_FAIL_MESSAGE)
+                    recordUploadError(errorRef, UPLOAD_FAIL_MESSAGE)
                     latch.countDown()
                 }
             }.start()

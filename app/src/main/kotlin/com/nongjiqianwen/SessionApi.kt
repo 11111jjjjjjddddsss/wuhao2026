@@ -51,7 +51,12 @@ object SessionApi {
     private val runtimeGeneration = AtomicInteger(0)
     private val sessionGeneration = AtomicInteger(-1)
     private val clientLogLastSentAtMs = ConcurrentHashMap<String, Long>()
-    private val authInvalidListeners = CopyOnWriteArraySet<() -> Unit>()
+    private val authSessionClearedListeners = CopyOnWriteArraySet<(AuthSessionClearReason) -> Unit>()
+
+    enum class AuthSessionClearReason {
+        Invalid,
+        LocalLogout
+    }
 
     data class StreamOptions(
         val clientMsgId: String,
@@ -386,7 +391,10 @@ object SessionApi {
         val base = baseUrl()
         val token = authTokenSync()
         if (base.isEmpty() || token.isNullOrBlank()) {
-            clearLocalAuthRuntimeSession(notifyListeners = true)
+            clearLocalAuthRuntimeSession(
+                notifyListeners = true,
+                reason = AuthSessionClearReason.LocalLogout
+            )
             mainHandler.post { onResult(true) }
             return
         }
@@ -404,27 +412,38 @@ object SessionApi {
                     message = "Auth logout failed",
                     attrs = mapOf(
                         "reason" to "network",
-                        "exception" to e.javaClass.simpleName
+                        "exception" to e.javaClass.simpleName,
+                        "remote_logout_confirmed" to false,
+                        "local_logout" to true
                     )
                 )
-                mainHandler.post { onResult(false) }
+                clearLocalAuthRuntimeSession(
+                    notifyListeners = true,
+                    reason = AuthSessionClearReason.LocalLogout
+                )
+                mainHandler.post { onResult(true) }
             }
 
             override fun onResponse(call: Call, response: Response) {
                 response.use {
-                    val ok = it.isSuccessful || it.code == 401
-                    if (!ok) {
+                    val remoteOk = it.isSuccessful || it.code == 401
+                    if (!remoteOk) {
                         reportClientLog(
                             level = if (it.code >= 500) "error" else "warn",
                             event = "auth.logout_failed",
                             message = "Auth logout failed",
-                            attrs = mapOf("http_status" to it.code)
+                            attrs = mapOf(
+                                "http_status" to it.code,
+                                "remote_logout_confirmed" to false,
+                                "local_logout" to true
+                            )
                         )
                     }
-                    if (ok) {
-                        clearLocalAuthRuntimeSession(notifyListeners = true)
-                    }
-                    mainHandler.post { onResult(ok) }
+                    clearLocalAuthRuntimeSession(
+                        notifyListeners = true,
+                        reason = AuthSessionClearReason.LocalLogout
+                    )
+                    mainHandler.post { onResult(true) }
                 }
             }
         })
@@ -465,7 +484,10 @@ object SessionApi {
                         )
                     }
                     if (ok) {
-                        clearLocalAuthRuntimeSession(notifyListeners = true)
+                        clearLocalAuthRuntimeSession(
+                            notifyListeners = true,
+                            reason = AuthSessionClearReason.LocalLogout
+                        )
                     }
                     postToMain { onResult(ok) }
                 }
@@ -494,20 +516,30 @@ object SessionApi {
         currentStreamCall.getAndSet(null)?.cancel()
     }
 
-    fun addAuthInvalidListener(listener: () -> Unit): () -> Unit {
-        authInvalidListeners.add(listener)
-        return { authInvalidListeners.remove(listener) }
+    fun addAuthInvalidListener(listener: (AuthSessionClearReason) -> Unit): () -> Unit {
+        authSessionClearedListeners.add(listener)
+        return { authSessionClearedListeners.remove(listener) }
     }
 
-    private fun notifyAuthInvalid() {
-        clearLocalAuthRuntimeSession(notifyListeners = true)
+    fun notifyAuthInvalid() {
+        clearLocalAuthRuntimeSession(
+            notifyListeners = true,
+            reason = AuthSessionClearReason.Invalid
+        )
     }
 
-    private fun clearLocalAuthRuntimeSession(notifyListeners: Boolean = false) {
+    private fun clearLocalAuthRuntimeSession(
+        notifyListeners: Boolean = false,
+        reason: AuthSessionClearReason = AuthSessionClearReason.Invalid
+    ) {
         val previousAuthUserId = IdManager.getAuthenticatedUserId()
         val appContext = IdManager.applicationContextOrNull()
         if (!previousAuthUserId.isNullOrBlank() && appContext != null) {
             PendingChatSendWorkScheduler.cancelAllForAuthUserId(appContext, previousAuthUserId)
+        }
+        when (reason) {
+            AuthSessionClearReason.Invalid -> IdManager.markAuthInvalidLoginHint()
+            AuthSessionClearReason.LocalLogout -> IdManager.clearAuthInvalidLoginHint()
         }
         IdManager.clearAuthSession()
         sessionGeneration.set(-1)
@@ -515,7 +547,7 @@ object SessionApi {
         currentStreamCall.getAndSet(null)?.cancel()
         if (notifyListeners) {
             postToMain {
-                authInvalidListeners.forEach { listener -> listener() }
+                authSessionClearedListeners.forEach { listener -> listener(reason) }
             }
         }
     }

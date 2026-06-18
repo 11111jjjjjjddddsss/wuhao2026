@@ -410,10 +410,10 @@ func TestBuildPromptMessagesIncludesHistoricalRoundTimeWhenAvailable(t *testing.
 	if !ok {
 		t.Fatalf("expected historical user message to be text, got %#v", messages[2].Content)
 	}
-	if !strings.Contains(historicalUser, "后台背景时间：2026-04-28 21:34:10（Asia/Shanghai，仅供判断对话间隔）") {
+	if !strings.Contains(historicalUser, "后台背景时间：2026-04-28 21:34:10（Asia/Shanghai，仅供参考）") {
 		t.Fatalf("expected historical time prefix, got %q", historicalUser)
 	}
-	if !strings.Contains(historicalUser, "后台背景地点：山东寿光；地点可信度：reliable（仅供判断地区背景）") {
+	if !strings.Contains(historicalUser, "后台背景地点：山东寿光；地点可信度：reliable（仅供参考）") {
 		t.Fatalf("expected historical region prefix, got %q", historicalUser)
 	}
 	if !strings.Contains(historicalUser, "番茄叶子发黄") {

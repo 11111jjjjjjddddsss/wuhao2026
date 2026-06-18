@@ -438,6 +438,24 @@ if ($failures.Count -eq 0) {
         "Foreground chat streams must pass the captured session generation explicitly, matching pending image-send recovery."
     Require-NoMatch $failures $imageUploader 'Log\.e\s*\(\s*TAG\s*,\s*"[^"]*"\s*,\s*e\s*\)|e\.message|error=\$errorMsg|上传异常:\s*\$\{e\.message\}' `
         "Image upload/compression logs must not print raw exception messages, stack traces, backend errors, image URLs, or other sensitive details."
+    Require-Match $failures $sessionApi 'enum\s+class\s+AuthSessionClearReason(?s:.*?)Invalid(?s:.*?)LocalLogout' `
+        "SessionApi must distinguish expired auth from user-initiated local logout."
+    Require-Match $failures $sessionApi 'fun\s+notifyAuthInvalid\s*\(\s*\)(?s:.*?)reason\s*=\s*AuthSessionClearReason\.Invalid' `
+        "SessionApi.notifyAuthInvalid must notify the login gate with an expired-auth reason."
+    Require-Match $failures $imageUploader 'if\s*\(\s*code\s*==\s*401\s*\)\s*\{\s*SessionApi\.notifyAuthInvalid\s*\(\s*\)\s*\}' `
+        "Image upload 401 must clear auth state and notify the login gate instead of only showing a local upload error."
+    Require-Match $failures $loginScreen 'SessionApi\.addAuthInvalidListener\s*\{\s*reason\s*->(?s:.*?)AuthSessionClearReason\.Invalid\s*->\s*"登录已失效，请重新登录后继续使用"(?s:.*?)AuthSessionClearReason\.LocalLogout\s*->\s*null' `
+        "LoginGate must explain expired auth without showing an expired-login warning after user-initiated logout."
+    Require-Match $failures $sessionApi 'fun\s+logoutCurrentSession\b(?s:.*?)override\s+fun\s+onFailure(?s:.*?)clearLocalAuthRuntimeSession\s*\((?s:.*?)reason\s*=\s*AuthSessionClearReason\.LocalLogout(?s:.*?)mainHandler\.post\s*\{\s*onResult\(true\)\s*\}' `
+        "Logout must clear the current device locally even when the remote logout request fails."
+    Require-Match $failures $idManager 'KEY_AUTH_INVALID_LOGIN_HINT(?s:.*?)fun\s+markAuthInvalidLoginHint(?s:.*?)fun\s+clearAuthInvalidLoginHint(?s:.*?)fun\s+consumeAuthInvalidLoginHint' `
+        "IdManager must persist a one-time expired-login hint across cold start."
+    Require-Match $failures $idManager 'fun\s+(?:\w+\.)?hasValidAuthSession\(\)(?s:.*?)hasStoredSession(?s:.*?)putBoolean\(KEY_AUTH_INVALID_LOGIN_HINT,\s*true\)' `
+        "Expired stored auth sessions must set the login hint before returning logged out."
+    Require-Match $failures $loginScreen 'IdManager\.consumeAuthInvalidLoginHint\s*\(\s*\)(?s:.*?)登录已失效，请重新登录后继续使用' `
+        "LoginGate must consume and show the persisted expired-login hint on cold start."
+    Require-Match $failures $imageUploader 'private\s+fun\s+recordUploadError(?s:.*?)UPLOAD_AUTH_EXPIRED_MESSAGE(?s:.*?)errorRef\.set\(normalized\)(?s:.*?)compareAndSet\(null,\s*normalized\)' `
+        "Batch image upload must keep auth-expired errors higher priority than generic upload failures."
     Require-Match $failures $chatScreen 'private\s+fun\s+Context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId:\s*String\s*\)(?s:.*?)remove\("\$CHAT_CACHE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_STREAM_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$CHAT_COMPOSER_DRAFT_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_CACHE_DAY_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_CARD_CACHE_KEY_PREFIX\$chatScopeId"\)(?s:.*?)remove\("\$TODAY_AGRI_MAIN_SHOWN_DAY_KEY_PREFIX\$chatScopeId"\)(?s:.*?)commit\s*\(\s*\)' `
         "Chat clean-state reset must synchronously remove local window, stream draft, composer draft, today-agri cache and shown-day marker."
     Require-Match $failures $chatScreen 'fun\s+applyChatHistoryCleared\s*\(\s*\)(?s:.*?)SessionApi\.resetUiRuntimeForCleanState\s*\(\s*\)(?s:.*?)advanceChatHistoryClearEpoch\s*\(\s*\)(?s:.*?)context\.clearLocalChatHistoryStateSync\s*\(\s*chatScopeId\s*\)(?s:.*?)resetTodayAgriRuntimeAfterHistoryClear\(\)(?s:.*?)messages\.clear\s*\(\s*\)(?s:.*?)initialBottomSnapDone\s*=\s*false' `

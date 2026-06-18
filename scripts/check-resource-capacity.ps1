@@ -743,9 +743,22 @@ if (-not $SkipAuthUsage) {
     Write-Host "== sms usage =="
     $smsScript = Join-Path $PSScriptRoot "check-sms-usage.ps1"
     if (Test-Path -LiteralPath $smsScript) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $smsScript
-        if ($LASTEXITCODE -ne 0) {
+        $smsOutput = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $smsScript 2>&1
+        $smsExitCode = $LASTEXITCODE
+        $smsLines = @($smsOutput | ForEach-Object { "$_" })
+        $smsLines | ForEach-Object { Write-Host $_ }
+        if ($smsExitCode -ne 0) {
             Add-WarningItem "sms_usage_check_failed"
+        }
+        $smsPackageStatusLine = $smsLines | Where-Object { $_ -match '^sms_package_status=' } | Select-Object -Last 1
+        $smsPackageStatus = ""
+        if (-not [string]::IsNullOrWhiteSpace($smsPackageStatusLine)) {
+            $smsPackageStatus = ($smsPackageStatusLine -replace '^sms_package_status=', '').Trim()
+        }
+        if ([string]::IsNullOrWhiteSpace($smsPackageStatus)) {
+            Add-WarningItem "sms_package_status_not_reported"
+        } elseif ($smsPackageStatus -ne "confirmed") {
+            Add-WarningItem "sms_package_status_$smsPackageStatus"
         }
     } else {
         Add-WarningItem "sms_usage_script_missing"

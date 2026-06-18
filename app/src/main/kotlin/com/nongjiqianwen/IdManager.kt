@@ -17,6 +17,7 @@ object IdManager {
     private const val KEY_AUTH_TOKEN = "auth_token"
     private const val KEY_AUTH_EXPIRES_AT = "auth_expires_at"
     private const val KEY_AUTH_PHONE_MASK = "auth_phone_mask"
+    private const val KEY_AUTH_INVALID_LOGIN_HINT = "auth_invalid_login_hint"
     private const val KEY_DEVICE_ID = "device_id"
     private const val KEY_SESSION_GENERATION = "session_generation"
 
@@ -81,6 +82,7 @@ object IdManager {
             .putString(KEY_AUTH_TOKEN, normalizedToken)
             .putLong(KEY_AUTH_EXPIRES_AT, expiresAt)
             .putString(KEY_AUTH_PHONE_MASK, phoneMask.orEmpty())
+            .remove(KEY_AUTH_INVALID_LOGIN_HINT)
             .apply()
     }
 
@@ -93,6 +95,25 @@ object IdManager {
             .remove(KEY_AUTH_PHONE_MASK)
             .remove(KEY_SESSION_GENERATION)
             .apply()
+    }
+
+    fun markAuthInvalidLoginHint() {
+        val prefs = prefs() ?: return
+        prefs.edit().putBoolean(KEY_AUTH_INVALID_LOGIN_HINT, true).apply()
+    }
+
+    fun clearAuthInvalidLoginHint() {
+        val prefs = prefs() ?: return
+        prefs.edit().remove(KEY_AUTH_INVALID_LOGIN_HINT).apply()
+    }
+
+    fun consumeAuthInvalidLoginHint(): Boolean {
+        val prefs = prefs() ?: return false
+        val shouldShow = prefs.getBoolean(KEY_AUTH_INVALID_LOGIN_HINT, false)
+        if (shouldShow) {
+            prefs.edit().remove(KEY_AUTH_INVALID_LOGIN_HINT).apply()
+        }
+        return shouldShow
     }
 
     fun resetUserId(): String {
@@ -136,8 +157,13 @@ object IdManager {
         val expiresAt = getLong(KEY_AUTH_EXPIRES_AT, 0L)
         val authUserId = getString(KEY_AUTH_USER_ID, null)?.trim().orEmpty()
         val token = getString(KEY_AUTH_TOKEN, null)?.trim().orEmpty()
-        return expiresAt > System.currentTimeMillis() &&
+        val hasStoredSession = authUserId.isNotEmpty() || token.isNotEmpty() || expiresAt > 0L
+        val valid = expiresAt > System.currentTimeMillis() &&
             authUserId.startsWith("acct_") &&
             token.isNotEmpty()
+        if (!valid && hasStoredSession) {
+            edit().putBoolean(KEY_AUTH_INVALID_LOGIN_HINT, true).apply()
+        }
+        return valid
     }
 }

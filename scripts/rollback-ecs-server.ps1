@@ -109,7 +109,7 @@ read_active_port() {
   printf '%s' "`$matches"
 }
 echo backups
-find "`$install_dir" -maxdepth 1 -type f -name 'nongji-server.bak-*' -printf '%f\n' | sort -r | head -20
+find "`$install_dir" -maxdepth 1 -type f -name 'nongji-server.bak-*' -printf '%f\n' | sort -r | sed -n '1,20p'
 echo current
 ls -l "`$install_dir/nongji-server"
 active_port=`$(read_active_port)
@@ -191,6 +191,8 @@ pre_rollback_assets_backup=''
 pre_rollback_migrations_backup=''
 pre_rollback_gomod_backup=''
 pre_rollback_gosum_backup=''
+pre_rollback_revision_backup=''
+rollback_revision_check_required=0
 
 restore_pre_switch_rollback() {
   if [ "`$installed_rollback_binary" != "1" ] || [ "`$switch_completed" = "1" ]; then
@@ -214,7 +216,10 @@ restore_pre_switch_rollback() {
   if [ -n "`$pre_rollback_gosum_backup" ] && [ -f "`$pre_rollback_gosum_backup" ]; then
     cp -a "`$pre_rollback_gosum_backup" "`$install_dir/go.sum" || true
   fi
-  chown -R nongji:nongji "`$install_dir/nongji-server" "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" 2>/dev/null || true
+  if [ -n "`$pre_rollback_revision_backup" ] && [ -f "`$pre_rollback_revision_backup" ]; then
+    cp -a "`$pre_rollback_revision_backup" "`$install_dir/REVISION" || true
+  fi
+  chown -R nongji:nongji "`$install_dir/nongji-server" "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" "`$install_dir/REVISION" 2>/dev/null || true
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
 
@@ -248,7 +253,34 @@ restore_matching_runtime_backup() {
   else
     echo "go.sum backup not found for `$suffix; keeping current go.sum" >&2
   fi
-  chown -R nongji:nongji "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" 2>/dev/null || true
+  if [ -f "`$install_dir/REVISION.bak-`$suffix" ]; then
+    cp -a "`$install_dir/REVISION.bak-`$suffix" "`$install_dir/REVISION"
+    rollback_revision_check_required=1
+    echo "restored REVISION.bak-`$suffix"
+  else
+    rollback_revision_check_required=0
+    printf 'rollback-%s\n' "`$suffix" > "`$install_dir/REVISION"
+    echo "REVISION backup not found for `$suffix; wrote rollback-`$suffix; legacy backup health may not expose revision" >&2
+  fi
+  chown -R nongji:nongji "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" "`$install_dir/REVISION" 2>/dev/null || true
+}
+
+check_rollback_revision() {
+  body="`$1"
+  stage="`$2"
+  if grep -q '"revision":"' "`$body" 2>/dev/null; then
+    if [ -z "`$expected_revision" ] || ! grep -q "\"revision\":\"`$expected_revision\"" "`$body" 2>/dev/null; then
+      echo "rollback `$stage revision mismatch; expected `${expected_revision:-missing}" >&2
+      return 1
+    fi
+    return 0
+  fi
+  if [ "`$rollback_revision_check_required" = "1" ]; then
+    echo "rollback `$stage revision missing; expected `$expected_revision" >&2
+    return 1
+  fi
+  echo "rollback `$stage revision unavailable; allowing legacy pre-revision backup after production health checks" >&2
+  return 0
 }
 
 echo rollback "$BackupName"
@@ -271,10 +303,15 @@ if [ -f "`$install_dir/go.sum" ]; then
   pre_rollback_gosum_backup="`$install_dir/go.sum.pre-rollback-`$pre_rollback_suffix"
   cp -a "`$install_dir/go.sum" "`$pre_rollback_gosum_backup"
 fi
+if [ -f "`$install_dir/REVISION" ]; then
+  pre_rollback_revision_backup="`$install_dir/REVISION.pre-rollback-`$pre_rollback_suffix"
+  cp -a "`$install_dir/REVISION" "`$pre_rollback_revision_backup"
+fi
 install -m 0755 -o nongji -g nongji "`$backup" "`$install_dir/nongji-server.new"
 mv "`$install_dir/nongji-server.new" "`$install_dir/nongji-server"
 installed_rollback_binary=1
 restore_matching_runtime_backup "`$rollback_backup_suffix"
+expected_revision=`$(tr -d '\r\n' < "`$install_dir/REVISION" | head -c 64)
 
 write_slot_unit() {
   port="`$1"
@@ -332,6 +369,10 @@ if [ "`$upstream_status" != "200" ]; then
   exit 29
 fi
 require_production_health "`$upstream_body"
+if ! check_rollback_revision "`$upstream_body" upstream; then
+  cat "`$upstream_body" || true
+  exit 29
+fi
 
 nginx_backup="`$nginx_site.rollback-bak-`$(date +%Y%m%d%H%M%S)"
 cp -a "`$nginx_site" "`$nginx_backup"
@@ -399,6 +440,10 @@ if [ "`$health_status" != "200" ]; then
   exit 30
 fi
 if ! require_production_health "`$health_body"; then
+  restore_nginx_after_switch
+  exit 31
+fi
+if ! check_rollback_revision "`$health_body" public_health; then
   restore_nginx_after_switch
   exit 31
 fi
