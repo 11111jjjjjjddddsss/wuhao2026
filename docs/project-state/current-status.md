@@ -10,6 +10,7 @@
 
 ## 当前代码真相
 
+- 2026-06-19 提交 `123d5f59` 已通过 `scripts/deploy-ecs-server.ps1` 部署到 ECS 双端口 slot，部署包提交为 `123d5f59`，远端 `go test ./...` 通过，Nginx active upstream 已切到 `3000`，`check-ecs-readiness.ps1` 显示公网 healthz 200 且 `revision=123d5f59`、`ok=true`、`auth_strict=true`、`bailian/sms/redis/upload_storage=ok`，后台未登录 `/admin-api/v1/auth/me` 仍为 401。该部署只更新后端服务、`server-go/assets` 和运维脚本对应的服务端行为，不发布 Android APK，不开启检查更新。
 - 2026-06-19 继续按“全盘挑刺、联网校准”收口两处实际风险：主聊天 `chat.go` 组装提示词时，记忆文档系统消息不再写“用于上下文承接和减少重复追问”，而是和主锚点保持同一口径，标成“后台背景信息中的记忆摘要，只作静默参考，回答聚焦本轮问题”；历史轮次时间 / 地点前缀也从“历史轮次时间 / 地点”弱化为“后台背景时间 / 地点，仅供判断对话间隔 / 地区背景”。这仍是提示词表达收口，不是内容过滤、关键词拦截、硬字数卡或 `max_tokens`。同时后端发布链新增机器可读 revision：`deploy-ecs-server.ps1` 会写 `/opt/nongjiqiancha/server/REVISION`，`/healthz` 返回 `revision`，发布切流前后校验 revision 等于本次 commit，公网 Nginx reload 后会等待 healthz 也露出本次 revision 再通过，`check-ecs-readiness.ps1` 打印 `server_revision`，避免后续再靠猜判断线上是否部署。
 - 2026-06-19 按用户确认，主对话锚点 `server-go/assets/system_anchor.txt` 的 `B. 信息使用` 第 `(8)` 条已从单独约束“记忆摘要”扩展为约束“后台背景信息（包括记忆摘要、历史轮次、用户画像、时间地点及系统补充）”。当前口径是：这些背景只作静默参考，回答聚焦用户本轮问题；非直接相关时，不主动提及、展开、串联过往内容，也不追加基于背景信息的顺带建议。该改动只属于主对话提示词收口，用于减少模型把记忆 / 上下文 / 用户画像带成废话尾巴；不修改记忆文档提示词、今日农情提示词、模型参数，不新增后端内容过滤、关键词拦截、相似度硬拦截、字数硬卡点或 `max_tokens` 截断。
 - 2026-06-19 主对话锚点收口提交 `c8caace6` 已通过 `scripts/deploy-ecs-server.ps1` 部署到 ECS 双端口 slot，部署包提交为 `c8caace6`，线上 Nginx active upstream 已切到 `3001`，`check-ecs-readiness.ps1` 显示公网 healthz 200、`ok=true`、`auth_strict=true`、`bailian/sms/redis/upload_storage=ok`，后台未登录 `/admin-api/v1/auth/me` 仍为 401。该部署只更新后端服务和 `server-go/assets`，不发布 Android APK，不开启检查更新。
