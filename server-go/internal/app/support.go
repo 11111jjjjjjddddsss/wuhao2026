@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -212,7 +213,7 @@ func (s *Server) handleMarkSupportRead(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleInternalSupportMessages(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSupportAdminSecret(w, r) {
+	if !s.requireInternalSupportAdminSecret(w, r) {
 		return
 	}
 	userID := strings.TrimSpace(r.URL.Query().Get("user_id"))
@@ -233,7 +234,7 @@ func (s *Server) handleInternalSupportMessages(w http.ResponseWriter, r *http.Re
 }
 
 func (s *Server) handleInternalSupportConversations(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSupportAdminSecret(w, r) {
+	if !s.requireInternalSupportAdminSecret(w, r) {
 		return
 	}
 	filter, validationError := parseSupportConversationQuery(r.URL.Query(), time.Now())
@@ -261,7 +262,7 @@ func (s *Server) handleInternalSupportConversations(w http.ResponseWriter, r *ht
 }
 
 func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSupportAdminSecret(w, r) {
+	if !s.requireInternalSupportAdminSecret(w, r) {
 		return
 	}
 	var body supportAdminMessageRequest
@@ -334,6 +335,23 @@ func (s *Server) requireSupportAdminSecret(w http.ResponseWriter, r *http.Reques
 		return false
 	}
 	return true
+}
+
+func (s *Server) requireInternalSupportAdminSecret(w http.ResponseWriter, r *http.Request) bool {
+	if !isInternalSupportClient(r) {
+		s.writeError(w, http.StatusForbidden, "internal_support_ip_required")
+		return false
+	}
+	return s.requireSupportAdminSecret(w, r)
+}
+
+func isInternalSupportClient(r *http.Request) bool {
+	clientIP := normalizeIPLiteral(GetClientIP(r))
+	parsed := net.ParseIP(clientIP)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate()
 }
 
 func normalizeSupportMessagePayload(raw string, images []string) (string, []string, string) {

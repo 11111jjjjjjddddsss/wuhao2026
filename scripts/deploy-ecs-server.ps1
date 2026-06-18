@@ -2,7 +2,9 @@ param(
     [string]$RegionId = "cn-beijing",
     [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
     [string]$Commit = "",
+    [string]$MigrationDiffBase = "",
     [int]$ChunkSize = 20000,
+    [switch]$AllowHighRiskMigrations,
     [switch]$PackageOnly
 )
 
@@ -137,6 +139,56 @@ $serverDir = Join-Path $repoRoot "server-go"
 if ([string]::IsNullOrWhiteSpace($Commit)) {
     $Commit = (& git -C $repoRoot rev-parse --short HEAD).Trim()
 }
+
+$migrationRiskScript = Join-Path $PSScriptRoot "check-server-migration-risk.ps1"
+if (Test-Path -LiteralPath $migrationRiskScript) {
+    $migrationRiskArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        $migrationRiskScript,
+        "-HeadRef",
+        $Commit
+    )
+    if (-not [string]::IsNullOrWhiteSpace($MigrationDiffBase)) {
+        $migrationRiskArgs += @("-BaseRef", $MigrationDiffBase)
+    }
+    if ($AllowHighRiskMigrations) {
+        $migrationRiskArgs += "-AllowHighRiskMigrations"
+    }
+    & powershell.exe @migrationRiskArgs
+    if ($LASTEXITCODE -ne 0) {
+        throw "server migration risk guard failed"
+    }
+}
+
+function Assert-ServerDeployPackageCoverage {
+    $trackedTopLevel = @(
+        & git -C $repoRoot ls-files server-go |
+            ForEach-Object { ($_ -replace '\\', '/') -split '/' | Select-Object -Index 1 } |
+            Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+            Sort-Object -Unique
+    )
+    $packagedOrKnown = @(
+        ".env.example",
+        "AGENTS.md",
+        "Dockerfile",
+        "assets",
+        "cmd",
+        "go.mod",
+        "go.sum",
+        "internal",
+        "migrations",
+        "scripts"
+    )
+    $unexpected = @($trackedTopLevel | Where-Object { $_ -notin $packagedOrKnown })
+    if ($unexpected.Count -gt 0) {
+        throw "server-go has tracked top-level paths not covered by deploy packaging: $($unexpected -join ', '). Update deploy-ecs-server.ps1 before deploying."
+    }
+}
+
+Assert-ServerDeployPackageCoverage
 
 $tmpDir = Join-Path $repoRoot "tmp"
 New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null

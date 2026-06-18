@@ -5,6 +5,8 @@
 
 ## 2026-06-18
 
+- 继续按“拉满代理 / 全盘挑刺 / 联网校准”收口上线前非肉眼风险：项目记忆脚本把整个 `app/**` 纳入 watch，本地裸跑会检查 staged / unstaged / untracked 工作树，GitHub PR 环境优先用 PR merge-base 避免只看最后一个 commit；新增 `scripts/check-server-migration-risk.ps1`，ECS 后端发布和上线总门禁会在打包前拦高风险迁移 SQL，发布脚本还会检查 `server-go` 新增顶层运行时代码目录是否漏打包。`check-launch-readiness.ps1 -IncludeBuilds` 新增官网 `site` production build。帮助反馈 `/internal/support/*` 共享密钥入口收紧为 loopback / 私网调用，公网客服管理继续必须走后台账号、CSRF、角色和审计。今日农情人工发布 / 状态脚本按北京时间默认日期并加请求超时，ECS 今日农情 timer 脚本严格解析唯一 active slot，不再误打固定端口。资源巡检错误输出继续脱敏，`check-android-build-parity.ps1` 和后端 handler 单测锁住 `today_agri_items_unavailable`。该轮不改主对话锚点、记忆提示词、今日农情提示词、官网首页文案，不加模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`。
+
 - 按用户“联网校准、学成熟渲染组件套路但不要直接替换主链”的口径继续全盘挑刺：新增 ADR-0005，记录 Markwon / commonmark-java / mikepenz / compose-markdown 的取舍，当前不把第三方 renderer 接进主聊天 UI，而是学习 AST/block model、stable block + active streaming block、结构节点组件化、复制/点击以整条消息 settled 为边界这些套路。代码侧同步清理 `ChatScreen.kt` 旧 Markdown parser、缓存和旧 block UI 残留，避免两套渲染口径并存；表格“复制表格”按钮改为整条 AI 消息完成后才可用，避免 streaming 中复制半截表格；`/api/session/snapshot` 增加 `today_agri_items_unavailable`，Android 区分“确定没有今日农情展示项”和“读取展示项失败”，读取失败时不清当前已显示农情。该改动不新增模型内容过滤、不改提示词、不改主聊天正向滚动主方案、不发布正式包。
 
 - 按用户“今日农情保留，但出现瞬间不要强制拉到底部；其他开机进入 / 手动回底 / AI 生成仍尽量贴底”的口径继续收口主界面：Android 已删除今日农情专用 `force=true` 回底 effect 和遗留滚动状态，今日农情进入 timeline 的那一拍不再主动抢用户视线；后续仍作为普通视觉尾部参与主聊天正向列表的回到底部、开机贴底和 AutoFollow。聊天正文轻分割线继续只跟随结构标题，补稳未闭合但已独立成行的短加粗标题，下一行正文到达后不会把分割线打掉；active 半截加粗内容若已经带空格、像继续写正文，则先按普通段落处理，减少分割线先出现又撤回。表格分隔行不会触发正文分割线，相关 Android renderer 单测和 `check-android-build-parity.ps1` 门禁已补。本轮不删除今日农情、不改三份提示词、不加模型输出过滤、不改主聊天正向滚动主方案、不发布正式包。

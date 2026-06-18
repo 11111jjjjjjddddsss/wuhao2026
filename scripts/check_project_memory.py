@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ MEMORY_FILES = {
 
 WATCHED_PREFIXES = (
     "admin/",
-    "app/src/main/kotlin/com/nongjiqianwen/",
+    "app/",
     "gradle/",
     "site/",
     "server-go/",
@@ -77,7 +78,7 @@ IGNORED_PREFIXES = (
 
 CURRENT_STATUS_PREFIXES = (
     "admin/",
-    "app/src/main/kotlin/com/nongjiqianwen/",
+    "app/",
     "gradle/",
     "site/",
     "server-go/",
@@ -191,19 +192,54 @@ def ref_exists(ref: str | None) -> bool:
     return git_success(["rev-parse", "--verify", ref])
 
 
+def merge_base(base_ref: str | None, head_ref: str | None) -> str | None:
+    if not ref_exists(base_ref) or not ref_exists(head_ref):
+        return None
+    try:
+        value = run_git(["merge-base", base_ref or "", head_ref or ""]).strip()
+    except RuntimeError:
+        return None
+    return value or None
+
+
+def github_pull_request_merge_base(head_ref: str | None) -> str | None:
+    if os.environ.get("GITHUB_EVENT_NAME") != "pull_request":
+        return None
+    if not ref_exists(head_ref):
+        return None
+    base_branch = os.environ.get("GITHUB_BASE_REF", "").strip()
+    if not base_branch:
+        return None
+    candidates = [f"origin/{base_branch}", base_branch]
+    for candidate in candidates:
+        value = merge_base(candidate, head_ref)
+        if value:
+            return value
+    return None
+
+
 def changed_files(base_ref: str | None, head_ref: str | None) -> list[str]:
-    if ref_exists(base_ref) and ref_exists(head_ref):
-        return normalize_paths(run_git(["diff", "--name-only", f"{base_ref}..{head_ref}"]))
+    if not base_ref and not head_ref:
+        staged = normalize_paths(run_git(["diff", "--cached", "--name-only"]))
+        unstaged = normalize_paths(run_git(["diff", "--name-only", "HEAD"]))
+        untracked = normalize_paths(run_git(["ls-files", "--others", "--exclude-standard"]))
+        local_changes = [*staged, *unstaged, *untracked]
+        if local_changes:
+            return list(dict.fromkeys(local_changes))
+        return []
 
-    if ref_exists(head_ref):
-        return normalize_paths(run_git(["diff-tree", "--no-commit-id", "--name-only", "-r", head_ref]))
+    effective_head = head_ref or "HEAD"
 
-    staged = normalize_paths(run_git(["diff", "--cached", "--name-only"]))
-    unstaged = normalize_paths(run_git(["diff", "--name-only", "HEAD"]))
-    untracked = normalize_paths(run_git(["ls-files", "--others", "--exclude-standard"]))
-    local_changes = [*staged, *unstaged, *untracked]
-    if local_changes:
-        return list(dict.fromkeys(local_changes))
+    pr_base = github_pull_request_merge_base(effective_head)
+    if pr_base:
+        return normalize_paths(run_git(["diff", "--name-only", f"{pr_base}..{effective_head}"]))
+
+    if ref_exists(base_ref) and ref_exists(effective_head):
+        diff_base = merge_base(base_ref, effective_head) or base_ref
+        return normalize_paths(run_git(["diff", "--name-only", f"{diff_base}..{effective_head}"]))
+
+    if ref_exists(effective_head):
+        return normalize_paths(run_git(["diff-tree", "--no-commit-id", "--name-only", "-r", effective_head]))
 
     return []
 

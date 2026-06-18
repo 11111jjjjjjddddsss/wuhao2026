@@ -52,12 +52,12 @@
 
 仍保留的内部共享密钥接口：
 
-- 帮助与反馈、App 自动日志、内部审计、今日农情生成仍保留 `/internal/*` 入口作为脚本 / 运维兼容入口，但浏览器后台不应持有 `SUPPORT_ADMIN_SECRET` 或 `DAILY_AGRI_JOB_SECRET`。
+- 帮助与反馈、App 自动日志、内部审计、今日农情生成仍保留 `/internal/*` 入口作为脚本 / 运维兼容入口，但浏览器后台不应持有 `SUPPORT_ADMIN_SECRET` 或 `DAILY_AGRI_JOB_SECRET`。其中 `/internal/support/*` 额外限制调用来源必须是 loopback / 私网地址，避免公网只凭共享密钥绕过后台角色；正式浏览器后台客服入口必须走 `/admin-api/v1/support/*`。
 
 ## 当前不要误解
 
 - 买服务器不等于自动有管理后台。
-- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 仍只是共享密钥，不能给浏览器前端使用；正式后台浏览器入口必须走 `admin_users` / `admin_sessions` / CSRF。
+- `SUPPORT_ADMIN_SECRET`、`DAILY_AGRI_JOB_SECRET` 仍只是共享密钥，不能给浏览器前端使用；正式后台浏览器入口必须走 `admin_users` / `admin_sessions` / CSRF。共享密钥接口只作为本机 / 内网脚本兼容，不替代后台账号、角色权限和审计。
 - `/admin-api/v1/monitoring`、`/admin-api/v1/app-logs` 和 `/internal/app/logs` 是给运维和后台面板用的只读 / 聚合入口，不是完整 SLS 告警中心。
 - `/api/app/update` 当前已经接上后台可写发布配置和 `app_release_events` 发布历史，但它仍不是完整应用商店 / 推送中心；正式发布仍要记录 APK 链接、SHA-256、大小、签名指纹、操作人和时间，并做真机覆盖安装回归。
 - 礼品卡后端、后台和 Android 兑换入口已接入首版；Android 只在 `/api/gift-cards/redeem` 返回成功后展示“兑换成功”，没有后端成功结果时不能弹真实成功。后台现在可以页面内查看和复制新生成礼品卡完整卡码，但不能把完整卡码写进备注、审计、日志、文档或批量导出文件。

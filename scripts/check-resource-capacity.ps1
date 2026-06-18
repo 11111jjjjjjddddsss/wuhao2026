@@ -119,7 +119,13 @@ function Invoke-TextCommand {
         Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
     }
     if ($exitCode -ne 0) {
-        throw "Command failed: $($CommandArgs[0]) $($CommandArgs[1])`n$stderr"
+        $safeOutput = Redact-SensitiveText $stderr
+        $safeCommand = if ($CommandArgs.Length -ge 2) {
+            "$($CommandArgs[0]) $($CommandArgs[1])"
+        } else {
+            $CommandArgs -join " "
+        }
+        throw "Command failed: $safeCommand`n$safeOutput"
     }
     return ($stdout | Out-String)
 }

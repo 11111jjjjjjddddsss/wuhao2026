@@ -534,6 +534,33 @@ func TestRequireSupportAdminSecret(t *testing.T) {
 	}
 }
 
+func TestRequireInternalSupportAdminSecretRequiresInternalClientIP(t *testing.T) {
+	t.Setenv("SUPPORT_ADMIN_SECRET", "secret")
+	server := &Server{
+		logger:                slog.New(slog.NewTextHandler(os.Stdout, nil)),
+		internalSecretLimiter: newChatRateLimiterWithConfig(rateLimitConfig{Window: time.Minute, MaxHits: 100, PruneInterval: time.Minute}),
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/support/messages", nil)
+	req.RemoteAddr = "203.0.113.9:1234"
+	req.Header.Set("X-Support-Admin-Secret", "secret")
+	rec := httptest.NewRecorder()
+	if server.requireInternalSupportAdminSecret(rec, req) {
+		t.Fatalf("expected public client IP to be rejected")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("public client status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/internal/support/messages", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	req.Header.Set("X-Support-Admin-Secret", "secret")
+	rec = httptest.NewRecorder()
+	if !server.requireInternalSupportAdminSecret(rec, req) {
+		t.Fatalf("expected loopback client with valid secret to pass")
+	}
+}
+
 func TestRequireSupportAdminSecretRateLimitsByIP(t *testing.T) {
 	t.Setenv("SUPPORT_ADMIN_SECRET", "secret")
 	server := &Server{

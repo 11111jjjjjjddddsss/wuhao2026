@@ -234,7 +234,7 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 - 确认：必须输入 `人工发布 YYYYMMDD`，防止手滑覆盖
 - 写入：`status=ready`、`model/search_strategy/prompt_version=manual`、`source_type=manual`、`manual_locked=1`
 
-Codex 自动化或本机命令行推荐先查状态、再发布。状态脚本默认 18:00 后检查次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。输出只包含日期、状态、来源类型、人工锁定标记、条目数和 `should_publish`，不打印密钥：
+Codex 自动化或本机命令行推荐先查状态、再发布。状态脚本默认按北京时间计算目标日期，18:00 后检查次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本带 30 秒默认请求超时，可用 `-TimeoutSec` 调整，避免网络卡住时长期挂起；输出只包含日期、状态、来源类型、人工锁定标记、条目数和 `should_publish`，不打印密钥：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\get-today-agri-manual-status.ps1 -DayCN 20260619
@@ -242,7 +242,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\get-today-a
 
 如果状态脚本返回 `manual_locked=true` 且 `source_type=manual`，说明这一天已经由人工 / Codex 锁定，自动化应跳过，不再查新闻或覆盖内容。真实发布脚本在发送前也会重新调用同一个内部状态接口；所以本机 Codex 自动化即使 22:00 成功、23:00 再运行，也会安全跳过已发布日期。
 
-发布脚本默认 18:00 后发布次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本从环境变量 `DAILY_AGRI_JOB_SECRET` 或本机 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 读取内部密钥，输出只包含日期、状态、标题和来源，不打印密钥：
+发布脚本默认按北京时间计算目标日期，18:00 后发布次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本从环境变量 `DAILY_AGRI_JOB_SECRET` 或本机 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 读取内部密钥，请求带 30 秒默认超时，可用 `-TimeoutSec` 调整；输出只包含日期、状态、标题和来源，不打印密钥：
 
 本地检查参数和确认词时先加 `-DryRun`，dry run 不读密钥、不发送请求；确认内容没问题后再去掉 `-DryRun` 真实发布。
 
@@ -278,7 +278,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-e
 - `nongji-daily-agri.service`
 - `nongji-daily-agri.timer`
 
-默认 timer 使用 `*-*-* 21:35:00 UTC`，对应北京时间次日 `05:35` 左右；脚本会顺手 `-RunOnce` 触发一次，便于安装完立刻验证。ECS timer 是每天一次，`Persistent=true` 负责 ECS 停机错过时在启动后补触发；服务端生成流程内部最多做 2 次模型生成尝试，用来接住单次模型输出解析失败，不是每天启动两次 timer。
+默认 timer 使用 `*-*-* 21:35:00 UTC`，对应北京时间次日 `05:35` 左右；脚本会顺手 `-RunOnce` 触发一次，便于安装完立刻验证。ECS timer 是每天一次，`Persistent=true` 负责 ECS 停机错过时在启动后补触发；服务端生成流程内部最多做 2 次模型生成尝试，用来接住单次模型输出解析失败，不是每天启动两次 timer。2026-06-18 起，安装脚本生成的 ECS 侧 bash 会从 Nginx 配置解析唯一 active upstream port，解析结果不是唯一值时直接失败，不再悄悄 fallback 到固定端口，避免双端口切换后打到旧 slot。
 
 ## 质量边界
 

@@ -12,6 +12,7 @@ param(
     [string]$Source3 = "",
     [string]$Actor = "codex_automation",
     [string]$SecretsPath = "$env:USERPROFILE\.nongjiqiancha\prod-secrets.json",
+    [int]$TimeoutSec = 30,
     [switch]$DryRun
 )
 
@@ -42,8 +43,17 @@ function Get-RequiredSecret {
     return ([string]$prop.Value).Trim()
 }
 
+function Get-ChinaNow {
+    try {
+        $tz = [TimeZoneInfo]::FindSystemTimeZoneById("China Standard Time")
+    } catch {
+        $tz = [TimeZoneInfo]::FindSystemTimeZoneById("Asia/Shanghai")
+    }
+    return [TimeZoneInfo]::ConvertTimeFromUtc([DateTime]::UtcNow, $tz)
+}
+
 function Get-DefaultDayCN {
-    $now = Get-Date
+    $now = Get-ChinaNow
     if ($now.Hour -ge 18) {
         $now = $now.AddDays(1)
     }
@@ -72,6 +82,9 @@ if ([string]::IsNullOrWhiteSpace($DayCN)) {
 $DayCN = $DayCN.Trim()
 if ($DayCN -notmatch '^\d{8}$') {
     throw "invalid_day_cn"
+}
+if ($TimeoutSec -le 0) {
+    throw "invalid_timeout_sec"
 }
 
 Assert-Text -Name "title1" -Value $Title1
@@ -121,7 +134,7 @@ $headers = @{
 }
 
 try {
-    $statusResponse = Invoke-RestMethod -Method Get -Uri $statusUri -Headers $headers
+    $statusResponse = Invoke-RestMethod -Method Get -Uri $statusUri -Headers $headers -TimeoutSec $TimeoutSec
     if ($statusResponse.manual_locked -eq $true -and $statusResponse.source_type -eq "manual") {
         [pscustomobject]@{
             ok             = $true
@@ -146,7 +159,7 @@ try {
 $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 
 try {
-    $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType "application/json; charset=utf-8" -Body $bodyBytes
+    $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType "application/json; charset=utf-8" -Body $bodyBytes -TimeoutSec $TimeoutSec
 } catch {
     $message = $_.Exception.Message
     if ($_.ErrorDetails -and -not [string]::IsNullOrWhiteSpace($_.ErrorDetails.Message)) {

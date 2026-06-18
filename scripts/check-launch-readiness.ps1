@@ -352,10 +352,22 @@ if (-not $SkipAdmin) {
         Invoke-GateStep -Name "admin production build" -ScriptBlock {
             Invoke-Native -FilePath "npm" -Arguments @("--prefix", "admin", "run", "build")
         }
+        Invoke-GateStep -Name "site production build" -ScriptBlock {
+            Invoke-Native -FilePath "npm" -Arguments @("--prefix", "site", "run", "build")
+        }
     }
 }
 
 if (-not $SkipBackend -and $IncludeBuilds) {
+    Invoke-GateStep -Name "server migration risk guard" -ScriptBlock {
+        Invoke-Native -FilePath "powershell.exe" -Arguments @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check-server-migration-risk.ps1"
+        )
+    }
     Invoke-GateStep -Name "server-go tests" -ScriptBlock {
         Invoke-Native -FilePath "go" -Arguments @("test", "./...") -WorkingDirectory (Join-Path $repoRoot "server-go")
     }

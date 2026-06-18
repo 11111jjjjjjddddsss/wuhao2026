@@ -92,7 +92,9 @@ function Wait-RunCommand {
 . (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
 
 $normalizedBaseUrl = $BackendBaseUrl.Trim().TrimEnd("/")
-$escapedBaseUrl = $normalizedBaseUrl
+if ($normalizedBaseUrl -ne "https://api.nongjiqiancha.cn") {
+    Write-Warning "BackendBaseUrl is kept only for backward-compatible CLI shape; the ECS timer calls the local active slot via Nginx config."
+}
 $escapedTimerCalendar = $TimerCalendar
 $runOnceFlag = if ($RunOnce) { "1" } else { "0" }
 
@@ -112,10 +114,16 @@ if [ -z "${secret:-}" ]; then
   echo 'DAILY_AGRI_JOB_SECRET is missing in /etc/nongjiqiancha/server.env' >&2
   exit 12
 fi
-active_port=$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' /etc/nginx/sites-available/nongjiqiancha-api 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | head -n 1)
-if [ -z "${active_port:-}" ]; then
-  active_port=3000
-fi
+read_active_port() {
+  matches=$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' /etc/nginx/sites-available/nongjiqiancha-api 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | sort -u)
+  count=$(printf '%s\n' "$matches" | sed '/^$/d' | wc -l | tr -d ' ')
+  if [ "$count" != "1" ]; then
+    echo "cannot determine unique active upstream port for daily agri job" >&2
+    return 1
+  fi
+  printf '%s' "$matches"
+}
+active_port=$(read_active_port)
 curl --silent --show-error --fail \
   --max-time 300 \
   --request POST \

@@ -87,6 +87,7 @@ $loginScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/Lo
 $chatScreenFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $hamburgerMenuSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
 $membershipCenterSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MembershipCenterSheet.kt"
+$serverGoServerFile = Join-Path $RepoRoot "server-go/internal/app/server.go"
 $chatTimelineItemsTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatTimelineItemsTest.kt"
 $chatStreamingRendererTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatStreamingRendererTest.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
@@ -94,7 +95,7 @@ $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_s
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $pendingChatSendStoreFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile, $chatTimelineItemsTestFile, $chatStreamingRendererTestFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $pendingChatSendStoreFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile, $serverGoServerFile, $chatTimelineItemsTestFile, $chatStreamingRendererTestFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -127,6 +128,7 @@ if ($failures.Count -eq 0) {
     $chatScreen = Read-SourceFile $chatScreenFile
     $hamburgerMenuSheet = Read-SourceFile $hamburgerMenuSheetFile
     $membershipCenterSheet = Read-SourceFile $membershipCenterSheetFile
+    $serverGoServer = Read-SourceFile $serverGoServerFile
     $chatTimelineItemsTest = Read-SourceFile $chatTimelineItemsTestFile
     $chatStreamingRendererTest = Read-SourceFile $chatStreamingRendererTestFile
 
@@ -643,6 +645,8 @@ if ($failures.Count -eq 0) {
         "Today agri main-chat item must be restored from session snapshot with its saved card content."
     Require-Match $failures ($sessionApi + "`n" + $chatScreen + "`n" + $chatTimelineItemsTest) 'today_agri_items_unavailable(?s:.*?)shouldClearTodayAgriMainItemAfterSnapshot(?s:.*?)todayAgriSnapshotUnavailableDoesNotClearExistingMainItem' `
         "Today agri main item must not be cleared when the snapshot only failed to read the optional today_agri_user_items table."
+    Require-Match $failures $serverGoServer '"today_agri_items_unavailable"\s*:\s*snapshotWarnings\.TodayAgriErr\s*!=\s*nil' `
+        "Session snapshot response must expose today_agri_items_unavailable when optional today-agri item reads fail."
     Require-Match $failures $chatScreen '"remote_snapshot_hydrated"\s+to\s+remoteSnapshotHydrationComplete' `
         "Chat startup diagnostics must distinguish local-first history hydration from remote snapshot completion."
     Require-NoMatch $failures $chatScreen 'persistedTodayAgriContextDayForUserMessage(?s:.*?)takeIf\s*\{\s*it\s*==\s*currentDay\s*\}' `

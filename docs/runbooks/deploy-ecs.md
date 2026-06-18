@@ -20,7 +20,7 @@
 - 上游模型错误响应 / 非 SSE 响应只读取 64KiB 预览用于判断和日志，记忆文档摘要非流式响应读取上限为 64KiB，今日农情 JSON 响应读取上限为 1MiB；正常主聊天 SSE 正文仍走流式转发
 - 通用 JSON body 解析默认只读取 64KiB，并拒绝多段 JSON；App 日志接口仍有更小的 8KiB 上限且超限返回 `413 body_too_large`，图片上传仍按单张 JPEG `<=1MiB` 处理
 - 主聊天应用层用户限流默认保持 `20 次 / 60 秒`，可用 `CHAT_RATE_LIMIT_MAX_HITS`、`CHAT_RATE_LIMIT_WINDOW_SECONDS` 和 `CHAT_RATE_LIMIT_PRUNE_INTERVAL_SECONDS` 调整；配置 Redis 时该限流跨进程共享，未配置 Redis 时回退单进程限流并定期清理过期用户桶。Nginx 仍承担 IP 级限流，Go 侧限流只作为用户维度的第二层保护
-- 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉
+- 服务启动迁移会先用 MySQL `GET_LOCK('nongji_schema_migration', 30)` 拿全局锁，避免未来滚动发布 / 多实例同时跑 DDL；迁移整体默认 2 分钟超时，可用 `MYSQL_MIGRATION_TIMEOUT_SECONDS` 调整；迁移锁释放失败会作为启动错误暴露，不再静默吞掉。双端口 slot 不能让数据库 DDL 自动回滚：新 slot 一启动，迁移仍会作用到同一个生产 RDS。2026-06-18 起，`deploy-ecs-server.ps1` 在打包前会调用 [check-server-migration-risk.ps1](D:/wuhao/scripts/check-server-migration-risk.ps1) 扫描本次变更里的 `server-go/migrations/*.sql`，遇到 `ALTER / DROP / RENAME / TRUNCATE / UPDATE / DELETE / REPLACE / MODIFY` 等高风险 SQL 默认拦截；确认为安全迁移时才显式传 `-AllowHighRiskMigrations`。这只是防手滑门禁，不等于迁移可自动回滚；进入多 ECS / SLB 前仍应评估独立迁移步骤和 `schema_migrations` 表。
 - 2026-06-01 已通过 Cloud Assistant 将包含手机号登录 / 融合认证后端改动的源码包部署到 ECS：分片上传源码包、ECS 上校验 SHA-256、运行 `go test ./...`、编译、备份旧二进制、替换并重启 `nongji-server`；重启瞬间 Nginx healthz 曾短暂 502，随后 readiness 复查显示 systemd active、Nginx 配置 OK、Host healthz 200。
 - 生产 ECS 已切到 OSS 上传后端，并已配置 Redis 认证限流、普通短信验证码环境变量、DashScope 主 / 副模型 Key 主备槽位和 `ip2region` v4 xdb 本地库路径。当前健康检查应走本机 HTTPS：`curl --resolve api.nongjiqiancha.cn:443:127.0.0.1 https://api.nongjiqiancha.cn/healthz` 返回 `ok=true`、`auth_strict=true`、`bailian=ok`、`sms=ok`、`dev_order_endpoints=false`、`redis=ok`、`upload_storage=oss`；`dypns_*` 字段只作旧包兼容状态参考，不再作为新 Android 登录主链门槛。
 - 本机新增只读生产就绪检查脚本 [check-ecs-readiness.ps1](D:/wuhao/scripts/check-ecs-readiness.ps1)，通过 Cloud Assistant 检查 `nongji-server`、Nginx、HTTPS healthz、关键环境变量是否 set/missing/empty、本机上传目录、`ip2region` v4 xdb 是否可读、端口监听和后台 `/admin-api/` 上游是否跟随 API active slot；脚本只输出脱敏状态，不打印真实密钥值。当前脚本会在 `nginx -t` 配置检测失败、active upstream slot 未 active、后台上游端口与 API active slot 不一致、HTTPS healthz 非 200、未登录后台鉴权接口不是 401，或生产 healthz 缺少 `ok/auth_strict/bailian/sms/dev_order_endpoints=false/redis/upload_storage` 关键标记时直接失败；同时会硬拦 `AUTH_ALLOW_LEGACY_TOKEN=true`、`AUTH_ALLOW_UNPROVEN_LEGACY_UUID=true`、`AUTH_FUSION_COMPAT_ENABLED=true` 和 `ALLOW_DEV_ORDER_ENDPOINTS=true`，也会拦截 `ADMIN_COOKIE_SECURE=false/no/off/0` 或拼写错误的非空值，避免 Nginx 配置错误、502、登录认证配置异常、旧 bearer token 兼容、未证明旧 UUID 资产迁移、旧融合接口误开、后台反代漂移、后台 Cookie 安全配置漂移或开发订单入口误开被误判成通过。2026-06-13 起，[deploy-ecs-server.ps1](D:/wuhao/scripts/deploy-ecs-server.ps1) 发布切换后也会显式校验后台 `/admin-api/` 上游端口已跟随目标 slot，不再只靠后台未登录 401 判断。最新 active upstream 以 [current-status.md](D:/wuhao/docs/project-state/current-status.md) 和脚本实时输出为准；不要在 runbook 里长期写死 `3000` 或 `3001` 当当前真相。
@@ -88,10 +88,10 @@ Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Andr
 
 当前没有把 GitHub 凭据放到 ECS。仓库在 ECS 上不能直接 `git clone` 私有仓库，因此采用脚本 [deploy-ecs-server.ps1](D:/wuhao/scripts/deploy-ecs-server.ps1) 在本机打包并通过 Cloud Assistant 发布：
 
-1. 本地打包 `server-go` 源码、assets、migrations、go.mod、go.sum
+1. 本地先跑迁移风险守卫，再打包 `server-go` 源码、assets、migrations、go.mod、go.sum
 2. 用 ECS Cloud Assistant `SendFile` 分片下发到 `/tmp/nongji-deploy-chunks-<commit>`
 3. ECS 本机按 `server-go/go.mod` 的 Go toolchain 声明编译到 `/opt/nongjiqiancha/server/nongji-server`；当前要求 `toolchain go1.26.4`
-4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum
+4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum；发布脚本也会检查 `server-go` 新增顶层运行时代码目录是否被打包，避免未来新增 `pkg/` 等目录后线上漏文件
 5. 读取 Nginx 当前上游端口，选择另一个端口作为新 slot
 6. 启动 `nongji-server-3000.service` 或 `nongji-server-3001.service` 中的非当前 slot，并先检查该端口本机 `/healthz`
 7. 通过 `nginx -t` 后把 API Nginx 上游和后台 `/admin-api/` 上游一起切到新 slot，reload Nginx，再由脚本检查本机 HTTPS healthz、生产 health 标记和后台未登录鉴权接口
