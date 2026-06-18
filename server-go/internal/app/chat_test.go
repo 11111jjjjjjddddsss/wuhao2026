@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -217,6 +218,23 @@ func TestWriteSSEHeadersDisableNginxBuffering(t *testing.T) {
 	}
 	if got := recorder.Header().Get("X-Accel-Buffering"); got != "no" {
 		t.Fatalf("X-Accel-Buffering = %q, want no", got)
+	}
+}
+
+func TestChatStreamDoesNotGateOnQuotaConsumeOutbox(t *testing.T) {
+	source, err := os.ReadFile("chat.go")
+	if err != nil {
+		t.Fatalf("read chat.go: %v", err)
+	}
+	text := string(source)
+	for _, forbidden := range []string{
+		"QUOTA_SETTLEMENT_PENDING",
+		"CountPendingQuotaConsumeOutboxForUser",
+		"上次回答正在结算",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("chat stream must not block users on quota consume outbox marker %q", forbidden)
+		}
 	}
 }
 

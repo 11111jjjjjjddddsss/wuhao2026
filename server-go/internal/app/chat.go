@@ -300,23 +300,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pendingQuotaConsume, err := s.store.CountPendingQuotaConsumeOutboxForUser(ctx, auth.UserID)
-	if err != nil {
-		s.logger.Error("count pending quota consume failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if pendingQuotaConsume > 0 {
-		const retryAfterSec = 3
-		w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfterSec))
-		s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
-			"error":           "QUOTA_SETTLEMENT_PENDING",
-			"message":         "上次回答正在结算，请稍后再试",
-			"retry_after_sec": retryAfterSec,
-		})
-		return
-	}
-
 	before, err := s.store.GetDailyStatus(ctx, auth.UserID, tier, dayCN)
 	if err != nil {
 		s.logger.Error("get daily status failed", "userId", auth.UserID, "error", err)

@@ -2839,6 +2839,10 @@ fun ChatScreen() {
                         card = cardToSave,
                         updated_at = System.currentTimeMillis()
                     )
+                    if (todayAgriMainShownDay != currentTodayAgriCardDay) {
+                        todayAgriMainShownDay = currentTodayAgriCardDay
+                        context.saveTodayAgriMainShownDaySync(chatScopeId, currentTodayAgriCardDay)
+                    }
                 } else if (!saved &&
                     saveClearEpoch == chatHistoryClearEpoch &&
                     saveUserSendEpoch == todayAgriUserSendEpoch &&
@@ -3026,6 +3030,7 @@ fun ChatScreen() {
         shouldShowTodayAgriCard,
         currentTodayAgriMainItem?.day_cn ?: currentTodayAgriCardDay,
         todayAgriAfterMessageIdForRender,
+        currentTodayAgriCardHasSavedItem,
         shouldRevealMessageList,
         remoteSnapshotHydrationComplete,
         shouldHydrateRemoteHistory,
@@ -3040,7 +3045,8 @@ fun ChatScreen() {
             return@LaunchedEffect
         }
         val canPersistTodayAgriShownDay =
-            !shouldHydrateRemoteHistory || remoteSnapshotHydrationComplete
+            !shouldHydrateRemoteHistory ||
+                (remoteSnapshotHydrationComplete && currentTodayAgriCardHasSavedItem)
         val shouldPersistTodayAgriShownDay =
             canPersistTodayAgriShownDay && todayAgriMainShownDay != currentTodayAgriCardDay
         val shouldLogTodayAgriVisible = !todayAgriMainCardVisibleLogged
@@ -4036,37 +4042,9 @@ fun ChatScreen() {
     }
 
     fun clearStaleFailureAffordancesForNewSend(activeUserMessageId: String) {
-        val activeAssistantMessageId = assistantMessageIdForSourceUser(activeUserMessageId)
-        failedUserMessageStates.keys
-            .toList()
-            .filter { it != activeUserMessageId }
-            .forEach { messageId ->
-                failedUserMessageStates.remove(messageId)
-                retryingUserMessageIds.remove(messageId)
-                if (!hasSettledAssistantMessageForUser(messageId)) {
-                    removeMessageById(messageId)
-                }
-            }
-        failedAssistantMessageStates.entries
-            .toList()
-            .filter { (assistantMessageId, state) ->
-                assistantMessageId != activeAssistantMessageId &&
-                    state.sourceUserMessageId != activeUserMessageId
-            }
-            .forEach { (assistantMessageId, _) ->
-                failedAssistantMessageStates.remove(assistantMessageId)
-                retryingAssistantMessageIds.remove(assistantMessageId)
-                val assistantIndex = messages.indexOfFirst { message ->
-                    message.id == assistantMessageId &&
-                        message.role == ChatRole.ASSISTANT
-                }
-                if (
-                    assistantIndex >= 0 &&
-                    messages[assistantIndex].content.isBlank()
-                ) {
-                    messages.removeAt(assistantIndex)
-                }
-            }
+        // A new send must not erase older failed bubbles; users may still need their retry entries.
+        retryingUserMessageIds.remove(activeUserMessageId)
+        retryingAssistantMessageIds.remove(assistantMessageIdForSourceUser(activeUserMessageId))
     }
 
     fun findFailedUserMessageIdByText(text: String): String? =
@@ -5418,8 +5396,7 @@ fun ChatScreen() {
     }
 
     fun shouldPreserveUserBrowsingForStreamingStart(): Boolean {
-        return chatListUserDragging ||
-            (recyclerScrollInProgress && scrollMode == ScrollMode.UserBrowsing)
+        return false
     }
 
     fun commitSendMessage(

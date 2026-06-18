@@ -1,6 +1,6 @@
 # 当前未关闭风险
 
-最后更新：2026-06-18
+最后更新：2026-06-19
 
 ## R1 运维入口仍需生产后台和告警通知闭环
 
@@ -129,9 +129,9 @@
 
 - 状态：未关闭
 - 说明：Android 当前已为带图片发送接入 WorkManager 延迟兜底，覆盖“图片已进本地消息但 App 被杀、前台没来得及可靠送到后端”的场景；它不接管正常前台 SSE 直播，也不直接写 UI 聊天窗口。前台活跃标记、唯一 work 名、远端启动保护窗，以及后端 `chat_stream_inflight` 进行中锁 + lease token 共同用于避免同一 `client_msg_id` 重复启动上游模型流。后端 replay 真源已改为 `session_round_ledger` / 轮次归档成功，服务端只在归档成功后才向客户端发送 SSE `[DONE]`，避免“客户端已收完成态，但回答没归档”时返回空 replay
-- 补充：额度扣减在轮次归档成功后执行；归档事务会先写 `quota_consume_outbox`，`ConsumeOnDone` 成功后标记 done，临时失败会按同一 `client_msg_id` 短重试，仍失败则留给后台 worker 继续补偿，重复扣由 `quota_ledger` 唯一键防住。replay 现在只恢复已归档答案，不再按当前档位 / 当前日期补扣旧轮次，避免跨日或会员档位变化后误扣。若数据库连续异常，风险主要表现为“待补扣队列堆积”，后台总览 / 监控面板会显示待处理数量，不把风险转成“乱扣用户次数”或“用户完整答案变失败态”。
-- 补充：2026-06-18 后端记忆文档摘要写回已从只校验 `round_total` 收紧为同时校验 snapshot 的 `updated_at`、`session_generation` 和 `cleared_at`，并把每次 6 / 9 轮触发时的 A 层窗口冻结进 `pending_memory_jobs_json` 队列。模型失败、超时、写库失败、旧快照过期或 Redis 租约暂不可用时，队首 job 保留，后续每条完整 AI 回复归档后继续尝试同一个冻结窗口；如果旧 job 还没成功又到新的 6 / 9 轮触发点，会追加新 job 排队，避免因为等待下一个周期而丢掉原 6 / 9 轮记忆。额度待补扣仍保留当前保守取舍：用户侧会把 `pending / failed` 都当成“上次回答正在结算”并暂时拦下一轮聊天，防止扣次没落账时继续滚成本；后台 worker 会按 `next_attempt_at` 继续处理 `failed`。这避免了简单放开 failed 导致漏扣，但如果某条 outbox 因脏数据或不可恢复原因长期 failed，用户会被卡住且文案不够准确。后续更稳方案是把待补扣状态拆成 retryable / needs_ops / waived / uncollectable 等明确终态，并在后台提供 owner 级 repair / 豁免入口和审计，而不是简单把所有 failed 放行或一直挡住用户。
-- 补充：2026-06-17 只读巡检发现一个低概率边界：主聊天完成归档后的短重试扣次路径仍按重试当下时间调用 `ConsumeOnDone`，而持久化后台补偿队列会按归档记录里的完成时间补扣。只有“归档成功、首次扣次临时失败、短重试窗口刚好跨上海自然日或会员档位刚变化”时，短重试可能和后台补偿的归属时间不完全一致；当前不影响礼品卡、正常扣次或 replay 成功恢复，也不建议临近代理测试前硬改。后续小修可把短重试也统一传入完成时间并补单测。
+- 补充：额度扣减在轮次归档成功后执行；归档事务会先写 `quota_consume_outbox`，`ConsumeOnDone` 成功后标记 done，临时失败会按同一 `client_msg_id` 短重试，仍失败则留给后台 worker 继续补偿，重复扣由 `quota_ledger` 唯一键防住。replay 现在只恢复已归档答案，不再按当前档位 / 当前日期补扣旧轮次，避免跨日或会员档位变化后误扣。2026-06-19 起，`quota_consume_outbox pending / failed` 不再作为用户下一轮聊天的前台阻塞条件；若数据库连续异常，风险主要表现为“待补扣队列堆积”和短期成本 / 额度对账压力，后台总览 / 监控面板会显示待处理数量，不把风险转成“用户完整答案变失败态”或“下一轮聊天被后台队列卡住”。
+- 补充：2026-06-18 后端记忆文档摘要写回已从只校验 `round_total` 收紧为同时校验 snapshot 的 `updated_at`、`session_generation` 和 `cleared_at`，并把每次 6 / 9 轮触发时的 A 层窗口冻结进 `pending_memory_jobs_json` 队列。模型失败、超时、写库失败、旧快照过期或 Redis 租约暂不可用时，队首 job 保留，后续每条完整 AI 回复归档后继续尝试同一个冻结窗口；如果旧 job 还没成功又到新的 6 / 9 轮触发点，会追加新 job 排队，避免因为等待下一个周期而丢掉原 6 / 9 轮记忆。额度待补扣当前取舍已改成“前台放行、后台追账”：用户侧继续受每日额度、加油包、会员、登录鉴权和进行中流保护，但不再因为旧 outbox `pending / failed` 被提示“上次回答正在结算”。剩余风险是某条 outbox 因脏数据或不可恢复原因长期 failed 时会堆在后台，可能形成短期漏扣 / 对账压力；后续更稳方案是把待补扣状态拆成 retryable / needs_ops / waived / uncollectable 等明确终态，并在后台提供 owner 级 repair / 豁免入口和审计，而不是重新把失败队列变成用户侧限制。
+- 补充：2026-06-17 曾发现一个低概率边界：主聊天完成归档后的短重试扣次路径若按重试当下时间调用 `ConsumeOnDone`，可能和持久化后台补偿队列的完成时间口径不一致。当前代码里的短重试和后台 worker 已统一按归档完成时传入的 `completionAtMs` 执行补扣；后续重点不再是跨日短重试归属，而是待补扣队列长期 failed 时的后台 repair / 豁免 / 终结处理。
 - 补充：主模型自动开流重试已从 2 次收紧为 1 次，Android 前台流的自动 stream retry 已关闭。WorkManager 后台兜底只针对同一条 pending 图片消息，在图片上传失败、网络中断、流异常结束、`409 STREAM_IN_PROGRESS`、限流或临时上游错误时用同一 `client_msg_id` 退避重试；普通可恢复失败最多重试 5 次后移除 pending，避免弱网一抖就丢消息，也避免无限反复开流。`chat_stream_inflight` 获取结果改为校验 lease token，数据库新增同一 `user_id` 活跃流唯一约束，降低不同 `client_msg_id` 并发绕过额度预检查并多开 Qwen3.5-Plus 的风险；旧 `/api/session/round_complete`、`/api/session/b`、`/api/session/c` 已返回 410，不再参与主链
 - 补充：买服务器前“主聊天与图片发送”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，当前没有发现旧直连模型、旧完成接口、旧 active-zone、旧图片手势或旧上传通道在运行时并存；后续风险主要集中在真实公网 https 图片链、首版单实例 / OSS 取舍、弱网多图、后台恢复和多实例进程内保护迁移
 - 补充：买服务器前“记忆文档与模型调用”巡检已记录到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)，当前记忆文档触发频率仍是 Free / Plus 每 6 条完整 AI 回复、Pro 每 9 条完整 AI 回复；失败重试依赖 `pending_memory_jobs_json` 冻结 job 队列和 `pending_retry_b` 状态，不扩大到 30 轮归档输入，不改摘要提示词，不给模型输出增加过滤或 `max_tokens`。摘要固定 `qwen-plus`，不再按层灰度。2026-06-16 已在本进程运行中保护之外补 Redis TTL 租约，避免多后端实例同时处理同一账号摘要；若 Redis 不可用或租约未拿到，本轮摘要会跳过并保留队首 job 等后续重试。

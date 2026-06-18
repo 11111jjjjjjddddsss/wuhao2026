@@ -309,23 +309,6 @@ func (s *Store) CountPendingQuotaConsumeOutbox(ctx context.Context) (int64, erro
 	return count.Int64, nil
 }
 
-func (s *Store) CountPendingQuotaConsumeOutboxForUser(ctx context.Context, userID string) (int64, error) {
-	userID = strings.TrimSpace(userID)
-	if userID == "" {
-		return 0, nil
-	}
-	var count sql.NullInt64
-	err := s.db.QueryRowContext(
-		ctx,
-		"SELECT COUNT(*) FROM quota_consume_outbox WHERE user_id = ? AND status IN ('pending','failed')",
-		userID,
-	).Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-	return count.Int64, nil
-}
-
 func (s *Store) GetTopupStatus(ctx context.Context, userID string) (int, *int64, error) {
 	var total sql.NullInt64
 	var earliest sql.NullInt64

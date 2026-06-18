@@ -3,6 +3,12 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-19
+
+- 按用户“不能让后台扣次失败挡住用户体验”的拍板，`/api/chat/stream` 取消了入口处按当前用户 `quota_consume_outbox pending / failed` 返回 `QUOTA_SETTLEMENT_PENDING` 的前台门闩。`quota_consume_outbox` 仍在归档事务内作为待补扣队列写入，`quota_ledger` 继续按 `user_id + client_msg_id` 幂等防重复扣，服务端短重试和后台 worker 仍按回答完成时档位、自然日和完成时间补扣；后台总览 / 监控面板继续显示“待补扣”。当前取舍是前台放行、后台追账：不再把待补扣失败转成用户下一轮聊天卡死，剩余风险转成后台待处理和短期成本 / 额度对账压力，后续应补 owner 级 repair / 豁免 / 终结状态和审计，而不是重新加用户侧限制。本轮不改主对话锚点、记忆提示词、今日农情提示词，不新增模型输出过滤或 `max_tokens`。
+
+- 交互代理挑刺后补主聊天失败态和今日农情保存边界：`clearStaleFailureAffordancesForNewSend` 不再因为新发送擦掉旧失败用户消息或失败 AI 消息的重试入口，发送 / 重试起步也不再保留旧 `UserBrowsing` 浏览态，点击发送即交回现有 AutoFollow / 正向底部锚点主链。今日农情主卡在远端模式下不再“刚可见就持久化当天已展示”，只有远端展示项保存成功或 snapshot 已确认存在展示项时才写本地 shown day；若保存失败，下次启动仍可再次展示并继续补保存，避免当天卡片被本地标记抑制。本轮不恢复反向列表、overlay、raw delta、streaming 小分割，不改主对话锚点或模型输出限制。
+
 ## 2026-06-18
 
 - 继续按“拉满代理 / 全盘挑刺 / 联网校准”收口上线前非肉眼风险：项目记忆脚本把整个 `app/**` 纳入 watch，本地裸跑会检查 staged / unstaged / untracked 工作树，GitHub PR 环境优先用 PR merge-base 避免只看最后一个 commit；新增 `scripts/check-server-migration-risk.ps1`，ECS 后端发布和上线总门禁会在打包前拦高风险迁移 SQL，发布脚本还会检查 `server-go` 新增顶层运行时代码目录是否漏打包。`check-launch-readiness.ps1 -IncludeBuilds` 新增官网 `site` production build。帮助反馈 `/internal/support/*` 共享密钥入口收紧为 loopback / 私网调用，公网客服管理继续必须走后台账号、CSRF、角色和审计。今日农情人工发布 / 状态脚本按北京时间默认日期并加请求超时，ECS 今日农情 timer 脚本严格解析唯一 active slot，不再误打固定端口。资源巡检错误输出继续脱敏，`check-android-build-parity.ps1` 和后端 handler 单测锁住 `today_agri_items_unavailable`。该轮不改主对话锚点、记忆提示词、今日农情提示词、官网首页文案，不加模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`。
