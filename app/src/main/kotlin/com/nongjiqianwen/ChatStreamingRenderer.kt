@@ -799,6 +799,8 @@ private fun parseRendererActiveStandaloneBoldHeading(line: String): String? {
     if (!trimmed.startsWith("**")) return null
     if (trimmed.indexOf("**", startIndex = 2) >= 0) return null
     val title = trimmed.drop(2).trimStart()
+    if (title.length < 3) return null
+    if (title.any { it.isWhitespace() }) return null
     if (title.any { it in "，,；;" }) return null
     if (!isRendererStandaloneBoldHeadingTitle(title)) return null
     return title
@@ -1115,6 +1117,7 @@ private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
     return decodeRendererMarkdownTableBlock(trimmed) != null ||
         trimmed.matches(rendererHeadingRegex) ||
         parseRendererStandaloneBoldHeading(trimmed) != null ||
+        parseRendererActiveStandaloneBoldHeading(trimmed) != null ||
         parseRendererChineseSectionHeading(trimmed) != null ||
         trimmed.matches(rendererBulletRegex) ||
         trimmed.matches(rendererNumberedRegex) ||

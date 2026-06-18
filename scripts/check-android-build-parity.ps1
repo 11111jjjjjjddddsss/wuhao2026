@@ -587,6 +587,8 @@ if ($failures.Count -eq 0) {
         "Today agri history must keep the date inside each card with one light internal divider, not as a floating external date label."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)buildMessageSelectionTextToolbar(?s:.*?)TodayAgriNewsText' `
         "Today agri main-chat copy menu must stay aligned with assistant text copy/full-copy behavior."
+    Require-NoMatch $failures $chatScreen 'todayAgriBottomAnchorAppliedKey' `
+        "Today agri appearance must not keep a dedicated force-bottom anchor state; it should not pull the user to the bottom at the moment it appears."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
         "Today agri context must be scoped to the next three user sends after its visual timeline anchor."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)failedUserMessageIds' `
@@ -758,6 +760,16 @@ if ($failures.Count -eq 0) {
         "Assistant text dividers must recognize standalone bold heading lines, not only # markdown headings."
     Require-Match $failures $chatStreamingRenderer 'parseRendererActiveStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)' `
         "Assistant text dividers must recognize an active standalone bold heading while it is still streaming."
+    Require-Match $failures $chatStreamingRenderer 'isStructuralRendererStreamingLine(?s:.*?)parseRendererActiveStandaloneBoldHeading\(trimmed\)\s*!=\s*null' `
+        "Assistant text dividers must keep an unclosed standalone bold heading structural after the next line arrives, so the divider does not disappear in settled/history rendering."
+    Require-Match $failures $chatStreamingRenderer 'parseRendererActiveStandaloneBoldHeading(?s:.*?)title\.any\s*\{\s*it\.isWhitespace\(\)\s*\}' `
+        "Assistant text dividers must not treat active bold text with whitespace as a confirmed heading, reducing divider flicker when the line continues as a sentence."
+    Require-Match $failures $chatStreamingRendererTest 'unclosedStandaloneBoldHeadingLineKeepsDividerAfterBodyArrives' `
+        "Assistant text divider tests must cover an unclosed standalone bold heading followed by body text."
+    Require-Match $failures $chatStreamingRendererTest 'activeBoldLineWithWhitespaceStaysParagraphUntilItIsClearlyAHeading' `
+        "Assistant text divider tests must cover active bold text that continues as body text."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableSeparatorDoesNotCreateSectionDivider' `
+        "Assistant text divider tests must prove Markdown table separators do not create section dividers."
     Require-Match $failures $chatStreamingRenderer 'heading\.level\s*(<=\s*3|>\s*3\)\s*return\s+false)' `
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `

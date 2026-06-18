@@ -2610,10 +2610,6 @@ fun ChatScreen() {
     var imageSendJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var imageSendGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
-    var todayAgriBottomAnchorAppliedKey by remember(uiRuntimeResetKey) { mutableStateOf("") }
-    var todayAgriStaticHistoryUserBrowsedAwayFromBottom by remember(uiRuntimeResetKey) {
-        mutableStateOf(false)
-    }
     val failedUserMessageStates = remember(uiRuntimeResetKey) {
         mutableStateMapOf<String, String>().apply {
             putAll(initialLocalSnapshot.failedUserMessageStates)
@@ -2851,7 +2847,6 @@ fun ChatScreen() {
         todayAgriMainItem = null
         todayAgriCard = null
         todayAgriRemoteConfirmedDay = null
-        todayAgriBottomAnchorAppliedKey = ""
     }
 
     val messageSelectionBoundsCacheById = remember(uiRuntimeResetKey) { mutableMapOf<String, Rect>() }
@@ -3600,7 +3595,6 @@ fun ChatScreen() {
                 todayAgriCard = null
                 todayAgriMainItem = null
                 todayAgriRemoteConfirmedDay = null
-                todayAgriBottomAnchorAppliedKey = ""
                 todayAgriItemSaveInFlightKey = ""
                 todayAgriShownThisRuntime = false
                 todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
@@ -3617,7 +3611,6 @@ fun ChatScreen() {
             todayAgriCard = null
             todayAgriMainItem = null
             todayAgriRemoteConfirmedDay = null
-            todayAgriBottomAnchorAppliedKey = ""
             todayAgriItemSaveInFlightKey = ""
             todayAgriShownThisRuntime = false
             todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
@@ -5338,52 +5331,6 @@ fun ChatScreen() {
         }
     }
 
-    LaunchedEffect(
-        hasTodayAgriCard,
-        shouldShowTodayAgriCard,
-        currentTodayAgriMainItem?.day_cn ?: currentTodayAgriCardDay,
-        todayAgriAfterMessageIdForRender,
-        startupLayoutReady,
-        shouldRevealMessageList,
-        chatListItems.size,
-        isStreaming,
-        hasStreamingItem,
-        messages.size,
-        chatListUserDragging,
-        recyclerScrollInProgress,
-        todayAgriStaticHistoryUserBrowsedAwayFromBottom,
-        scrollRuntime.userInteracting.value,
-        scrollMode,
-        initialWorklinePhase
-    ) {
-        if (!hasTodayAgriCard || !shouldShowTodayAgriCard) return@LaunchedEffect
-        if (!startupLayoutReady || !shouldRevealMessageList) return@LaunchedEffect
-        if (scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
-        if (initialWorklinePhase != InitialWorklinePhase.WorklineOwned) return@LaunchedEffect
-        if (isStreaming || hasStreamingItem) return@LaunchedEffect
-        if (todayAgriStaticHistoryUserBrowsedAwayFromBottom) return@LaunchedEffect
-        if (chatListUserDragging || recyclerScrollInProgress || scrollRuntime.userInteracting.value) {
-            return@LaunchedEffect
-        }
-        val anchorKey = listOf(
-            currentTodayAgriMainItem?.day_cn ?: currentTodayAgriCardDay,
-            todayAgriAfterMessageIdForRender.orEmpty(),
-            chatListItems.size.toString()
-        ).joinToString("|")
-        if (todayAgriBottomAnchorAppliedKey == anchorKey) return@LaunchedEffect
-        todayAgriBottomAnchorAppliedKey = anchorKey
-        scrollMode = ScrollMode.AutoFollow
-        withFrameNanos { }
-        if (
-            scrollMode != ScrollMode.UserBrowsing &&
-            !chatListUserDragging &&
-            !recyclerScrollInProgress &&
-            !scrollRuntime.userInteracting.value
-        ) {
-            requestProgrammaticForwardListBottomAnchor(force = true)
-        }
-    }
-
     fun userIsActivelyBrowsingInitialWorkline(): Boolean {
         return chatListUserDragging ||
             recyclerScrollInProgress ||
@@ -5472,19 +5419,6 @@ fun ChatScreen() {
         if (chatListUserDragging) {
             initialBottomSnapDone = true
             postInitialSnapCorrectionDone = true
-        }
-    }
-
-    LaunchedEffect(
-        chatListUserDragging,
-        recyclerScrollInProgress,
-        programmaticScroll,
-        chatListState.canScrollForward
-    ) {
-        if (!programmaticScroll && chatListUserDragging && chatListState.canScrollForward) {
-            todayAgriStaticHistoryUserBrowsedAwayFromBottom = true
-        } else if (!chatListState.canScrollForward && !chatListUserDragging && !recyclerScrollInProgress) {
-            todayAgriStaticHistoryUserBrowsedAwayFromBottom = false
         }
     }
 

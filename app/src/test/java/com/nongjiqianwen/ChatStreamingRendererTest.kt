@@ -397,6 +397,25 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun unclosedStandaloneBoldHeadingLineKeepsDividerAfterBodyArrives() {
+        val state = splitStreamingBlockState("先说清楚。\n\n**处理建议\n及时通风。")
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(3, models.size)
+        assertTrue(models[0] is StreamingLineModel.Paragraph)
+        assertTrue(models[1] is StreamingLineModel.Heading)
+        assertEquals("处理建议", (models[1] as StreamingLineModel.Heading).text)
+        assertTrue(models[2] is StreamingLineModel.Paragraph)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = models[0],
+                current = models[1]
+            )
+        )
+    }
+
+    @Test
     fun chineseSectionHeadingKeepsDividerInSettledHistory() {
         val state = splitStreamingBlockState("先说清楚。\n\n一、成品含腐植酸尿素 vs. 自配方案\n\n继续观察。")
         val models = state.completedBlocks.map(::classifyStreamingLine) +
@@ -516,6 +535,13 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun activeBoldLineWithWhitespaceStaysParagraphUntilItIsClearlyAHeading() {
+        val model = classifyActiveStreamingLine("**处理建议 后面还有正文")
+
+        assertTrue(model is StreamingLineModel.Paragraph)
+    }
+
+    @Test
     fun inlineBoldWithTrailingBodyStaysParagraph() {
         val model = classifyStreamingLine("**重点** 后面还有正文")
 
@@ -529,6 +555,20 @@ class ChatStreamingRendererTest {
 
         assertTrue(heading is StreamingLineModel.Heading)
         assertTrue(shouldShowStreamingSectionDivider(previous, heading))
+    }
+
+    @Test
+    fun markdownTableSeparatorDoesNotCreateSectionDivider() {
+        val stats = buildRendererStructureStats(
+            "先看整体。\n\n" +
+                "|项目|建议|\n" +
+                "|---|---|\n" +
+                "|水分|控水|\n"
+        )
+
+        assertEquals(0, stats.headingCount)
+        assertEquals(1, stats.tableCount)
+        assertEquals(0, stats.dividerHeadingCount)
     }
 
     @Test
