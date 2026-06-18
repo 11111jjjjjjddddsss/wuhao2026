@@ -978,7 +978,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		{Role: "system", Content: contextHeader},
 	}
 	if hasMemoryDocument {
-		messages = append(messages, BailianMessage{Role: "system", Content: "记忆摘要（仅供参考；用于上下文承接和减少重复追问；除非用户要求回顾历史，不要主动复述摘要内容、小标题或用户画像）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
+		messages = append(messages, BailianMessage{Role: "system", Content: "后台背景信息中的记忆摘要（只作静默参考；回答应聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于记忆的顺带建议）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
 	}
 	if trimmedTodayAgriContext := strings.TrimSpace(todayAgriContext); trimmedTodayAgriContext != "" {
 		messages = append(messages, BailianMessage{Role: "system", Content: trimmedTodayAgriContext})
@@ -1033,14 +1033,14 @@ func (s *Server) roundToUserContent(round SessionRound, includeImages bool) any 
 func (round SessionRound) userTextWithContextTime(loc *time.Location) string {
 	contextLines := []string{}
 	if timestamp := FormatShanghaiUnixMilliToSecond(loc, round.CreatedAt); timestamp != "" {
-		contextLines = append(contextLines, "历史轮次时间："+timestamp+"（Asia/Shanghai）")
+		contextLines = append(contextLines, "后台背景时间："+timestamp+"（Asia/Shanghai，仅供判断对话间隔）")
 	}
 	if region := strings.TrimSpace(round.Region); region != "" && region != "未知" {
 		reliability := strings.TrimSpace(string(round.RegionReliability))
 		if reliability == "" {
 			reliability = string(RegionUnreliable)
 		}
-		contextLines = append(contextLines, "历史轮次地点："+region+"；地点可信度："+reliability)
+		contextLines = append(contextLines, "后台背景地点："+region+"；地点可信度："+reliability+"（仅供判断地区背景）")
 	}
 	if len(contextLines) == 0 {
 		return round.User

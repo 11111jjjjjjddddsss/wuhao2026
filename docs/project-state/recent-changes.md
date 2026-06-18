@@ -5,7 +5,11 @@
 
 ## 2026-06-19
 
+- 继续按“全盘挑刺、联网校准”落地两处低风险修复：主聊天 `chat.go` 的记忆文档注入说明从“用于上下文承接和减少重复追问”同步改成“后台背景信息中的记忆摘要，只作静默参考，回答聚焦本轮问题”，历史轮次时间 / 地点前缀也弱化为“后台背景时间 / 地点，仅供判断对话间隔 / 地区背景”，避免主锚点刚收口后又被内部 prompt 片段诱导模型展开记忆、历史或用户画像。这只改提示词表达，不加后端内容过滤、关键词拦截、硬字数卡或 `max_tokens`。同时发布链新增机器可读 revision：部署脚本写 `/opt/nongjiqiancha/server/REVISION`，`/healthz` 返回 `revision`，发布切流前后校验 revision 等于本次 commit，公网 Nginx reload 后会等待 healthz 也露出本次 revision 再通过，readiness 打印 `server_revision`。
+
 - 按用户确认，主对话锚点 `server-go/assets/system_anchor.txt` 的 `B. 信息使用` 第 `(8)` 条改为覆盖“后台背景信息（包括记忆摘要、历史轮次、用户画像、时间地点及系统补充）”。新口径要求这些背景只作静默参考，回答聚焦本轮问题；非直接相关时不要主动提及、展开、串联过往内容，也不要追加基于背景信息的顺带建议。该改动是提示词层面的表达收口，用于减少主模型把记忆 / 上下文 / 用户画像带成无关废话；不改记忆文档提示词、今日农情提示词、模型参数，不新增后端内容过滤、关键词拦截、相似度硬拦截、字数硬卡或 `max_tokens`。
+
+- 主对话锚点收口提交 `c8caace6` 已通过 `scripts/deploy-ecs-server.ps1` 部署到 ECS，部署包提交为 `c8caace6`，Nginx active upstream 从 `3000` 切到 `3001`；部署过程在 ECS 上重新跑 `go test ./...` 并重建二进制，切换后 readiness 显示公网 healthz 200、严格鉴权、百炼、短信、Redis 和 OSS 上传均正常，后台未登录接口继续 401。该部署只更新后端服务和 `server-go/assets`，不发布 Android APK、不配置检查更新、不动官网或管理后台静态前端。
 
 - 按用户“不能让后台扣次失败挡住用户体验”的拍板，`/api/chat/stream` 取消了入口处按当前用户 `quota_consume_outbox pending / failed` 返回 `QUOTA_SETTLEMENT_PENDING` 的前台门闩。`quota_consume_outbox` 仍在归档事务内作为待补扣队列写入，`quota_ledger` 继续按 `user_id + client_msg_id` 幂等防重复扣，服务端短重试和后台 worker 仍按回答完成时档位、自然日和完成时间补扣；后台总览 / 监控面板继续显示“待补扣”。当前取舍是前台放行、后台追账：不再把待补扣失败转成用户下一轮聊天卡死，剩余风险转成后台待处理和短期成本 / 额度对账压力，后续应补 owner 级 repair / 豁免 / 终结状态和审计，而不是重新加用户侧限制。本轮不改主对话锚点、记忆提示词、今日农情提示词，不新增模型输出过滤或 `max_tokens`。
 

@@ -316,6 +316,7 @@ preinstall_assets_backup=''
 preinstall_migrations_backup=''
 preinstall_gomod_backup=''
 preinstall_gosum_backup=''
+preinstall_revision_backup=''
 
 restore_pre_switch_install() {
   if [ "`$installed_new_binary" != "1" ] || [ "`$switch_completed" = "1" ]; then
@@ -339,7 +340,10 @@ restore_pre_switch_install() {
   if [ -n "`$preinstall_gosum_backup" ] && [ -f "`$preinstall_gosum_backup" ]; then
     cp -a "`$preinstall_gosum_backup" "`$install_dir/go.sum" || true
   fi
-  chown -R nongji:nongji "`$install_dir/nongji-server" "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" 2>/dev/null || true
+  if [ -n "`$preinstall_revision_backup" ] && [ -f "`$preinstall_revision_backup" ]; then
+    cp -a "`$preinstall_revision_backup" "`$install_dir/REVISION" || true
+  fi
+  chown -R nongji:nongji "`$install_dir/nongji-server" "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" "`$install_dir/REVISION" 2>/dev/null || true
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
 
@@ -392,13 +396,18 @@ if [ -f "`$install_dir/go.sum" ]; then
   preinstall_gosum_backup="`$install_dir/go.sum.bak-`$install_backup_suffix"
   cp -a "`$install_dir/go.sum" "`$preinstall_gosum_backup"
 fi
+if [ -f "`$install_dir/REVISION" ]; then
+  preinstall_revision_backup="`$install_dir/REVISION.bak-`$install_backup_suffix"
+  cp -a "`$install_dir/REVISION" "`$preinstall_revision_backup"
+fi
 mv "`$install_dir/nongji-server.new" "`$install_dir/nongji-server"
 rm -rf "`$install_dir/assets" "`$install_dir/migrations"
 cp -a "`$stage/assets" "`$install_dir/assets"
 cp -a "`$stage/migrations" "`$install_dir/migrations"
 cp "`$stage/go.mod" "`$install_dir/go.mod"
 cp "`$stage/go.sum" "`$install_dir/go.sum"
-chown -R nongji:nongji "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum"
+printf '%s\n' "`$commit" > "`$install_dir/REVISION"
+chown -R nongji:nongji "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" "`$install_dir/REVISION"
 installed_new_binary=1
 
 write_slot_unit() {
@@ -462,6 +471,7 @@ if [ "`$upstream_status" != "200" ]; then
   exit 20
 fi
 require_production_health "`$upstream_body"
+grep -q "\"revision\":\"`$commit\"" "`$upstream_body" || { echo "upstream health revision mismatch; expected `$commit" >&2; cat "`$upstream_body" || true; exit 21; }
 
 echo switch-nginx
 nginx_backup="`$nginx_site.bak-`$(date +%Y%m%d%H%M%S)"
@@ -521,14 +531,20 @@ restore_nginx_after_switch() {
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
 
+public_health_ready=''
 for i in `$(seq 1 20); do
   health_status=`$(curl -sS --resolve api.nongjiqiancha.cn:443:127.0.0.1 -o "`$health_body" -w '%{http_code}' https://api.nongjiqiancha.cn/healthz || true)
   if [ "`$health_status" = "200" ]; then
     cat "`$health_body" || true
     echo
-    break
+    if require_production_health "`$health_body" && grep -q "\"revision\":\"`$commit\"" "`$health_body"; then
+      public_health_ready='1'
+      break
+    fi
+    echo "health ready but revision not current yet (attempt `$i/20)" >&2
+  else
+    echo "health not ready: `$health_status" >&2
   fi
-  echo "health not ready: `$health_status" >&2
   sleep 2
 done
 if [ "`$health_status" != "200" ]; then
@@ -536,7 +552,9 @@ if [ "`$health_status" != "200" ]; then
   restore_nginx_after_switch
   exit 20
 fi
-if ! require_production_health "`$health_body"; then
+if [ "`$public_health_ready" != "1" ]; then
+  echo "public health revision mismatch; expected `$commit" >&2
+  cat "`$health_body" || true
   restore_nginx_after_switch
   exit 21
 fi

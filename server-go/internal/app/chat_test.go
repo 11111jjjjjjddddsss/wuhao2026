@@ -270,7 +270,7 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	if messages[2].Role != "system" {
 		t.Fatalf("expected memory document to be inserted as system message")
 	}
-	if !strings.HasPrefix(messages[2].Content.(string), "记忆摘要（仅供参考；用于上下文承接和减少重复追问；除非用户要求回顾历史，不要主动复述摘要内容、小标题或用户画像）\n") {
+	if !strings.HasPrefix(messages[2].Content.(string), "后台背景信息中的记忆摘要（只作静默参考；回答应聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于记忆的顺带建议）\n") {
 		t.Fatalf("expected memory document label, got %#v", messages[2].Content)
 	}
 	for _, forbidden := range []string{"后台参考", "后台摘要", "B层", "C层", "内部机制"} {
@@ -410,10 +410,10 @@ func TestBuildPromptMessagesIncludesHistoricalRoundTimeWhenAvailable(t *testing.
 	if !ok {
 		t.Fatalf("expected historical user message to be text, got %#v", messages[2].Content)
 	}
-	if !strings.Contains(historicalUser, "历史轮次时间：2026-04-28 21:34:10（Asia/Shanghai）") {
+	if !strings.Contains(historicalUser, "后台背景时间：2026-04-28 21:34:10（Asia/Shanghai，仅供判断对话间隔）") {
 		t.Fatalf("expected historical time prefix, got %q", historicalUser)
 	}
-	if !strings.Contains(historicalUser, "历史轮次地点：山东寿光；地点可信度：reliable") {
+	if !strings.Contains(historicalUser, "后台背景地点：山东寿光；地点可信度：reliable（仅供判断地区背景）") {
 		t.Fatalf("expected historical region prefix, got %q", historicalUser)
 	}
 	if !strings.Contains(historicalUser, "番茄叶子发黄") {

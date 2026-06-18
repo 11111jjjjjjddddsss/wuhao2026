@@ -243,6 +243,12 @@ for expected in \
     exit 12
   fi
 done
+server_revision=$(sed -nE 's/.*"revision":"([^"]*)".*/\1/p' "$health_body" 2>/dev/null | head -n 1)
+if [ -z "$server_revision" ]; then
+  echo 'server_revision=missing'
+else
+  echo "server_revision=$server_revision"
+fi
 
 echo
 echo '== admin-api =='

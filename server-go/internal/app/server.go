@@ -293,7 +293,42 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		"upload_storage":      uploadStoreHealthStatus(s.uploadStore),
 		"auth_strict":         IsAuthStrict(),
 		"dev_order_endpoints": devOrderEndpointsEnabled(),
+		"revision":            deploymentRevision(),
 	})
+}
+
+func deploymentRevision() string {
+	if revision := sanitizeDeploymentRevision(os.Getenv("DEPLOY_COMMIT")); revision != "" {
+		return revision
+	}
+	paths := []string{"REVISION"}
+	if exe, err := os.Executable(); err == nil && strings.TrimSpace(exe) != "" {
+		paths = append(paths, filepath.Join(filepath.Dir(exe), "REVISION"))
+	}
+	for _, path := range paths {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		if revision := sanitizeDeploymentRevision(string(raw)); revision != "" {
+			return revision
+		}
+	}
+	return ""
+}
+
+func sanitizeDeploymentRevision(raw string) string {
+	revision := strings.TrimSpace(raw)
+	if revision == "" || len(revision) > 64 {
+		return ""
+	}
+	for _, r := range revision {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '.' || r == '_' || r == '-' {
+			continue
+		}
+		return ""
+	}
+	return revision
 }
 
 func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
