@@ -1,6 +1,6 @@
 # 云资源容量与续费巡检
 
-最后更新：2026-06-17
+最后更新：2026-06-18
 
 ## 目的
 
@@ -8,7 +8,7 @@
 
 本 runbook 只记录规格、用量、阈值和巡检入口；不记录 AccessKey、数据库密码、模型 Key、Redis 密码、服务器环境变量内容或公安备案数据码。
 
-## 2026-06-14 巡检结论
+## 2026-06-18 巡检结论
 
 结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 5 条应用日志告警为 `ready`。巡检脚本会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿。2026-06-15 已按阿里云官方文档复核释放保护口径：ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 均为包年包月，脚本会显示 `deletion_protection=not_applicable_prepaid`，不要把旧输出里的 `False` 误读成缺少保护。2026-06-17 资源巡检已收紧 OSS 生命周期校验，会按 XML 逐条确认 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天和未完成分片 1 天在同一条启用规则里成立，避免前缀和天数分属不同规则时假绿。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
@@ -21,8 +21,9 @@
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS；生命周期为 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`；2026-06-17 起 `check-resource-capacity.ps1` 会解析生命周期 XML 并逐前缀输出 `lifecycle prefix=... status=... expiration_days=... abort_multipart_days=...`
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`，用于 OSS 低成本 APK 下载；域名到期 `2027-05-24 19:23:07`；ECS 上 Let’s Encrypt 证书由 `certbot.timer` 自动续期，`download.nongjiqiancha.cn` 的 OSS 自定义域名证书已绑定。2026-06-17 已重签下载域名证书并加密同步到 OSS，当前到期日 `2026-09-15 07:03:04 UTC`；证书续期后需用 `scripts/sync-oss-download-certificate.ps1` 同步到 OSS CNAME 配置，该脚本不再让 Cloud Assistant 输出明文私钥
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。ECS 已补装 CloudMonitor C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；本轮严格巡检里 ECS 内存规则已回到 `OK`。若未来云监控返回 `INSUFFICIENT_DATA`，严格巡检会以 warning / attention 提醒。该组用于资源不足提前邮件提醒，不走短信 / 电话
+- ARMS / 云监控系统事件：2026-06-18 阿里云 App 里出现 `InstanceStatus:ArmsStopped` 警告，事件内容指向默认 CMS 工作空间 `default-cms-1159547719787456-cn-beijing` 且原因为 `user_stop`。只读核对后结论是：这不是 ECS 服务器停机，不是 Go 后端 / RDS / Redis / OSS 故障，也不是农技千查主业务告警；ARMS 当前无活跃告警、通知策略或用户自建事件规则。默认 CMS 工作空间下仍有 CloudMonitor 2.0 底层免费指标容器在运行，不能为了清红点贸然删除工作空间，也不能关闭 `NongjiQianchaOps`、SLS 应用告警或 9 条资源水位规则。该系统事件历史本身不像云安全中心事件那样可手工“处理”；如果未来每天继续新增同类噪音，再只针对 ARMS stopped 消息订阅 / 事件通知流做静音评估，不动主业务监控。
 - SLS：5 条最小 AlertHub 告警均存在并启用，告警查询、触发条件、重复提醒已按脚本期望校验；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定均为 `5/5`，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
-- 云安全中心：2026-06-14 只读巡检曾看到 1 条提醒级事件 `云产品威胁检测-OSS可疑访问行为`，类型不是资源水位告警，关联 OSS 读取 Bucket 加密配置类操作；核对后与本次 CLI / ossutil 做 OSS 配置巡检或开启服务端加密的运维行为一致，已在云安全中心按“我已手工处理”收口，未创建长期白名单，待处理列表为空。聊天和仓库文档不记录 AK、IP、UserAgent 或其它敏感字段；后续若出现来源不明、写操作、删除操作、失败调用或越权类告警，不能静默忽略，应按安全事件处理并优先轮换相关凭证。
+- 云安全中心：2026-06-18 已把 1 条提醒级 `云产品威胁检测-OSS可疑访问行为` 事件按“我已手工处理”收口，待处理列表和风险等级计数均为 0；该事件不是资源水位告警，核对后与本项目近期 OSS CNAME / 证书 / 配置巡检运维行为一致。本轮未创建长期白名单，后续同类事件仍逐条核对。聊天和仓库文档不记录 AK、IP、UserAgent 或其它敏感字段；后续若出现来源不明、写操作、删除操作、失败调用或越权类告警，不能静默忽略，应按安全事件处理并优先轮换相关凭证。
 - 普通短信服务：已购买国内通用短信套餐包，新 Android 登录消耗普通短信余量；DYPNS / 融合认证统计只作为历史兼容观察。`check-sms-usage.ps1` 会额外调用费用中心有效资源包 API 做交叉检查，但 2026-06-15 当前只返回百炼推理资源包和 OSS 存储包，没有返回短信类套餐包；因此短信套餐包余额、到期、余量预警和自动复购仍需以短信服务控制台为准
 - 数据留存与文字表成本：2026-06-15 新增 `scripts/check-data-retention-cost.ps1` 并接入 `check-resource-capacity.ps1`。该脚本只读统计重点文字 / 日志 / 账本表的行数、最早 / 最新时间和表体量，默认守护聊天归档 31 天、App 自动日志 30 天、客服文字 / 审计 / 幂等 ledger 365 天复核窗口、单表 1GB、重点表合计 10GB。当前生产实测重点表合计约 0.828MB，`warnings=0 / errors=0 / status=ready`；因此当前成本很低。App 自动日志已按低成本窗口在写入路径限频清理，公开运营前仍需继续补客服文字、后台审计和注销联动的自动清理 / 去标识化策略
 - 费用中心账单巡检：2026-06-15 新增 `scripts/check-aliyun-costs.ps1`，通过阿里云费用中心 BSS OpenAPI 只读查询账户余额、当月 / 上月产品账单、当前月明细、百炼每日走势、有效资源包和有效实例；脚本会重试费用中心偶发超时，统一脱敏请求签名和账号字段，不买资源、不续费、不退订、不释放实例。当前实测账户可用余额约 `628.35` 元；2026-06 当月产品账单税前合计约 `130.1225` 元，其中百炼约 `60.2716` 元、短信套餐包 `35` 元、DYPNS / 融合认证套餐 `34.85` 元、SLS 约 `0.0009` 元。百炼成本主要来自 2026-06-08 到 2026-06-10 的提示词 / 探针集中测试，最近 5 天百炼税前合计约 `0.357` 元、均值约 `0.0714` 元 / 天；`qwen-plus` 推理资源包剩余 `11,489,501 / 12,000,000 tokens`，OSS 标准存储包剩余 `100 / 100GB`。DYPNS / 融合认证已按已购沉没成本处理，新 Android 不再使用；当前两个融合认证包均为 `ManualRenewal`，不是自动续费，其中 2026-05-31 包实付 `0` 元、2026-06-06 包实付约 `34.85` 元；CLI 安全询价 `InquiryPriceRefundInstance` 对两个包均返回 `CommodityNotSupported`，不走 CLI 退订。脚本只在 DYPNS / 融合认证出现自动续费或新增购买等情况时提醒；短信套餐包在资源包 API 中不可见、百炼节省计划临近到期等仍列为 attention，这是经营成本提醒，不等同于服务故障。当前建议是保留低价 ECS / RDS / Redis / OSS / 域名 / 短信套餐，不升配；百炼按真实用户量再买资源包或节省计划。

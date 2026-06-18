@@ -404,7 +404,7 @@ internal fun shouldShowTodayAgriMainCard(
         (shownThisRuntime || hasSavedItem || hasAssistantAnswerTail) &&
         cardDay.isNotBlank() &&
         cardDay == normalizedCurrentDay &&
-        (!suppressedThisRuntime || shownThisRuntime) &&
+        (!suppressedThisRuntime || shownThisRuntime || hasSavedItem) &&
         (shownThisRuntime || hasSavedItem || shownDayKey != cardDay)
 }
 
@@ -2611,6 +2611,9 @@ fun ChatScreen() {
     var imageSendGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
     var todayAgriBottomAnchorAppliedKey by remember(uiRuntimeResetKey) { mutableStateOf("") }
+    var todayAgriStaticHistoryUserBrowsedAwayFromBottom by remember(uiRuntimeResetKey) {
+        mutableStateOf(false)
+    }
     val failedUserMessageStates = remember(uiRuntimeResetKey) {
         mutableStateMapOf<String, String>().apply {
             putAll(initialLocalSnapshot.failedUserMessageStates)
@@ -5349,6 +5352,7 @@ fun ChatScreen() {
         messages.size,
         chatListUserDragging,
         recyclerScrollInProgress,
+        todayAgriStaticHistoryUserBrowsedAwayFromBottom,
         scrollRuntime.userInteracting.value,
         scrollMode,
         initialWorklinePhase
@@ -5358,6 +5362,7 @@ fun ChatScreen() {
         if (scrollMode == ScrollMode.UserBrowsing) return@LaunchedEffect
         if (initialWorklinePhase != InitialWorklinePhase.WorklineOwned) return@LaunchedEffect
         if (isStreaming || hasStreamingItem) return@LaunchedEffect
+        if (todayAgriStaticHistoryUserBrowsedAwayFromBottom) return@LaunchedEffect
         if (chatListUserDragging || recyclerScrollInProgress || scrollRuntime.userInteracting.value) {
             return@LaunchedEffect
         }
@@ -5468,6 +5473,19 @@ fun ChatScreen() {
         if (chatListUserDragging) {
             initialBottomSnapDone = true
             postInitialSnapCorrectionDone = true
+        }
+    }
+
+    LaunchedEffect(
+        chatListUserDragging,
+        recyclerScrollInProgress,
+        programmaticScroll,
+        chatListState.canScrollForward
+    ) {
+        if (!programmaticScroll && chatListUserDragging && chatListState.canScrollForward) {
+            todayAgriStaticHistoryUserBrowsedAwayFromBottom = true
+        } else if (!chatListState.canScrollForward && !chatListUserDragging && !recyclerScrollInProgress) {
+            todayAgriStaticHistoryUserBrowsedAwayFromBottom = false
         }
     }
 

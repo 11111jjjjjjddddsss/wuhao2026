@@ -363,7 +363,7 @@ class ChatTimelineItemsTest {
             )
         )
 
-        assertFalse(
+        assertTrue(
             shouldShowTodayAgriMainCard(
                 card = todayAgriCard(),
                 currentDayKey = "20260615",

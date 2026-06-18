@@ -816,9 +816,7 @@ func parseDailyAgriCard(content string, sources []DailyAgriSearchSource, dayCN s
 		}
 		items = append(items, item)
 		report.Displayable++
-		if host := hostLabelFromURL(item.URL); host != "" {
-			report.DisplaySources = append(report.DisplaySources, host)
-		} else if source := strings.TrimSpace(item.Source); source != "" {
+		if source := dailyAgriPublicSourceName(item); source != "" {
 			report.DisplaySources = append(report.DisplaySources, source)
 		}
 		if len(items) == dailyAgriTargetItemCount {

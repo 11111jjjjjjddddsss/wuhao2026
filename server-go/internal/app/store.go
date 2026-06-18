@@ -15,6 +15,10 @@ type Store struct {
 	shanghai *time.Location
 }
 
+type dbQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
 const (
 	sessionRoundArchiveRetention = 30 * 24 * time.Hour
 	sessionRoundArchiveUILimit   = 30
@@ -349,6 +353,79 @@ func (s *Store) GetSessionGenerationState(ctx context.Context, userID string) (S
 	return state, nil
 }
 
+type SessionSnapshotUIWarnings struct {
+	ArchiveErr   error
+	TodayAgriErr error
+}
+
+func (s *Store) GetSessionSnapshotForUI(ctx context.Context, userID string, todayDayCN string, todayLimit int) (*SessionSnapshot, []SessionRound, []TodayAgriUserItem, SessionSnapshotUIWarnings, error) {
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{
+		Isolation: sql.LevelRepeatableRead,
+		ReadOnly:  true,
+	})
+	if err != nil {
+		return nil, nil, nil, SessionSnapshotUIWarnings{}, err
+	}
+	defer rollbackQuietly(tx)
+
+	var generation int
+	err = tx.QueryRowContext(
+		ctx,
+		"SELECT generation FROM session_generation WHERE user_id = ? LIMIT 1",
+		userID,
+	).Scan(&generation)
+	if err == sql.ErrNoRows {
+		generation = 0
+	} else if err != nil {
+		return nil, nil, nil, SessionSnapshotUIWarnings{}, err
+	}
+	snapshot, err := s.readSnapshotRow(
+		tx.QueryRowContext(
+			ctx,
+			"SELECT a_json, b_summary, pending_retry_b, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1",
+			userID,
+		),
+		userID,
+	)
+	if err != nil {
+		return nil, nil, nil, SessionSnapshotUIWarnings{}, err
+	}
+	if snapshot == nil {
+		snapshot = &SessionSnapshot{
+			UserID:         userID,
+			ARoundsFull:    []SessionRound{},
+			MemoryDocument: "",
+			PendingMemory:  false,
+			RoundTotal:     0,
+			UpdatedAt:      time.Now().UnixMilli(),
+		}
+	}
+	snapshot.SessionGeneration = generation
+
+	var warnings SessionSnapshotUIWarnings
+	cutoffMs := time.Now().Add(-sessionRoundArchiveRetention).UnixMilli()
+	archivedRounds, err := s.listSessionRoundArchiveWith(ctx, tx, userID, sessionRoundArchiveUILimit, cutoffMs)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, nil, warnings, ctxErr
+		}
+		warnings.ArchiveErr = err
+		archivedRounds = nil
+	}
+	todayItems, err := s.getTodayAgriUserItemsWith(ctx, tx, userID, todayDayCN, todayLimit)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, nil, nil, warnings, ctxErr
+		}
+		warnings.TodayAgriErr = err
+		todayItems = nil
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, nil, warnings, err
+	}
+	return snapshot, archivedRounds, todayItems, warnings, nil
+}
+
 func (s *Store) currentSessionGenerationForUpdateTx(ctx context.Context, tx *sql.Tx, userID string) (int, error) {
 	var generation int
 	err := tx.QueryRowContext(
@@ -461,6 +538,10 @@ func (s *Store) GetRecentSessionRoundsForSummary(ctx context.Context, userID str
 }
 
 func (s *Store) listSessionRoundArchive(ctx context.Context, userID string, limit int, cutoffMs int64) ([]SessionRound, error) {
+	return s.listSessionRoundArchiveWith(ctx, s.db, userID, limit, cutoffMs)
+}
+
+func (s *Store) listSessionRoundArchiveWith(ctx context.Context, q dbQueryer, userID string, limit int, cutoffMs int64) ([]SessionRound, error) {
 	if limit <= 0 {
 		return []SessionRound{}, nil
 	}
@@ -478,7 +559,7 @@ func (s *Store) listSessionRoundArchive(ctx context.Context, userID string, limi
 		 LIMIT ?`
 		args = []any{userID, cutoffMs, limit}
 	}
-	rows, err := s.db.QueryContext(
+	rows, err := q.QueryContext(
 		ctx,
 		query,
 		args...,

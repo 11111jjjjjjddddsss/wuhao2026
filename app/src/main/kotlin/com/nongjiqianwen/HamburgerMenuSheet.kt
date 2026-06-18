@@ -882,6 +882,7 @@ internal fun HamburgerMenuSheet(
                     info.latestVersionCode
                         ?.takeIf { it > 0 }
                         ?.let { context.saveLastPromptedUpdateVersionCode(it) }
+                    pendingInstallPermissionUpdate = null
                     updateDialogInfo = null
                 }
             },
@@ -911,10 +912,9 @@ private fun HamburgerAppUpdateDialog(
     }
     val sizeText = formatAppUpdateSize(update.fileSizeBytes)
     val notes = update.releaseNotes?.trim().orEmpty()
-    val forceUpdate = update.forceUpdate == true
     Dialog(
         onDismissRequest = {
-            if (!downloading && !forceUpdate) onDismiss()
+            if (!downloading) onDismiss()
         },
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
@@ -930,7 +930,6 @@ private fun HamburgerAppUpdateDialog(
                 versionText = versionText,
                 sizeText = sizeText,
                 notes = notes,
-                forceUpdate = forceUpdate,
                 downloading = downloading,
                 installPermissionPending = installPermissionPending,
                 onDismiss = onDismiss,
@@ -946,7 +945,6 @@ private fun HamburgerAppUpdateCard(
     versionText: String,
     sizeText: String?,
     notes: String,
-    forceUpdate: Boolean,
     downloading: Boolean,
     installPermissionPending: Boolean,
     onDismiss: () -> Unit,
@@ -1010,29 +1008,27 @@ private fun HamburgerAppUpdateCard(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                if (!forceUpdate) {
-                    Surface(
-                        color = Color(0xFFF0F1F2),
-                        shape = RoundedCornerShape(999.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .heightIn(min = 44.dp)
-                            .clickable(
-                                enabled = !downloading,
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onDismiss
-                            )
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = "稍后",
-                                color = Color(0xFF111111),
-                                fontSize = 15.sp,
-                                lineHeight = 20.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                Surface(
+                    color = Color(0xFFF0F1F2),
+                    shape = RoundedCornerShape(999.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .clickable(
+                            enabled = !downloading,
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onDismiss
+                        )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = "稍后",
+                            color = Color(0xFF111111),
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
                 Surface(
@@ -1072,7 +1068,6 @@ internal fun HamburgerAppUpdateDialogPreview(
         versionText = "版本 1.0.1 (2)",
         sizeText = "38.5MB",
         notes = "修复已知问题，优化使用体验。",
-        forceUpdate = false,
         downloading = downloading,
         installPermissionPending = installPermissionPending,
         onDismiss = {},

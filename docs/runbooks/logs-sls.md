@@ -1,6 +1,6 @@
 # 日志排查 Runbook
 
-最后更新：2026-06-13
+最后更新：2026-06-18
 
 ## 目的
 
@@ -22,7 +22,7 @@
   - `proj-xtrace-fcd9c65ffd26d6c2a8e8f356745e42db-cn-beijing`：XTrace / APM 托管
   - `aliyun-product-data-1159547719787456-cn-beijing`：产品托管数据，当前包含 `sae_event`
 - 这些项目不是农技千查业务日志，不应在未确认用途 / 费用 / 依赖前直接删除
-- 2026-05-30 曾通过阿里云 CLI 复查北京区只有这 3 个系统 / 产品托管 Project；2026-06-06 已新增农技千查专用 Project，但仍不删除上述系统 / 产品托管 Project。`default-cms...` 和 `proj-xtrace...` 可能影响云监控 / XTrace / APM 视图或历史，`aliyun-product-data...` 当前包含旧产品事件 `sae_event`；若后续确认确实不需要 ARMS / APM 或旧 SAE 产品事件，先在对应产品控制台关闭 / 清理，再删除 SLS Project / Logstore
+- 2026-05-30 曾通过阿里云 CLI 复查北京区只有这 3 个系统 / 产品托管 Project；2026-06-06 已新增农技千查专用 Project，但仍不删除上述系统 / 产品托管 Project。`default-cms...` 和 `proj-xtrace...` 可能影响云监控 / XTrace / APM 视图或历史，`aliyun-product-data...` 当前包含旧产品事件 `sae_event`。2026-06-18 复核：阿里云 App 里的 `InstanceStatus:ArmsStopped` 属于 ARMS / 云监控产品系统事件历史，不代表农技千查 ECS、Go 后端、数据库、Redis、OSS 或主业务告警停用；默认 CMS / XTrace / 产品托管 Project 不因该红点删除。后续如需处理噪音，只允许评估 ARMS stopped 事件订阅 / 消息通知静音；不得删除默认 CMS 工作空间，不得关闭 `NongjiQianchaOps`、SLS 应用告警、云监控资源水位规则或农技千查专用 SLS Project。
 - `server-go` 当前日志同时写 ECS 本地 `systemd` journal 和 `/var/log/nongjiqiancha/server.log`；SLS 采集文件日志，Nginx error log 由 SLS 采集，Nginx access 仍先用本地查询脚本筛 `429/5xx`
 - Go 后端已补统一请求级结构化日志：每个非降噪业务请求都会写 `request_id / method / path / status / duration_ms / response_bytes / masked_ip / auth_mode / user_id(如有) / user_agent(如有)`，不记录 query string、请求 body、Authorization、手机号、图片 URL 或模型 Key
 - 响应头会回写 `X-Request-Id`；App 自动日志、Nginx 和 Go journal 后续可用该 ID 串联排障
@@ -195,4 +195,4 @@ systemctl status nginx --no-pager
 - 暂不把所有 Nginx access log、聊天正文、AI 回复、图片 URL、手机号、token、模型 Key、数据库密码采进 SLS
 - 如果后续 App 自动日志要进 SLS，优先从 `client_app_logs` 做管理后台查询或脱敏聚合，不直接上传原始聊天内容
 - 如果日志量上涨，优先减少写入、减少索引字段、缩短保留期或对高频 App 事件采样，再评估 SLS 资源包、告警规则、仪表盘和更细的采集过滤
-- 不删除阿里云系统 / 产品托管 Project，除非先确认没有依赖且不会影响云监控 / APM / 产品事件
+- 不删除阿里云系统 / 产品托管 Project。若只是 `InstanceStatus:ArmsStopped` 这类 ARMS stopped 红点噪音，只评估事件订阅 / 消息通知静音，不动默认 CMS 工作空间、农技千查专用 SLS Project、SLS 5 条应用告警、云监控 9 条资源水位规则和 `NongjiQianchaOps` 联系人组

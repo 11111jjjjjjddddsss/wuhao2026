@@ -99,14 +99,24 @@ function Test-AllowedReleaseApkUri {
         Add-Failure $failures "$Label URL host must be download.nongjiqiancha.cn"
     }
     $path = $Uri.AbsolutePath.ToLowerInvariant()
-    if (-not $path.StartsWith("/android/releases/")) {
+    $decodedPath = $path
+    try {
+        $decodedPath = [System.Uri]::UnescapeDataString($Uri.AbsolutePath).ToLowerInvariant()
+    } catch {
+        Add-Failure $failures "$Label URL path contains invalid percent-encoding"
+        return
+    }
+    if (-not $path.StartsWith("/android/releases/") -or -not $decodedPath.StartsWith("/android/releases/")) {
         Add-Failure $failures "$Label URL path should stay under /android/releases/"
     }
-    if (-not $path.EndsWith(".apk")) {
+    if (-not $path.EndsWith(".apk") -or -not $decodedPath.EndsWith(".apk")) {
         Add-Failure $failures "$Label URL path should end with .apk"
     }
-    if ($path.Contains("..")) {
+    if ($path.Contains("..") -or $decodedPath.Contains("..")) {
         Add-Failure $failures "$Label URL path must not contain parent traversal"
+    }
+    if ($decodedPath -match "test-apks|debug|internal|staging") {
+        Add-Failure $failures "$Label URL looks like an internal test APK URL; do not configure debug/internal/staging/test-apks links for app update"
     }
     $signedQueryKeys = @("expires", "signature", "ossaccesskeyid", "security-token", "x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token")
     foreach ($key in $Uri.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
@@ -266,16 +276,21 @@ $adminEnabled = [bool]$config.enabled
 $adminSource = [string]$config.source
 $adminArtifactsComplete = [bool]$config.download_artifacts_complete
 $adminConfigValid = [bool]$config.config_valid
+$adminForceUpdate = [bool]$config.force_update
 
 Write-Host ("admin_source={0}" -f ($(if ($adminSource) { $adminSource } else { "unknown" })))
 Write-Host ("admin_enabled={0}" -f $adminEnabled)
 Write-Host ("admin_config_valid={0}" -f $adminConfigValid)
 Write-Host ("admin_download_artifacts_complete={0}" -f $adminArtifactsComplete)
+Write-Host ("admin_force_update={0}" -f $adminForceUpdate)
 Write-Host ("admin_latest_version_code={0}" -f $adminVersionCode)
 Write-Host ("admin_latest_version_name={0}" -f $adminVersionName)
 Write-Host ("admin_file_size_bytes={0}" -f $adminSizeBytes)
 Write-Host ("admin_apk_sha256={0}" -f $adminSha256)
 
+if ($adminForceUpdate) {
+    Add-Failure $failures "admin app update force_update must stay false for the current ordinary-update release flow"
+}
 if ($RequireEnabled -and -not $adminEnabled) {
     Add-Failure $failures "admin app update config is not enabled"
 }
@@ -389,13 +404,18 @@ if ($ProbePreviousVersionUpdate -and $failures.Count -eq 0) {
         $probe = Invoke-RestMethod -Method Get -Uri $probeUrl -TimeoutSec $TimeoutSec
         $probeHasUpdate = [bool]$probe.has_update
         $probeLatestVersionCode = [int]$probe.latest_version_code
+        $probeForceUpdate = [bool]$probe.force_update
         Write-Host ("public_update_probe_has_update={0}" -f $probeHasUpdate)
         Write-Host ("public_update_probe_latest_version_code={0}" -f $probeLatestVersionCode)
+        Write-Host ("public_update_probe_force_update={0}" -f $probeForceUpdate)
         if (-not $probeHasUpdate) {
             Add-Failure $failures "public /api/app/update does not report an update for PreviousVersionCode=$PreviousVersionCode"
         }
         if ($probeLatestVersionCode -ne $artifact.VersionCode) {
             Add-Failure $failures "public /api/app/update latest version mismatch. local=$($artifact.VersionCode) public=$probeLatestVersionCode"
+        }
+        if ($probeForceUpdate) {
+            Add-Failure $failures "public /api/app/update force_update must stay false for the current ordinary-update release flow"
         }
     }
 }

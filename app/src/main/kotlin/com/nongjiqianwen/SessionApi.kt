@@ -263,7 +263,10 @@ object SessionApi {
         val encodedPath = parsed.encodedPath.lowercase(Locale.US)
         val decodedPath = decodeAppUpdateUrlGuardValue(parsed.encodedPath).lowercase(Locale.US)
         if (!encodedPath.startsWith(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX)) return false
+        if (!decodedPath.startsWith(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX)) return false
         if (!encodedPath.endsWith(".apk")) return false
+        if (!decodedPath.endsWith(".apk")) return false
+        if (encodedPath.contains("..") || decodedPath.contains("..")) return false
         val lowerUrl = raw.lowercase(Locale.US)
         val decodedUrl = decodeAppUpdateUrlGuardValue(raw).lowercase(Locale.US)
         val internalMarkers = listOf("test-apks", "debug", "internal", "staging")

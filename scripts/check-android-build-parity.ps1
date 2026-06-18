@@ -290,10 +290,10 @@ if ($failures.Count -eq 0) {
         "Android app update availability must require a newer version, SHA-256 and a positive bounded file size."
     Require-Match $failures $sessionApi 'APP_UPDATE_OFFICIAL_APK_HOST\s*=\s*"download\.nongjiqiancha\.cn"(?s:.*?)APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\s*=\s*"/android/releases/"(?s:.*?)isStableAppUpdateApkUrl' `
         "Android app update availability must be limited to the official download domain and release APK path."
-    Require-Match $failures $sessionApi 'parsed\.host\.equals\(APP_UPDATE_OFFICIAL_APK_HOST,\s*ignoreCase\s*=\s*true\)(?s:.*?)encodedPath\s*=\s*parsed\.encodedPath\.lowercase\(Locale\.US\)(?s:.*?)encodedPath\.startsWith\(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\)' `
-        "Android app update URL validation must reject external APK hosts and non-release paths."
-    Require-Match $failures $sessionApi 'encodedPath\.endsWith\("\.apk"\)(?s:.*?)decodeAppUpdateUrlGuardValue(?s:.*?)internalMarkers\s*=\s*listOf\("test-apks",\s*"debug",\s*"internal",\s*"staging"\)(?s:.*?)decodedUrl\.contains\(marker\)(?s:.*?)decodedPath\.contains\(marker\)' `
-        "Android app update URL validation must reject non-APK files and URL-encoded test/internal markers."
+    Require-Match $failures $sessionApi 'parsed\.host\.equals\(APP_UPDATE_OFFICIAL_APK_HOST,\s*ignoreCase\s*=\s*true\)(?s:.*?)encodedPath\s*=\s*parsed\.encodedPath\.lowercase\(Locale\.US\)(?s:.*?)decodedPath\s*=\s*decodeAppUpdateUrlGuardValue\(parsed\.encodedPath\)\.lowercase\(Locale\.US\)(?s:.*?)encodedPath\.startsWith\(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\)(?s:.*?)decodedPath\.startsWith\(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\)' `
+        "Android app update URL validation must reject external APK hosts and encoded/decoded non-release paths."
+    Require-Match $failures $sessionApi 'encodedPath\.endsWith\("\.apk"\)(?s:.*?)decodedPath\.endsWith\("\.apk"\)(?s:.*?)encodedPath\.contains\("\.\."\)(?s:.*?)decodedPath\.contains\("\.\."\)(?s:.*?)internalMarkers\s*=\s*listOf\("test-apks",\s*"debug",\s*"internal",\s*"staging"\)(?s:.*?)decodedUrl\.contains\(marker\)(?s:.*?)decodedPath\.contains\(marker\)' `
+        "Android app update URL validation must reject non-APK files, path traversal and URL-encoded test/internal markers."
     Require-Match $failures $sessionApi 'signedQueryNames\s*=\s*setOf\((?s:.*?)"expires"(?s:.*?)"signature"(?s:.*?)"ossaccesskeyid"(?s:.*?)"x-oss-signature"(?s:.*?)parsed\.queryParameterNames\.none' `
         "Android app update URL validation must reject short signed APK URLs."
     Require-Match $failures $manifest '<uses-permission\s+android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s*/>' `
@@ -322,6 +322,12 @@ if ($failures.Count -eq 0) {
         "Android app update downloader must not skip versionCode verification when version metadata is missing."
     Require-Match $failures $hamburgerMenuSheet 'pendingInstallPermissionUpdate(?s:.*?)Lifecycle\.Event\.ON_RESUME(?s:.*?)canRequestInstallPackages(?s:.*?)startAppUpdate\s*\(\s*pendingUpdate\s*\)' `
         "Android app update flow must resume the same update after the user returns from unknown-app-source settings."
+    Require-Match $failures $hamburgerMenuSheet 'pendingInstallPermissionUpdate\s*=\s*null(?s:.*?)updateDialogInfo\s*=\s*null' `
+        "Dismissing the ordinary app update dialog must clear pending install-permission resume state."
+    Require-Match $failures $hamburgerMenuSheet 'onDismissRequest\s*=\s*\{\s*if\s*\(\s*!downloading\s*\)\s*onDismiss\(\)\s*\}' `
+        "Ordinary app update dialogs must stay dismissible whenever an APK download is not actively running."
+    Require-Match $failures $hamburgerMenuSheet 'Text\(\s*text\s*=\s*"稍后"' `
+        "Ordinary app update dialogs must always keep a visible later button."
     Require-Match $failures $hamburgerMenuSheet 'if\s*\(\s*updateChecking\s*\|\|\s*updateDownloading\s*\)\s*return(?s:.*?)clickable\s*\((?s:.*?)enabled\s*=\s*!downloading' `
         "Android app update UI must prevent duplicate checks/downloads while a package is being prepared."
     Require-Match $failures $loginScreen 'SessionApi\.sendSmsCode' `
@@ -540,8 +546,10 @@ if ($failures.Count -eq 0) {
         "Support feedback loading/error copy must use user-facing feedback-record wording instead of technical sync wording."
     Require-NoMatch $failures $hamburgerMenuSheet 'val\s+shouldAutoPrompt\s*=(?s:.*?)info\.forceUpdate\s*==\s*true' `
         "App update auto prompt logic must not force prompt based only on force_update; current Android release treats updates as ordinary prompts."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAppUpdateDialog(?s:.*?)val\s+forceUpdate\s*=\s*update\.forceUpdate\s*==\s*true' `
-        "Android update dialogs must respect backend force_update when a future release explicitly enables it; backend remains the release gate."
+    Require-NoMatch $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAppUpdateDialog(?s:.*?)forceUpdate\s*=\s*update\.forceUpdate\s*==\s*true' `
+        "Android update dialogs must not turn force_update into an undismissable prompt; current Android release treats updates as ordinary prompts."
+    Require-NoMatch $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerAppUpdateCard(?s:.*?)if\s*\(!forceUpdate\)' `
+        "Android update dialogs must keep the Later action available in current releases."
     $pendingWorkerPrivacyGatePattern = "!PrivacyConsentStore\.isAccepted\s*\(\s*applicationContext\s*\)(?s:.*?)Result\.retry\(\)(?s:.*?)IdManager\.init"
     $todayAgriCardPattern = "fun\s+TodayAgriNewsText\b(?s:.*?)SelectionContainer(?s:.*?)TodayAgriNewsItem"
     $todayAgriRenderablePattern = "fun\s+SessionApi\.TodayAgriCard\.isRenderableTodayAgriCard\b"
@@ -591,7 +599,7 @@ if ($failures.Count -eq 0) {
         "Today agri remote confirmation day must be set only after the backend returns a same-day renderable card."
     Require-NoMatch $failures $chatScreen 'saveTodayAgriCardAnchorSync|TODAY_AGRI_CARD_ANCHOR|todayAgriCardAnchor' `
         "Today agri main-chat state must not keep the retired local anchor storage path."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*hasAssistantAnswerTail(?s:.*?)cardDay\s*==\s*normalizedCurrentDay(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*hasAssistantAnswerTail(?s:.*?)cardDay\s*==\s*normalizedCurrentDay(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime\s*\|\|\s*hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
         "Today agri main-chat visibility must restore saved same-day items, while runtime suppression still blocks late auto-insert before the card becomes visible."
     Require-Match $failures $chatScreen 'hasCompletedAssistantAnswerTail\(messages,\s*failedAssistantMessageStates\.keys\)' `
         "Today agri completed-tail detection must exclude failed assistant tails in the live chat state."
@@ -609,6 +617,10 @@ if ($failures.Count -eq 0) {
         "Today agri fetch for the main chat must not let the shown-day marker block a saved same-day main item from being restored."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime' `
         "Today agri once-per-day main-chat visibility must have unit coverage."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime(?s:.*?)assertFalse\((?s:.*?)hasAssistantAnswerTail\s*=\s*false(?s:.*?)assertTrue\((?s:.*?)shownDayKey\s*=\s*""(?s:.*?)hasAssistantAnswerTail\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*false(?s:.*?)assertFalse\((?s:.*?)shownDayKey\s*=\s*""(?s:.*?)hasAssistantAnswerTail\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*true(?s:.*?)assertFalse\((?s:.*?)shownDayKey\s*=\s*"20260615"(?s:.*?)hasAssistantAnswerTail\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*false' `
+        "Today agri visibility tests must lock the current direction: no completed assistant tail means hidden, completed tail can show once, runtime suppression blocks late auto-insert, and same-day unsaved cards do not reappear."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime(?s:.*?)hasSavedItem\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*false(?s:.*?)assertTrue\((?s:.*?)hasSavedItem\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*true' `
+        "Today agri visibility tests must lock that saved same-day main items restore even after runtime suppression."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriCardAfterCompletedAssistantStaysInsideTimeline(?s:.*?)todayAgriAfterMessageId\s*=\s*second\.id' `
         "Today agri must anchor after a completed assistant answer in the ordinary timeline item builder."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMissingAnchorFallbackDoesNotRestartContextWindow' `

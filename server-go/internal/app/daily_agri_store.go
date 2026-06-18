@@ -224,10 +224,14 @@ func (s *Store) UpsertTodayAgriUserItem(ctx context.Context, userID string, dayC
 }
 
 func (s *Store) GetTodayAgriUserItems(ctx context.Context, userID string, dayCN string, limit int) ([]TodayAgriUserItem, error) {
+	return s.getTodayAgriUserItemsWith(ctx, s.db, userID, dayCN, limit)
+}
+
+func (s *Store) getTodayAgriUserItemsWith(ctx context.Context, q dbQueryer, userID string, dayCN string, limit int) ([]TodayAgriUserItem, error) {
 	if limit <= 0 {
 		return []TodayAgriUserItem{}, nil
 	}
-	rows, err := s.db.QueryContext(
+	rows, err := q.QueryContext(
 		ctx,
 		`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
 		 FROM today_agri_user_items
@@ -411,7 +415,8 @@ func isUsableStoredDailyAgriCard(card DailyAgriCard) bool {
 	if len(card.Items) < dailyAgriMinPublishItems {
 		return false
 	}
-	for _, item := range card.Items {
+	checkCount := minInt(len(card.Items), dailyAgriTargetItemCount)
+	for _, item := range card.Items[:checkCount] {
 		if strings.TrimSpace(item.Title) == "" ||
 			strings.TrimSpace(item.Summary) == "" {
 			return false

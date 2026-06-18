@@ -182,7 +182,7 @@
 - APK 建议放 OSS / CDN / 自有静态 HTTPS，不建议让 Go 后端动态服务大 APK。
 - 签名证书必须固定；如果新 APK 换签名，Android 系统会拒绝覆盖安装。
 - `versionCode` 必须单调递增；已经安装坏包的用户不能用低版本覆盖，只能再发更高 `versionCode` 的修复包。
-- `force_update` 只是 App 内弹窗不显示“稍后”，不是系统级强制升级，仍不能绕过用户安装确认。
+- `force_update` 当前只是后端兼容字段，Android 客户端忽略它，所有更新都按可关闭的普通更新展示；未来若要做真正强更，需要单独产品开关、合规确认和真机回归。
 - 国内不同 ROM 的未知来源授权页、系统安装器、下载失败表现都可能不同，第一版正式更新必须真机验证。
 
 买服务器后必须补：
@@ -202,10 +202,10 @@
 
 当前代码真相：
 
-- 设置页只有一个“服务协议”入口，进入本地内置目录页。
-- 目录页包含 6 个二级页面：用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示。
-- 6 个二级页面都走设置页右进左出的页面栈；左上角返回和系统返回键会先回到服务协议目录，再回到设置菜单。
-- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / REQUEST_INSTALL_PACKAGES`，不再声明 `READ_PHONE_STATE / ACCESS_WIFI_STATE / CHANGE_NETWORK_STATE`；AndroidX WorkManager 仍会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
+- 设置页只有一个“协议与隐私”入口，进入本地内置目录页。
+- 目录页包含 6 个二级页面：服务协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示。
+- 6 个二级页面都走设置页右进左出的页面栈；左上角返回和系统返回键会先回到协议与隐私目录，再回到设置菜单。
+- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / ACCESS_COARSE_LOCATION / ACCESS_FINE_LOCATION / REQUEST_INSTALL_PACKAGES`，不再声明 `READ_PHONE_STATE / ACCESS_WIFI_STATE / CHANGE_NETWORK_STATE`；定位权限用于问诊地区上下文校准，只上传系统反查出的省 / 市 / 区县等地区文本，不上传经纬度、不保存轨迹。AndroidX WorkManager 仍会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
 - App 当前已申请定位权限用于问诊地区上下文校准，但只上传系统反查出的省 / 市 / 区县等地区文本，不上传经纬度、不保存轨迹；当前仍不申请 App 相机、相册 / 存储读写、录音、通讯录、短信、电话状态、Wi-Fi 状态或通知权限。新包只走普通短信验证码登录；网络状态只用于联网可用性判断。
 - Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，便于用户找回现场照片；本轮已把该口径补进隐私政策、个人信息收集清单和应用权限页。
 - 用户可见正文没有暴露具体模型品牌、模型平台名或供应商账号信息，只使用“第三方大模型和云服务”这类必要委托处理口径。

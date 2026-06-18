@@ -380,31 +380,23 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	snapshot, err := s.store.GetSessionSnapshot(r.Context(), auth.UserID)
+	snapshot, archivedRounds, todayAgriItems, snapshotWarnings, err := s.store.GetSessionSnapshotForUI(r.Context(), auth.UserID, GetTodayKeyCN(s.shanghai, time.Now()), 1)
 	if err != nil {
 		s.logger.Error("get session snapshot failed", "userId", auth.UserID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	if snapshotWarnings.ArchiveErr != nil {
+		s.logger.Warn("get session snapshot archive failed; returning base snapshot", "userId", auth.UserID, "error", snapshotWarnings.ArchiveErr)
+	}
+	if snapshotWarnings.TodayAgriErr != nil {
+		s.logger.Warn("get session snapshot today agri item failed; returning snapshot without today agri item", "userId", auth.UserID, "error", snapshotWarnings.TodayAgriErr)
+	}
 
 	safe := safeSnapshot(auth.UserID, snapshot)
-	generationState, err := s.store.GetSessionGenerationState(r.Context(), auth.UserID)
-	if err != nil {
-		s.logger.Error("get session generation failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	safe.SessionGeneration = generationState.Generation
 	uiRounds := safe.ARoundsFull
-	if archivedRounds, err := s.store.GetSessionRoundsForUI(r.Context(), auth.UserID); err != nil {
-		s.logger.Warn("get session ui archive failed", "userId", auth.UserID, "error", err)
-	} else if len(archivedRounds) > 0 {
+	if len(archivedRounds) > 0 {
 		uiRounds = mergeSessionRoundsForUI(safe.ARoundsFull, archivedRounds)
-	}
-	todayAgriItems, err := s.store.GetTodayAgriUserItems(r.Context(), auth.UserID, GetTodayKeyCN(s.shanghai, time.Now()), 1)
-	if err != nil {
-		s.logger.Warn("get today agri user items failed", "userId", auth.UserID, "error", err)
-		todayAgriItems = nil
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":            safe.UserID,

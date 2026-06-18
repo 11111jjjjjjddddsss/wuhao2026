@@ -402,6 +402,10 @@ func TestIsUsableDailyAgriContentJSONRequiresFullCard(t *testing.T) {
 	if !isUsableDailyAgriContentJSON(sql.NullString{String: fourItems, Valid: true}) {
 		t.Fatalf("expected old card with extra displayable items to remain recoverable")
 	}
+	fourItemsWithBadTail := `{"items":[{"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。"},{"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。"},{"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。"},{"title":"","summary":""}]}`
+	if !isUsableDailyAgriContentJSON(sql.NullString{String: fourItemsWithBadTail, Valid: true}) {
+		t.Fatalf("expected card with first 3 displayable items to survive a bad extra tail item")
+	}
 	var stored DailyAgriCard
 	if err := json.Unmarshal([]byte(fourItems), &stored); err != nil {
 		t.Fatalf("unmarshal four-item card: %v", err)
@@ -409,6 +413,32 @@ func TestIsUsableDailyAgriContentJSONRequiresFullCard(t *testing.T) {
 	public := dailyAgriPublicCardFromStored(stored)
 	if len(public.Items) != 3 {
 		t.Fatalf("public daily agri card must expose exactly 3 items, got %d", len(public.Items))
+	}
+}
+
+func TestParseDailyAgriCardRedactsDisplaySourcesForLogs(t *testing.T) {
+	phoneLikeSource := "138" + "0000" + "0000"
+	content := `{
+	  "card_name": "今日农情",
+	  "items": [
+	    {"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段，建议查看缺苗断垄和墒情。","source_name":"https://example.com/path?token=secret"},
+	    {"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口，低温阴雨地区需关注返青和排水。","source_name":"` + phoneLikeSource + `"},
+	    {"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险，及时巡园查看叶片果面。","source_name":"农业农村部"}
+	  ]
+	}`
+
+	_, report, err := parseDailyAgriCard(content, nil, "20260513", nil)
+	if err != nil {
+		t.Fatalf("parse card: %v", err)
+	}
+	joinedSources := strings.Join(report.DisplaySources, " ")
+	for _, forbidden := range []string{"http", "token", phoneLikeSource} {
+		if strings.Contains(joinedSources, forbidden) {
+			t.Fatalf("display sources should be redacted for logs, got %#v", report.DisplaySources)
+		}
+	}
+	if len(report.DisplaySources) != 1 || report.DisplaySources[0] != "农业农村部" {
+		t.Fatalf("unexpected redacted display sources: %#v", report.DisplaySources)
 	}
 }
 
