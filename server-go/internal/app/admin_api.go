@@ -848,12 +848,7 @@ func (s *Server) handleAdminUpdateSupportConversationStatus(w http.ResponseWrite
 		s.writeError(w, http.StatusBadRequest, "invalid_status")
 		return
 	}
-	note, validationError := normalizeAccountDeletionFreeText(body.Note, "note")
-	if validationError != "" {
-		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.status", "support_conversations", userID, userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError, "status": status})
-		s.writeError(w, http.StatusBadRequest, validationError)
-		return
-	}
+	note := strings.TrimSpace(body.Note)
 	if err := s.store.UpdateSupportConversationStatus(r.Context(), userID, status, admin.User.Username, note, time.Now().UnixMilli()); err != nil {
 		httpStatus := http.StatusInternalServerError
 		code := "internal_error"

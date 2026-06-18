@@ -340,13 +340,13 @@ func normalizeSupportMessagePayload(raw string, images []string) (string, []stri
 	body := strings.TrimSpace(raw)
 	imageURLs := normalizeImages(images)
 	if utf8.RuneCountInString(body) > supportMessageMaxRunes {
-		return "", nil, "body too long"
+		return "", nil, "body_too_long"
 	}
 	if len(imageURLs) > 4 {
-		return "", nil, "single request supports up to 4 images"
+		return "", nil, "too_many_images"
 	}
 	if body == "" && len(imageURLs) == 0 {
-		return "", nil, "body or images required"
+		return "", nil, "body_or_images_required"
 	}
 	return body, imageURLs, ""
 }
@@ -355,9 +355,6 @@ func normalizeAdminSupportMessagePayload(raw string, images []string) (string, [
 	body, imageURLs, validationError := normalizeSupportMessagePayload(raw, images)
 	if validationError != "" {
 		return "", nil, validationError
-	}
-	if giftCardTextLooksSensitive(body) {
-		return "", nil, "body_contains_sensitive_value"
 	}
 	return body, imageURLs, ""
 }

@@ -58,6 +58,11 @@ object ImageUploader {
         Support("support")
     }
 
+    data class UploadImagesResult(
+        val urls: List<String>?,
+        val errorMessage: String?
+    )
+
     /**
      * 压缩图片：
      * 固定降级序列（直到 ≤1MB）：1024@85 -> 1024@80 -> 896@80 -> 896@70 -> 768@70 -> 640@60 -> 512@60。
@@ -413,9 +418,16 @@ object ImageUploader {
         imageBytesList: List<ByteArray>,
         purpose: UploadPurpose = UploadPurpose.Chat
     ): List<String>? {
+        return uploadImagesWithResult(imageBytesList, purpose).urls
+    }
+
+    fun uploadImagesWithResult(
+        imageBytesList: List<ByteArray>,
+        purpose: UploadPurpose = UploadPurpose.Chat
+    ): UploadImagesResult {
         if (imageBytesList.isEmpty() || imageBytesList.size > MAX_IMAGE_COUNT) {
             Log.e(TAG, "图片数量无效: ${imageBytesList.size}，应在1-${MAX_IMAGE_COUNT}之间")
-            return null
+            return UploadImagesResult(urls = null, errorMessage = UPLOAD_FAIL_MESSAGE)
         }
         
         if (BuildConfig.DEBUG) {
@@ -463,7 +475,10 @@ object ImageUploader {
         val orderedUrls = urls.filterNotNull()
         if (errorRef.get() != null || orderedUrls.size != imageBytesList.size) {
             Log.e(TAG, "图片上传失败: 成功 ${orderedUrls.size}/${imageBytesList.size}")
-            return null
+            return UploadImagesResult(
+                urls = null,
+                errorMessage = errorRef.get() ?: UPLOAD_FAIL_MESSAGE
+            )
         }
         
         if (BuildConfig.DEBUG) {
@@ -475,6 +490,6 @@ object ImageUploader {
             }
         }
         
-        return orderedUrls
+        return UploadImagesResult(urls = orderedUrls, errorMessage = null)
     }
 }

@@ -186,6 +186,28 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun shortSeparatorDoesNotRenderAsTable() {
+        val stats = buildRendererStructureStats(
+            "成品含腐植酸尿素 | 普通尿素 + 矿源黄腐酸钾\n" +
+                "- | -\n" +
+                "前者方便，后者灵活。"
+        )
+
+        assertEquals(0, stats.tableCount)
+    }
+
+    @Test
+    fun singleColumnSeparatorDoesNotRenderAsTable() {
+        val stats = buildRendererStructureStats(
+            "|项目|\n" +
+                "|---|\n" +
+                "|水分|\n"
+        )
+
+        assertEquals(0, stats.tableCount)
+    }
+
+    @Test
     fun markdownTableKeepsFourColumnsAndRaggedRows() {
         val state = splitStreamingBlockState(
             "|维度|成品肥|自配方案|销售提示|\n" +
@@ -259,6 +281,17 @@ class ChatStreamingRendererTest {
                 "|---|---|\n" +
                 "|水分|控水|\n" +
                 "~~~"
+        )
+
+        assertEquals(0, stats.tableCount)
+    }
+
+    @Test
+    fun indentedCodeBlockDoesNotRenderPipeTextAsTable() {
+        val stats = buildRendererStructureStats(
+            "    |项目|建议|\n" +
+                "    |---|---|\n" +
+                "    |水分|控水|\n"
         )
 
         assertEquals(0, stats.tableCount)

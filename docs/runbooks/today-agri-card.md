@@ -11,6 +11,7 @@
 - 用户只读接口：`GET /api/today-agri-card`
 - 用户近 30 天回看接口：`GET /api/today-agri-cards`
 - 内部生成接口：`POST /internal/jobs/today-agri-card/generate`
+- 内部状态接口：`GET /internal/jobs/today-agri-card/status?day_cn=YYYYMMDD`，供脚本 / Codex 自动化先查目标日期是否已人工锁定，必须带 `DAILY_AGRI_JOB_SECRET`
 - 内部探针接口：`POST /internal/jobs/today-agri-card/probe?runs=3`，只测模型输出 / 来源 / 解析质量，不写 `daily_agri_cards`
 - 内部人工发布接口：`POST /internal/jobs/today-agri-card/manual`，只供本机脚本 / Codex 自动化使用，必须带 `DAILY_AGRI_JOB_SECRET`
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
@@ -222,14 +223,24 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 - 页面：`https://admin.nongjiqiancha.cn/#today-agri`
 - 接口：`POST /admin-api/v1/today-agri/manual`
 - 脚本：`scripts/publish-today-agri-manual.ps1`
+- 状态脚本：`scripts/get-today-agri-manual-status.ps1`
 - 内部脚本接口：`POST /internal/jobs/today-agri-card/manual`
+- 内部状态接口：`GET /internal/jobs/today-agri-card/status?day_cn=YYYYMMDD`
 - 角色：`owner`、`content_ops`
 - 日期：8 位 `YYYYMMDD`，后台页面晚上 18:00 后默认填次日
 - 内容：固定 3 条，每条标题和摘要必填，来源可填短来源名
 - 确认：必须输入 `人工发布 YYYYMMDD`，防止手滑覆盖
 - 写入：`status=ready`、`model/search_strategy/prompt_version=manual`、`source_type=manual`、`manual_locked=1`
 
-Codex 自动化或本机命令行推荐走脚本。脚本默认 18:00 后发布次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本从环境变量 `DAILY_AGRI_JOB_SECRET` 或本机 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 读取内部密钥，输出只包含日期、状态、标题和来源，不打印密钥：
+Codex 自动化或本机命令行推荐先查状态、再发布。状态脚本默认 18:00 后检查次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。输出只包含日期、状态、来源类型、人工锁定标记、条目数和 `should_publish`，不打印密钥：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\get-today-agri-manual-status.ps1 -DayCN 20260619
+```
+
+如果状态脚本返回 `manual_locked=true` 且 `source_type=manual`，说明这一天已经由人工 / Codex 锁定，自动化应跳过，不再查新闻或覆盖内容。真实发布脚本在发送前也会重新调用同一个内部状态接口；所以本机 Codex 自动化即使 22:00 成功、23:00 再运行，也会安全跳过已发布日期。
+
+发布脚本默认 18:00 后发布次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本从环境变量 `DAILY_AGRI_JOB_SECRET` 或本机 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 读取内部密钥，输出只包含日期、状态、标题和来源，不打印密钥：
 
 本地检查参数和确认词时先加 `-DryRun`，dry run 不读密钥、不发送请求；确认内容没问题后再去掉 `-DryRun` 真实发布。
 
@@ -249,6 +260,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\publish-tod
 
 人工发布后，当天 / 次日清晨自动任务和后台“补跑今天”看到 `manual_locked=1` 会直接跳过，不会覆盖人工内容。若要重新改人工内容，仍从后台“人工发布”再次提交同一天 3 条内容即可覆盖并继续锁定。若完全没人写，ECS 定时任务仍按 05:35 左右自动生成。
 
+本机 Codex 全局自动化 `今日农情人工发布` 当前配置为每天北京时间 22:00 和 23:00 执行，模型 `gpt-5.5`、`reasoning_effort=xhigh`、工作目录 `D:\wuhao`。自动化只负责读本 runbook 的写作口径、核对公开新闻、写 3 条今日农情并通过脚本发布；它不能修改任何仓库文件或本机配置，不能 `apply_patch`，不能 `git add / commit / push`，不能改服务端今日农情提示词、项目文档、业务代码、脚本、模型输出限制或主聊天滚动链。Codex 自动化只是人工新闻发布助手，不是后端今日农情系统替代品；若电脑未开机或 Codex 本机任务没跑，ECS 后端 05:35 自动生成仍是兜底。如果需要“电脑开机后补跑错过的 22:00 / 23:00”，需另做 Windows 启动补偿任务，当前未配置。
+
 ## 定时任务
 
 当前 ECS 推荐用 [configure-ecs-daily-agri-job.ps1](D:/wuhao/scripts/configure-ecs-daily-agri-job.ps1) 安装 systemd service + timer：
@@ -263,7 +276,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-e
 - `nongji-daily-agri.service`
 - `nongji-daily-agri.timer`
 
-默认 timer 使用 `*-*-* 21:35:00 UTC`，对应北京时间次日 `05:35` 左右；脚本会顺手 `-RunOnce` 触发一次，便于安装完立刻验证。
+默认 timer 使用 `*-*-* 21:35:00 UTC`，对应北京时间次日 `05:35` 左右；脚本会顺手 `-RunOnce` 触发一次，便于安装完立刻验证。ECS timer 是每天一次，`Persistent=true` 负责 ECS 停机错过时在启动后补触发；服务端生成流程内部最多做 2 次模型生成尝试，用来接住单次模型输出解析失败，不是每天启动两次 timer。
 
 ## 质量边界
 

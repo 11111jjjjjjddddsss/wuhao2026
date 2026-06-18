@@ -546,6 +546,61 @@ func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Requ
 	})
 }
 
+func (s *Server) handleInternalTodayAgriCardStatus(w http.ResponseWriter, r *http.Request) {
+	if !validateInternalJobSecret(r) {
+		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_status") {
+		return
+	}
+	dayCN := normalizeTodayAgriContextDay(r.URL.Query().Get("day_cn"))
+	if dayCN == "" {
+		loc := s.shanghai
+		if loc == nil {
+			loc = time.FixedZone("Asia/Shanghai", 8*60*60)
+		}
+		dayCN = GetTodayKeyCN(loc, time.Now())
+	}
+	if _, err := time.Parse("20060102", dayCN); err != nil {
+		s.writeError(w, http.StatusBadRequest, "invalid_day_cn")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+	card, status, err := s.store.GetDailyAgriCard(ctx, dayCN, dailyAgriDefaultScope)
+	if err != nil {
+		s.logger.Error("internal today agri status failed", "day_cn", dayCN, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	itemCount := 0
+	sourceType := ""
+	manualLocked := false
+	manualBy := ""
+	var manualAt any
+	if card != nil {
+		itemCount = len(card.Items)
+		sourceType = card.SourceType
+		manualLocked = card.ManualLocked
+		manualBy = card.ManualBy
+		if card.ManualAt > 0 {
+			manualAt = card.ManualAt
+		}
+	}
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"day_cn":        dayCN,
+		"scope":         dailyAgriDefaultScope,
+		"status":        status,
+		"ready":         card != nil,
+		"item_count":    itemCount,
+		"source_type":   sourceType,
+		"manual_locked": manualLocked,
+		"manual_by":     manualBy,
+		"manual_at":     manualAt,
+	})
+}
+
 func (s *Server) handleProbeTodayAgriCard(w http.ResponseWriter, r *http.Request) {
 	if !validateInternalJobSecret(r) {
 		s.writeError(w, http.StatusUnauthorized, "unauthorized")

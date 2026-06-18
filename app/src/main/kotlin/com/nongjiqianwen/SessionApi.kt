@@ -2340,8 +2340,10 @@ object SessionApi {
         when {
             statusCode == 429 || errorCode == "rate_limited" -> "发送太频繁，请稍后再试"
             statusCode == 409 || errorCode == "support_message_in_progress" -> "上一条反馈仍在处理中，请稍后再试"
+            statusCode == 401 || errorCode == "unauthorized" -> "登录已失效，请重新登录后再发送"
             errorCode == "body_too_long" -> "反馈内容太长，请控制在2000字以内"
-            errorCode == "body_contains_sensitive_value" -> "反馈内容包含手机号、密钥或完整卡码等敏感信息，请删掉后再发送"
+            errorCode == "too_many_images" -> "一次最多上传4张图片"
+            errorCode == "body_or_images_required" -> "请先填写反馈内容或添加图片"
             else -> "发送失败，请稍后重试"
         }
 

@@ -41,7 +41,7 @@
 - 订单：`GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录；页面只做只读核查和粗略统计，不提供补发、退款、对账或手动改权益。支付未接入时金额汇总只标为“开发期记录金额”，不代表真实收入。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总，owner / finance_ops 可直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。创建批次必须输入“张数 + 档位 + 天数”确认，例如 `3 Pro 30`；作废必须输入“作废”确认，服务端也会强制校验。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；后台非授权角色查询礼品卡列表或用户详情时不读取 / 不解密完整卡码；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
-- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。用户侧发送消息和系统自动回复走同一条 MySQL 命名锁 + 事务路径，避免同一用户并发连发时重复插入自动回复。授权客服角色可在会话详情直接查看和复制完整手机号，便于电话回访；客服回复前端二次确认，后端回复正文会拒绝手机号、礼品卡完整码、token、密钥等敏感全文；回复图片附件只能使用同源 support 图片校验，状态备注也会拒绝敏感全文，审计里仍不写正文。
+- 帮助与反馈：`GET /admin-api/v1/support/conversations`、`GET /admin-api/v1/support/messages`、`POST /admin-api/v1/support/messages`、`POST /admin-api/v1/support/conversations/status`；支持待回复 / 已回复 / 已关闭队列、账号ID / 手机号 / 最近消息搜索、后台回复、关闭和重开，完整手机号查询同样按 `phone_hash` 精确匹配。用户侧发送消息和系统自动回复走同一条 MySQL 命名锁 + 事务路径，避免同一用户并发连发时重复插入自动回复。用户和授权客服在客服会话正文、处理备注里可以发送数字、手机号、订单号、礼品卡码等排障必需信息，不做内容拦截；安全边界是这些正文和备注只保存在客服相关表并按角色查看，不写入审计 detail、日志、项目文档或只读角色响应。客服回复前端保留二次确认；回复图片附件只能使用同源 support 图片校验，审计里仍不写正文。
 - 注销申请：`GET /admin-api/v1/account-deletion-requests`、`POST /admin-api/v1/account-deletion-requests/status`；用户侧 `POST /api/account/deletion-requests` 创建申请后会退出当前设备，后台可按待处理 / 处理中 / 已处理 / 驳回 / 取消推进状态。这里的已处理只表示线下核验和处理流程已收口，不代表系统已经自动物理删除或匿名化全部账号数据；会员、订单、礼品卡、反馈、日志和法定留存范围仍需按合规规则处理。
 - App 自动日志：`GET /admin-api/v1/app-logs`，继承自动日志脱敏规则，可按账号ID、精确事件名、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号、等级和时间范围筛选；精确 `event` 优先于前缀筛选，不展示聊天正文、图片 URL、手机号、token、APK URL 或 SHA-256 原文。
 - 后台审计：`GET /admin-api/v1/audit-logs`。
@@ -134,7 +134,7 @@
 - 不把内部共享 secret 写进前端。
 - 不开放大范围删除用户、导出全量数据、批量补权益、批量发礼品卡。
 - 不在支付未接入前伪造真实支付订单后台；现有订单页只能只读核查开发期记录。
-- 不把聊天全文、图片 URL、token、模型 Key 铺到后台列表；完整手机号只对授权角色在用户 / 反馈详情和必要列表字段中展示，不能写入备注、回复、审计 detail、日志、文档或导出文件。
+- 不把聊天全文、图片 URL、token、模型 Key 铺到后台列表；完整手机号只对授权角色在用户 / 反馈详情和必要列表字段中展示。客服会话正文、授权客服回复和处理备注可以记录排障必需的手机号、订单号、礼品卡码等信息；但这些正文和备注不得写入审计 detail、服务日志、项目文档、批量导出文件或只读 / 审计角色响应，也不能包含后台密钥、token、AccessKey、模型 Key、数据库密码等系统秘密。
 - 不把官网和管理后台做成同一个公开页面。
 
 最小页面：

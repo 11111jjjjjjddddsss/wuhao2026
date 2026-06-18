@@ -83,6 +83,7 @@ Assert-Text -Name "summary3" -Value $Summary3
 
 $baseUrl = $BackendBaseUrl.TrimEnd("/")
 $uri = "$baseUrl/internal/jobs/today-agri-card/manual"
+$statusUri = "$baseUrl/internal/jobs/today-agri-card/status?day_cn=$DayCN"
 
 $payload = [ordered]@{
     day_cn       = $DayCN
@@ -114,11 +115,35 @@ if ($DryRun) {
 }
 
 $secret = Get-RequiredSecret -Path $SecretsPath -EnvName "DAILY_AGRI_JOB_SECRET" -JsonName "daily_agri_job_secret"
-$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 $headers = @{
     "X-Internal-Job-Secret" = $secret
     "X-Admin-Actor"         = $Actor
 }
+
+try {
+    $statusResponse = Invoke-RestMethod -Method Get -Uri $statusUri -Headers $headers
+    if ($statusResponse.manual_locked -eq $true -and $statusResponse.source_type -eq "manual") {
+        [pscustomobject]@{
+            ok             = $true
+            skipped        = $true
+            reason         = "manual_locked"
+            day_cn         = $DayCN
+            status         = $statusResponse.status
+            source_type    = $statusResponse.source_type
+            manual_locked  = $statusResponse.manual_locked
+            item_count     = $statusResponse.item_count
+        } | ConvertTo-Json -Depth 6
+        return
+    }
+} catch {
+    $message = $_.Exception.Message
+    if ($_.ErrorDetails -and -not [string]::IsNullOrWhiteSpace($_.ErrorDetails.Message)) {
+        $message = $_.ErrorDetails.Message
+    }
+    throw "manual_status_check_failed: $message"
+}
+
+$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($json)
 
 try {
     $response = Invoke-RestMethod -Method Post -Uri $uri -Headers $headers -ContentType "application/json; charset=utf-8" -Body $bodyBytes

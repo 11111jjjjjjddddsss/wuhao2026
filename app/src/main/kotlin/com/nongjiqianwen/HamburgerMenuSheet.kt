@@ -2947,8 +2947,15 @@ private fun HamburgerSupportFeedbackPage(
                     ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
                 uploadBytes.add(compressed.bytes)
             }
-            val urls = ImageUploader.uploadImages(uploadBytes, purpose = ImageUploader.UploadPurpose.Support)
-            if (urls == null) null to "图片上传失败，请稍后再试" else urls to null
+            val result = ImageUploader.uploadImagesWithResult(
+                uploadBytes,
+                purpose = ImageUploader.UploadPurpose.Support
+            )
+            if (result.urls == null) {
+                null to (result.errorMessage ?: "图片上传失败，请稍后再试")
+            } else {
+                result.urls to null
+            }
         }
 
     LaunchedEffect(loadTick) {

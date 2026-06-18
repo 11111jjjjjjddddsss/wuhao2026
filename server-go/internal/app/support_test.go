@@ -49,17 +49,17 @@ func TestNormalizeSupportMessagePayloadRejectsInvalidInput(t *testing.T) {
 	}{
 		{
 			name: "empty",
-			want: "body or images required",
+			want: "body_or_images_required",
 		},
 		{
 			name:   "too many images",
 			images: []string{"1", "2", "3", "4", "5"},
-			want:   "single request supports up to 4 images",
+			want:   "too_many_images",
 		},
 		{
 			name: "body too long",
 			body: strings.Repeat("字", supportMessageMaxRunes+1),
-			want: "body too long",
+			want: "body_too_long",
 		},
 	}
 
@@ -73,20 +73,45 @@ func TestNormalizeSupportMessagePayloadRejectsInvalidInput(t *testing.T) {
 	}
 }
 
-func TestNormalizeAdminSupportMessagePayloadRejectsSensitiveReply(t *testing.T) {
+func TestNormalizeSupportMessagePayloadAllowsOperationalNumbers(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{name: "phone", body: "我的手机号是 138-0013-8000，请回访"},
+		{name: "gift card code", body: "礼品卡 NQ-M7AB-CD23-EF45-GH67 兑换不了"},
+		{name: "order number", body: "订单号 202606180001 支付后没到账"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body, _, validationError := normalizeSupportMessagePayload(tt.body, nil)
+			if validationError != "" {
+				t.Fatalf("unexpected validationError = %q", validationError)
+			}
+			if body != tt.body {
+				t.Fatalf("body = %q, want %q", body, tt.body)
+			}
+		})
+	}
+}
+
+func TestNormalizeAdminSupportMessagePayloadAllowsOperationalNumbers(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
 	}{
 		{name: "phone", body: "请联系 138-0013-8000 处理"},
 		{name: "gift card code", body: "补发礼品卡 NQ-M7AB-CD23-EF45-GH67"},
-		{name: "token", body: "token=secret-value"},
+		{name: "order number", body: "订单号 202606180001 已登记"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, _, validationError := normalizeAdminSupportMessagePayload(tt.body, nil)
-			if validationError != "body_contains_sensitive_value" {
-				t.Fatalf("validationError = %q, want body_contains_sensitive_value", validationError)
+			body, _, validationError := normalizeAdminSupportMessagePayload(tt.body, nil)
+			if validationError != "" {
+				t.Fatalf("unexpected validationError = %q", validationError)
+			}
+			if body != tt.body {
+				t.Fatalf("body = %q, want %q", body, tt.body)
 			}
 		})
 	}

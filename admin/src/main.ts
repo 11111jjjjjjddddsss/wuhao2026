@@ -1324,7 +1324,7 @@ async function submitSupportReply(form: HTMLFormElement): Promise<void> {
   if (!userID || !body) return;
   if (
     !window.confirm(
-      "确认发送这条客服回复？回复会展示在用户 App 的帮助与反馈里，请确认没有完整手机号、礼品卡完整卡码、token、密钥或其它敏感内容。",
+      "确认发送这条客服回复？回复会展示在用户 App 的帮助与反馈里。手机号、订单号、礼品卡码等排障信息可以发送，但不要发送后台密钥、token 或内部排障细节。",
     )
   ) {
     return;
@@ -1630,8 +1630,8 @@ async function updateSupportConversationStatus(userID: string, status: string, b
   if (status === "replied" || status === "closed") {
     const input = window.prompt(
       status === "replied"
-        ? "处理备注必填。只写为什么无需继续回复，不要写手机号全文、密钥或内部敏感信息。"
-        : "关闭原因，可留空。不要写手机号全文、密钥或内部敏感信息。",
+        ? "处理备注必填。可以写手机号、订单号、礼品卡码等排障信息；不要写后台密钥、token 或内部排障细节。"
+        : "关闭原因，可留空。可以写手机号、订单号、礼品卡码等排障信息；不要写后台密钥、token 或内部排障细节。",
     );
     if (input === null) return;
     note = input.trim();
@@ -2463,7 +2463,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
             <input type="hidden" name="user_id" value="${escapeAttr(userID)}" />
             <label class="field">
               <span>后台回复</span>
-              <textarea class="textarea" name="body" maxlength="2000" placeholder="只写必要的客服回复，不包含密钥、手机号全文或内部排障细节。"></textarea>
+              <textarea class="textarea" name="body" maxlength="2000" placeholder="只写必要的客服回复；手机号、订单号、礼品卡码等排障信息可以发送，不要发送后台密钥、token 或内部排障细节。"></textarea>
             </label>
             <button class="button primary" type="submit">发送给用户（生产）</button>
           </form>
@@ -4280,7 +4280,6 @@ function actionErrorMessage(error: unknown): string {
 function supportReplyErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === "body_too_long") return "回复内容太长，请控制在 2000 字以内。";
-    if (error.code === "body_contains_sensitive_value") return "回复里包含手机号、密钥、完整卡码等敏感内容，请删掉后再发送。";
   }
   return actionErrorMessage(error);
 }

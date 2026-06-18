@@ -137,10 +137,21 @@ func TestAdminSupportReplyUsesSupportImageValidation(t *testing.T) {
 		t.Fatalf("admin support reply must validate support upload URLs")
 	}
 	if !strings.Contains(block, "normalizeAdminSupportMessagePayload") {
-		t.Fatalf("admin support reply must use admin-sensitive payload validation")
+		t.Fatalf("admin support reply must normalize the support payload")
 	}
 	if strings.Contains(block, "validateChatStreamImageURLs") {
 		t.Fatalf("admin support reply must not use chat image URL validation")
+	}
+}
+
+func TestAdminSupportStatusNoteDoesNotReuseDeletionSensitiveValidation(t *testing.T) {
+	source := mustReadFileForTest(t, "admin_api.go")
+	block := functionBlockForTest(source, "func (s *Server) handleAdminUpdateSupportConversationStatus")
+	if strings.Contains(block, "normalizeAccountDeletionFreeText") {
+		t.Fatalf("support status note must not reuse account deletion sensitive-value validation")
+	}
+	if !strings.Contains(block, "strings.TrimSpace(body.Note)") {
+		t.Fatalf("support status note should only be trimmed before storing")
 	}
 }
 

@@ -265,6 +265,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/support/messages", s.handleCreateSupportMessage)
 	s.mux.HandleFunc("POST /api/support/read", s.handleMarkSupportRead)
 	s.mux.HandleFunc("POST /internal/jobs/today-agri-card/generate", s.handleGenerateTodayAgriCard)
+	s.mux.HandleFunc("GET /internal/jobs/today-agri-card/status", s.handleInternalTodayAgriCardStatus)
 	s.mux.HandleFunc("POST /internal/jobs/today-agri-card/probe", s.handleProbeTodayAgriCard)
 	s.mux.HandleFunc("POST /internal/jobs/today-agri-card/manual", s.handleInternalPublishManualTodayAgriCard)
 	s.mux.HandleFunc("POST /internal/jobs/memory-document/probe", s.handleProbeMemoryDocument)

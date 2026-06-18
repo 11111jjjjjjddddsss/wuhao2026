@@ -1,6 +1,6 @@
 # 帮助与反馈 Runbook
 
-最后更新：2026-06-13
+最后更新：2026-06-18
 
 本 runbook 记录当前“帮助与反馈”的真实入口。它不是实时 IM，也不是完整客服坐席系统；当前是一条按账号ID（底层字段仍叫 `user_id`）归属的站内消息线，Android 负责展示 / 发送 / 已读，管理后台负责会话队列、读取、回复、关闭和重开。代码和接口内部仍沿用 `support` 命名，不影响用户侧文案。
 
@@ -11,7 +11,7 @@
 - 一条用户会话线按账号ID聚合，`support_conversations.user_id` 是轻量会话状态主键，不单独开放多 thread
 - `sender_type` 当前取值：`user`、`admin`、`system`；`system` 当前用于固定自动确认回复和后续系统提示，不是模型客服
 - `support_conversations.status` 当前取值：`open`、`replied`、`closed`；用户发新消息会把会话重新打开为 `open`，后台回复会标为 `replied`，后台可手动关闭或重开
-- `assigned_to` 当前记录最后处理人，`note` 当前用于关闭备注；不要写手机号全文、密钥、token、图片 URL 或敏感正文
+- `assigned_to` 当前记录最后处理人，`note` 当前用于关闭备注；处理备注可以记录排障必需的数字、手机号、订单号、礼品卡码等信息，不做内容拦截。后台密钥、token、AccessKey、模型 Key、数据库密码等系统秘密仍不得写入备注、日志、审计或项目文档
 - 设置页红点只看 `sender_type IN ('admin', 'system') AND read_by_user_at IS NULL`
 - 图片附件存储在 `image_urls_json`，只保存本后端 `/upload` 返回的公开 HTTPS 图片 URL。2026-06-13 起，帮助与反馈图片上传会传 `purpose=support`，后端返回 `/uploads/support/<file>.jpg` 并写入 OSS `support/` 30 天生命周期；客服聊天记录正文、发送人、时间和已读状态仍在 MySQL，不随图片自动过期
 
@@ -71,7 +71,7 @@
   - 后台回复用户，会写 `sender_type=admin` 消息、更新会话状态并写审计
 - `POST /admin-api/v1/support/conversations/status`
   - 请求体：`{"user_id":"acct_...","status":"open|replied|closed","note":"可选"}`
-  - 用于重开待回复、标已回复和关闭会话；关闭可写备注，但不能写手机号全文、密钥或其他敏感信息
+  - 用于重开待回复、标已回复和关闭会话；备注可写排障必需的数字、手机号、订单号、礼品卡码等信息，不按内容拦截；后台密钥、token、AccessKey、模型 Key、数据库密码等系统秘密仍不得写入
 
 ## 当前没有的能力
 

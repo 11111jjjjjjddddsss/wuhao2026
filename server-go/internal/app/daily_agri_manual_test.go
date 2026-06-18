@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"regexp"
 	"testing"
 
@@ -106,6 +109,46 @@ func TestTryAcquireDailyAgriCardGenerationSkipsManualLockedCard(t *testing.T) {
 	}
 	if acquired {
 		t.Fatalf("manual locked card must not be acquired for auto generation")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestHandleInternalTodayAgriCardStatusReturnsManualLock(t *testing.T) {
+	t.Setenv("DAILY_AGRI_JOB_SECRET", "secret")
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+	server := &Server{
+		store: store,
+	}
+
+	content := `{"title":"今日农情","items":[{"title":"一","summary":"一"},{"title":"二","summary":"二"},{"title":"三","summary":"三"}]}`
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT status, content_json, generated_at, source_type, manual_locked, manual_by, manual_at
+		 FROM daily_agri_cards
+		 WHERE day_cn = ? AND scope = ?
+		 LIMIT 1`)).
+		WithArgs("20260618", dailyAgriDefaultScope).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "content_json", "generated_at", "source_type", "manual_locked", "manual_by", "manual_at"}).
+			AddRow("ready", content, int64(1800000000000), dailyAgriSourceTypeManual, true, "codex", int64(1800000000000)))
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/jobs/today-agri-card/status?day_cn=20260618", nil)
+	req.Header.Set("X-Internal-Job-Secret", "secret")
+	rec := httptest.NewRecorder()
+	server.handleInternalTodayAgriCardStatus(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+	var got map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got["status"] != "ready" || got["source_type"] != dailyAgriSourceTypeManual || got["manual_locked"] != true {
+		t.Fatalf("unexpected response: %#v", got)
+	}
+	if got["item_count"] != float64(3) {
+		t.Fatalf("item_count = %#v, want 3", got["item_count"])
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

@@ -6582,8 +6582,8 @@ fun ChatScreen() {
             if (compressedImages.isEmpty()) {
                 emptyList<String>() to null
             } else {
-                val urls = ImageUploader.uploadImages(compressedImages)
-                if (urls == null) null to null else urls to null
+                val result = ImageUploader.uploadImagesWithResult(compressedImages)
+                if (result.urls == null) null to result.errorMessage else result.urls to null
             }
         }
         fun retryFailedUserMessage(messageId: String) {
@@ -8471,6 +8471,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
                     UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量中部短提示", UiCopyPreviewKind.ImageCountHint),
                     UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败中部短提示", UiCopyPreviewKind.ImageReadFailure),
+                    UiCopyPreviewItem("登录已失效，请重新登录后再上传图片", "图片上传登录失效中部短提示", UiCopyPreviewKind.ImageUploadAuthExpired),
+                    UiCopyPreviewItem("图片上传失败，请稍后重试", "图片上传失败中部短提示", UiCopyPreviewKind.ImageUploadFailed),
                     UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败中部短提示", UiCopyPreviewKind.CameraOpenFailed),
                     UiCopyPreviewItem(SUPPORT_SEND_FAILED_HINT, "帮助与反馈发送失败中部短提示", UiCopyPreviewKind.SupportSendFailed)
                 )
@@ -8739,6 +8741,8 @@ private enum class UiCopyPreviewKind {
     MessageMenu,
     InputMenu,
     ImageReadFailure,
+    ImageUploadAuthExpired,
+    ImageUploadFailed,
     ImageCountHint,
     ImageCountSheet,
     CameraOpenFailed,
@@ -9356,6 +9360,8 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     UiCopyPreviewInputActionMenu(listOf("复制", "粘贴", "剪切", "全选"))
                 }
                 UiCopyPreviewKind.ImageReadFailure -> UiCopyPreviewHint(ImageUploader.DECODE_FAIL_MESSAGE)
+                UiCopyPreviewKind.ImageUploadAuthExpired -> UiCopyPreviewHint("登录已失效，请重新登录后再上传图片")
+                UiCopyPreviewKind.ImageUploadFailed -> UiCopyPreviewHint("图片上传失败，请稍后重试")
                 UiCopyPreviewKind.ImageCountHint -> UiCopyPreviewHint(COMPOSER_IMAGE_COUNT_HINT)
                 UiCopyPreviewKind.ImageCountSheet -> UiCopyPreviewAttachmentSheet(limitReached = true)
                 UiCopyPreviewKind.CameraOpenFailed -> UiCopyPreviewHint(CAMERA_OPEN_FAILED_HINT_TEXT)

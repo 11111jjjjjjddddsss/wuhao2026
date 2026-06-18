@@ -292,10 +292,9 @@ private fun splitRendererMarkdownTableCells(line: String): List<String> {
 }
 
 private fun isRendererMarkdownTableSeparatorLine(line: String): Boolean {
-    val trimmed = line.trim()
-    if (!trimmed.contains('|')) return false
-    val normalized = trimmed.replace("|", "").replace(" ", "")
-    return normalized.isNotEmpty() && normalized.all { it == '-' || it == ':' }
+    val cells = splitRendererMarkdownTableCells(line)
+    if (cells.size < 2) return false
+    return cells.all { cell -> cell.matches(Regex(":?-{3,}:?")) }
 }
 
 private fun looksLikeRendererMarkdownTableRow(line: String): Boolean {
@@ -313,6 +312,9 @@ private fun rendererMarkdownCodeFenceMarker(line: String): String? {
         else -> null
     }
 }
+
+private fun isRendererIndentedCodeLine(line: String): Boolean =
+    line.startsWith("    ") || line.startsWith("\t")
 
 private fun normalizeRendererMarkdownTables(content: String): String {
     val normalized = content.replace("\r\n", "\n")
@@ -335,6 +337,11 @@ private fun normalizeRendererMarkdownTables(content: String): String {
             if (currentFenceMarker == codeFenceMarker) {
                 codeFenceMarker = null
             }
+            result += current
+            index++
+            continue
+        }
+        if (isRendererIndentedCodeLine(current)) {
             result += current
             index++
             continue
@@ -2025,6 +2032,7 @@ private fun RendererMarkdownTableImpl(
 ) {
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val copyEnabled = inlineMode == RendererInlineMode.Settled
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -2036,6 +2044,7 @@ private fun RendererMarkdownTableImpl(
             horizontalArrangement = Arrangement.End
         ) {
             TextButton(
+                enabled = copyEnabled,
                 onClick = {
                     clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
                     Toast.makeText(context, "表格已复制，可粘贴到表格软件", Toast.LENGTH_SHORT).show()
@@ -2047,7 +2056,9 @@ private fun RendererMarkdownTableImpl(
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 colors = ButtonDefaults.textButtonColors(
                     contentColor = Color(0xFF5F6368),
-                    containerColor = Color.Transparent
+                    containerColor = Color.Transparent,
+                    disabledContentColor = Color(0xFF9AA0A6),
+                    disabledContainerColor = Color.Transparent
                 )
             ) {
                 Text(
