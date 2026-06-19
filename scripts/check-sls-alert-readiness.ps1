@@ -118,6 +118,15 @@ function Get-AlertCondition {
     return ""
 }
 
+function Test-AlertEnabled {
+    param([object]$Alert)
+    $status = [string]$Alert.status
+    if ([string]::IsNullOrWhiteSpace($status)) {
+        $status = [string]$Alert.state
+    }
+    return $status -in @("ENABLED", "Enabled")
+}
+
 $response = Invoke-JsonCommand @(
     "aliyun", "sls", "list-alerts",
     "--region", $RegionId,
@@ -130,6 +139,11 @@ foreach ($alert in @($response.results)) {
     $alertsByName[[string]$alert.name] = $alert
 }
 
+$expectedAlertNames = @{}
+foreach ($expected in $expectedAlerts) {
+    $expectedAlertNames[[string]$expected.Name] = $true
+}
+
 $errors = New-Object System.Collections.Generic.List[string]
 $warnings = New-Object System.Collections.Generic.List[string]
 $attachedActionPolicies = 0
@@ -137,6 +151,14 @@ $linkedDashboards = 0
 
 Write-Host "== SLS alert readiness =="
 Write-Host "project=$ProjectName region=$RegionId expected=$($expectedAlerts.Count)"
+
+foreach ($alert in @($response.results)) {
+    $alertName = [string]$alert.name
+    if ($alertName.StartsWith("nongji-") -and -not $expectedAlertNames.ContainsKey($alertName) -and (Test-AlertEnabled -Alert $alert)) {
+        $warnings.Add("unexpected_enabled_managed_alert:$alertName")
+        Write-Host "alert=$alertName status=unexpected_enabled"
+    }
+}
 
 foreach ($expected in $expectedAlerts) {
     $name = [string]$expected.Name
@@ -148,11 +170,7 @@ foreach ($expected in $expectedAlerts) {
 
     $alert = $alertsByName[$name]
     $query = Get-FirstQuery -Alert $alert
-    $status = [string]$alert.status
-    if ([string]::IsNullOrWhiteSpace($status)) {
-        $status = [string]$alert.state
-    }
-    $enabled = $status -in @("ENABLED", "Enabled")
+    $enabled = Test-AlertEnabled -Alert $alert
     $alertHub = $false
     if ($null -ne $alert.configuration.sinkAlerthub) {
         $alertHub = [bool]$alert.configuration.sinkAlerthub.enabled

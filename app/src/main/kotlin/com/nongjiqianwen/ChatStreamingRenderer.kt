@@ -333,8 +333,12 @@ private fun hasRendererMarkdownTableRowEdge(line: String): Boolean {
     return trimmed.startsWith("|") || trimmed.endsWith("|")
 }
 
-private fun looksLikeRendererMarkdownTableBodyRow(line: String): Boolean =
-    hasRendererMarkdownTableRowEdge(line) && looksLikeRendererMarkdownTableRow(line)
+private fun looksLikeRendererMarkdownTableBodyRow(line: String, expectedColumnCount: Int): Boolean {
+    if (!looksLikeRendererMarkdownTableRow(line)) return false
+    val cells = splitRendererMarkdownTableCells(line)
+    if (hasRendererMarkdownTableRowEdge(line)) return true
+    return expectedColumnCount >= 2 && cells.size == expectedColumnCount
+}
 
 private fun rendererMarkdownCodeFenceMarker(line: String): String? {
     val trimmed = line.trimStart()
@@ -384,8 +388,15 @@ private fun normalizeRendererMarkdownTables(content: String): String {
             isRendererMarkdownTableSeparatorLine(lines[index + 1])
         ) {
             val rowLines = mutableListOf<String>()
+            val expectedColumnCount = maxOf(
+                splitRendererMarkdownTableCells(current).size,
+                splitRendererMarkdownTableCells(lines[index + 1]).size
+            )
             var cursor = index + 2
-            while (cursor < lines.size && looksLikeRendererMarkdownTableBodyRow(lines[cursor])) {
+            while (
+                cursor < lines.size &&
+                looksLikeRendererMarkdownTableBodyRow(lines[cursor], expectedColumnCount)
+            ) {
                 rowLines += lines[cursor]
                 cursor++
             }
@@ -2154,6 +2165,13 @@ private fun RendererMarkdownTableImpl(
                 .padding(bottom = 2.dp),
             horizontalArrangement = Arrangement.End
         ) {
+            val inactiveCopyModifier = if (copyEnabled) {
+                Modifier
+            } else {
+                Modifier
+                    .alpha(0f)
+                    .clearAndSetSemantics {}
+            }
             TextButton(
                 enabled = copyEnabled,
                 onClick = {
@@ -2162,7 +2180,8 @@ private fun RendererMarkdownTableImpl(
                 },
                 modifier = Modifier
                     .heightIn(min = 36.dp)
-                    .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
+                    .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp))
+                    .then(inactiveCopyModifier),
                 shape = RoundedCornerShape(999.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 colors = ButtonDefaults.textButtonColors(

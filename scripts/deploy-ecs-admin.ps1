@@ -246,6 +246,8 @@ archive='/tmp/nongjiqiancha-admin.tgz'
 site_base='/var/www/nongjiqiancha-admin'
 release_dir="`$site_base/releases/`$sha_prefix"
 current_link="`$site_base/current"
+previous_current_target=`$(readlink -f "`$current_link" 2>/dev/null || true)
+deploy_completed=0
 api_nginx_site='/etc/nginx/sites-available/nongjiqiancha-api'
 nginx_site='/etc/nginx/sites-available/nongjiqiancha-admin'
 nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-admin'
@@ -275,6 +277,25 @@ restore_nginx_site() {
   fi
   nginx -t && systemctl reload nginx || true
 }
+
+restore_current_link() {
+  if [ -n "`$previous_current_target" ] && [ -d "`$previous_current_target" ]; then
+    ln -sfn "`$previous_current_target" "`$current_link"
+    chown -h www-data:www-data "`$current_link" 2>/dev/null || true
+  elif [ -z "`$previous_current_target" ]; then
+    rm -f "`$current_link"
+  fi
+}
+
+on_deploy_exit() {
+  local status=`$?
+  if [ "`$status" -ne 0 ] && [ "`$deploy_completed" != "1" ]; then
+    restore_current_link
+    restore_nginx_site
+  fi
+  exit "`$status"
+}
+trap on_deploy_exit EXIT
 
 read_active_port() {
   matches=`$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' "`$api_nginx_site" 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | sort -u)
@@ -426,6 +447,7 @@ else
   echo 'admin certificate missing after deploy' >&2
   exit 21
 fi
+deploy_completed=1
 "@
 
 Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-admin-deploy.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null

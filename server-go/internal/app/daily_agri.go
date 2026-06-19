@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -176,6 +177,24 @@ func (s *DailyAgriCardService) GenerateToday(ctx context.Context) (*DailyAgriCar
 		err = s.store.PublishDailyAgriCard(writeCtx, dayCN, dailyAgriDefaultScope, leaseToken, *card, sources)
 		writeCancel()
 		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				statusCtx, statusCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				rawStatus, statusErr := s.store.GetDailyAgriCardRawStatus(statusCtx, dayCN, dailyAgriDefaultScope)
+				statusCancel()
+				if statusErr == nil &&
+					rawStatus.Status == "ready" &&
+					rawStatus.SourceType == dailyAgriSourceTypeManual &&
+					rawStatus.ManualLocked &&
+					rawStatus.ContentValid {
+					readCtx, readCancel := context.WithTimeout(context.Background(), 5*time.Second)
+					manualCard, _, readErr := s.store.GetDailyAgriCard(readCtx, dayCN, dailyAgriDefaultScope)
+					readCancel()
+					if readErr == nil && manualCard != nil {
+						s.logger.Info("daily agri auto publish skipped after manual lock", "dayCN", dayCN)
+						return manualCard, "skipped_manual_locked", nil
+					}
+				}
+			}
 			return nil, "", err
 		}
 		s.logger.Info("daily agri card generated", "dayCN", dayCN, "items", len(card.Items))
@@ -573,36 +592,31 @@ func (s *Server) handleInternalTodayAgriCardStatus(w http.ResponseWriter, r *htt
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
-	card, status, err := s.store.GetDailyAgriCard(ctx, dayCN, dailyAgriDefaultScope)
+	status, err := s.store.GetDailyAgriCardRawStatus(ctx, dayCN, dailyAgriDefaultScope)
 	if err != nil {
 		s.logger.Error("internal today agri status failed", "day_cn", dayCN, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	itemCount := 0
-	sourceType := ""
-	manualLocked := false
-	manualBy := ""
 	var manualAt any
-	if card != nil {
-		itemCount = len(card.Items)
-		sourceType = card.SourceType
-		manualLocked = card.ManualLocked
-		manualBy = card.ManualBy
-		if card.ManualAt > 0 {
-			manualAt = card.ManualAt
-		}
+	if status.ManualAt > 0 {
+		manualAt = status.ManualAt
 	}
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"day_cn":        dayCN,
-		"scope":         dailyAgriDefaultScope,
-		"status":        status,
-		"ready":         card != nil,
-		"item_count":    itemCount,
-		"source_type":   sourceType,
-		"manual_locked": manualLocked,
-		"manual_by":     manualBy,
-		"manual_at":     manualAt,
+		"day_cn":          dayCN,
+		"scope":           dailyAgriDefaultScope,
+		"status":          status.Status,
+		"ready":           status.Status == "ready" && status.ContentValid,
+		"content_present": status.ContentPresent,
+		"content_valid":   status.ContentValid,
+		"item_count":      status.ItemCount,
+		"source_type":     status.SourceType,
+		"manual_locked":   status.ManualLocked,
+		"manual_by":       status.ManualBy,
+		"manual_at":       manualAt,
+		"generated_at":    status.GeneratedAt,
+		"lease_until":     status.LeaseUntil,
+		"error":           status.ErrorMessage,
 	})
 }
 

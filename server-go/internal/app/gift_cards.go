@@ -192,7 +192,11 @@ func (s *Server) handleAdminGiftCardBatches(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.batches", "gift_cards", "", "", true, http.StatusOK, map[string]any{"row_count": len(batches)})
+	notesVisible := adminCanViewGiftCardNotes(admin.User.Role)
+	if !notesVisible {
+		stripGiftCardBatchNotes(batches)
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.batches", "gift_cards", "", "", true, http.StatusOK, map[string]any{"row_count": len(batches), "notes_visible": notesVisible})
 	s.writeJSON(w, http.StatusOK, map[string]any{"batches": batches})
 }
 
@@ -263,7 +267,11 @@ func (s *Server) handleAdminGiftCards(w http.ResponseWriter, r *http.Request) {
 	if !codeVisible {
 		stripGiftCardCodes(cards)
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.cards", "gift_cards", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(cards), "status": filter.Status, "code_visible": codeVisible})
+	notesVisible := adminCanViewGiftCardNotes(admin.User.Role)
+	if !notesVisible {
+		stripGiftCardNotes(cards)
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.cards", "gift_cards", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(cards), "status": filter.Status, "code_visible": codeVisible, "notes_visible": notesVisible})
 	s.writeJSON(w, http.StatusOK, map[string]any{"cards": cards, "filter": filter})
 }
 
@@ -325,14 +333,14 @@ func (s *Server) handleAdminVoidGiftCard(w http.ResponseWriter, r *http.Request)
 			s.logger.Error("admin void gift card failed", "cardID", cardID, "error", err)
 		}
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.void", "gift_cards", cardID, "", false, status, map[string]any{
-			"error_code": code,
-			"reason":     truncateRunes(reason, 160),
+			"error_code":  code,
+			"reason_meta": adminGiftCardVoidReasonAuditMeta(reason),
 		})
 		s.writeError(w, status, code)
 		return
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.gift_cards.void", "gift_cards", cardID, "", true, http.StatusOK, map[string]any{
-		"reason": truncateRunes(reason, 160),
+		"reason_meta": adminGiftCardVoidReasonAuditMeta(reason),
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "card_id": cardID})
 }
@@ -1223,6 +1231,22 @@ func adminGiftCardVoidConfirmationError(body adminGiftCardVoidRequest) string {
 	return ""
 }
 
+func adminCanViewGiftCardNotes(role string) bool {
+	return adminRoleAllowed(role, "finance_ops")
+}
+
+func stripGiftCardBatchNotes(batches []AdminGiftCardBatch) {
+	for index := range batches {
+		batches[index].Note = ""
+	}
+}
+
+func stripGiftCardNotes(cards []AdminGiftCardEntry) {
+	for index := range cards {
+		cards[index].Note = ""
+	}
+}
+
 func (s *Server) recordAdminGiftCardBatchValidationFailure(r *http.Request, actor string, body adminGiftCardCreateBatchRequest, code string) {
 	s.recordAdminAuditLog(r, actor, "admin.gift_cards.create_batch", "gift_cards", "", "", false, http.StatusBadRequest, map[string]any{
 		"error_code":    code,
@@ -1243,6 +1267,15 @@ func (s *Server) recordAdminGiftCardVoidValidationFailure(r *http.Request, actor
 		"reason_length":         len([]rune(reason)),
 		"reason_sensitive_like": giftCardTextLooksSensitive(reason),
 	})
+}
+
+func adminGiftCardVoidReasonAuditMeta(reason string) map[string]any {
+	trimmed := strings.TrimSpace(reason)
+	return map[string]any{
+		"present":        trimmed != "",
+		"length":         len([]rune(trimmed)),
+		"sensitive_like": giftCardTextLooksSensitive(trimmed),
+	}
 }
 
 func normalizeGiftCardStatus(raw string) string {

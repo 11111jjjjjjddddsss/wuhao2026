@@ -130,7 +130,9 @@ func (s *Server) handleAdminAccountDeletionRequests(w http.ResponseWriter, r *ht
 		return
 	}
 	accountDeletionApplySLA(requests, time.Now().UnixMilli())
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.account_deletion.list", "account_deletion_requests", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(requests), "status": filter.Status})
+	freeTextVisible := adminCanViewAccountDeletionFreeText(admin.User.Role)
+	redactAccountDeletionFreeText(requests, freeTextVisible)
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.account_deletion.list", "account_deletion_requests", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(requests), "status": filter.Status, "free_text_visible": freeTextVisible})
 	s.writeJSON(w, http.StatusOK, map[string]any{"requests": requests, "filter": filter})
 }
 
@@ -415,6 +417,20 @@ func scanAccountDeletionRequest(scanner accountDeletionScanner) (AccountDeletion
 		request.HandledAt = int64Ptr(handledAt.Int64)
 	}
 	return request, nil
+}
+
+func adminCanViewAccountDeletionFreeText(role string) bool {
+	return adminRoleAllowed(role, "support")
+}
+
+func redactAccountDeletionFreeText(requests []AccountDeletionRequest, visible bool) {
+	if visible {
+		return
+	}
+	for index := range requests {
+		requests[index].UserMessage = ""
+		requests[index].HandlerNote = ""
+	}
 }
 
 func normalizeAccountDeletionStatus(raw string) string {

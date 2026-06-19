@@ -123,6 +123,46 @@ func TestAdminGiftCardVoidConfirmationRequiresKeyword(t *testing.T) {
 	}
 }
 
+func TestAdminGiftCardVoidReasonAuditMetaDoesNotExposeReason(t *testing.T) {
+	reason := "作废原因含手机号 138-0013-8000 和礼品卡 NQ-M7AB-CD23-EF45-GH67"
+	meta := adminGiftCardVoidReasonAuditMeta(reason)
+	if _, ok := meta["reason"]; ok {
+		t.Fatalf("audit meta must not include raw reason: %#v", meta)
+	}
+	if meta["present"] != true || meta["length"].(int) == 0 || meta["sensitive_like"] != true {
+		t.Fatalf("audit meta mismatch: %#v", meta)
+	}
+}
+
+func TestAdminCanViewGiftCardNotes(t *testing.T) {
+	allowed := []string{"owner", "finance_ops"}
+	for _, role := range allowed {
+		if !adminCanViewGiftCardNotes(role) {
+			t.Fatalf("role %q should view gift card notes", role)
+		}
+	}
+	blocked := []string{"support", "ops_readonly", "auditor", "content_ops", "release_ops", ""}
+	for _, role := range blocked {
+		if adminCanViewGiftCardNotes(role) {
+			t.Fatalf("role %q should not view gift card notes", role)
+		}
+	}
+}
+
+func TestStripGiftCardNotes(t *testing.T) {
+	batches := []AdminGiftCardBatch{{BatchID: "gcb_1", Note: "发给 13800138000"}}
+	stripGiftCardBatchNotes(batches)
+	if batches[0].Note != "" || batches[0].BatchID != "gcb_1" {
+		t.Fatalf("batch note should be stripped without changing identity: %#v", batches[0])
+	}
+
+	cards := []AdminGiftCardEntry{{CardID: "gcc_1", Note: "旧卡 NQ-M7AB-CD23-EF45-GH67"}}
+	stripGiftCardNotes(cards)
+	if cards[0].Note != "" || cards[0].CardID != "gcc_1" {
+		t.Fatalf("card note should be stripped without changing identity: %#v", cards[0])
+	}
+}
+
 func TestNormalizeGiftCardBatchInputUsesImmediateValidFrom(t *testing.T) {
 	now := time.Date(2026, 6, 16, 10, 30, 0, 0, time.UTC)
 	input, reason := normalizeGiftCardBatchInput(adminGiftCardCreateBatchRequest{

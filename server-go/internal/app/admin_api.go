@@ -606,12 +606,13 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filter := AdminUserQuery{
-		Query:              strings.TrimSpace(r.URL.Query().Get("query")),
-		DayCN:              GetTodayKeyCN(s.shanghai, time.Now()),
-		Limit:              parseAdminLimit(r.URL.Query().Get("limit")),
-		NowMs:              time.Now().UnixMilli(),
-		SinceMs:            time.Now().Add(-24 * time.Hour).UnixMilli(),
-		IncludePhoneNumber: adminCanViewAccountPhone(admin.User.Role),
+		Query:                strings.TrimSpace(r.URL.Query().Get("query")),
+		DayCN:                GetTodayKeyCN(s.shanghai, time.Now()),
+		Limit:                parseAdminLimit(r.URL.Query().Get("limit")),
+		NowMs:                time.Now().UnixMilli(),
+		SinceMs:              time.Now().Add(-24 * time.Hour).UnixMilli(),
+		IncludePhoneNumber:   adminCanViewAccountPhone(admin.User.Role),
+		AllowPhoneHashSearch: adminCanSearchAccountPhone(admin.User.Role),
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
 	defer cancel()
@@ -789,9 +790,10 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	phoneNumberVisible := adminCanViewAccountPhone(admin.User.Role)
 	giftCardCodeVisible := adminCanViewGiftCardCodes(admin.User.Role)
+	chatRoundExcerptsVisible := adminCanViewChatRoundExcerpts(admin.User.Role)
 	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
 	defer cancel()
-	detail, err := s.store.GetAdminUserDetail(ctx, userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible, giftCardCodeVisible)
+	detail, err := s.store.GetAdminUserDetail(ctx, userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible, giftCardCodeVisible, chatRoundExcerptsVisible)
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "internal_error"
@@ -806,11 +808,17 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	if !giftCardCodeVisible {
 		stripGiftCardCodes(detail.GiftCards)
 	}
+	giftCardNotesVisible := adminCanViewGiftCardNotes(admin.User.Role)
+	if !giftCardNotesVisible {
+		stripGiftCardNotes(detail.GiftCards)
+	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.detail", "app_accounts", userID, userID, true, http.StatusOK, map[string]any{
-		"recent_rounds":          len(detail.RecentRounds),
-		"recent_logs":            len(detail.RecentAppLogs),
-		"phone_number_visible":   phoneNumberVisible,
-		"gift_card_code_visible": giftCardCodeVisible,
+		"recent_rounds":               len(detail.RecentRounds),
+		"recent_logs":                 len(detail.RecentAppLogs),
+		"phone_number_visible":        phoneNumberVisible,
+		"gift_card_code_visible":      giftCardCodeVisible,
+		"gift_card_notes_visible":     giftCardNotesVisible,
+		"chat_round_excerpts_visible": chatRoundExcerptsVisible,
 	})
 	s.writeJSON(w, http.StatusOK, detail)
 }
@@ -825,6 +833,8 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
+	filter.AllowPhoneHashSearch = adminCanSearchAccountPhone(admin.User.Role)
+	filter.AllowBodySearch = adminCanSearchSupportBody(admin.User.Role)
 	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
 	defer cancel()
 	conversations, err := s.store.ListSupportConversations(ctx, filter)
@@ -835,6 +845,8 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 	}
 	output := make([]AdminSupportConversation, 0, len(conversations))
 	includePhoneNumber := adminCanViewAccountPhone(admin.User.Role)
+	includeMessageBody := adminCanViewSupportMessageBody(admin.User.Role)
+	includeNote := adminCanViewSupportConversationNote(admin.User.Role)
 	for _, item := range conversations {
 		phoneNumber := ""
 		if includePhoneNumber && item.PhoneCiphertext != "" {
@@ -846,20 +858,20 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 			UserID:            item.UserID,
 			PhoneMask:         item.PhoneMask,
 			PhoneNumber:       phoneNumber,
-			LatestMessage:     adminSupportMessageFromSupport(item.LatestMessage, false),
+			LatestMessage:     adminSupportMessageFromSupport(item.LatestMessage, includeMessageBody),
 			MessageCount:      item.MessageCount,
 			UnreadByUserCount: item.UnreadByUserCount,
 			NeedsReply:        item.NeedsReply,
 			Status:            item.Status,
 			AssignedTo:        item.AssignedTo,
-			Note:              item.Note,
+			Note:              ternary(includeNote, item.Note, ""),
 			LatestUserAt:      item.LatestUserAt,
 			LatestAdminAt:     item.LatestAdminAt,
 			ClosedAt:          item.ClosedAt,
 			UpdatedAt:         item.UpdatedAt,
 		})
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.conversations", "support_messages", "", "", true, http.StatusOK, map[string]any{"row_count": len(output), "status": filter.Status, "phone_number_visible": includePhoneNumber})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.conversations", "support_messages", "", "", true, http.StatusOK, map[string]any{"row_count": len(output), "status": filter.Status, "phone_number_visible": includePhoneNumber, "body_visible": includeMessageBody, "note_visible": includeNote})
 	s.writeJSON(w, http.StatusOK, map[string]any{"conversations": output, "filter": filter})
 }
 
@@ -1439,20 +1451,37 @@ func (s *Server) recordAdminAppUpdateValidationFailure(r *http.Request, actor st
 }
 
 type AdminUserQuery struct {
-	Query              string `json:"query,omitempty"`
-	ExactUserID        string `json:"-"`
-	DayCN              string `json:"day_cn"`
-	Limit              int    `json:"limit"`
-	NowMs              int64  `json:"now_ms,omitempty"`
-	SinceMs            int64  `json:"since_ms,omitempty"`
-	IncludePhoneNumber bool   `json:"-"`
+	Query                string `json:"query,omitempty"`
+	ExactUserID          string `json:"-"`
+	DayCN                string `json:"day_cn"`
+	Limit                int    `json:"limit"`
+	NowMs                int64  `json:"now_ms,omitempty"`
+	SinceMs              int64  `json:"since_ms,omitempty"`
+	IncludePhoneNumber   bool   `json:"-"`
+	AllowPhoneHashSearch bool   `json:"-"`
 }
 
 func adminCanViewAccountPhone(role string) bool {
 	return adminRoleAllowed(role, "support", "finance_ops")
 }
 
+func adminCanSearchAccountPhone(role string) bool {
+	return adminCanViewAccountPhone(role)
+}
+
 func adminCanViewSupportMessageBody(role string) bool {
+	return adminRoleAllowed(role, "support")
+}
+
+func adminCanViewSupportConversationNote(role string) bool {
+	return adminRoleAllowed(role, "support")
+}
+
+func adminCanSearchSupportBody(role string) bool {
+	return adminRoleAllowed(role, "support")
+}
+
+func adminCanViewChatRoundExcerpts(role string) bool {
 	return adminRoleAllowed(role, "support")
 }
 
@@ -3105,9 +3134,11 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 		like := "%" + strings.TrimSpace(filter.Query) + "%"
 		where = append(where, "(a.user_id LIKE ? OR a.phone_mask LIKE ?")
 		args = append(args, like, like)
-		if hash := accountPhoneHashForSearch(filter.Query); hash != "" {
-			where[len(where)-1] += " OR a.phone_hash = ?"
-			args = append(args, hash)
+		if filter.AllowPhoneHashSearch {
+			if hash := accountPhoneHashForSearch(filter.Query); hash != "" {
+				where[len(where)-1] += " OR a.phone_hash = ?"
+				args = append(args, hash)
+			}
 		}
 		where[len(where)-1] += ")"
 	}
@@ -3135,7 +3166,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	return users, rows.Err()
 }
 
-func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool, includeGiftCardCodes bool) (AdminUserDetail, error) {
+func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool, includeGiftCardCodes bool, includeChatRoundExcerpts bool) (AdminUserDetail, error) {
 	users, err := s.ListAdminUsers(ctx, AdminUserQuery{ExactUserID: userID, DayCN: dayCN, Limit: 1, NowMs: nowMs, SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli(), IncludePhoneNumber: includePhoneNumber})
 	if err != nil {
 		return AdminUserDetail{}, err
@@ -3162,9 +3193,13 @@ func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN str
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
-	rounds, err := s.ListAdminRoundExcerpts(ctx, userID, 12)
-	if err != nil {
-		return AdminUserDetail{}, err
+	rounds := []AdminRoundExcerpt{}
+	if includeChatRoundExcerpts {
+		var err error
+		rounds, err = s.ListAdminRoundExcerpts(ctx, userID, 12)
+		if err != nil {
+			return AdminUserDetail{}, err
+		}
 	}
 	appLogs, err := s.ListClientAppLogs(ctx, ClientAppLogQuery{UserID: userID, SinceMs: time.Now().Add(-7 * 24 * time.Hour).UnixMilli(), Limit: 20})
 	if err != nil {
@@ -3649,7 +3684,6 @@ func adminSupportMessageFromSupport(message SupportMessage, includeBody bool) Ad
 		ID:           message.ID,
 		UserID:       message.UserID,
 		SenderType:   message.SenderType,
-		BodyExcerpt:  truncateRunes(strings.TrimSpace(message.Body), adminExcerptRunes),
 		HasImages:    len(message.ImageURLs) > 0,
 		ImageCount:   len(message.ImageURLs),
 		CreatedAt:    message.CreatedAt,
@@ -3657,6 +3691,7 @@ func adminSupportMessageFromSupport(message SupportMessage, includeBody bool) Ad
 	}
 	if includeBody {
 		result.Body = message.Body
+		result.BodyExcerpt = truncateRunes(strings.TrimSpace(message.Body), adminExcerptRunes)
 		result.ImageURLs = message.ImageURLs
 	} else {
 		result.BodyRedacted = strings.TrimSpace(message.Body) != ""

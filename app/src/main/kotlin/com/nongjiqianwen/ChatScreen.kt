@@ -394,13 +394,30 @@ internal fun resolveTodayAgriContextDayForTimeline(
 
 internal fun isTodayAgriCardVisibleInViewport(
     chatListItems: List<ChatTimelineItem>,
-    visibleItemIndexes: Set<Int>
+    visibleItems: List<VisibleChatListItem>,
+    viewportStartOffset: Int,
+    viewportEndOffset: Int,
+    minVisiblePx: Int
 ): Boolean {
     val todayAgriVisualIndex = chatListItems.indexOfFirst { item ->
         item is ChatTimelineItem.TodayAgriCard
     }
-    return todayAgriVisualIndex >= 0 && todayAgriVisualIndex in visibleItemIndexes
+    if (todayAgriVisualIndex < 0 || viewportEndOffset <= viewportStartOffset || minVisiblePx <= 0) {
+        return false
+    }
+    val visibleItem = visibleItems.firstOrNull { it.index == todayAgriVisualIndex } ?: return false
+    val itemStart = visibleItem.offset
+    val itemEnd = visibleItem.offset + visibleItem.size
+    val visibleStart = maxOf(itemStart, viewportStartOffset)
+    val visibleEnd = minOf(itemEnd, viewportEndOffset)
+    return visibleEnd > visibleStart && visibleEnd - visibleStart >= minVisiblePx
 }
+
+internal data class VisibleChatListItem(
+    val index: Int,
+    val offset: Int,
+    val size: Int
+)
 
 internal fun shouldShowTodayAgriMainCard(
     card: SessionApi.TodayAgriCard?,
@@ -2063,6 +2080,7 @@ fun ChatScreen() {
     val initialWorklineBottomSwitchOverflowPx =
         with(density) { INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW.roundToPx() }
     val chatMessageItemVerticalPaddingPx = with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
+    val todayAgriMinVisiblePx = with(density) { 24.dp.roundToPx() }
     val streamingRuntime = rememberChatStreamingRuntimeState(uiRuntimeResetKey)
     var isStreaming by streamingRuntime.isStreaming
     var streamingMessageId by streamingRuntime.streamingMessageId
@@ -3087,11 +3105,19 @@ fun ChatScreen() {
         ) {
             return@LaunchedEffect
         }
+        val layoutInfo = chatListState.layoutInfo
         val todayAgriActuallyVisible = isTodayAgriCardVisibleInViewport(
             chatListItems = chatListItems,
-            visibleItemIndexes = chatListState.layoutInfo.visibleItemsInfo
-                .map { item -> item.index }
-                .toSet()
+            visibleItems = layoutInfo.visibleItemsInfo.map { item ->
+                VisibleChatListItem(
+                    index = item.index,
+                    offset = item.offset,
+                    size = item.size
+                )
+            },
+            viewportStartOffset = layoutInfo.viewportStartOffset,
+            viewportEndOffset = layoutInfo.viewportEndOffset,
+            minVisiblePx = todayAgriMinVisiblePx
         )
         if (!todayAgriActuallyVisible) {
             return@LaunchedEffect

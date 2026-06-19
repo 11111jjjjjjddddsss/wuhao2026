@@ -59,10 +59,12 @@ type SupportSummary struct {
 }
 
 type SupportConversationQuery struct {
-	SinceMs int64  `json:"since_ms"`
-	Limit   int    `json:"limit"`
-	Status  string `json:"status,omitempty"`
-	Query   string `json:"query,omitempty"`
+	SinceMs              int64  `json:"since_ms"`
+	Limit                int    `json:"limit"`
+	Status               string `json:"status,omitempty"`
+	Query                string `json:"query,omitempty"`
+	AllowPhoneHashSearch bool   `json:"-"`
+	AllowBodySearch      bool   `json:"-"`
 }
 
 type SupportConversationEntry struct {
@@ -243,6 +245,8 @@ func (s *Server) handleInternalSupportConversations(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
+	filter.AllowPhoneHashSearch = true
+	filter.AllowBodySearch = true
 	conversations, err := s.store.ListSupportConversations(r.Context(), filter)
 	if err != nil {
 		s.logger.Error("internal list support conversations failed", "error", err)
@@ -639,12 +643,19 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 	}
 	if filter.Query != "" {
 		like := "%" + filter.Query + "%"
-		where = append(where, "(user_id LIKE ? OR phone_mask LIKE ? OR body LIKE ?)")
-		args = append(args, like, like, like)
-		if hash := accountPhoneHashForSearch(filter.Query); hash != "" {
-			where[len(where)-1] = strings.TrimSuffix(where[len(where)-1], ")") + " OR phone_hash = ?)"
-			args = append(args, hash)
+		queryParts := []string{"user_id LIKE ?", "phone_mask LIKE ?"}
+		args = append(args, like, like)
+		if filter.AllowBodySearch {
+			queryParts = append(queryParts, "body LIKE ?")
+			args = append(args, like)
 		}
+		if filter.AllowPhoneHashSearch {
+			if hash := accountPhoneHashForSearch(filter.Query); hash != "" {
+				queryParts = append(queryParts, "phone_hash = ?")
+				args = append(args, hash)
+			}
+		}
+		where = append(where, "("+strings.Join(queryParts, " OR ")+")")
 	}
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")

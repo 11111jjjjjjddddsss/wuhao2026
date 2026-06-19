@@ -107,6 +107,7 @@ redact() {
     -e 's/(Bearer )[A-Za-z0-9._~+\/=-]+/\1REDACTED/g' \
     -e 's/sk-[A-Za-z0-9_-]{16,}/sk-REDACTED/g' \
     -e 's/([0-9]{1,3}\.[0-9]{1,3})\.[0-9]{1,3}\.[0-9]{1,3}/\1.*.*/g' \
+    -e 's/(^|[^0-9])1[3-9][0-9]{9}([^0-9]|$)/\1PHONE_REDACTED\2/g' \
     -e 's/(AccessKey(Id|Secret)?[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(SecurityToken[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \
     -e 's/(Signature(Nonce)?[=:][[:space:]]*)[^, "&]+/\1REDACTED/Ig' \

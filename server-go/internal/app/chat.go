@@ -980,6 +980,9 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 	if hasMemoryDocument {
 		messages = append(messages, BailianMessage{Role: "system", Content: "后台背景信息中的记忆摘要（只作静默参考；回答应聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于记忆的顺带建议）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
 	}
+	if pendingMemoryContext := buildPendingMemoryPromptContext(snapshot, rounds); pendingMemoryContext != "" {
+		messages = append(messages, BailianMessage{Role: "system", Content: pendingMemoryContext})
+	}
 	if trimmedTodayAgriContext := strings.TrimSpace(todayAgriContext); trimmedTodayAgriContext != "" {
 		messages = append(messages, BailianMessage{Role: "system", Content: trimmedTodayAgriContext})
 	}
@@ -991,6 +994,42 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 	}
 	messages = append(messages, BailianMessage{Role: "user", Content: buildVisionUserContent(currentText, currentImages)})
 	return messages, len(rounds), hasMemoryDocument
+}
+
+func buildPendingMemoryPromptContext(snapshot *SessionSnapshot, activeRounds []SessionRound) string {
+	if snapshot == nil || len(snapshot.PendingMemoryJobs) == 0 {
+		return ""
+	}
+	for _, job := range snapshot.PendingMemoryJobs {
+		if len(job.Rounds) == 0 || !memoryJobNeedsPromptContext(job, activeRounds) {
+			continue
+		}
+		dialogueText := buildDialogueText(job.Rounds)
+		if dialogueText == "" {
+			continue
+		}
+		return "后台背景信息中的待补偿历史片段（只作静默参考；回答仍聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于背景信息的顺带建议）\n" + dialogueText
+	}
+	return ""
+}
+
+func memoryJobNeedsPromptContext(job MemoryExtractionJob, activeRounds []SessionRound) bool {
+	activeIDs := map[string]struct{}{}
+	for _, round := range activeRounds {
+		if id := strings.TrimSpace(round.ClientMsgID); id != "" {
+			activeIDs[id] = struct{}{}
+		}
+	}
+	for _, round := range job.Rounds {
+		id := strings.TrimSpace(round.ClientMsgID)
+		if id == "" {
+			return true
+		}
+		if _, ok := activeIDs[id]; !ok {
+			return true
+		}
+	}
+	return false
 }
 
 func buildVisionUserContent(text string, images []string) any {

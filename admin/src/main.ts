@@ -1578,7 +1578,7 @@ async function updateAccountDeletionStatus(requestID: string, status: string, bu
   };
   let note = "";
   if (["completed", "rejected", "cancelled"].includes(status)) {
-    const input = window.prompt("处理备注必填。不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
+    const input = window.prompt("处理备注必填。可以写必要的手机号、订单号、礼品卡码等处理信息；不要写后台密钥、token 或内部敏感信息。");
     if (input === null) return;
     note = input.trim();
     if (!note) {
@@ -2495,8 +2495,8 @@ function supportFilterForm(): string {
       </label>
       <label class="field wide">
         <span>搜索</span>
-        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 最近消息" />
-        <span class="small muted">搜索账号ID、手机号或会话最新消息。</span>
+        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 最近消息（按权限）" />
+        <span class="small muted">按当前角色权限搜索账号ID、手机号或会话最新消息。</span>
       </label>
       <button class="button primary" type="submit">筛选</button>
     </form>
@@ -2511,7 +2511,7 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
         <button class="selectable-row ${item.user_id === pageState.supportUserID ? "active" : ""}" data-action="support-select" data-user-id="${escapeAttr(item.user_id)}">
           <strong class="truncate">${escapeHTML(item.user_id)}</strong>
           <span class="small muted truncate">${phoneDisplayInline(item.phone_number, item.phone_mask)} · ${formatTime(item.latest_message.created_at)}</span>
-          <span class="small muted truncate">${escapeHTML(item.latest_message.body_excerpt || item.latest_message.body || "无正文")}</span>
+          <span class="small muted truncate">${escapeHTML(supportMessageText(item.latest_message))}</span>
           <span>${supportStatusPill(item)} <span class="small muted">${item.message_count} 条</span></span>
         </button>
       `,
@@ -2535,7 +2535,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
                       <strong>${escapeHTML(message.sender_type)}</strong>
                       <span>${formatTime(message.created_at)}</span>
                     </div>
-                    <div>${escapeHTML(message.body || message.body_excerpt || "")}</div>
+                    <div>${escapeHTML(supportMessageText(message))}</div>
                     ${message.body_redacted ? `<div class="small muted" style="margin-top:6px">当前角色仅显示反馈摘要，完整正文只对客服处理角色开放。</div>` : ""}
                     ${supportMessageImages(message)}
                   </article>
@@ -2568,6 +2568,11 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
         : notice("只读会话", "当前角色只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
     }
   `;
+}
+
+function supportMessageText(message: AdminSupportMessage): string {
+  if (message.body_redacted) return "正文已隐藏";
+  return message.body || message.body_excerpt || (message.has_images ? "仅图片" : "无正文");
 }
 
 function supportMessageImages(message: AdminSupportMessage): string {

@@ -181,7 +181,7 @@ aliyun oss du oss://nongjiqiancha-prod --block-size MB
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sms-usage.ps1
 ```
 
-脚本会校验阿里云短信统计接口状态，默认不按短信签名过滤，统计为空时默认短暂重试一次，并输出发送总量、成功、失败和无回执汇总；如果最终仍为空，只能说明所选日期范围统计没有返回明细或供应商统计存在延迟，不等于套餐包余额充足，也不等于线上一定没有验证码请求。脚本输出的原始统计 JSON 也走手机号字段脱敏，避免后续接口字段变化时意外打印敏感信息。脚本还会调用费用中心 `QueryResourcePackageInstances` 查询当前有效资源包，并输出是否能看到短信类套餐包；当前该 API 未返回短信类套餐包时会输出 `sms_package_status=not_visible_manual_required`。若手动传 `-SignName` 导致空统计，应再用默认总量口径复查。旧 DYPNS / 融合认证用量脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 只保留给历史包排障；新 Android 包不再消耗融合认证主链。短信套餐包余量、到期、余量预警、自动复购和账单仍以短信服务控制台 / 费用中心页面为准，脚本用于看普通短信发送统计、失败趋势和资源包 API 可见性。
+脚本会校验阿里云短信统计接口状态，默认不按短信签名过滤，统计为空时默认短暂重试一次，并输出发送总量、成功、失败和无回执汇总；如果最终仍为空，只能说明所选日期范围统计没有返回明细或供应商统计存在延迟，不等于套餐包余额充足，也不等于线上一定没有验证码请求。脚本输出的原始统计 JSON 也走手机号字段脱敏，避免后续接口字段变化时意外打印敏感信息。脚本还会调用费用中心 `QueryResourcePackageInstances` 查询当前有效资源包，并输出是否能看到短信类套餐包；当前该 API 未返回短信类套餐包时会输出 `sms_package_status=not_visible_manual_required`。如果负责人已经在短信服务 / 费用中心控制台确认套餐包存在且余量正常，可由上线总门禁通过 `NONGJI_SMS_BALANCE_CONFIRMED` 环境变量传入确认，脚本会标记 `sms_package_status=confirmed`；这只表示本次人工确认已完成，不把控制台余额写进仓库。若手动传 `-SignName` 导致空统计，应再用默认总量口径复查。旧 DYPNS / 融合认证用量脚本 [check-auth-usage.ps1](D:/wuhao/scripts/check-auth-usage.ps1) 只保留给历史包排障；新 Android 包不再消耗融合认证主链。短信套餐包余量、到期、余量预警、自动复购和账单仍以短信服务控制台 / 费用中心页面为准，脚本用于看普通短信发送统计、失败趋势和资源包 API 可见性。
 
 ## 提前提醒阈值
 

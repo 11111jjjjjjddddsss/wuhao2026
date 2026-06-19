@@ -23,6 +23,22 @@ type ManualDailyAgriPublishInput struct {
 	PublishedBy string
 }
 
+type DailyAgriCardRawStatus struct {
+	DayCN          string
+	Scope          string
+	Status         string
+	SourceType     string
+	ManualLocked   bool
+	ManualBy       string
+	ManualAt       int64
+	GeneratedAt    int64
+	LeaseUntil     int64
+	ErrorMessage   string
+	ContentValid   bool
+	ItemCount      int
+	ContentPresent bool
+}
+
 func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string) (*DailyAgriCard, string, error) {
 	scope = normalizeDailyAgriScope(scope)
 	var (
@@ -77,6 +93,64 @@ func (s *Store) GetDailyAgriCard(ctx context.Context, dayCN string, scope string
 		card.ManualAt = manualAt.Int64
 	}
 	return &card, status, nil
+}
+
+func (s *Store) GetDailyAgriCardRawStatus(ctx context.Context, dayCN string, scope string) (DailyAgriCardRawStatus, error) {
+	scope = normalizeDailyAgriScope(scope)
+	result := DailyAgriCardRawStatus{
+		DayCN:  dayCN,
+		Scope:  scope,
+		Status: "missing",
+	}
+	var (
+		contentRaw sql.NullString
+		sourceType sql.NullString
+		manualBy   sql.NullString
+		generated  sql.NullInt64
+		manualAt   sql.NullInt64
+		leaseUntil sql.NullInt64
+		errMsg     sql.NullString
+	)
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT status, content_json, generated_at, source_type, manual_locked, manual_by, manual_at, lease_until, error
+		 FROM daily_agri_cards
+		 WHERE day_cn = ? AND scope = ?
+		 LIMIT 1`,
+		dayCN,
+		scope,
+	).Scan(&result.Status, &contentRaw, &generated, &sourceType, &result.ManualLocked, &manualBy, &manualAt, &leaseUntil, &errMsg)
+	if err == sql.ErrNoRows {
+		return result, nil
+	}
+	if err != nil {
+		return DailyAgriCardRawStatus{}, err
+	}
+	result.SourceType = normalizeDailyAgriSourceType(nullStringValue(sourceType))
+	result.ManualBy = nullStringValue(manualBy)
+	result.ErrorMessage = nullStringValue(errMsg)
+	if generated.Valid {
+		result.GeneratedAt = generated.Int64
+	}
+	if manualAt.Valid {
+		result.ManualAt = manualAt.Int64
+	}
+	if leaseUntil.Valid {
+		result.LeaseUntil = leaseUntil.Int64
+	}
+	contentText := strings.TrimSpace(contentRaw.String)
+	result.ContentPresent = contentRaw.Valid && contentText != ""
+	if result.ContentPresent && json.Valid([]byte(contentText)) {
+		var card DailyAgriCard
+		if err := json.Unmarshal([]byte(contentText), &card); err == nil && isUsableStoredDailyAgriCard(card) {
+			result.ContentValid = true
+			result.ItemCount = len(card.Items)
+			if result.ItemCount > dailyAgriTargetItemCount {
+				result.ItemCount = dailyAgriTargetItemCount
+			}
+		}
+	}
+	return result, nil
 }
 
 func (s *Store) ListRecentDailyAgriCards(ctx context.Context, sinceDayCN string, beforeDayCN string, scope string, limit int) ([]DailyAgriCard, error) {

@@ -62,9 +62,9 @@
 
 - `GET /admin-api/v1/support/conversations`
   - 走后台账号 session / CSRF / 角色权限，不暴露内部 shared secret 给浏览器
-  - 支持按 `status=open|replied|closed` 和 `query` 筛选；`query` 可查账号ID、完整手机号 / 脱敏手机号和最近消息，完整手机号在服务端按 `phone_hash` 精确匹配
+  - 支持按 `status=open|replied|closed` 和 `query` 筛选；`query` 对所有后台角色都可查账号ID和脱敏手机号线索，owner / support 这类授权客服处理角色还能查最近消息正文，owner / support / finance_ops 这类授权手机号角色还能按完整手机号在服务端用 `phone_hash` 精确匹配；只读 / 审计角色不能借搜索拿到正文或完整手机号
   - 列表排序为待回复优先，其次按最新消息时间倒序，避免大量消息时把未处理会话压到下面
-  - 授权角色可在会话详情查看和复制完整手机号，用于回访；审计只记录是否展示完整号，不记录手机号值
+  - owner 可在会话详情查看、复制完整手机号并回复客户消息；support / finance_ops 可按职责查看完整手机号用于回访；只读 / 审计角色只看脱敏号。审计只记录是否展示完整号，不记录手机号值
 - `GET /admin-api/v1/support/messages?user_id=<user_id>`
   - 读取指定账号ID的最近消息，按时间正序展示
 - `POST /admin-api/v1/support/messages`

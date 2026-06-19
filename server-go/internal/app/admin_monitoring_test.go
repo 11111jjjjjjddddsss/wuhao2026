@@ -714,11 +714,11 @@ func TestAdminSupportMessageRedactsBodyAndImages(t *testing.T) {
 	if readonly.Body != "" || len(readonly.ImageURLs) != 0 {
 		t.Fatalf("readonly support message should not include full body or images: %#v", readonly)
 	}
-	if !readonly.BodyRedacted || !readonly.ImagesRedacted || readonly.BodyExcerpt == "" || !readonly.HasImages || readonly.ImageCount != 1 {
+	if !readonly.BodyRedacted || !readonly.ImagesRedacted || readonly.BodyExcerpt != "" || !readonly.HasImages || readonly.ImageCount != 1 {
 		t.Fatalf("readonly support message redaction metadata mismatch: %#v", readonly)
 	}
 	full := adminSupportMessageFromSupport(message, true)
-	if full.Body != message.Body || len(full.ImageURLs) != 1 || full.BodyRedacted || full.ImagesRedacted {
+	if full.Body != message.Body || full.BodyExcerpt == "" || len(full.ImageURLs) != 1 || full.BodyRedacted || full.ImagesRedacted {
 		t.Fatalf("support role should receive full message: %#v", full)
 	}
 }

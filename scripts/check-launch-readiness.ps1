@@ -159,13 +159,17 @@ function Invoke-SmsUsageGateStep {
     Write-Host "== sms usage =="
     $timer = [Diagnostics.Stopwatch]::StartNew()
     try {
-        $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments @(
+        $smsArgs = @(
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
             "-File",
             "scripts/check-sms-usage.ps1"
         )
+        if (Test-TruthyEnv "NONGJI_SMS_BALANCE_CONFIRMED") {
+            $smsArgs += "-ConfirmSmsPackage"
+        }
+        $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $smsArgs
         $timer.Stop()
         $smsUsageStatus = Get-CapturedValue -Lines $lines -Key "sms_usage_status"
         $smsPackageStatus = Get-CapturedValue -Lines $lines -Key "sms_package_status"
@@ -269,13 +273,6 @@ function Invoke-PaymentReadinessGateStep {
         Add-GateResult -Name "payment readiness" -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
         Write-Host "step_status=failed seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
     }
-}
-
-function Test-AdminSmokeEnv {
-    $username = if ($env:NONGJI_ADMIN_USERNAME) { $env:NONGJI_ADMIN_USERNAME } else { $env:ADMIN_SMOKE_USERNAME }
-    $password = if ($env:NONGJI_ADMIN_PASSWORD) { $env:NONGJI_ADMIN_PASSWORD } else { $env:ADMIN_SMOKE_PASSWORD }
-    return -not [string]::IsNullOrWhiteSpace($username) -and `
-        -not [string]::IsNullOrWhiteSpace($password)
 }
 
 function Test-TruthyEnv {
@@ -501,22 +498,18 @@ if (-not $SkipCloud) {
 }
 
 if (-not $SkipCloud) {
-    if (Test-AdminSmokeEnv) {
-        Invoke-GateStep -Name "admin authenticated smoke" -ScriptBlock {
-            Invoke-Native -FilePath "powershell.exe" -Arguments @(
-                "-NoProfile",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                "scripts/check-admin-authenticated-smoke.ps1",
-                "-RequireOwner"
-            )
-        }
-    } else {
-        $optional = -not $RequireAdminSmoke
-        Invoke-GateStep -Name "admin authenticated smoke" -Optional:$optional -ScriptBlock {
-            throw "admin smoke credentials are not set in the current PowerShell session; set NONGJI_ADMIN_USERNAME/NONGJI_ADMIN_PASSWORD or ADMIN_SMOKE_USERNAME/ADMIN_SMOKE_PASSWORD"
-        }
+    $adminSmokeArgs = @(
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "scripts/check-admin-authenticated-smoke.ps1"
+    )
+    if ($ReleaseGate -or $AppUpdateReleaseGate -or $RequireAdminSmoke) {
+        $adminSmokeArgs += "-RequireOwner"
+    }
+    Invoke-GateStep -Name "admin authenticated smoke" -Optional:(-not $RequireAdminSmoke) -ScriptBlock {
+        Invoke-Native -FilePath "powershell.exe" -Arguments $adminSmokeArgs
     }
 }
 

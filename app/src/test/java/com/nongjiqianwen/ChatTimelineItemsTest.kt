@@ -108,13 +108,35 @@ class ChatTimelineItemsTest {
         assertFalse(
             isTodayAgriCardVisibleInViewport(
                 chatListItems = items,
-                visibleItemIndexes = setOf(0, 1)
+                visibleItems = listOf(
+                    VisibleChatListItem(index = 0, offset = 0, size = 100),
+                    VisibleChatListItem(index = 1, offset = 100, size = 100)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 400,
+                minVisiblePx = 24
             )
         )
         assertTrue(
             isTodayAgriCardVisibleInViewport(
                 chatListItems = items,
-                visibleItemIndexes = setOf(todayAgriIndex)
+                visibleItems = listOf(
+                    VisibleChatListItem(index = todayAgriIndex, offset = 120, size = 100)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 400,
+                minVisiblePx = 24
+            )
+        )
+        assertFalse(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItems = listOf(
+                    VisibleChatListItem(index = todayAgriIndex, offset = 390, size = 100)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 400,
+                minVisiblePx = 24
             )
         )
     }

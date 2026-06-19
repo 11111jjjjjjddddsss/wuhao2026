@@ -186,6 +186,28 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun markdownTableAcceptsRowsWithoutOuterPipesWhenColumnsMatch() {
+        val state = splitStreamingBlockState(
+            "项目 | 建议\n" +
+                "--- | ---\n" +
+                "水分 | 控水\n" +
+                "病虫 | 巡查\n"
+        )
+        val model = classifyStreamingLine(state.completedBlocks.first())
+
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(
+            listOf(
+                listOf("水分", "控水"),
+                listOf("病虫", "巡查")
+            ),
+            table.rows
+        )
+    }
+
+    @Test
     fun markdownTableStopsBeforeOrdinaryPipeParagraphAfterBodyRow() {
         val state = splitStreamingBlockState(
             "|项目|建议|\n" +

@@ -283,6 +283,83 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	}
 }
 
+func TestBuildPromptMessagesDoesNotDuplicatePendingMemoryJobStillInWindow(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+	rounds := []SessionRound{
+		{ClientMsgID: "r1", User: "第1轮", Assistant: "答1"},
+		{ClientMsgID: "r2", User: "第2轮", Assistant: "答2"},
+	}
+	snapshot := &SessionSnapshot{
+		UserID:      "u1",
+		ARoundsFull: rounds,
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{RoundTotal: 2, Rounds: rounds},
+		},
+	}
+
+	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
+		snapshot,
+		6,
+		"继续",
+		nil,
+		"context",
+		"",
+	)
+
+	if usedCount != 2 || hasMemoryDocument {
+		t.Fatalf("usedCount=%d hasMemoryDocument=%v", usedCount, hasMemoryDocument)
+	}
+	for _, message := range messages {
+		if message.Role == "system" && strings.Contains(message.Content.(string), "待补偿历史片段") {
+			t.Fatalf("pending memory job still inside active window should not add extra system context: %#v", message.Content)
+		}
+	}
+}
+
+func TestBuildPromptMessagesAddsPendingMemoryJobAfterItSlidesOutOfWindow(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+	pendingRounds := []SessionRound{
+		{ClientMsgID: "r1", User: "第1轮", Assistant: "答1", CreatedAt: 1800000000000},
+		{ClientMsgID: "r2", User: "第2轮关键病害描述", Assistant: "答2"},
+	}
+	activeRounds := []SessionRound{
+		{ClientMsgID: "r3", User: "第3轮", Assistant: "答3"},
+		{ClientMsgID: "r4", User: "第4轮", Assistant: "答4"},
+	}
+	snapshot := &SessionSnapshot{
+		UserID:      "u1",
+		ARoundsFull: activeRounds,
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{RoundTotal: 2, Rounds: pendingRounds},
+		},
+	}
+
+	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
+		snapshot,
+		2,
+		"继续",
+		nil,
+		"context",
+		"",
+	)
+
+	if usedCount != 2 || hasMemoryDocument {
+		t.Fatalf("usedCount=%d hasMemoryDocument=%v", usedCount, hasMemoryDocument)
+	}
+	if len(messages) < 4 || messages[2].Role != "system" {
+		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
+	}
+	content := messages[2].Content.(string)
+	if !strings.HasPrefix(content, "后台背景信息中的待补偿历史片段（只作静默参考") ||
+		!strings.Contains(content, "第2轮关键病害描述") {
+		t.Fatalf("pending memory context mismatch: %q", content)
+	}
+}
+
 func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 	server := &Server{
 		systemAnchor: "anchor",

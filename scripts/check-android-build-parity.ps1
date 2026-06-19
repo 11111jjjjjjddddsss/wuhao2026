@@ -780,8 +780,10 @@ if ($failures.Count -eq 0) {
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `
         "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list."
-    Require-Match $failures $chatScreen 'isTodayAgriCardVisibleInViewport(?s:.*?)visibleItemIndexes' `
-        "Today agri shown/context state must depend on actual visible list items, not only timeline insertion."
+    Require-Match $failures $chatScreen 'isTodayAgriCardVisibleInViewport(?s:.*?)visibleItems:\s*List<VisibleChatListItem>(?s:.*?)visibleEnd\s*-\s*visibleStart\s*>=\s*minVisiblePx' `
+        "Today agri shown/context state must depend on actual visible overlap, not only timeline insertion."
+    Require-Match $failures $chatScreen 'layoutInfo\.visibleItemsInfo\.map(?s:.*?)VisibleChatListItem(?s:.*?)minVisiblePx\s*=\s*todayAgriMinVisiblePx' `
+        "Today agri visibility must be driven by LazyList visibleItemsInfo with a minimum visible-pixel threshold."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriCardVisibilityRequiresViewportIndex' `
         "Today agri visibility must have a unit test proving timeline insertion is not enough to count as seen."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*selectionEnabled\s*\)\s*\{\s*SelectionContainer\s*\{(?s:.*?)RendererAssistantMarkdownContentImpl' `
@@ -803,19 +805,21 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatStreamingRenderer 'shouldEnableRendererMarkdownTableCopy(?s:.*?)messageSettled\s*&&\s*inlineMode\s*==\s*RendererInlineMode\.Settled' `
         "Markdown table copy must wait for the whole assistant message to be settled, not only an earlier table block."
     Require-Match $failures $chatStreamingRenderer 'RendererAssistantStreamingUnifiedBlockHost(?s:.*?)tableCopyEnabled\s*=\s*false' `
-        "Markdown tables may render during streaming, but their copy button must stay disabled until the whole message is settled."
+        "Markdown tables may render during streaming, but their copy action must wait until the whole message is settled."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableCopyWaitsForWholeMessageSettled' `
         "Markdown table copy must have a unit test proving streaming messages cannot copy an earlier settled table block."
     Require-Match $failures $chatStreamingRenderer 'heading\.level\s*(<=\s*3|>\s*3\)\s*return\s+false)' `
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `
         "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
-    Require-Match $failures $chatStreamingRenderer 'TextButton\((?s:.*?)onClick\s*=\s*\{(?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)text\s*=\s*"复制表格"(?s:.*?)RendererMarkdownTableCardImpl' `
-        "Markdown table UI must keep the mobile grouped table cards and the TSV copy-table button."
+    Require-Match $failures $chatStreamingRenderer 'alpha\(0f\)(?s:.*?)clearAndSetSemantics\s*\{\s*\}(?s:.*?)TextButton\((?s:.*?)enabled\s*=\s*copyEnabled(?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)text\s*=\s*"复制表格"(?s:.*?)RendererMarkdownTableCardImpl' `
+        "Markdown table UI must keep the mobile grouped table cards and reserve a hidden copy button slot during streaming so settled tables do not jump."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
         "Incomplete Markdown table headers must stay plain text while streaming, instead of rendering a half-empty table."
-    Require-Match $failures $chatStreamingRenderer 'while\s*\(\s*cursor\s*<\s*lines\.size\s*&&\s*looksLikeRendererMarkdownTableBodyRow\(lines\[cursor\]\)\s*\)' `
-        "Markdown table body continuation must not swallow ordinary paragraphs that merely contain pipe characters."
+    Require-Match $failures $chatStreamingRenderer 'expectedColumnCount\s*=\s*maxOf\((?s:.*?)looksLikeRendererMarkdownTableBodyRow\(lines\[cursor\],\s*expectedColumnCount\)' `
+        "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableAcceptsRowsWithoutOuterPipesWhenColumnsMatch' `
+        "Markdown table tests must cover standard table body rows without outer pipes."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableStopsBeforeOrdinaryPipeParagraphAfterBodyRow' `
         "Markdown table tests must cover ordinary pipe paragraphs immediately after a table body row."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableKeepsPipesInsideDoubleBacktickInlineCodeCell' `

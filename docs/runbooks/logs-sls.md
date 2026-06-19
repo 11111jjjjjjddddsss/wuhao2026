@@ -56,7 +56,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-a
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1
 ```
 
-若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；若还要把查询语句、严重级别、触发条件、重复提醒、runbook 注解、行动策略 ID 和仪表盘 ID 等 warning 当成失败，可再加 `-FailOnWarning`。2026-06-13 起 `check-resource-capacity.ps1` 默认就会把 SLS warning 透传成 attention，`-Strict` 会继续把资源 / SLS 漂移作为失败门槛，避免总巡检假绿：
+若要把外部通知 / 仪表盘作为发布门槛，可加严格参数；若还要把查询语句、严重级别、触发条件、重复提醒、runbook 注解、行动策略 ID、仪表盘 ID，以及意外启用的 `nongji-*` 非仓库期望告警等 warning 当成失败，可再加 `-FailOnWarning`。2026-06-13 起 `check-resource-capacity.ps1` 默认就会把 SLS warning 透传成 attention，`-Strict` 会继续把资源 / SLS 漂移作为失败门槛，避免总巡检假绿：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning
@@ -101,7 +101,7 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 
 - 这些规则是“最小生产兜底”，不是完整告警中心
 - 当前会进入 AlertHub，并通过行动策略 `nongji-prod-email` 走邮件通知；后台页面不会自动弹窗，App 用户也不会收到系统通知
-- 2026-06-13 只读巡检确认当时 5 条规则均存在、启用且进入 AlertHub；2026-06-19 起仓库期望规则扩展为 7 条，额外覆盖扣次补偿自动终结 / 终态写入失败和记忆摘要待补偿状态写回失败。巡检会校验查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 是否符合仓库期望；`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 应返回 `status=ready`
+- 2026-06-13 只读巡检确认当时 5 条规则均存在、启用且进入 AlertHub；2026-06-19 起仓库期望规则扩展为 7 条，额外覆盖扣次补偿自动终结 / 终态写入失败和记忆摘要待补偿状态写回失败。巡检会校验查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 是否符合仓库期望；若发现启用中的 `nongji-*` 告警不在仓库期望清单里，也会输出 warning，避免控制台临时创建的规则长期制造噪音。`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 应返回 `status=ready`
 - 后续仍需在真实或测试告警触发时确认第一封邮件可达，并继续补普通短信发送用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 

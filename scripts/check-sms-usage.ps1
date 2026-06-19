@@ -10,6 +10,7 @@ param(
     [int]$EmptyRetryCount = 1,
     [int]$RetryDelaySeconds = 2,
     [switch]$SkipResourcePackageCheck,
+    [switch]$ConfirmSmsPackage,
     [int]$ResourcePackagePageSize = 50
 )
 
@@ -246,7 +247,12 @@ $smsUsageStatus = if ($targetList.Count -eq 0) { "attention" } else { "ready" }
 Write-Host "sms_usage_status=$smsUsageStatus"
 
 if ($SkipResourcePackageCheck) {
-    Write-Host "sms_package_status=skipped"
+    if ($ConfirmSmsPackage) {
+        Write-Host "sms_package_status=confirmed"
+        Write-Host "sms_package_confirmed_by=manual_env"
+    } else {
+        Write-Host "sms_package_status=skipped"
+    }
 } else {
     Write-Host
     Write-Host "== active resource packages =="
@@ -281,7 +287,15 @@ if ($SkipResourcePackageCheck) {
         }
         Write-Host "sms_package_visible=$($smsPackages.Count -gt 0)"
         Write-Host "sms_package_count=$($smsPackages.Count)"
-        if ($smsPackages.Count -eq 0) {
+        if ($ConfirmSmsPackage) {
+            Write-Host "sms_package_status=confirmed"
+            Write-Host "sms_package_confirmed_by=manual_env"
+            if ($smsPackages.Count -eq 0) {
+                Write-Warning "BssOpenAPI returned no active SMS-like package, but NONGJI_SMS_BALANCE_CONFIRMED / -ConfirmSmsPackage marks the console balance, expiry, allowance warning, and billing settings as manually confirmed."
+            } else {
+                Write-Warning "SMS-like package is visible and the console balance, expiry, allowance warning, and billing settings are manually confirmed."
+            }
+        } elseif ($smsPackages.Count -eq 0) {
             Write-Host "sms_package_status=not_visible_manual_required"
             Write-Warning "BssOpenAPI returned no active SMS-like package. Confirm ordinary SMS package balance, expiry, package allowance warning, and auto-renew in the SMS console."
         } else {
