@@ -284,7 +284,10 @@ function Invoke-PaymentReadinessGateStep {
 function Invoke-AdminMonitoringActionsGateStep {
     param(
         [switch]$FailOnWarning,
-        [switch]$SkipIfMissingCredentials
+        [switch]$SkipIfMissingCredentials,
+        [switch]$IncludeManualChecklist,
+        [switch]$FailOnManualAttention,
+        [switch]$IncludeLaunchReadiness
     )
 
     Write-Host
@@ -303,6 +306,15 @@ function Invoke-AdminMonitoringActionsGateStep {
         }
         if ($FailOnWarning) {
             $monitoringArgs += "-FailOnWarning"
+        }
+        if ($IncludeManualChecklist) {
+            $monitoringArgs += "-IncludeManualChecklist"
+        }
+        if ($FailOnManualAttention) {
+            $monitoringArgs += "-FailOnManualAttention"
+        }
+        if ($IncludeLaunchReadiness) {
+            $monitoringArgs += "-IncludeLaunchReadiness"
         }
         $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $monitoringArgs
         $timer.Stop()
@@ -572,7 +584,10 @@ if (-not $SkipCloud) {
     }
     Invoke-AdminMonitoringActionsGateStep `
         -FailOnWarning:($ReleaseGate -or $AppUpdateReleaseGate) `
-        -SkipIfMissingCredentials:(-not $RequireAdminSmoke)
+        -SkipIfMissingCredentials:(-not $RequireAdminSmoke) `
+        -IncludeManualChecklist:($ReleaseGate -or $AppUpdateReleaseGate) `
+        -FailOnManualAttention:($ReleaseGate -or $AppUpdateReleaseGate) `
+        -IncludeLaunchReadiness:($ReleaseGate -or $AppUpdateReleaseGate)
 }
 
 if (-not $SkipManualGoLiveChecklist) {

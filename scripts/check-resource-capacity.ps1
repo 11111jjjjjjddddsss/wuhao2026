@@ -182,6 +182,27 @@ function Get-DaysUntil {
     }
 }
 
+function Get-SystemdPassedAgeSeconds {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+    $timerLine = ($Text -split "`n") |
+        Where-Object { $_ -match 'nongji-public-blackbox\.timer\s+nongji-public-blackbox\.service' } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($timerLine) -or $timerLine -match '(?i)never') {
+        return $null
+    }
+    if ($timerLine -match '(?i)(?:(\d+)\s+days?\s+)?(?:(\d+)h\s+)?(?:(\d+)min\s+)?(?:(\d+)s\s+)?ago') {
+        $days = if ($matches[1]) { [int]$matches[1] } else { 0 }
+        $hours = if ($matches[2]) { [int]$matches[2] } else { 0 }
+        $minutes = if ($matches[3]) { [int]$matches[3] } else { 0 }
+        $seconds = if ($matches[4]) { [int]$matches[4] } else { 0 }
+        return (($days * 86400) + ($hours * 3600) + ($minutes * 60) + $seconds)
+    }
+    return $null
+}
+
 function Write-Expiry {
     param([string]$Name, [string]$DateText)
     $days = Get-DaysUntil $DateText
@@ -299,11 +320,53 @@ active=$(systemctl is-active "$timer" 2>/dev/null || true)
 result=$(systemctl show -p Result --value "$service" 2>/dev/null || true)
 exec_status=$(systemctl show -p ExecMainStatus --value "$service" 2>/dev/null || true)
 exit_ts=$(systemctl show -p ExecMainExitTimestamp --value "$service" 2>/dev/null || true)
+inactive_enter_ts=$(systemctl show -p InactiveEnterTimestamp --value "$service" 2>/dev/null || true)
+last_trigger_ts=$(systemctl show -p LastTriggerUSec --value "$timer" 2>/dev/null || true)
+exit_mono=$(systemctl show -p ExecMainExitTimestampMonotonic --value "$service" 2>/dev/null || true)
+inactive_enter_mono=$(systemctl show -p InactiveEnterTimestampMonotonic --value "$service" 2>/dev/null || true)
+last_trigger_mono=$(systemctl show -p LastTriggerUSecMonotonic --value "$timer" 2>/dev/null || true)
+age_seconds='unknown'
+age_source='unknown'
+now_mono_usec=$(awk '{printf "%.0f", $1 * 1000000}' /proc/uptime 2>/dev/null || true)
+now_epoch=$(date '+%s' 2>/dev/null || true)
+for candidate in "ExecMainExitTimestampMonotonic:$exit_mono" "InactiveEnterTimestampMonotonic:$inactive_enter_mono" "LastTriggerUSecMonotonic:$last_trigger_mono"; do
+  if [ "$age_seconds" != "unknown" ]; then
+    break
+  fi
+  candidate_name=${candidate%%:*}
+  candidate_usec=${candidate#*:}
+  if printf '%s' "$candidate_usec" | grep -Eq '^[0-9]+$' && printf '%s' "$now_mono_usec" | grep -Eq '^[0-9]+$' && [ "$candidate_usec" -gt 0 ] && [ "$now_mono_usec" -ge "$candidate_usec" ]; then
+    age_seconds=$(( (now_mono_usec - candidate_usec) / 1000000 ))
+    age_source=$candidate_name
+  fi
+done
+for candidate in "ExecMainExitTimestamp:$exit_ts" "InactiveEnterTimestamp:$inactive_enter_ts" "LastTriggerUSec:$last_trigger_ts"; do
+  if [ "$age_seconds" != "unknown" ]; then
+    break
+  fi
+  candidate_name=${candidate%%:*}
+  candidate_ts=${candidate#*:}
+  if [ -n "$candidate_ts" ] && [ "$candidate_ts" != "n/a" ]; then
+    candidate_parse_ts=$(printf '%s' "$candidate_ts" | tr -d '\r')
+    if printf '%s' "$candidate_parse_ts" | grep -Eq ' CST$'; then
+      candidate_parse_ts=${candidate_parse_ts% CST}
+      candidate_epoch=$(TZ=Asia/Shanghai date -d "$candidate_parse_ts" '+%s' 2>/dev/null || true)
+    else
+      candidate_epoch=$(date -d "$candidate_parse_ts" '+%s' 2>/dev/null || true)
+    fi
+    if printf '%s' "$candidate_epoch" | grep -Eq '^[0-9]+$' && printf '%s' "$now_epoch" | grep -Eq '^[0-9]+$'; then
+      age_seconds=$(( now_epoch - candidate_epoch ))
+      age_source=$candidate_name
+    fi
+  fi
+done
 echo "timer_enabled=$enabled"
 echo "timer_active=$active"
 echo "service_result=$result"
 echo "service_exec_status=$exec_status"
 echo "service_last_exit_timestamp=$exit_ts"
+echo "service_last_age_seconds=$age_seconds"
+echo "service_last_age_source=$age_source"
 systemctl list-timers "$timer" --all --no-pager 2>/dev/null || true
 '@
 Write-Host $blackboxTimer
@@ -311,6 +374,7 @@ $blackboxEnabled = ([regex]::Match($blackboxTimer, "(?m)^timer_enabled=(.+)$").G
 $blackboxActive = ([regex]::Match($blackboxTimer, "(?m)^timer_active=(.+)$").Groups[1].Value).Trim()
 $blackboxResult = ([regex]::Match($blackboxTimer, "(?m)^service_result=(.+)$").Groups[1].Value).Trim()
 $blackboxExecStatus = ([regex]::Match($blackboxTimer, "(?m)^service_exec_status=(.+)$").Groups[1].Value).Trim()
+$blackboxAgeSecondsText = ([regex]::Match($blackboxTimer, "(?m)^service_last_age_seconds=(.+)$").Groups[1].Value).Trim()
 if ($blackboxEnabled -ne "enabled") {
     Add-ErrorItem "public_blackbox_timer_not_enabled:$blackboxEnabled"
 }
@@ -322,6 +386,39 @@ if (-not [string]::IsNullOrWhiteSpace($blackboxResult) -and $blackboxResult -ne 
 }
 if (-not [string]::IsNullOrWhiteSpace($blackboxExecStatus) -and $blackboxExecStatus -ne "0") {
     Add-ErrorItem "public_blackbox_last_exec_status_not_zero:$blackboxExecStatus"
+}
+$blackboxTimerPassedAgeSeconds = Get-SystemdPassedAgeSeconds $blackboxTimer
+if ($null -ne $blackboxTimerPassedAgeSeconds) {
+    Write-Host "service_last_timer_passed_seconds=$blackboxTimerPassedAgeSeconds"
+}
+$blackboxEffectiveAgeSeconds = $null
+if ([string]::IsNullOrWhiteSpace($blackboxAgeSecondsText) -or $blackboxAgeSecondsText -eq "unknown") {
+    $blackboxEffectiveAgeSeconds = $blackboxTimerPassedAgeSeconds
+}
+else {
+    $blackboxAgeSeconds = 0
+    if ([int]::TryParse($blackboxAgeSecondsText, [ref]$blackboxAgeSeconds)) {
+        if ($blackboxAgeSeconds -ge 0 -and $blackboxAgeSeconds -le 1800) {
+            $blackboxEffectiveAgeSeconds = $blackboxAgeSeconds
+        } elseif ($null -ne $blackboxTimerPassedAgeSeconds) {
+            $blackboxEffectiveAgeSeconds = $blackboxTimerPassedAgeSeconds
+        } else {
+            $blackboxEffectiveAgeSeconds = $blackboxAgeSeconds
+        }
+    } else {
+        if ($null -ne $blackboxTimerPassedAgeSeconds) {
+            $blackboxEffectiveAgeSeconds = $blackboxTimerPassedAgeSeconds
+        } else {
+            Add-ErrorItem "public_blackbox_last_age_unparseable:$blackboxAgeSecondsText"
+        }
+    }
+}
+if ($null -eq $blackboxEffectiveAgeSeconds) {
+    Add-ErrorItem "public_blackbox_last_age_unknown"
+} else {
+    if ($blackboxEffectiveAgeSeconds -lt 0 -or $blackboxEffectiveAgeSeconds -gt 1800) {
+        Add-ErrorItem "public_blackbox_last_age_stale:${blackboxEffectiveAgeSeconds}s"
+    }
 }
 
 Write-Host

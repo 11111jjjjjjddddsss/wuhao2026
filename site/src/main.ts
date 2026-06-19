@@ -37,6 +37,9 @@ const isValidApkUrl = (value: string): boolean => {
         return false;
       }
     }
+    if (url.username || url.password || url.search || url.hash) {
+      return false;
+    }
     const normalized = `${value}\n${decodeUrlText(value)}\n${url.pathname}\n${decodeUrlText(url.pathname)}`.toLowerCase();
     if (
       normalized.includes('test-apks') ||

@@ -671,6 +671,45 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun hydratedSnapshotAfterLocalUserSendKeepsNewLocalTail() {
+        val localInitialUser = userMessage("local_u1", "本地旧问题")
+        val remoteUser = userMessage("remote_u1", "远端旧问题")
+        val remoteAssistant = assistantMessage("remote_a1", "远端旧回复")
+        val newUser = userMessage("new_u2", "冷启动后抢先发送")
+        val newAssistant = assistantMessage("assistant_new_u2", "新回复已完成")
+
+        val merged = mergeHydratedSnapshotAfterLocalUserSend(
+            hydratedSnapshot = LocalChatWindowSnapshot(messages = listOf(remoteUser, remoteAssistant)),
+            currentSnapshot = LocalChatWindowSnapshot(messages = listOf(localInitialUser, newUser, newAssistant)),
+            localMessageIdsAtHydrateStart = setOf(localInitialUser.id)
+        )
+
+        assertEquals(listOf(remoteUser, remoteAssistant, newUser, newAssistant), merged.messages)
+    }
+
+    @Test
+    fun hydratedSnapshotAfterLocalUserSendKeepsNewFailureState() {
+        val localInitialUser = userMessage("local_u1", "本地旧问题")
+        val remoteUser = userMessage("remote_u1", "远端旧问题")
+        val remoteAssistant = assistantMessage("remote_a1", "远端旧回复")
+        val newUser = userMessage("new_u2", "冷启动后抢先发送")
+        val newAssistant = assistantMessage("assistant_new_u2", "")
+        val failedState = FailedAssistantMessageState(sourceUserMessageId = newUser.id, reason = "network")
+
+        val merged = mergeHydratedSnapshotAfterLocalUserSend(
+            hydratedSnapshot = LocalChatWindowSnapshot(messages = listOf(remoteUser, remoteAssistant)),
+            currentSnapshot = LocalChatWindowSnapshot(
+                messages = listOf(localInitialUser, newUser, newAssistant),
+                failedAssistantMessageStates = mapOf(newAssistant.id to failedState)
+            ),
+            localMessageIdsAtHydrateStart = setOf(localInitialUser.id)
+        )
+
+        assertEquals(listOf(remoteUser, remoteAssistant, newUser, newAssistant), merged.messages)
+        assertEquals(failedState, merged.failedAssistantMessageStates[newAssistant.id])
+    }
+
+    @Test
     fun pendingTodayAgriMainItemCanApplyAfterUserSendWhenIdle() {
         assertTrue(
             shouldApplyPendingTodayAgriMainItem(

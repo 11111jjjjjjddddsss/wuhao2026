@@ -45,10 +45,10 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 发测试包前先跑：
 
 ```powershell
-.\scripts\check-android-download-domain.ps1 -AllowAttentionExitZero
+.\scripts\check-android-download-domain.ps1
 ```
 
-日常应看到 `status=ready`。若脚本输出 `attention` 或 `failed`，不要把下载链接发给代理或管理层，先按脚本提示修 DNS、OSS CNAME、HTTPS 证书或签名链。
+日常应看到 `status=ready` 且命令正常退出。若脚本输出 `attention` 或 `failed`，不要把下载链接发给代理或管理层，先按脚本提示修 DNS、OSS CNAME、HTTPS 证书或签名链；`-AllowAttentionExitZero` 只适合作为报告模式，不作为发布前放行门禁。
 
 签名工具 `scripts/sign-oss-cname-url.py` 默认只允许内部测试包前缀 `test-apks/debug/` 和只读探针前缀 `download-probes/`；其它对象必须显式 `--allow-unsafe`，不能把它当成随手给任意 OSS 对象签长期链接的工具。
 

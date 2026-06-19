@@ -111,16 +111,48 @@ bb_active=$(systemctl is-active "$bb_timer" 2>/dev/null || true)
 bb_result=$(systemctl show -p Result --value "$bb_service" 2>/dev/null || true)
 bb_exec_status=$(systemctl show -p ExecMainStatus --value "$bb_service" 2>/dev/null || true)
 bb_exit_ts=$(systemctl show -p ExecMainExitTimestamp --value "$bb_service" 2>/dev/null || true)
+bb_inactive_enter_ts=$(systemctl show -p InactiveEnterTimestamp --value "$bb_service" 2>/dev/null || true)
+bb_last_trigger_ts=$(systemctl show -p LastTriggerUSec --value "$bb_timer" 2>/dev/null || true)
+bb_exit_mono=$(systemctl show -p ExecMainExitTimestampMonotonic --value "$bb_service" 2>/dev/null || true)
+bb_inactive_enter_mono=$(systemctl show -p InactiveEnterTimestampMonotonic --value "$bb_service" 2>/dev/null || true)
+bb_last_trigger_mono=$(systemctl show -p LastTriggerUSecMonotonic --value "$bb_timer" 2>/dev/null || true)
 bb_age_seconds='unknown'
-if [ -n "$bb_exit_ts" ] && [ "$bb_exit_ts" != "n/a" ]; then
-  bb_exit_epoch=$(date -d "$bb_exit_ts" '+%s' 2>/dev/null || true)
-  now_epoch=$(date '+%s' 2>/dev/null || true)
-  if printf '%s' "$bb_exit_epoch" | grep -Eq '^[0-9]+$' && printf '%s' "$now_epoch" | grep -Eq '^[0-9]+$'; then
-    bb_age_seconds=$(( now_epoch - bb_exit_epoch ))
+bb_age_source='unknown'
+now_mono_usec=$(awk '{printf "%.0f", $1 * 1000000}' /proc/uptime 2>/dev/null || true)
+now_epoch=$(date '+%s' 2>/dev/null || true)
+for candidate in "ExecMainExitTimestampMonotonic:$bb_exit_mono" "InactiveEnterTimestampMonotonic:$bb_inactive_enter_mono" "LastTriggerUSecMonotonic:$bb_last_trigger_mono"; do
+  if [ "$bb_age_seconds" != "unknown" ]; then
+    break
   fi
-fi
+  candidate_name=${candidate%%:*}
+  candidate_usec=${candidate#*:}
+  if printf '%s' "$candidate_usec" | grep -Eq '^[0-9]+$' && printf '%s' "$now_mono_usec" | grep -Eq '^[0-9]+$' && [ "$candidate_usec" -gt 0 ] && [ "$now_mono_usec" -ge "$candidate_usec" ]; then
+    bb_age_seconds=$(( (now_mono_usec - candidate_usec) / 1000000 ))
+    bb_age_source=$candidate_name
+  fi
+done
+for candidate in "ExecMainExitTimestamp:$bb_exit_ts" "InactiveEnterTimestamp:$bb_inactive_enter_ts" "LastTriggerUSec:$bb_last_trigger_ts"; do
+  if [ "$bb_age_seconds" != "unknown" ]; then
+    break
+  fi
+  candidate_name=${candidate%%:*}
+  candidate_ts=${candidate#*:}
+  if [ -n "$candidate_ts" ] && [ "$candidate_ts" != "n/a" ]; then
+    candidate_parse_ts=$(printf '%s' "$candidate_ts" | tr -d '\r')
+    if printf '%s' "$candidate_parse_ts" | grep -Eq ' CST$'; then
+      candidate_parse_ts=${candidate_parse_ts% CST}
+      candidate_epoch=$(TZ=Asia/Shanghai date -d "$candidate_parse_ts" '+%s' 2>/dev/null || true)
+    else
+      candidate_epoch=$(date -d "$candidate_parse_ts" '+%s' 2>/dev/null || true)
+    fi
+    if printf '%s' "$candidate_epoch" | grep -Eq '^[0-9]+$' && printf '%s' "$now_epoch" | grep -Eq '^[0-9]+$'; then
+      bb_age_seconds=$(( now_epoch - candidate_epoch ))
+      bb_age_source=$candidate_name
+    fi
+  fi
+done
 echo "timer=${bb_timer} enabled=${bb_enabled:-unknown} active=${bb_active:-unknown}"
-echo "service=${bb_service} result=${bb_result:-unknown} exec_status=${bb_exec_status:-unknown} last_age_seconds=${bb_age_seconds}"
+echo "service=${bb_service} result=${bb_result:-unknown} exec_status=${bb_exec_status:-unknown} last_age_seconds=${bb_age_seconds} last_age_source=${bb_age_source}"
 systemctl list-timers "$bb_timer" --all --no-pager || true
 if [ "$bb_enabled" != "enabled" ]; then
   echo "${bb_timer} must stay enabled" >&2

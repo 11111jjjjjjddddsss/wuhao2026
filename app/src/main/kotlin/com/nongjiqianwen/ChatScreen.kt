@@ -271,7 +271,8 @@ private data class PendingHydratedSnapshot(
     val updateFailedAssistantStates: Boolean,
     val updateHiddenRemoteRoundCount: Boolean,
     val hiddenRemoteRoundCount: Int,
-    val startupRecoverableUserMessageId: String?
+    val startupRecoverableUserMessageId: String?,
+    val localMessageIdsAtHydrateStart: Set<String> = emptySet()
 )
 
 @Immutable
@@ -1222,6 +1223,48 @@ private fun mergeHydratedMessagesWithLocalPendingState(
             failedUserMessageStates = retainedFailedUserStates,
             failedAssistantMessageStates = retainedFailedAssistantStates,
             initialWorklineOwned = localSnapshot.initialWorklineOwned
+        )
+    )
+}
+
+internal fun mergeHydratedSnapshotAfterLocalUserSend(
+    hydratedSnapshot: LocalChatWindowSnapshot,
+    currentSnapshot: LocalChatWindowSnapshot,
+    localMessageIdsAtHydrateStart: Set<String>
+): LocalChatWindowSnapshot {
+    val mergedMessages = sanitizeMessageWindow(hydratedSnapshot.messages).toMutableList()
+    val existingIds = mergedMessages.mapTo(mutableSetOf()) { it.id }
+    val appendedIds = mutableSetOf<String>()
+    sanitizeMessageWindow(currentSnapshot.messages).forEach { localMessage ->
+        if (localMessage.id.isBlank() || localMessage.id in localMessageIdsAtHydrateStart) {
+            return@forEach
+        }
+        if (existingIds.add(localMessage.id)) {
+            mergedMessages.add(localMessage)
+            appendedIds.add(localMessage.id)
+        }
+    }
+    val mergedIds = mergedMessages.mapTo(mutableSetOf()) { it.id }
+    val failedUserStates = hydratedSnapshot.failedUserMessageStates.toMutableMap()
+    currentSnapshot.failedUserMessageStates
+        .filter { (messageId, _) -> messageId in appendedIds }
+        .forEach { (messageId, reason) -> failedUserStates[messageId] = reason }
+
+    val failedAssistantStates = hydratedSnapshot.failedAssistantMessageStates.toMutableMap()
+    currentSnapshot.failedAssistantMessageStates
+        .filter { (messageId, state) ->
+            messageId in mergedIds &&
+                state.sourceUserMessageId in mergedIds &&
+                (messageId in appendedIds || state.sourceUserMessageId in appendedIds)
+        }
+        .forEach { (messageId, state) -> failedAssistantStates[messageId] = state }
+
+    return sanitizeLocalChatWindowSnapshot(
+        LocalChatWindowSnapshot(
+            messages = mergedMessages,
+            failedUserMessageStates = failedUserStates,
+            failedAssistantMessageStates = failedAssistantStates,
+            initialWorklineOwned = currentSnapshot.initialWorklineOwned ?: hydratedSnapshot.initialWorklineOwned
         )
     )
 }
@@ -2256,8 +2299,7 @@ fun ChatScreen() {
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
         ClientRegionProvider.markLocationPermissionPrompted(context)
-        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
-            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        val granted = grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (granted) {
             snackbarScope.launch {
                 latestClientRegion = ClientRegionProvider.refreshRegion(context)
@@ -4984,6 +5026,10 @@ fun ChatScreen() {
         }
         if (shouldHydrateRemoteHistory) {
             val hydrateClearEpoch = chatHistoryClearEpoch
+            val localMessageIdsAtHydrateStart = messages
+                .mapTo(mutableSetOf()) { it.id }
+                .filter(String::isNotBlank)
+                .toSet()
             val localSnapshotForMergeDeferred = async {
                 context.loadLocalChatWindow(chatScopeId)
             }
@@ -5086,7 +5132,8 @@ fun ChatScreen() {
                 updateFailedAssistantStates = shouldUpdateFailedAssistantStates,
                 updateHiddenRemoteRoundCount = shouldUpdateHiddenRemoteRoundCount,
                 hiddenRemoteRoundCount = hydratedHiddenRemoteRoundCount,
-                startupRecoverableUserMessageId = hydratedStartupRecoverableUserMessageId
+                startupRecoverableUserMessageId = hydratedStartupRecoverableUserMessageId,
+                localMessageIdsAtHydrateStart = localMessageIdsAtHydrateStart
             )
             val canApplyHydratedVisuals = canApplyHydratedVisualMutation(
                 hasStartedConversation = hasStartedConversation,
@@ -5138,6 +5185,9 @@ fun ChatScreen() {
                     shouldHoldHydratedVisuals -> {
                         pendingHydratedSnapshot = hydratedSnapshotPending
                     }
+                    hasStartedConversation || isStreaming || hasStreamingItem -> {
+                        pendingHydratedSnapshot = hydratedSnapshotPending
+                    }
                     else -> {
                         pendingHydratedSnapshot = null
                     }
@@ -5152,6 +5202,9 @@ fun ChatScreen() {
                         applyHydratedTodayAgriMainItem(hydratedTodayAgriMainItem)
                     }
                     shouldHoldHydratedVisuals -> {
+                        pendingHydratedTodayAgriMainItem = hydratedTodayAgriMainItem
+                    }
+                    hasStartedConversation || isStreaming || hasStreamingItem -> {
                         pendingHydratedTodayAgriMainItem = hydratedTodayAgriMainItem
                     }
                     else -> {
@@ -5195,22 +5248,43 @@ fun ChatScreen() {
         val pendingItem = pendingHydratedTodayAgriMainItem
         if (pendingSnapshot == null && pendingItem == null) return@LaunchedEffect
         if (isStreaming || hasStreamingItem) {
-            pendingHydratedSnapshot = null
             if (pendingItem?.day_cn != currentChinaDateKey()) {
                 pendingHydratedTodayAgriMainItem = null
             }
             return@LaunchedEffect
         }
-        if (hasStartedConversation && pendingSnapshot != null) {
-            pendingHydratedSnapshot = null
-        }
         if (userBlocksHydratedVisualMutation()) {
             return@LaunchedEffect
         }
-        if (pendingSnapshot != null && !hasStartedConversation) {
+        if (pendingSnapshot != null) {
             pendingHydratedSnapshot = null
+            val snapshotToApply =
+                if (hasStartedConversation) {
+                    val mergedSnapshot = mergeHydratedSnapshotAfterLocalUserSend(
+                        hydratedSnapshot = pendingSnapshot.snapshot,
+                        currentSnapshot = persistableLocalChatWindowSnapshot(),
+                        localMessageIdsAtHydrateStart = pendingSnapshot.localMessageIdsAtHydrateStart
+                    )
+                    val mergedStartupRecoverableUserMessageId = trailingRecoverableSourceUserMessageId(
+                        source = mergedSnapshot.messages,
+                        ignoredUserMessageIds = mergedSnapshot.failedUserMessageStates.keys,
+                        failedAssistantMessageStates = mergedSnapshot.failedAssistantMessageStates
+                    )
+                    pendingSnapshot.copy(
+                        snapshot = mergedSnapshot,
+                        replaceMessages = shouldReplaceHydratedMessages(
+                            currentMessages = messages,
+                            remoteMessages = mergedSnapshot.messages
+                        ),
+                        updateFailedUserStates = failedUserMessageStates != mergedSnapshot.failedUserMessageStates,
+                        updateFailedAssistantStates = failedAssistantMessageStates != mergedSnapshot.failedAssistantMessageStates,
+                        startupRecoverableUserMessageId = mergedStartupRecoverableUserMessageId
+                    )
+                } else {
+                    pendingSnapshot
+                }
             applyHydratedSnapshotToUi(
-                pendingSnapshot = pendingSnapshot,
+                pendingSnapshot = snapshotToApply,
                 messageListWasVisible = shouldRevealMessageList
             )
         }
@@ -5958,7 +6032,6 @@ fun ChatScreen() {
                 ClientRegionProvider.markLocationPermissionPrompted(context)
                 locationPermissionLauncher.launch(
                     arrayOf(
-                        Manifest.permission.ACCESS_FINE_LOCATION,
                         Manifest.permission.ACCESS_COARSE_LOCATION
                     )
                 )

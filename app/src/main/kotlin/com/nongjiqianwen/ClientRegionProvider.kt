@@ -43,13 +43,6 @@ internal object ClientRegionProvider {
         ContextCompat.checkSelfPermission(
             context.applicationContext,
             Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED ||
-            hasFineLocationPermission(context)
-
-    fun hasFineLocationPermission(context: Context): Boolean =
-        ContextCompat.checkSelfPermission(
-            context.applicationContext,
-            Manifest.permission.ACCESS_FINE_LOCATION
         ) == PackageManager.PERMISSION_GRANTED
 
     fun wasLocationPermissionPrompted(context: Context): Boolean =
@@ -112,7 +105,6 @@ internal object ClientRegionProvider {
         if (!hasLocationPermission(context)) return null
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return null
         val providers = buildList {
-            if (hasFineLocationPermission(context)) add(LocationManager.GPS_PROVIDER)
             add(LocationManager.NETWORK_PROVIDER)
             add(LocationManager.PASSIVE_PROVIDER)
         }

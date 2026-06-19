@@ -8,7 +8,7 @@
 - 当前方案：后端使用开源 `ip2region` 的离线 xdb 数据文件，通过服务器拿到的客户端公网 IP 在本地查询粗略地区。
 - 不使用收费定位 API，不把请求发给第三方免费接口，不把完整 IP 注入主模型。
 - 查询结果只作为 `region_source=ip`、`region_reliability=unreliable` 的低可信参考；用户当前明确说出的地区、Android 已授权定位反查出的地区文本或后台传入的可靠地区永远优先。
-- Android 授权定位后，每次发送前优先使用 2 小时内的系统定位或短窗口网络定位反查省 / 市 / 区县；若只能拿到更旧的系统缓存或历史缓存，会继续传地区文本但降级为 `region_reliability=unreliable`，避免把过期城市当成可靠 GPS。
+- Android 授权粗略定位后，每次发送前优先使用 2 小时内的系统定位或短窗口网络定位反查省 / 市 / 区县；若只能拿到更旧的系统缓存或历史缓存，会继续传地区文本但降级为 `region_reliability=unreliable`，避免把过期城市当成可靠定位。
 - IP 粗定位只能大致到省市，手机流量、代理、企业网关、运营商出口可能漂移；不能当作县、乡、地块或诊断事实。
 
 ## 环境变量
@@ -63,7 +63,7 @@ grep -q '^IP2REGION_V4_XDB_PATH=' /etc/nongjiqiancha/server.env \
 - DB-IP Lite：免费月更，CC BY 4.0，需要署名；Lite 是商业库子集，精度降低。
 - IP2Location LITE：免费需署名，半月更，官方标注城市级准确度有限。
 
-无论使用哪套 IP 库，结果都仍然是 IP 粗定位，不是 GPS；主模型只把它作为 `unreliable` 地区参考。
+无论使用哪套 IP 库，结果都仍然是 IP 粗定位，不是系统定位；主模型只把它作为 `unreliable` 地区参考。
 
 ## 验证
 
