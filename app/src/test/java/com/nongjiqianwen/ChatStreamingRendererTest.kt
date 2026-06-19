@@ -549,6 +549,22 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun shortNumberedColonHeadingUsesCompactSectionStyle() {
+        val model = classifyStreamingLine("1. **三大病害：**")
+
+        require(model is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(model))
+    }
+
+    @Test
+    fun longNumberedSentenceDoesNotUseCompactSectionStyle() {
+        val model = classifyStreamingLine("1. 先停用高浓度叶面肥，并在三天后观察新叶变化。")
+
+        require(model is StreamingLineModel.Numbered)
+        assertFalse(isRendererCompactNumberedSection(model))
+    }
+
+    @Test
     fun thirdLevelMarkdownHeadingCanUseLightDivider() {
         val previous = classifyStreamingLine("先看整体长势。")
         val heading = classifyStreamingLine("### 处理建议")

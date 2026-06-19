@@ -793,6 +793,18 @@ private fun plainRendererInlineText(text: String): String =
         linksEnabled = false
     ).text.trim()
 
+internal fun isRendererCompactNumberedSection(model: StreamingLineModel.Numbered): Boolean =
+    isRendererCompactNumberedSectionText(model.text)
+
+private fun isRendererCompactNumberedSectionText(text: String): Boolean {
+    val plain = plainRendererInlineText(text)
+        .replace(Regex("\\s+"), "")
+    if (plain.length !in 2..28) return false
+    if (!plain.endsWith("：") && !plain.endsWith(":")) return false
+    if (plain.any { it in "。！？!?；;" }) return false
+    return true
+}
+
 private fun parseRendererStandaloneBoldHeading(line: String): String? {
     val trimmed = line.trim()
     if (!trimmed.startsWith("**")) return null
@@ -1373,13 +1385,29 @@ private fun RendererAssistantStreamingWaitingIndicatorImpl(
 }
 
 private fun markdownBlockSpacingModifier(
-    hasPreviousBlock: Boolean,
+    previousBlock: StreamingLineModel?,
+    currentBlock: StreamingLineModel,
     modifier: Modifier = Modifier
 ): Modifier {
-    return if (hasPreviousBlock) {
-        modifier.padding(top = MARKDOWN_BLOCK_SPACING)
+    return if (previousBlock != null) {
+        modifier.padding(top = rendererMarkdownBlockSpacingAfter(previousBlock, currentBlock))
     } else {
         modifier
+    }
+}
+
+private fun rendererMarkdownBlockSpacingAfter(
+    previousBlock: StreamingLineModel,
+    currentBlock: StreamingLineModel
+): Dp {
+    return if (
+        previousBlock is StreamingLineModel.Numbered &&
+        isRendererCompactNumberedSection(previousBlock) &&
+        currentBlock !is StreamingLineModel.Blank
+    ) {
+        6.dp
+    } else {
+        MARKDOWN_BLOCK_SPACING
     }
 }
 
@@ -1416,7 +1444,14 @@ private fun RendererAssistantStreamingContentImpl(
         }
         unifiedModels.forEachIndexed { index, model ->
             if (index > 0) {
-                Spacer(modifier = Modifier.height(MARKDOWN_BLOCK_SPACING))
+                Spacer(
+                    modifier = Modifier.height(
+                        rendererMarkdownBlockSpacingAfter(
+                            previousBlock = unifiedModels[index - 1],
+                            currentBlock = model
+                        )
+                    )
+                )
             }
             // Streaming blocks are append-only in render order, so the absolute
             // block index is the stable shell key we want to preserve across
@@ -1989,20 +2024,45 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 }
             }
             is StreamingLineModel.Numbered -> {
-                val numberStyle = remember(paragraphStyle) { paragraphStyle.copy(fontWeight = FontWeight.SemiBold) }
-                val bodyStyle = paragraphStyle
+                val compactNumberedSection = remember(model.text) {
+                    isRendererCompactNumberedSection(model)
+                }
+                val numberStyle = remember(paragraphStyle, compactNumberedSection) {
+                    if (compactNumberedSection) {
+                        paragraphStyle.copy(
+                            fontSize = 16.sp,
+                            lineHeight = 24.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        paragraphStyle.copy(fontWeight = FontWeight.SemiBold)
+                    }
+                }
+                val bodyStyle = remember(paragraphStyle, compactNumberedSection) {
+                    if (compactNumberedSection) {
+                        paragraphStyle.copy(
+                            lineHeight = 24.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        paragraphStyle
+                    }
+                }
+                val bodyLineHeight = with(density) { bodyStyle.lineHeight.toDp() }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(
+                        if (compactNumberedSection) 6.dp else 8.dp
+                    )
                 ) {
                     Text(text = "${model.number}.", style = numberStyle)
                     RendererStreamingActiveTextImpl(
                         text = model.text,
                         modifier = Modifier
                             .weight(1f)
-                            .heightIn(min = paragraphLineHeight),
+                            .heightIn(min = bodyLineHeight),
                         style = bodyStyle,
-                        minLineHeight = paragraphLineHeight,
+                        minLineHeight = bodyLineHeight,
                         inlineMode = inlineMode,
                         linksEnabled = linksEnabled
                     )
@@ -2215,7 +2275,8 @@ private fun RendererAssistantMarkdownContentImpl(
                     current = model
                 )
                 val blockModifier = markdownBlockSpacingModifier(
-                    hasPreviousBlock = index > 0,
+                    previousBlock = completedModels.getOrNull(index - 1),
+                    currentBlock = model,
                     modifier = Modifier.fillMaxWidth()
                 )
                 RendererAssistantStreamingActiveBlockImpl(

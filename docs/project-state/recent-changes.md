@@ -5,6 +5,8 @@
 
 ## 2026-06-19
 
+- 按用户真机截图反馈继续修聊天 Markdown 细节：`ChatStreamingRenderer.kt` 新增“紧凑编号小标题”识别，只对 `1. 三大病害：`、`2. **三大虫害：**` 这类短、以冒号结尾的编号行压低行高和字重，后续紧接列表的上间距从 12dp 收到 6dp；普通长编号句仍按原正文列表渲染。debug-only “AI Markdown”预览样本同步补编号小标题 + 子弹列表，便于以后在调试面板里复核。已补单测覆盖短编号标题和长编号句不误伤。本轮只改 Android 渲染样式，不改三份保护提示词、不加模型输出过滤、不发布正式 APK。
+
 - 继续按“拉满代理、全盘挑刺、联网校准”收口交互和运维边界：后端保存今日农情主界面展示记录前，会把 `assistant_...` 锚点归一成真实用户轮次并确认已存在 `session_round_archive` 归档，缺失时返回 `today_agri_anchor_not_archived`，避免写入后续无法恢复上下文的脏锚点；Android 删除历史后不再把当天重新保存成本地“已展示”，空态仍不显示今日农情，但新对话拿到完整 AI 回复后当天农情可重新出现并保存；表格解析识别行内代码里的 `|`，不再把 `` `N|P|K` `` 拆成假列；`probe-ecs-today-agri.ps1` 解析不到唯一 active slot 时直接失败，不再回退固定 3000；`check-ecs-readiness.ps1` 新增可选 `-ExpectedRevision` 用于核对线上是否为指定提交。同步更新发版 runbook：只说“修 bug”不等于发布 Android 新版本，正式 APK / 检查更新必须等用户明确口令。提交 `fbfc8bee` 已部署到 ECS，Nginx active upstream 和后台 upstream 均为 `3000`，`check-ecs-readiness.ps1 -ExpectedRevision fbfc8bee` 和 `check-public-blackbox.ps1` 均通过。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`，不发布正式 APK。
 
 - 按用户最新要求，根 `AGENTS.md` 明确把主对话锚点、今日农情提示词、记忆文档提示词列为最高敏保护提示词：没有用户明确授权落地时，只能审查、挑刺、解释风险和给候选草案，不能直接改对应文件、内嵌 prompt 文案或等价模型指令；“全盘挑刺 / 拉代理 / 联网校准 / 用户体验为主”也不自动授权改这三类提示词。
