@@ -5,6 +5,8 @@
 
 ## 2026-06-19
 
+- 按不同 Android 版本 / 机型适配巡检先收口两处低风险 P1：`androidx.activity:activity-compose` 从 `1.9.2` 升到官方已修复 Photo / Video `ActivityResultContracts` URI 安全兼容问题的 `1.12.4`，降低部分系统补丁机型打不开 Photo Picker 的风险；`PendingChatSendWorker` 后台带图兜底调用完整 SSE 时给 `SessionApi.streamChatToCompletion` 增加 8 分钟墙钟取消，超时后按可恢复失败退避重试，避免普通 WorkManager Worker 在弱网 / 长回复下无上限挂住。该改动不改图片数量、图片压缩规则、主聊天前台 SSE、滚动链、模型提示词、模型输出过滤或 Android 正式发布；低端机长回复 / 表格渲染性能、定位权限精简、老系统相机相册保存一致性仍需后续单独评估。
+
 - 继续按“低成本运维”口径收口 SLS 日志留存：没有新买 WAF / 高防 / CDN / SLS 资源包，没有新增 Logstore，没有采完整 Nginx access，也没有把聊天正文、AI 回复、图片 URL、完整手机号、token 或密钥写进 SLS。现有业务 Project 仍只保留 `server-go` / `nginx-error` 两个 Logstore、1 shard、邮件告警；为满足网络 / 安全日志 6 个月证据，TTL 调整为 180 天，但只保留 7 天热存储、173 天低频存储，避免 180 天全热存储。`setup-sls-logging.ps1` 会创建或更新该低成本分层配置，`check-sls-cost-guard.ps1` 同时检查 TTL 下限 / 上限、热存储天数、低频存储天数、Logstore 数、Shard、自动分裂、append meta 和归档存储漂移；日志 / 合规 / 成本 runbook 和项目记忆已同步。该改动不改变模型输出、不新增内容过滤、不发布 Android 包。
 
 - 继续修正长期记忆提取失败的兜底边界：如果用户半夜忘记充值、模型摘要长期不可用，`session_ab.pending_memory_jobs_json` 可能排队多批冻结 job。主聊天现在不会只补队首 job，而是扫描整个 pending 队列，把所有已经滑出当前 A 窗口的轮次按顺序临时作为静默后台背景补给模型，并按 `client_msg_id` 去重；仍在 A 窗口里的轮次不重复补。每次摘要“提取 + 写库”成功后仍只弹出队首 job，剩余 job 后续继续提取和补偿。该改动不修改主对话锚点、今日农情提示词或记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`。

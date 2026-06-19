@@ -100,7 +100,8 @@ class PendingChatSendWorker(
                 regionSource = pending.regionSource,
                 regionReliability = pending.regionReliability,
                 todayAgriContextDay = pending.todayAgriContextDay
-            )
+            ),
+            maxDurationMs = BACKGROUND_STREAM_TIMEOUT_MS
         ) {
             !isStopped && PendingChatSendStore.has(applicationContext, chatScopeId, userMessageId)
         }
@@ -207,5 +208,6 @@ class PendingChatSendWorker(
         const val MAX_IMAGE_SIZE_BYTES = 1024 * 1024
         const val MAX_ORIGINAL_IMAGE_BYTES = 32 * 1024 * 1024
         const val MAX_RECOVERABLE_FAILURES = 5
+        const val BACKGROUND_STREAM_TIMEOUT_MS = 8 * 60 * 1000L
     }
 }

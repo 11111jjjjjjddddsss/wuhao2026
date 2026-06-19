@@ -21,6 +21,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -2164,6 +2165,7 @@ object SessionApi {
 
     fun streamChatToCompletion(
         options: StreamOptions,
+        maxDurationMs: Long = 0L,
         shouldContinue: () -> Boolean = { true }
     ): StreamCompletionResult {
         val base = baseUrl()
@@ -2191,11 +2193,21 @@ object SessionApi {
                 return StreamCompletionResult(StreamCompletionStatus.BadRequest, "request_build_failed")
             }
             val call = streamClient.newCall(request)
+            val timedOut = AtomicBoolean(false)
+            val timeoutRunnable = if (maxDurationMs > 0L) {
+                Runnable {
+                    timedOut.set(true)
+                    call.cancel()
+                }
+            } else {
+                null
+            }
             return try {
                 if (!shouldContinue()) {
                     call.cancel()
                     return StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "stopped")
                 }
+                timeoutRunnable?.let { mainHandler.postDelayed(it, maxDurationMs) }
                 call.execute().use { res ->
                     if (res.code == 401) {
                         return if (!hasRetriedAuth) {
@@ -2271,13 +2283,17 @@ object SessionApi {
                     StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "stream_ended")
                 }
             } catch (e: IOException) {
-                if (networkRetry < STREAM_NETWORK_RETRY_MAX) {
+                if (timedOut.get()) {
+                    StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "timeout")
+                } else if (networkRetry < STREAM_NETWORK_RETRY_MAX) {
                     Thread.sleep(350L * (networkRetry + 1))
                     runRequest(hasRetriedAuth = hasRetriedAuth, networkRetry = networkRetry + 1)
                 } else {
                     Log.w(TAG, "streamChatToCompletion failed", e)
                     StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "network")
                 }
+            } finally {
+                timeoutRunnable?.let { mainHandler.removeCallbacks(it) }
             }
         }
 
