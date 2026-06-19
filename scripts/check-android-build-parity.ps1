@@ -755,9 +755,9 @@ if ($failures.Count -eq 0) {
         "The top-right membership icon must keep a hidden accessibility label on the outer button."
     Require-Match $failures $chatScreen 'private\s+fun\s+MembershipCenterLeafIcon(?s:.*?)Image\((?s:.*?)contentDescription\s*=\s*null' `
         "The membership leaf graphic itself must stay decorative and avoid duplicating the outer button label."
-    Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*92L\s*else\s*72L" `
+    Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*86L\s*else\s*66L" `
         "Streaming newlines must keep a short readable pause to reduce heading/list reflow popping."
-    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*22L' `
+    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*19L' `
         "Streaming Chinese text must keep one visible character per normal-paced step."
     $onAdvanceMatch = [regex]::Match(
         $chatScreen,
