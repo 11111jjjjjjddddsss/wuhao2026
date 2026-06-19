@@ -133,3 +133,45 @@ func TestAdminOwnerInheritsSensitiveVisibility(t *testing.T) {
 		t.Fatal("owner should be allowed to view chat round excerpts")
 	}
 }
+
+func TestAdminSupportSummaryFromSupportRedactsBodyAndImages(t *testing.T) {
+	summary := &SupportSummary{
+		UnreadCount: 2,
+		LatestMessage: &SupportMessage{
+			ID:         12,
+			UserID:     "acct_demo",
+			SenderType: "user",
+			Body:       "我的手机号是 13800138000，礼品卡码是 ABCD-1234。",
+			ImageURLs:  []string{"/uploads/support/example.jpg"},
+			CreatedAt:  1700000000000,
+		},
+	}
+
+	redacted := adminSupportSummaryFromSupport(summary, false)
+	if redacted == nil || redacted.LatestMessage == nil {
+		t.Fatal("redacted support summary should keep latest message metadata")
+	}
+	if redacted.UnreadCount != 2 {
+		t.Fatalf("unexpected unread count: %d", redacted.UnreadCount)
+	}
+	if redacted.LatestMessage.Body != "" || redacted.LatestMessage.BodyExcerpt != "" {
+		t.Fatalf("redacted support summary leaked body: %#v", redacted.LatestMessage)
+	}
+	if len(redacted.LatestMessage.ImageURLs) != 0 {
+		t.Fatalf("redacted support summary leaked image URLs: %#v", redacted.LatestMessage.ImageURLs)
+	}
+	if !redacted.LatestMessage.BodyRedacted || !redacted.LatestMessage.ImagesRedacted {
+		t.Fatalf("redacted flags were not set: %#v", redacted.LatestMessage)
+	}
+
+	visible := adminSupportSummaryFromSupport(summary, true)
+	if visible == nil || visible.LatestMessage == nil {
+		t.Fatal("visible support summary should keep latest message")
+	}
+	if visible.LatestMessage.Body == "" || visible.LatestMessage.BodyExcerpt == "" {
+		t.Fatalf("visible support summary should include body and excerpt: %#v", visible.LatestMessage)
+	}
+	if len(visible.LatestMessage.ImageURLs) != 1 {
+		t.Fatalf("visible support summary should include image URLs: %#v", visible.LatestMessage.ImageURLs)
+	}
+}

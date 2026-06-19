@@ -1510,7 +1510,7 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "二、农业建议的使用边界",
-                body = "AI 回复、今日农情和客服回复仅供农业技术参考，不构成官方认定、检测报告、行政结论、专家签字意见、收益承诺、商品质量背书或唯一处理方案。涉及农药、肥料、种子、调节剂、检疫、补贴、登记、审定、质量争议、赔付或重大生产决策时，请以产品标签、官方平台、当地主管部门、检测机构、线下农技人员或其他有资质主体意见为准。"
+                body = "AI 回复、今日农情和客服回复仅供农业技术参考，不构成官方认定、检测报告、行政结论、专家签字意见、收益承诺、商品质量背书或唯一处理方案。涉及农药、肥料、种子、调节剂、检疫、补贴、登记、审定、质量争议、赔付或重大生产决策时，请以产品标签、官方平台、当地主管部门、检测机构、线下农技人员或其他有资质主体意见为准。您复制、截图、转发或对外使用 AI 生成内容时，应结合实际情况自行核验，并避免将其表述为官方结论或现场检测结果。"
             ),
             HamburgerLegalSection(
                 title = "三、您提交的内容与账号权益",
@@ -1740,11 +1740,11 @@ private fun HamburgerLegalPageTitle(text: String) {
         lineHeight = 28.sp,
         fontWeight = FontWeight.SemiBold,
         textAlign = TextAlign.Center,
-        maxLines = 2,
+        maxLines = 3,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 64.dp)
-            .padding(start = 76.dp, end = 76.dp, top = 14.dp)
+            .padding(start = 48.dp, end = 48.dp, top = 14.dp)
     )
 }
 

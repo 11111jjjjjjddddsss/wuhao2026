@@ -554,8 +554,8 @@ if ($failures.Count -eq 0) {
         "Legal copy shown in-app must not revert to the harsh blacklist-style wording."
     Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalHubRow(?s:.*?)maxLines\s*=\s*2' `
         "Legal hub row titles must be able to wrap, so long legal-entry names are not ellipsized on narrow screens."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalPageTitle(?s:.*?)maxLines\s*=\s*2(?s:.*?)padding\(start\s*=\s*76\.dp,\s*end\s*=\s*76\.dp' `
-        "Legal page titles must leave room for the floating back button and wrap on narrow screens."
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalPageTitle(?s:.*?)maxLines\s*=\s*3(?s:.*?)padding\(start\s*=\s*48\.dp,\s*end\s*=\s*48\.dp' `
+        "Legal page titles must leave room for the floating back button and wrap up to three lines on narrow screens."
     Require-Match $failures $membershipCenterSheet '会员信息刷新失败，请检查网络后重试(?s:.*?)heightIn\(min\s*=\s*34\.dp\)(?s:.*?)text\s*=\s*"重试"' `
         "Membership refresh failure notice must use plain user-facing wording and avoid fixed-height clipping."
     Require-Match $failures $membershipCenterSheet 'width\(168\.dp\)(?s:.*?)heightIn\(min\s*=\s*40\.dp\)' `
@@ -623,12 +623,20 @@ if ($failures.Count -eq 0) {
         "Today agri remote confirmation day must be set only after the backend returns a same-day renderable card."
     Require-NoMatch $failures $chatScreen 'saveTodayAgriCardAnchorSync|TODAY_AGRI_CARD_ANCHOR|todayAgriCardAnchor' `
         "Today agri main-chat state must not keep the retired local anchor storage path."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*hasAssistantAnswerTail(?s:.*?)cardDay\s*==\s*normalizedCurrentDay(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime\s*\|\|\s*hasSavedItem(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
-        "Today agri main-chat visibility must restore saved same-day items, while runtime suppression still blocks late auto-insert before the card becomes visible."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldShowTodayAgriMainCard(?s:.*?)hasSavedItem(?s:.*?)insertedThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*insertedThisRuntime\s*\|\|\s*hasAssistantAnswerTail(?s:.*?)cardDay\s*==\s*normalizedCurrentDay(?s:.*?)!\s*suppressedThisRuntime\s*\|\|\s*shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*insertedThisRuntime(?s:.*?)shownThisRuntime\s*\|\|\s*hasSavedItem\s*\|\|\s*insertedThisRuntime\s*\|\|\s*shownDayKey\s*!=\s*cardDay' `
+        "Today agri main-chat visibility must restore saved or already-inserted same-day items, while runtime suppression still blocks late auto-insert before insertion."
     Require-Match $failures $chatScreen 'hasCompletedAssistantAnswerTail\(messages,\s*failedAssistantMessageStates\.keys\)' `
         "Today agri completed-tail detection must exclude failed assistant tails in the live chat state."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriCardDoesNotTreatFailedAssistantAsCompletedTail(?s:.*?)failedAssistantMessageIds\s*=\s*setOf' `
         "Today agri must have unit coverage proving failed assistant tails do not count as completed answers."
+    Require-Match $failures $chatScreen 'fun\s+userBlocksHydratedVisualMutation\(\)(?s:.*?)chatListUserDragging(?s:.*?)recyclerScrollInProgress(?s:.*?)scrollRuntime\.userInteracting\.value(?s:.*?)scrollMode\s*==\s*ScrollMode\.UserBrowsing' `
+        "Remote hydrate and startup bottom snap must share a user-browsing guard before mutating the visible chat list."
+    Require-Match $failures $chatScreen 'hydratedTodayAgriMainItem(?s:.*?)canApplyHydratedVisuals(?s:.*?)applyHydratedTodayAgriMainItem\(hydratedTodayAgriMainItem\)(?s:.*?)shouldHoldHydratedVisuals(?s:.*?)pendingHydratedTodayAgriMainItem\s*=\s*hydratedTodayAgriMainItem' `
+        "Today agri snapshot restoration must defer visual insertion while the user is browsing."
+    Require-Match $failures $chatScreen 'PendingHydratedSnapshot(?s:.*?)canApplyHydratedVisualMutation(?s:.*?)shouldHoldHydratedVisualMutationForBrowsing(?s:.*?)pendingHydratedSnapshot\s*=\s*hydratedSnapshotPending(?s:.*?)applyHydratedSnapshotToUi' `
+        "Remote hydrate must not replace the visible message list while the user is actively browsing."
+    Require-Match $failures $chatScreen 'initialBottomSnapDone(?s:.*?)scrollRuntime\.userInteracting\.value(?s:.*?)scrollMode(?s:.*?)if\s*\(\s*userBlocksHydratedVisualMutation\(\)\s*\)\s*return@LaunchedEffect(?s:.*?)repeat\(6\)(?s:.*?)scrollToBottom\(false\)' `
+        "Startup bottom snap must not force-scroll while the user is dragging or browsing."
     Require-Match $failures $chatScreen 'fun\s+suppressPendingTodayAgriAutoInsertForUserSend\(\)(?s:.*?)!\s*todayAgriShownThisRuntime\s*&&\s*!\s*hasTodayAgriCard(?s:.*?)todayAgriUserSendEpoch\+\+(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*true' `
         "Today agri pending auto-insert must be suppressed and generation-guarded when the user starts a chat before the card is visible."
     Require-Match $failures $chatScreen 'val\s+saveUserSendEpoch\s*=\s*todayAgriUserSendEpoch(?s:.*?)if\s*\(\s*saveUserSendEpoch\s*!=\s*todayAgriUserSendEpoch\s*\)\s*\{(?s:.*?)return@LaunchedEffect(?s:.*?)SessionApi\.saveTodayAgriItem(?s:.*?)saveUserSendEpoch\s*==\s*todayAgriUserSendEpoch' `
@@ -651,7 +659,7 @@ if ($failures.Count -eq 0) {
         "Today agri trimmed-anchor fallback must have unit coverage proving it does not restart the temporary context window."
     Require-Match $failures $chatScreen 'fun\s+restoredStartupWorklinePhase(?s:.*?)hasTodayAgriVisualContent\s*->\s*false' `
         "If today agri is visible after real history, it must still ignore persisted bottom-owned startup state when resetting top document flow."
-    Require-Match $failures $chatScreen 'hydratedTodayAgriVisualContent\s*=\s*shouldShowTodayAgriMainCard(?s:.*?)hasAssistantAnswerTail\s*=\s*hasCompletedAssistantAnswerTail\(\s*hydratedSnapshot\.messages,\s*hydratedSnapshot\.failedAssistantMessageStates\.keys\s*\)(?s:.*?)hasTodayAgriVisualContent\s*=\s*hydratedTodayAgriVisualContent' `
+    Require-Match $failures $chatScreen 'hydratedTodayAgriVisualContent\s*=\s*shouldShowTodayAgriMainCard(?s:.*?)hasAssistantAnswerTail\s*=\s*hasCompletedAssistantAnswerTail\(\s*pendingSnapshot\.snapshot\.messages,\s*pendingSnapshot\.snapshot\.failedAssistantMessageStates\.keys\s*\)(?s:.*?)hasTodayAgriVisualContent\s*=\s*hydratedTodayAgriVisualContent' `
         "Remote hydrate replacement must compute today-agri visual content from the hydrated message tail, not stale current UI state."
     Require-Match $failures $chatScreen 'remoteSnapshotHydrationComplete(?s:.*?)if\s*\(\s*shouldHydrateRemoteHistory\s*&&\s*!remoteSnapshotHydrationComplete\s*\)\s*return@LaunchedEffect(?s:.*?)saveTodayAgriItem' `
         "Today agri main item saving must wait for the remote snapshot, not only the local-first history hydration gate."
@@ -659,10 +667,14 @@ if ($failures.Count -eq 0) {
         "Today agri main item saving must keep a bounded retry path for transient save failures."
     Require-Match $failures $sessionApi 'fun\s+saveTodayAgriItem(?s:.*?)session_generation' `
         "Today agri main-chat item saves must include session generation."
-    Require-Match $failures $chatScreen 'snapshot\.today_agri_items(?s:.*?)item\.card(?s:.*?)todayAgriMainItem\s*=\s*item' `
+    Require-Match $failures $chatScreen 'snapshot(?s:.*?)today_agri_items(?s:.*?)item\.card(?s:.*?)hydratedTodayAgriMainItem(?s:.*?)applyHydratedTodayAgriMainItem\(hydratedTodayAgriMainItem\)' `
         "Today agri main-chat item must be restored from session snapshot with its saved card content."
     Require-Match $failures ($sessionApi + "`n" + $chatScreen + "`n" + $chatTimelineItemsTest) 'today_agri_items_unavailable(?s:.*?)shouldClearTodayAgriMainItemAfterSnapshot(?s:.*?)todayAgriSnapshotUnavailableDoesNotClearExistingMainItem' `
         "Today agri main item must not be cleared when the snapshot only failed to read the optional today_agri_user_items table."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+shouldReplaceHydratedMessages(?s:.*?)current\.id\s*!=\s*remote\.id(?s:.*?)current\.todayAgriContextDay\s*!=\s*remote\.todayAgriContextDay' `
+        "Remote hydrate comparison must include message ids and today-agri context day so saved anchors do not drift."
+    Require-Match $failures $chatTimelineItemsTest 'hydratedMessagesReplaceWhenStableIdsChangeEvenIfContentMatches' `
+        "Remote hydrate comparison must have unit coverage for id-only changes."
     Require-Match $failures $serverGoServer '"today_agri_items_unavailable"\s*:\s*snapshotWarnings\.TodayAgriErr\s*!=\s*nil' `
         "Session snapshot response must expose today_agri_items_unavailable when optional today-agri item reads fail."
     Require-Match $failures $chatScreen '"remote_snapshot_hydrated"\s+to\s+remoteSnapshotHydrationComplete' `
@@ -790,8 +802,6 @@ if ($failures.Count -eq 0) {
         "Assistant settled text must keep the message selection container even when content contains links, so copy/full-copy remains available."
     Require-Match $failures $chatStreamingRenderer 'parseRendererStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)(?s:.*?)parseRendererStandaloneBoldHeading\(trimmed\)\s*!=\s*null' `
         "Assistant text dividers must recognize standalone bold heading lines, not only # markdown headings."
-    Require-Match $failures $chatStreamingRenderer 'parseRendererActiveStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)' `
-        "Assistant text dividers must recognize an active standalone bold heading while it is still streaming."
     Require-Match $failures $chatStreamingRenderer 'isStructuralRendererStreamingLine(?s:.*?)parseRendererActiveStandaloneBoldHeading\(trimmed\)\s*!=\s*null' `
         "Assistant text dividers must keep an unclosed standalone bold heading structural after the next line arrives, so the divider does not disappear in settled/history rendering."
     Require-Match $failures $chatStreamingRenderer 'parseRendererActiveStandaloneBoldHeading(?s:.*?)title\.any\s*\{\s*it\.isWhitespace\(\)\s*\}' `
@@ -800,6 +810,18 @@ if ($failures.Count -eq 0) {
         "Assistant text divider tests must cover an unclosed standalone bold heading followed by body text."
     Require-Match $failures $chatStreamingRendererTest 'activeBoldLineWithWhitespaceStaysParagraphUntilItIsClearlyAHeading' `
         "Assistant text divider tests must cover active bold text that continues as body text."
+    Require-Match $failures $chatStreamingRendererTest 'activeBoldLineWithoutHeadingBoundaryStaysParagraphUntilSettled' `
+        "Assistant text divider tests must cover active bold text without a heading boundary, so dividers do not flash and disappear."
+    Require-Match $failures $chatStreamingRendererTest 'activeStandaloneBoldHeadingWaitsForLineBoundary' `
+        "Assistant text divider tests must prove unclosed active bold heading text waits for a line boundary before drawing a divider."
+    Require-Match $failures $chatStreamingRendererTest 'activeClosedStandaloneBoldHeadingWaitsForLineBoundary' `
+        "Assistant text divider tests must prove closed active bold heading text also waits for a line boundary before drawing a divider."
+    Require-Match $failures $chatStreamingRendererTest 'activeClosedBoldThenBodyDoesNotShowDivider' `
+        "Assistant text divider tests must cover a closed active bold prefix that continues as body text."
+    Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererActiveStandaloneBoldHeading' `
+        "Active streaming bold heading text must not draw dividers before the line is complete."
+    Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererStandaloneBoldHeading' `
+        "Active streaming closed bold heading text must not draw dividers before the line is complete."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableSeparatorDoesNotCreateSectionDivider' `
         "Assistant text divider tests must prove Markdown table separators do not create section dividers."
     Require-Match $failures $chatStreamingRenderer 'shouldEnableRendererMarkdownTableCopy(?s:.*?)messageSettled\s*&&\s*inlineMode\s*==\s*RendererInlineMode\.Settled' `
@@ -812,14 +834,36 @@ if ($failures.Count -eq 0) {
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `
         "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
-    Require-Match $failures $chatStreamingRenderer 'alpha\(0f\)(?s:.*?)clearAndSetSemantics\s*\{\s*\}(?s:.*?)TextButton\((?s:.*?)enabled\s*=\s*copyEnabled(?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)text\s*=\s*"复制表格"(?s:.*?)RendererMarkdownTableCardImpl' `
-        "Markdown table UI must keep the mobile grouped table cards and reserve a hidden copy button slot during streaming so settled tables do not jump."
+    Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*copyEnabled\s*\)\s*\{(?s:.*?)TextButton\((?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)text\s*=\s*"复制表格"(?s:.*?)RendererMarkdownTableCardImpl' `
+        "Markdown table UI must keep mobile grouped table cards and render the copy button only after the message is settled."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
         "Incomplete Markdown table headers must stay plain text while streaming, instead of rendering a half-empty table."
-    Require-Match $failures $chatStreamingRenderer 'expectedColumnCount\s*=\s*maxOf\((?s:.*?)looksLikeRendererMarkdownTableBodyRow\(lines\[cursor\],\s*expectedColumnCount\)' `
+    Require-Match $failures $chatStreamingRenderer 'headerColumnCount\s*=\s*splitRendererMarkdownTableCells\(current\)\.size(?s:.*?)separatorColumnCount\s*=\s*splitRendererMarkdownTableCells\(lines\[index \+ 1\]\)\.size(?s:.*?)headerColumnCount\s*!=\s*separatorColumnCount(?s:.*?)expectedColumnCount\s*=\s*headerColumnCount(?s:.*?)bodyRowsWithoutEdgeMode(?s:.*?)looksLikeRendererMarkdownTableBodyRow\((?s:.*?)expectedColumnCount\s*=\s*expectedColumnCount' `
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
+    Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)trimmed\.matches\(Regex\("""\[-\+\*\]\\s\+\.\+"""\)\)' `
+        "Markdown table body parsing must stop before obvious new block starts such as indented code, fences, quotes, headings, and lists."
+    Require-Match $failures $chatStreamingRenderer 'rawHeaders\.size\s*<\s*2\s*\|\|\s*rawHeaders\.size\s*!=\s*separatorColumnCount(?s:.*?)val\s+columnCount\s*=\s*rawHeaders\.size(?s:.*?)row\.take\(columnCount\)\.getOrNull\(index\)' `
+        "Markdown table parsing must keep GFM-style header/separator column counts fixed and ignore extra body cells instead of inventing columns."
+    Require-Match $failures $chatStreamingRenderer 'treatTrailingLineAsComplete(?s:.*?)cursor\s*<\s*lines\.lastIndex' `
+        "Streaming Markdown table parsing must avoid absorbing an unfinished tail line into a table before it is line-complete."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableAcceptsRowsWithoutOuterPipesWhenColumnsMatch' `
         "Markdown table tests must cover standard table body rows without outer pipes."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableWithOuterPipeHeaderAcceptsBodyRowsWithoutOuterPipes' `
+        "Markdown table tests must cover common mixed Markdown tables where the header has outer pipes but body rows do not."
+    Require-Match $failures $chatStreamingRendererTest 'streamingMarkdownTableBodyTailWaitsForLineBreakBeforeRenderingTable' `
+        "Markdown table tests must cover unfinished streaming table body rows staying plain until line break."
+    Require-Match $failures $chatStreamingRendererTest 'settledMarkdownTableBodyTailParsesWithoutTrailingLineBreak' `
+        "Markdown table tests must prove settled/history tables still parse without a trailing line break."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableHeaderDelimiterMismatchStaysPlainText' `
+        "Markdown table tests must prove header/delimiter column mismatches stay plain text."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableBodyExtraCellsAreIgnored' `
+        "Markdown table tests must prove extra body cells are ignored instead of producing invented columns."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableBreaksBeforeIndentedCodeAfterDelimiter' `
+        "Markdown table tests must prove table parsing stops before indented code after a delimiter line."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableBreaksBeforeListPipeParagraph' `
+        "Markdown table tests must prove table parsing stops before list-style pipe paragraphs after a delimiter line."
+    Require-Match $failures $chatStreamingRendererTest 'tableWithUnclosedInlineKeepsStreamingInlineModeAfterItLeavesTail' `
+        "Markdown table tests must keep table cells with unclosed inline markers in streaming inline mode after the table leaves the tail."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableStopsBeforeOrdinaryPipeParagraphAfterBodyRow' `
         "Markdown table tests must cover ordinary pipe paragraphs immediately after a table body row."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableKeepsPipesInsideDoubleBacktickInlineCodeCell' `

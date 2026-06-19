@@ -330,7 +330,7 @@ type AdminUserDetail struct {
 	UpgradeCredits   []AdminUpgradeCredit    `json:"upgrade_credits"`
 	RecentRounds     []AdminRoundExcerpt     `json:"recent_rounds"`
 	RecentAppLogs    []ClientAppLogEntry     `json:"recent_app_logs"`
-	SupportSummary   *SupportSummary         `json:"support_summary,omitempty"`
+	SupportSummary   *AdminSupportSummary    `json:"support_summary,omitempty"`
 	SupportMessages  []AdminSupportMessage   `json:"support_messages"`
 	Orders           []AdminOrderEntry       `json:"orders"`
 	GiftCards        []AdminGiftCardEntry    `json:"gift_cards"`
@@ -415,6 +415,11 @@ type AdminSupportConversation struct {
 	LatestAdminAt     *int64              `json:"latest_admin_message_at,omitempty"`
 	ClosedAt          *int64              `json:"closed_at,omitempty"`
 	UpdatedAt         int64               `json:"updated_at"`
+}
+
+type AdminSupportSummary struct {
+	UnreadCount   int                  `json:"unread_count"`
+	LatestMessage *AdminSupportMessage `json:"latest_message,omitempty"`
 }
 
 type AdminSupportMessage struct {
@@ -791,9 +796,10 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	phoneNumberVisible := adminCanViewAccountPhone(admin.User.Role)
 	giftCardCodeVisible := adminCanViewGiftCardCodes(admin.User.Role)
 	chatRoundExcerptsVisible := adminCanViewChatRoundExcerpts(admin.User.Role)
+	supportMessageBodyVisible := adminCanViewSupportMessageBody(admin.User.Role)
 	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
 	defer cancel()
-	detail, err := s.store.GetAdminUserDetail(ctx, userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible, giftCardCodeVisible, chatRoundExcerptsVisible)
+	detail, err := s.store.GetAdminUserDetail(ctx, userID, GetTodayKeyCN(s.shanghai, time.Now()), time.Now().UnixMilli(), phoneNumberVisible, giftCardCodeVisible, chatRoundExcerptsVisible, supportMessageBodyVisible)
 	if err != nil {
 		status := http.StatusInternalServerError
 		code := "internal_error"
@@ -819,6 +825,7 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 		"gift_card_code_visible":      giftCardCodeVisible,
 		"gift_card_notes_visible":     giftCardNotesVisible,
 		"chat_round_excerpts_visible": chatRoundExcerptsVisible,
+		"support_body_visible":        supportMessageBodyVisible,
 	})
 	s.writeJSON(w, http.StatusOK, detail)
 }
@@ -2638,8 +2645,8 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner:       "运维",
 		Manual:      true,
 	})
-	supportStatus := "ready"
-	supportBody := "后台已支持待回复 / 已处理 / 已关闭队列、搜索、回复、关闭和重开；正式运营后再补坐席分配、标签、站外通知和保存 / 删除规则。"
+	supportStatus := "partial"
+	supportBody := "站内客服基础链路已支持待回复 / 已处理 / 已关闭队列、搜索、回复、关闭和重开；完整客服运营规则仍需补坐席分配、标签、站外通知和保存 / 删除规则。"
 	if queues.SupportNeedsReply > 0 {
 		supportStatus = "attention"
 		supportBody = "有用户反馈待回复；先处理，再继续公开测试。"
@@ -2650,7 +2657,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Body:   supportBody,
 		Route:  "support",
 		Owner:  "客服 / 运营",
-		Manual: supportStatus == "attention",
+		Manual: true,
 	})
 	accountDeletionStatus := "attention"
 	accountDeletionBody := "App 内已提供注销申请入口，用户提交后退出当前设备；后台可核验并标记处理进度，物理删除 / 匿名化规则仍需合规收口。"
@@ -2691,7 +2698,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "服务健康", Status: "ready", Body: "API、模型、登录、Redis、OSS、严格鉴权都能集中看。", Route: "health"},
 		{Title: "账号登录", Status: "partial", Body: "账号ID收敛、短信验证码登录和日志排障入口已接入；仍需真机收码并登录成功后才算上线验收。", Route: "users"},
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
-		{Title: "帮助反馈", Status: "ready", Body: "可看待回复 / 已处理 / 已关闭队列，按账号ID / 手机号 / 最近消息搜索，发送后台回复并关闭或重开会话。", Route: "support"},
+		{Title: "帮助反馈", Status: "partial", Body: "站内反馈队列、回复、关闭和重开已可用；support / owner 可按完整手机号和正文排障，只读 / 审计角色仅查看脱敏队列和状态。完整客服运营规则仍未闭环。", Route: "support"},
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；完整卡码仅财务角色可见。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
@@ -3166,7 +3173,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	return users, rows.Err()
 }
 
-func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool, includeGiftCardCodes bool, includeChatRoundExcerpts bool) (AdminUserDetail, error) {
+func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN string, nowMs int64, includePhoneNumber bool, includeGiftCardCodes bool, includeChatRoundExcerpts bool, includeSupportMessageBody bool) (AdminUserDetail, error) {
 	users, err := s.ListAdminUsers(ctx, AdminUserQuery{ExactUserID: userID, DayCN: dayCN, Limit: 1, NowMs: nowMs, SinceMs: time.Now().Add(-24 * time.Hour).UnixMilli(), IncludePhoneNumber: includePhoneNumber})
 	if err != nil {
 		return AdminUserDetail{}, err
@@ -3209,13 +3216,14 @@ func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN str
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
+	adminSupportSummary := adminSupportSummaryFromSupport(supportSummary, includeSupportMessageBody)
 	supportRaw, err := s.ListSupportMessages(ctx, userID, 10)
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
 	supportMessages := make([]AdminSupportMessage, 0, len(supportRaw))
 	for _, message := range supportRaw {
-		supportMessages = append(supportMessages, adminSupportMessageFromSupport(message, false))
+		supportMessages = append(supportMessages, adminSupportMessageFromSupport(message, includeSupportMessageBody))
 	}
 	orders, err := s.ListAdminOrders(ctx, AdminOrderQuery{UserID: userID, Limit: 20})
 	if err != nil {
@@ -3236,7 +3244,7 @@ func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN str
 		UpgradeCredits:   upgradeCredits,
 		RecentRounds:     rounds,
 		RecentAppLogs:    appLogs,
-		SupportSummary:   supportSummary,
+		SupportSummary:   adminSupportSummary,
 		SupportMessages:  supportMessages,
 		Orders:           orders,
 		GiftCards:        giftCards,
@@ -3696,6 +3704,20 @@ func adminSupportMessageFromSupport(message SupportMessage, includeBody bool) Ad
 	} else {
 		result.BodyRedacted = strings.TrimSpace(message.Body) != ""
 		result.ImagesRedacted = len(message.ImageURLs) > 0
+	}
+	return result
+}
+
+func adminSupportSummaryFromSupport(summary *SupportSummary, includeBody bool) *AdminSupportSummary {
+	if summary == nil {
+		return nil
+	}
+	result := &AdminSupportSummary{
+		UnreadCount: summary.UnreadCount,
+	}
+	if summary.LatestMessage != nil {
+		latest := adminSupportMessageFromSupport(*summary.LatestMessage, includeBody)
+		result.LatestMessage = &latest
 	}
 	return result
 }

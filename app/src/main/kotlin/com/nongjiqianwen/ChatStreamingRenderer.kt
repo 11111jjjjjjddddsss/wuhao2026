@@ -333,11 +333,26 @@ private fun hasRendererMarkdownTableRowEdge(line: String): Boolean {
     return trimmed.startsWith("|") || trimmed.endsWith("|")
 }
 
-private fun looksLikeRendererMarkdownTableBodyRow(line: String, expectedColumnCount: Int): Boolean {
+private fun looksLikeRendererMarkdownTableBodyRow(
+    line: String,
+    expectedColumnCount: Int,
+    allowRowsWithoutEdge: Boolean
+): Boolean {
     if (!looksLikeRendererMarkdownTableRow(line)) return false
     val cells = splitRendererMarkdownTableCells(line)
     if (hasRendererMarkdownTableRowEdge(line)) return true
-    return expectedColumnCount >= 2 && cells.size == expectedColumnCount
+    return allowRowsWithoutEdge && expectedColumnCount >= 2 && cells.size >= expectedColumnCount
+}
+
+private fun isRendererMarkdownTableBodyBlockBoundary(line: String): Boolean {
+    if (isRendererIndentedCodeLine(line)) return true
+    if (rendererMarkdownCodeFenceMarker(line) != null) return true
+    if (hasRendererMarkdownTableRowEdge(line)) return false
+    val trimmed = line.trimStart()
+    return trimmed.startsWith(">") ||
+        trimmed.matches(Regex("""#{1,6}\s+.+""")) ||
+        trimmed.matches(Regex("""[-+*]\s+.+""")) ||
+        trimmed.matches(Regex("""\d{1,9}[.)]\s+.+"""))
 }
 
 private fun rendererMarkdownCodeFenceMarker(line: String): String? {
@@ -352,7 +367,10 @@ private fun rendererMarkdownCodeFenceMarker(line: String): String? {
 private fun isRendererIndentedCodeLine(line: String): Boolean =
     line.startsWith("    ") || line.startsWith("\t")
 
-private fun normalizeRendererMarkdownTables(content: String): String {
+private fun normalizeRendererMarkdownTables(
+    content: String,
+    treatTrailingLineAsComplete: Boolean = true
+): String {
     val normalized = content.replace("\r\n", "\n")
     if (!normalized.contains('|')) return normalized
     val lines = normalized.lines()
@@ -387,16 +405,35 @@ private fun normalizeRendererMarkdownTables(content: String): String {
             looksLikeRendererMarkdownTableRow(current) &&
             isRendererMarkdownTableSeparatorLine(lines[index + 1])
         ) {
+            val headerColumnCount = splitRendererMarkdownTableCells(current).size
+            val separatorColumnCount = splitRendererMarkdownTableCells(lines[index + 1]).size
+            if (headerColumnCount != separatorColumnCount || headerColumnCount < 2) {
+                result += current
+                index++
+                continue
+            }
             val rowLines = mutableListOf<String>()
-            val expectedColumnCount = maxOf(
-                splitRendererMarkdownTableCells(current).size,
-                splitRendererMarkdownTableCells(lines[index + 1]).size
-            )
+            val expectedColumnCount = headerColumnCount
+            val headerAndSeparatorAllowRowsWithoutEdge =
+                !hasRendererMarkdownTableRowEdge(current) &&
+                    !hasRendererMarkdownTableRowEdge(lines[index + 1])
+            var bodyRowsWithoutEdgeMode = false
             var cursor = index + 2
             while (
                 cursor < lines.size &&
-                looksLikeRendererMarkdownTableBodyRow(lines[cursor], expectedColumnCount)
+                (treatTrailingLineAsComplete || cursor < lines.lastIndex || normalized.endsWith("\n")) &&
+                !isRendererMarkdownTableBodyBlockBoundary(lines[cursor]) &&
+                looksLikeRendererMarkdownTableBodyRow(
+                    line = lines[cursor],
+                    expectedColumnCount = expectedColumnCount,
+                    allowRowsWithoutEdge = headerAndSeparatorAllowRowsWithoutEdge ||
+                        bodyRowsWithoutEdgeMode ||
+                        (rowLines.isEmpty() && !hasRendererMarkdownTableRowEdge(lines[cursor]))
+                )
             ) {
+                if (!hasRendererMarkdownTableRowEdge(lines[cursor])) {
+                    bodyRowsWithoutEdgeMode = true
+                }
                 rowLines += lines[cursor]
                 cursor++
             }
@@ -434,17 +471,14 @@ private fun encodeRendererMarkdownTableBlock(
     val rawHeaders = splitRendererMarkdownTableCells(headerLine)
         .map { cell -> normalizeRendererMarkdownTableCell(cell) }
     val separatorColumnCount = splitRendererMarkdownTableCells(separatorLine).size
+    if (rawHeaders.size < 2 || rawHeaders.size != separatorColumnCount) return null
     val rawRows = rowLines.mapNotNull { rowLine ->
         val cells = splitRendererMarkdownTableCells(rowLine)
             .map { cell -> normalizeRendererMarkdownTableCell(cell) }
         cells.takeIf { it.any { cell -> cell.isNotBlank() } }
     }
     if (rawRows.isEmpty()) return null
-    val columnCount = maxOf(
-        rawHeaders.size,
-        separatorColumnCount,
-        rawRows.maxOfOrNull { it.size } ?: 0
-    )
+    val columnCount = rawHeaders.size
     if (columnCount < 2) return null
     val headers = List(columnCount) { index ->
         rawHeaders.getOrNull(index)
@@ -452,7 +486,7 @@ private fun encodeRendererMarkdownTableBlock(
             ?: "列${index + 1}"
     }
     val rowCells = rawRows.map { row ->
-        List(columnCount) { index -> row.getOrNull(index).orEmpty() }
+        List(columnCount) { index -> row.take(columnCount).getOrNull(index).orEmpty() }
     }
     return buildString {
         append(RENDERER_TABLE_BLOCK_PREFIX)
@@ -626,8 +660,16 @@ internal fun shouldForceFlushStreamingRevealBufferForFinish(buffer: String): Boo
     return buildStreamingRevealBatch(buffer).text.isEmpty()
 }
 
-internal fun splitStreamingBlockState(content: String): StreamingBlockState {
-    val logicalLines = splitRendererStreamingLogicalLines(normalizeRendererMarkdownTables(content))
+internal fun splitStreamingBlockState(
+    content: String,
+    treatTrailingLineAsComplete: Boolean = false
+): StreamingBlockState {
+    val logicalLines = splitRendererStreamingLogicalLines(
+        normalizeRendererMarkdownTables(
+            content = content,
+            treatTrailingLineAsComplete = treatTrailingLineAsComplete
+        )
+    )
     val completedBlocks = mutableListOf<String>()
     val paragraph = StringBuilder()
 
@@ -716,12 +758,6 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
-    parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(2, headingText)
-    }
-    parseRendererActiveStandaloneBoldHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(2, headingText)
-    }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(3, headingText)
     }
@@ -773,7 +809,10 @@ internal fun shouldShowStreamingSectionDivider(
 }
 
 internal fun buildRendererPlainCopyText(content: String): String {
-    val blockState = splitStreamingBlockState(content)
+    val blockState = splitStreamingBlockState(
+        content = content,
+        treatTrailingLineAsComplete = true
+    )
     val models = buildList {
         addAll(blockState.completedBlocks.map(::classifyStreamingLine))
         blockState.activeBlock?.let { add(classifyStreamingLine(it)) }
@@ -795,7 +834,10 @@ internal fun buildRendererPlainCopyText(content: String): String {
 }
 
 internal fun buildRendererStructureStats(content: String): RendererStructureStats {
-    val blockState = splitStreamingBlockState(content)
+    val blockState = splitStreamingBlockState(
+        content = content,
+        treatTrailingLineAsComplete = true
+    )
     val models = buildList {
         addAll(blockState.completedBlocks.map(::classifyStreamingLine))
         blockState.activeBlock?.let { add(classifyActiveStreamingLine(it)) }
@@ -865,6 +907,7 @@ private fun parseRendererActiveStandaloneBoldHeading(line: String): String? {
     if (title.length < 3) return null
     if (title.any { it.isWhitespace() }) return null
     if (title.any { it in "，,；;" }) return null
+    if (!isRendererLikelyCompleteActiveBoldHeadingTitle(title)) return null
     if (!isRendererStandaloneBoldHeadingTitle(title)) return null
     return title
 }
@@ -882,6 +925,32 @@ private fun isRendererStandaloneBoldHeadingTitle(title: String): Boolean {
     if (title.length > 40) return false
     if (title.any { it in "。！？!?" }) return false
     return true
+}
+
+private fun isRendererLikelyCompleteActiveBoldHeadingTitle(title: String): Boolean {
+    if (title.endsWith("：") || title.endsWith(":")) return true
+    if (title.length > 12) return false
+    return listOf(
+        "建议",
+        "措施",
+        "方案",
+        "原因",
+        "判断",
+        "结论",
+        "要点",
+        "事项",
+        "问题",
+        "病害",
+        "虫害",
+        "管理",
+        "用药",
+        "施肥",
+        "浇水",
+        "灌溉",
+        "防治",
+        "预防",
+        "补救"
+    ).any { suffix -> title.endsWith(suffix) }
 }
 
 private fun isRendererStandaloneSectionHeadingTitle(title: String): Boolean {
@@ -1538,7 +1607,15 @@ private fun StreamingLineModel.streamingInlineText(): String? {
         is StreamingLineModel.Bullet -> text
         is StreamingLineModel.Numbered -> text
         is StreamingLineModel.Quote -> text
-        is StreamingLineModel.Table -> null
+        is StreamingLineModel.Table -> buildString {
+            append(table.headers.joinToString("\n"))
+            table.rows.forEach { row ->
+                row.forEach { cell ->
+                    append('\n')
+                    append(cell)
+                }
+            }
+        }
         is StreamingLineModel.Paragraph -> text
     }
 }
@@ -2159,19 +2236,13 @@ private fun RendererMarkdownTableImpl(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 2.dp),
-            horizontalArrangement = Arrangement.End
-        ) {
-            val inactiveCopyModifier = if (copyEnabled) {
-                Modifier
-            } else {
-                Modifier
-                    .alpha(0f)
-                    .clearAndSetSemantics {}
-            }
+        if (copyEnabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 2.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
             TextButton(
                 enabled = copyEnabled,
                 onClick = {
@@ -2180,8 +2251,7 @@ private fun RendererMarkdownTableImpl(
                 },
                 modifier = Modifier
                     .heightIn(min = 36.dp)
-                    .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp))
-                    .then(inactiveCopyModifier),
+                    .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
                 shape = RoundedCornerShape(999.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 colors = ButtonDefaults.textButtonColors(
@@ -2196,6 +2266,7 @@ private fun RendererMarkdownTableImpl(
                     fontSize = 13.sp,
                     lineHeight = 16.sp
                 )
+            }
             }
         }
         table.rows.forEachIndexed { rowIndex, row ->
@@ -2305,7 +2376,12 @@ private fun RendererAssistantMarkdownContentImpl(
     modifier: Modifier = Modifier,
     showLeadingSectionDivider: Boolean = false
 ) {
-    val blockState = remember(content) { splitStreamingBlockState(content) }
+    val blockState = remember(content) {
+        splitStreamingBlockState(
+            content = content,
+            treatTrailingLineAsComplete = true
+        )
+    }
     val completedModels = remember(blockState) {
         buildList {
             addAll(blockState.completedBlocks.map(::classifyStreamingLine))

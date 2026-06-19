@@ -248,14 +248,20 @@ function Invoke-PaymentReadinessGateStep {
         $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $paymentArgs
         $timer.Stop()
         $paymentStatus = Get-CapturedValue -Lines $lines -Key "payment_readiness_status"
-        $hasSafePlaceholder = $paymentStatus -eq "attention"
+        $safeWithoutPaidIapRaw = (Get-CapturedValue -Lines $lines -Key "safe_without_paid_iap").Trim().ToLowerInvariant()
+        $safeWithoutPaidIap = @("1", "true", "yes", "y", "ok") -contains $safeWithoutPaidIapRaw
+        $hasSafePlaceholder = $paymentStatus -eq "attention" -and $safeWithoutPaidIap
         $message = ""
         $status = "ready"
         $name = "payment readiness"
         if ($hasSafePlaceholder) {
             $name = "payment closed guard"
+            $status = "safe_placeholder"
+            $message = "formal payment is not configured; safe non-payment placeholder only while Android purchase buttons and dev-order endpoints remain closed"
+        } elseif ($paymentStatus -eq "attention") {
+            $name = "payment readiness"
             $status = "skipped_or_attention"
-            $message = "formal payment is not configured; safe only because Android purchase buttons and dev-order endpoints remain closed"
+            $message = "payment readiness needs review"
         }
         Add-GateResult -Name $name -Status $status -Seconds $timer.Elapsed.TotalSeconds -Message $message
         $line = "step_status=$status seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
@@ -271,6 +277,59 @@ function Invoke-PaymentReadinessGateStep {
         $timer.Stop()
         $message = $_.Exception.Message
         Add-GateResult -Name "payment readiness" -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+        Write-Host "step_status=failed seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
+    }
+}
+
+function Invoke-AdminMonitoringActionsGateStep {
+    param(
+        [switch]$FailOnWarning,
+        [switch]$SkipIfMissingCredentials
+    )
+
+    Write-Host
+    Write-Host "== admin monitoring actions =="
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    try {
+        $monitoringArgs = @(
+            "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            "scripts/check-admin-monitoring-actions.ps1"
+        )
+        if ($SkipIfMissingCredentials) {
+            $monitoringArgs += "-SkipIfMissingCredentials"
+        }
+        if ($FailOnWarning) {
+            $monitoringArgs += "-FailOnWarning"
+        }
+        $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $monitoringArgs
+        $timer.Stop()
+        $statusText = Get-CapturedValue -Lines $lines -Key "status"
+        if ([string]::IsNullOrWhiteSpace($statusText)) {
+            $statusText = "not_reported"
+        }
+        switch ($statusText) {
+            "ready" {
+                Add-GateResult -Name "admin monitoring actions" -Status "ready" -Seconds $timer.Elapsed.TotalSeconds
+                Write-Host "step_status=ready seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
+            }
+            "skipped" {
+                $message = "admin monitoring action scan skipped ($statusText)"
+                Add-GateResult -Name "admin monitoring actions" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+                Write-Warning "step_status=skipped_or_attention seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
+            }
+            default {
+                $message = "admin monitoring actions reported $statusText"
+                Add-GateResult -Name "admin monitoring actions" -Status "skipped_or_attention" -Seconds $timer.Elapsed.TotalSeconds -Message $message
+                Write-Warning "step_status=skipped_or_attention seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
+            }
+        }
+    } catch {
+        $timer.Stop()
+        $message = $_.Exception.Message
+        Add-GateResult -Name "admin monitoring actions" -Status "failed" -Seconds $timer.Elapsed.TotalSeconds -Message $message
         Write-Host "step_status=failed seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1)) message=$message"
     }
 }
@@ -511,6 +570,9 @@ if (-not $SkipCloud) {
     Invoke-GateStep -Name "admin authenticated smoke" -Optional:(-not $RequireAdminSmoke) -ScriptBlock {
         Invoke-Native -FilePath "powershell.exe" -Arguments $adminSmokeArgs
     }
+    Invoke-AdminMonitoringActionsGateStep `
+        -FailOnWarning:($ReleaseGate -or $AppUpdateReleaseGate) `
+        -SkipIfMissingCredentials:(-not $RequireAdminSmoke)
 }
 
 if (-not $SkipManualGoLiveChecklist) {
@@ -523,6 +585,7 @@ Write-Host
 Write-Host "== launch readiness summary =="
 $failed = @($results | Where-Object { $_.Status -eq "failed" })
 $attention = @($results | Where-Object { $_.Status -eq "skipped_or_attention" })
+$safePlaceholders = @($results | Where-Object { $_.Status -eq "safe_placeholder" })
 foreach ($result in $results) {
     $line = "step=$($result.Name) status=$($result.Status) seconds=$($result.Seconds)"
     if (-not [string]::IsNullOrWhiteSpace($result.Message)) {
@@ -530,7 +593,7 @@ foreach ($result in $results) {
     }
     Write-Host $line
 }
-Write-Host "failed=$($failed.Count) attention=$($attention.Count) total=$($results.Count)"
+Write-Host "failed=$($failed.Count) attention=$($attention.Count) safe_placeholder=$($safePlaceholders.Count) total=$($results.Count)"
 
 if ($failed.Count -gt 0) {
     Write-Host "status=failed"
@@ -543,6 +606,11 @@ if ($attention.Count -gt 0) {
         exit 0
     }
     exit 2
+}
+
+if ($safePlaceholders.Count -gt 0) {
+    Write-Host "status=ready_without_paid_iap"
+    exit 0
 }
 
 Write-Host "status=ready"

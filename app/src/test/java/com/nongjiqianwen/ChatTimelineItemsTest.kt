@@ -377,6 +377,78 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun hydratedVisualMutationCanApplyOnlyWhenIdleAndNotBrowsing() {
+        assertTrue(
+            canApplyHydratedVisualMutation(
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = false
+            )
+        )
+        assertFalse(
+            canApplyHydratedVisualMutation(
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = true
+            )
+        )
+        assertFalse(
+            canApplyHydratedVisualMutation(
+                hasStartedConversation = true,
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = false
+            )
+        )
+        assertFalse(
+            canApplyHydratedVisualMutation(
+                hasStartedConversation = false,
+                isStreaming = true,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = false
+            )
+        )
+    }
+
+    @Test
+    fun hydratedVisualMutationHoldsOnlyForBrowsingBeforeConversationStarts() {
+        assertTrue(
+            shouldHoldHydratedVisualMutationForBrowsing(
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = true
+            )
+        )
+        assertFalse(
+            shouldHoldHydratedVisualMutationForBrowsing(
+                hasStartedConversation = true,
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = true
+            )
+        )
+        assertFalse(
+            shouldHoldHydratedVisualMutationForBrowsing(
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = true,
+                userBlocksHydratedVisualMutation = true
+            )
+        )
+        assertFalse(
+            shouldHoldHydratedVisualMutationForBrowsing(
+                hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = false
+            )
+        )
+    }
+
+    @Test
     fun todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime() {
         assertFalse(
             shouldShowTodayAgriMainCard(
@@ -386,6 +458,30 @@ class ChatTimelineItemsTest {
                 shownThisRuntime = false,
                 hasAssistantAnswerTail = false,
                 suppressedThisRuntime = false
+            )
+        )
+
+        assertTrue(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "",
+                shownThisRuntime = false,
+                hasAssistantAnswerTail = false,
+                insertedThisRuntime = true,
+                suppressedThisRuntime = false
+            )
+        )
+
+        assertTrue(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = "",
+                shownThisRuntime = false,
+                hasAssistantAnswerTail = false,
+                insertedThisRuntime = true,
+                suppressedThisRuntime = true
             )
         )
 
@@ -652,6 +748,22 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun hydratedMessagesReplaceWhenStableIdsChangeEvenIfContentMatches() {
+        assertTrue(
+            shouldReplaceHydratedMessages(
+                currentMessages = listOf(
+                    userMessage("local_user", "同一段问题"),
+                    assistantMessage("assistant_local_user", "同一段回答")
+                ),
+                remoteMessages = listOf(
+                    userMessage("remote_user", "同一段问题"),
+                    assistantMessage("assistant_remote_user", "同一段回答")
+                )
+            )
+        )
+    }
+
+    @Test
     fun pendingImageRecoveryTracksPendingOrTerminalFailureButNotSettledAssistant() {
         val pendingImageUser = ChatMessage(
             id = "u1",
@@ -734,11 +846,11 @@ class ChatTimelineItemsTest {
         )
     }
 
-    private fun userMessage(id: String): ChatMessage =
-        ChatMessage(id = id, role = ChatRole.USER, content = "用户问题")
+    private fun userMessage(id: String, content: String = "用户问题"): ChatMessage =
+        ChatMessage(id = id, role = ChatRole.USER, content = content)
 
-    private fun assistantMessage(id: String): ChatMessage =
-        ChatMessage(id = id, role = ChatRole.ASSISTANT, content = "参考建议")
+    private fun assistantMessage(id: String, content: String = "参考建议"): ChatMessage =
+        ChatMessage(id = id, role = ChatRole.ASSISTANT, content = content)
 
     private fun todayAgriCard(): SessionApi.TodayAgriCard =
         SessionApi.TodayAgriCard(

@@ -470,12 +470,20 @@ func TestAdminMonitoringLaunchReadinessStatusContract(t *testing.T) {
 		},
 	}
 	items := buildAdminMonitoringLaunchReadiness(report)
-	validStatuses := map[string]bool{"ready": true, "attention": true, "blocked": true}
+	validStatuses := map[string]bool{"ready": true, "partial": true, "attention": true, "blocked": true}
 	for _, item := range items {
 		if !validStatuses[item.Status] {
 			t.Fatalf("unexpected launch readiness status %q for %#v", item.Status, item)
 		}
 	}
+	support := findAdminMonitoringLaunchItem(items, "客服反馈")
+	if support == nil {
+		t.Fatalf("missing support launch item: %#v", items)
+	}
+	if support.Status != "partial" || !support.Manual {
+		t.Fatalf("support launch item should stay partial/manual until full support ops is closed, got %#v", support)
+	}
+	assertContainsAll(t, support.Body, "站内客服基础链路", "完整客服运营规则")
 	accountDeletion := findAdminMonitoringLaunchItem(items, "注销申请")
 	if accountDeletion == nil {
 		t.Fatalf("missing account deletion launch item: %#v", items)

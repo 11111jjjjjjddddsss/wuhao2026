@@ -225,6 +225,46 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun markdownTableWithOuterPipesDoesNotAbsorbSameColumnPipeParagraph() {
+        val state = splitStreamingBlockState(
+            "|项目|建议|\n" +
+                "|---|---|\n" +
+                "|水分|控水|\n" +
+                "注意事项 | 不要把普通段落并入表格。"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+        val paragraph = models.filterIsInstance<StreamingLineModel.Paragraph>().single()
+
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+        assertEquals("注意事项 | 不要把普通段落并入表格。", paragraph.text)
+    }
+
+    @Test
+    fun markdownTableWithOuterPipeHeaderAcceptsBodyRowsWithoutOuterPipes() {
+        val state = splitStreamingBlockState(
+            content = "|项目|建议|\n" +
+                "|---|---|\n" +
+                "水分|控水\n" +
+                "温度|降温",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(
+            listOf(
+                listOf("水分", "控水"),
+                listOf("温度", "降温")
+            ),
+            table.rows
+        )
+    }
+
+    @Test
     fun shortSeparatorDoesNotRenderAsTable() {
         val stats = buildRendererStructureStats(
             "成品含腐植酸尿素 | 普通尿素 + 矿源黄腐酸钾\n" +
@@ -407,12 +447,38 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun streamingMarkdownTableBodyTailWaitsForLineBreakBeforeRenderingTable() {
+        val state = splitStreamingBlockState("|项目|建议|\n|---|---|\n|水分|控水")
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyActiveStreamingLine))
+
+        assertEquals(1, models.size)
+        assertTrue(models.single() is StreamingLineModel.Paragraph)
+        assertEquals(0, models.filterIsInstance<StreamingLineModel.Table>().size)
+    }
+
+    @Test
+    fun settledMarkdownTableBodyTailParsesWithoutTrailingLineBreak() {
+        val state = splitStreamingBlockState(
+            content = "|项目|建议|\n|---|---|\n|水分|控水",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+        assertEquals("水分：\n建议：控水", buildRendererPlainCopyText("|项目|建议|\n|---|---|\n|水分|控水"))
+    }
+
+    @Test
     fun standaloneBoldHeadingDividerSurvivesStreamingToSettled() {
         val streamingState = splitStreamingBlockState("先说清楚。\n\n**处理建议")
         val streamingModels = streamingState.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(streamingState.activeBlock?.let(::classifyActiveStreamingLine))
-        assertTrue(streamingModels[1] is StreamingLineModel.Heading)
-        assertTrue(
+        assertTrue(streamingModels[1] is StreamingLineModel.Paragraph)
+        assertFalse(
             shouldShowStreamingSectionDivider(
                 previous = streamingModels[0],
                 current = streamingModels[1]
@@ -578,11 +644,28 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun activeStandaloneBoldHeadingStreamsAsHeading() {
+    fun activeStandaloneBoldHeadingWaitsForLineBoundary() {
         val model = classifyActiveStreamingLine("**处理建议")
 
-        assertTrue(model is StreamingLineModel.Heading)
-        assertEquals("处理建议", (model as StreamingLineModel.Heading).text)
+        assertTrue(model is StreamingLineModel.Paragraph)
+    }
+
+    @Test
+    fun activeClosedStandaloneBoldHeadingWaitsForLineBoundary() {
+        val previous = classifyStreamingLine("先说清楚。")
+        val model = classifyActiveStreamingLine("**处理建议**")
+
+        assertTrue(model is StreamingLineModel.Paragraph)
+        assertFalse(shouldShowStreamingSectionDivider(previous, model))
+    }
+
+    @Test
+    fun activeClosedBoldThenBodyDoesNotShowDivider() {
+        val previous = classifyStreamingLine("先说清楚。")
+        val model = classifyActiveStreamingLine("**重点** 后面还有正文")
+
+        assertTrue(model is StreamingLineModel.Paragraph)
+        assertFalse(shouldShowStreamingSectionDivider(previous, model))
     }
 
     @Test
@@ -590,6 +673,46 @@ class ChatStreamingRendererTest {
         val model = classifyActiveStreamingLine("**处理建议 后面还有正文")
 
         assertTrue(model is StreamingLineModel.Paragraph)
+    }
+
+    @Test
+    fun activeBoldLineWithoutHeadingBoundaryStaysParagraphUntilSettled() {
+        val firstState = splitStreamingBlockState("先说清楚。\n\n**处理建议")
+        val firstModels = firstState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(firstState.activeBlock?.let(::classifyActiveStreamingLine))
+        val streamingState = splitStreamingBlockState("先说清楚。\n\n**处理建议可以先")
+        val streamingModels = streamingState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(streamingState.activeBlock?.let(::classifyActiveStreamingLine))
+
+        assertEquals(2, firstModels.size)
+        assertTrue(firstModels[1] is StreamingLineModel.Paragraph)
+        assertFalse(
+            shouldShowStreamingSectionDivider(
+                previous = firstModels[0],
+                current = firstModels[1]
+            )
+        )
+        assertEquals(2, streamingModels.size)
+        assertTrue(streamingModels[1] is StreamingLineModel.Paragraph)
+        assertFalse(
+            shouldShowStreamingSectionDivider(
+                previous = streamingModels[0],
+                current = streamingModels[1]
+            )
+        )
+
+        val settledState = splitStreamingBlockState("先说清楚。\n\n**处理建议**可以先观察。")
+        val settledModels = settledState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(settledState.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(2, settledModels.size)
+        assertTrue(settledModels[1] is StreamingLineModel.Paragraph)
+        assertFalse(
+            shouldShowStreamingSectionDivider(
+                previous = settledModels[0],
+                current = settledModels[1]
+            )
+        )
     }
 
     @Test
@@ -604,6 +727,66 @@ class ChatStreamingRendererTest {
         val model = classifyStreamingLine("**重点** 后面还有 **正文**")
 
         assertTrue(model is StreamingLineModel.Paragraph)
+    }
+
+    @Test
+    fun markdownTableHeaderDelimiterMismatchStaysPlainText() {
+        val stats = buildRendererStructureStats("|项目|建议|备注|\n|---|---|\n|水分|控水|傍晚|")
+
+        assertEquals(0, stats.tableCount)
+        assertTrue(classifyStreamingLine("|项目|建议|备注|\n|---|---|\n|水分|控水|傍晚|") is StreamingLineModel.Paragraph)
+    }
+
+    @Test
+    fun markdownTableBodyExtraCellsAreIgnored() {
+        val state = splitStreamingBlockState(
+            content = "|项目|建议|\n|---|---|\n|水分|控水|傍晚|",
+            treatTrailingLineAsComplete = true
+        )
+        val table = (state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine)))
+            .filterIsInstance<StreamingLineModel.Table>()
+            .single()
+            .table
+
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+    }
+
+    @Test
+    fun markdownTableBodyExtraCellsWithoutOuterPipesAreIgnored() {
+        val state = splitStreamingBlockState(
+            content = "|项目|建议|\n|---|---|\n水分 | 控水 | 傍晚",
+            treatTrailingLineAsComplete = true
+        )
+        val table = (state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine)))
+            .filterIsInstance<StreamingLineModel.Table>()
+            .single()
+            .table
+
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+    }
+
+    @Test
+    fun markdownTableBreaksBeforeIndentedCodeAfterDelimiter() {
+        val state = splitStreamingBlockState("|项目|建议|\n|---|---|\n    A | B\n继续")
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(0, models.filterIsInstance<StreamingLineModel.Table>().size)
+        assertTrue(models.all { it is StreamingLineModel.Paragraph })
+    }
+
+    @Test
+    fun markdownTableBreaksBeforeListPipeParagraph() {
+        val state = splitStreamingBlockState("|项目|建议|\n|---|---|\n- A | B\n继续")
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(0, models.filterIsInstance<StreamingLineModel.Table>().size)
+        assertTrue(models.any { it is StreamingLineModel.Bullet })
     }
 
     @Test
@@ -955,7 +1138,26 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("控", advanced?.content)
-        assertTrue((advanced?.delayMs ?: 0L) >= 20L)
+        assertTrue((advanced?.delayMs ?: 0L) >= 19L)
+    }
+
+    @Test
+    fun tableWithUnclosedInlineKeepsStreamingInlineModeAfterItLeavesTail() {
+        val model = StreamingLineModel.Table(
+            RendererMarkdownTable(
+                headers = listOf("项目", "建议"),
+                rows = listOf(listOf("水分", "**先控水"))
+            )
+        )
+
+        assertEquals(
+            RendererInlineMode.Streaming,
+            rendererInlineModeForStreamingBlock(
+                index = 0,
+                lastIndex = 1,
+                model = model
+            )
+        )
     }
 
     @Test

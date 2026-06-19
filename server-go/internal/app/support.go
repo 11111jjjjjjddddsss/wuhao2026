@@ -595,6 +595,7 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		   JOIN (
 		     SELECT user_id, MAX(id) AS latest_id
 		       FROM support_messages
+		      WHERE sender_type <> 'system'
 		      GROUP BY user_id
 		   ) latest ON latest.latest_id = latest_message.id
 		   LEFT JOIN app_accounts accounts ON accounts.user_id = latest_message.user_id
@@ -646,7 +647,13 @@ func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConv
 		queryParts := []string{"user_id LIKE ?", "phone_mask LIKE ?"}
 		args = append(args, like, like)
 		if filter.AllowBodySearch {
-			queryParts = append(queryParts, "body LIKE ?")
+			queryParts = append(queryParts, `EXISTS (
+			       SELECT 1
+			         FROM support_messages search_messages
+			        WHERE search_messages.user_id = support_queue.user_id
+			          AND search_messages.sender_type <> 'system'
+			          AND search_messages.body LIKE ?
+		     )`)
 			args = append(args, like)
 		}
 		if filter.AllowPhoneHashSearch {

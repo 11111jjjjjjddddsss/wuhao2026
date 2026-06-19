@@ -321,7 +321,7 @@ private fun LoginScreen(
                         enabled = !busy && activeCountdown == 0,
                         shape = RoundedCornerShape(12.dp),
                         modifier = Modifier
-                            .height(56.dp)
+                            .heightIn(min = 56.dp)
                             .widthIn(min = 96.dp)
                     ) {
                         Text(
@@ -344,7 +344,7 @@ private fun LoginScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF111111)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
+                        .heightIn(min = 52.dp)
                 ) {
                     Text(
                         if (busyAction == LoginBusyAction.Login) "登录中" else "登录",
@@ -398,9 +398,9 @@ private fun LoginScreen(
                 message?.let {
                     val positive = it.contains("已发送") || it.startsWith("正在")
                     val noticeShape = RoundedCornerShape(10.dp)
-                    val noticeTextColor = Color(0xFF4E5661)
-                    val noticeBackground = Color(0xFFF1F3F5)
-                    val noticeBorder = Color(0xFFD9DEE5)
+                    val noticeTextColor = if (positive) Color(0xFF246B3D) else Color(0xFF9C2F2F)
+                    val noticeBackground = if (positive) Color(0xFFEFF8F1) else Color(0xFFFFF1F1)
+                    val noticeBorder = if (positive) Color(0xFFCDE8D2) else Color(0xFFF1C7C7)
                     Spacer(Modifier.height(12.dp))
                     Text(
                         text = it,

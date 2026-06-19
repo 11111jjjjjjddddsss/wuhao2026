@@ -338,6 +338,19 @@ preinstall_migrations_backup=''
 preinstall_gomod_backup=''
 preinstall_gosum_backup=''
 preinstall_revision_backup=''
+nginx_backup=''
+admin_nginx_backup=''
+
+restore_nginx_after_switch() {
+  if [ -n "`$nginx_backup" ] && [ -f "`$nginx_backup" ]; then
+    cp -a "`$nginx_backup" "`$nginx_site"
+    if [ -n "`$admin_nginx_backup" ] && [ -f "`$admin_nginx_backup" ]; then
+      cp -a "`$admin_nginx_backup" "`$admin_nginx_site"
+    fi
+    nginx -t && systemctl reload nginx || true
+  fi
+  systemctl stop "`$inactive_service" 2>/dev/null || true
+}
 
 restore_pre_switch_install() {
   if [ "`$installed_new_binary" != "1" ] || [ "`$switch_completed" = "1" ]; then
@@ -368,7 +381,7 @@ restore_pre_switch_install() {
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
 
-trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_pre_switch_install; fi; exit "`$status"' EXIT
+trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_nginx_after_switch; restore_pre_switch_install; fi; exit "`$status"' EXIT
 
 echo reassemble
 rm -f "`$archive"
@@ -497,7 +510,6 @@ grep -q "\"revision\":\"`$commit\"" "`$upstream_body" || { echo "upstream health
 echo switch-nginx
 nginx_backup="`$nginx_site.bak-`$(date +%Y%m%d%H%M%S)"
 cp -a "`$nginx_site" "`$nginx_backup"
-admin_nginx_backup=''
 if [ -f "`$admin_nginx_site" ]; then
   admin_nginx_backup="`$admin_nginx_site.bak-`$(date +%Y%m%d%H%M%S)"
   cp -a "`$admin_nginx_site" "`$admin_nginx_backup"
@@ -541,17 +553,6 @@ if ! nginx -t; then
 fi
 systemctl reload nginx
 
-restore_nginx_after_switch() {
-  if [ -f "`$nginx_backup" ]; then
-    cp -a "`$nginx_backup" "`$nginx_site"
-    if [ -n "`$admin_nginx_backup" ]; then
-      cp -a "`$admin_nginx_backup" "`$admin_nginx_site"
-    fi
-    nginx -t && systemctl reload nginx || true
-  fi
-  systemctl stop "`$inactive_service" 2>/dev/null || true
-}
-
 public_health_ready=''
 for i in `$(seq 1 20); do
   health_status=`$(curl -sS --resolve api.nongjiqiancha.cn:443:127.0.0.1 -o "`$health_body" -w '%{http_code}' https://api.nongjiqiancha.cn/healthz || true)
@@ -590,7 +591,6 @@ if [ "`$admin_status" != "401" ]; then
   exit 22
 fi
 
-switch_completed=1
 echo drain-old-slot
 systemctl enable "`$inactive_service" >/dev/null
 systemctl disable "`$active_service" >/dev/null 2>&1 || true
@@ -600,6 +600,7 @@ systemd-run --unit="`$drain_unit" --on-active="`${drain_seconds}s" /bin/sh -c "s
   echo "failed to schedule old slot drain stop; leaving old slot running" >&2
 }
 systemctl is-active "`$inactive_service"
+switch_completed=1
 "@
 
 Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-deploy-$Commit.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null

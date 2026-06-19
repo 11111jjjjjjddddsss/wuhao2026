@@ -43,6 +43,26 @@ function Shorten-Text {
     return $text.Substring(0, $Max) + "..."
 }
 
+function Test-ObjectProperty {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+    return $null -ne $Object -and $null -ne $Object.PSObject.Properties[$Name]
+}
+
+function Assert-ObjectProperty {
+    param(
+        [object]$Object,
+        [string]$Name,
+        [string]$Label
+    )
+    if (-not (Test-ObjectProperty -Object $Object -Name $Name)) {
+        Write-Host ("status=failed error=monitoring_response_missing_{0}" -f $Label)
+        exit 4
+    }
+}
+
 function Get-LocalAdminSmokeSecret {
     param([string[]]$Names)
     $secretPath = Join-Path $env:USERPROFILE ".nongjiqiancha\prod-secrets.json"
@@ -103,6 +123,13 @@ try {
     Write-Host ("login=ok role={0} csrf=present" -f ($(if ($role) { $role } else { "unknown" })))
 
     $report = Invoke-RestMethod -Method Get -Uri (Join-AdminUrl "/admin-api/v1/monitoring") -WebSession $session -TimeoutSec $TimeoutSec
+    Assert-ObjectProperty -Object $report -Name "action_items" -Label "action_items"
+    Assert-ObjectProperty -Object $report -Name "launch_readiness" -Label "launch_readiness"
+    Assert-ObjectProperty -Object $report -Name "queues" -Label "queues"
+    Assert-ObjectProperty -Object $report.queues -Name "support_needs_reply" -Label "queues_support_needs_reply"
+    Assert-ObjectProperty -Object $report.queues -Name "quota_consume_pending" -Label "queues_quota_consume_pending"
+    Assert-ObjectProperty -Object $report.queues -Name "memory_pending_jobs" -Label "queues_memory_pending_jobs"
+    Assert-ObjectProperty -Object $report.queues -Name "daily_agri_status" -Label "queues_daily_agri_status"
     $items = @($report.action_items)
     foreach ($item in $items) {
         $level = ([string]$item.level).Trim().ToLowerInvariant()
@@ -184,7 +211,10 @@ try {
     }
 }
 
-Write-Host ("summary bad={0} warn={1} manual_bad={2} manual_warn={3} launch_warn={4}" -f $bad, $warn, $manualBad, $manualWarn, $launchWarn)
+Write-Host ("summary scope=daily_actions_only bad={0} warn={1} manual_bad={2} manual_warn={3} launch_warn={4}" -f $bad, $warn, $manualBad, $manualWarn, $launchWarn)
+if ($manualWarn -gt 0 -or $launchWarn -gt 0) {
+    Write-Host ("ignored_attention scope=daily_actions_only manual_warn={0} launch_warn={1}" -f $manualWarn, $launchWarn)
+}
 if ($bad -gt 0) {
     Write-Host "status=failed"
     exit 1

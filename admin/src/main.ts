@@ -272,7 +272,7 @@ function topbarHTML(): string {
     <header class="topbar">
       <div class="topbar-left">
         <span class="env-badge">Production</span>
-        <span class="muted small">管理 API：/admin-api/v1</span>
+        <span class="muted small topbar-api">管理 API：/admin-api/v1</span>
       </div>
       <div class="topbar-right">
         <span class="role-badge">${escapeHTML(user?.role || "unknown")}</span>
@@ -2904,7 +2904,7 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
       </label>
       <label class="checkline"><input type="checkbox" name="enabled" ${config.enabled ? "checked" : ""} /> 对外启用更新</label>
       <div class="row-actions">
-        <button class="button primary" type="submit">${config.enabled ? "保存并更新发布" : "保存配置 / 启用发布"}</button>
+        <button class="button primary" type="submit">${config.enabled ? "保存并启用更新" : "保存更新配置"}</button>
         <button
           class="button"
           type="button"
@@ -2924,7 +2924,7 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
 function appUpdateEventsTable(rows: AdminAppUpdateEvent[]): string {
   if (!rows.length) return emptyState("没有发布历史", "后台还没有保存过 Android 更新配置。");
   return `
-    <table>
+    <table class="table">
       <thead>
         <tr>
           <th>时间</th><th>动作</th><th>版本</th><th>状态</th><th>物料</th><th>操作人</th><th>说明</th>

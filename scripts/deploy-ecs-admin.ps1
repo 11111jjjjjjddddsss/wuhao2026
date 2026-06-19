@@ -442,6 +442,20 @@ expect_status() {
 if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_status "admin-http-redirect" "301" -H "Host: `$domain" http://127.0.0.1/
   expect_status "admin-https-root" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/"
+  admin_root_body='/tmp/nongji-admin-root.html'
+  admin_root_status=`$(curl -sS -k --resolve "`$domain:443:127.0.0.1" -o "`$admin_root_body" -w '%{http_code}' "https://`$domain/" || true)
+  if [ "`$admin_root_status" != "200" ]; then
+    echo "admin root body probe status mismatch: `$admin_root_status" >&2
+    exit 20
+  fi
+  grep -q 'id="app"' "`$admin_root_body" || { echo 'admin root missing app marker' >&2; exit 20; }
+  grep -q '/assets/' "`$admin_root_body" || { echo 'admin root missing assets marker' >&2; exit 20; }
+  first_js=`$(grep -oE 'src="[^"]*/assets/[^"]+\.js"' "`$admin_root_body" | head -1 | sed -E 's/^src="([^"]+)"/\1/' || true)
+  if [ -z "`$first_js" ]; then
+    echo 'admin root missing first js asset' >&2
+    exit 20
+  fi
+  expect_status "admin-https-first-js" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain`$first_js"
   expect_status "admin-https-auth-me" "401" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/admin-api/v1/auth/me"
 else
   echo 'admin certificate missing after deploy' >&2

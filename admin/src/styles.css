@@ -335,6 +335,16 @@ button {
   gap: 10px;
 }
 
+.topbar-left,
+.topbar-right {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.topbar-api {
+  overflow-wrap: anywhere;
+}
+
 .row-actions {
   flex-wrap: wrap;
 }
@@ -1821,7 +1831,7 @@ button {
   .sidebar {
     position: static;
     height: auto;
-    max-height: 42vh;
+    max-height: 34vh;
   }
 
   .topbar,
@@ -1833,6 +1843,12 @@ button {
   .filter-form {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .topbar-left,
+  .topbar-right {
+    width: 100%;
+    justify-content: flex-start;
   }
 
   .filters {
