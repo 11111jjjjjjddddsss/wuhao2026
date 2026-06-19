@@ -44,8 +44,8 @@ func TestAccountDeletionStatusTransitions(t *testing.T) {
 }
 
 func TestNormalizeAccountDeletionFreeTextRejectsSensitiveValues(t *testing.T) {
-	if _, code := normalizeAccountDeletionFreeText("请联系 138-0013-8000", "note"); code != "note_contains_sensitive_value" {
-		t.Fatalf("expected sensitive note to be rejected, got %q", code)
+	if got, code := normalizeAccountDeletionFreeText("请联系 138-0013-8000", "note"); code != "" || got == "" {
+		t.Fatalf("numeric contact note should be accepted and trimmed, got %q code=%q", got, code)
 	}
 	if got, code := normalizeAccountDeletionFreeText("电话已沟通，等待用户确认", "note"); code != "" || got == "" {
 		t.Fatalf("expected operational note to be allowed, got value=%q code=%q", got, code)

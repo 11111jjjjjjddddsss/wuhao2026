@@ -5,7 +5,11 @@
 
 ## 2026-06-19
 
-- 继续按“不能让后台扣次失败挡住用户体验”收口额度待补扣后台治理：`quota_consume_outbox` 状态扩展为 `pending / done / failed / needs_ops / waived / uncollectable`，worker 自动重试到阈值后转 `needs_ops` 并停止自动噪声；新增后台只读列表和 owner 操作接口，会员额度页展示“扣次补偿队列”，owner 需输入确认文字才能重试、豁免或标记不可追回，操作写审计且不记录备注正文；监控面板待补扣行动项跳转会员额度页。用户下一轮聊天仍不会因待补扣 `pending / failed / needs_ops` 被卡住。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡、`max_tokens` 或用户 / 客服内容拦截，也不部署线上服务。
+- 修复记忆提取里一处容易把正常并发误判 stale 的边界：`TouchSessionContext` 重复写入时不再更新 `session_ab.updated_at`，只更新地区、地区来源、可信度和最后活跃时间。这样用户马上发第 7 轮、后端只是记录地区 / 活跃时间，不会把第 6 轮冻结记忆 job 的写回版本打乱；真正推进快照版本的仍是完整 AI 回复归档、记忆写回、清空历史等会改变聊天 / 记忆事实的写入。新增单测锁住该 SQL 行为，现有记忆写回继续用 `round_total + updated_at + session_generation + cleared_at` 事务校验，不新增记忆提示词修改、不加模型输出过滤或 `max_tokens`。
+
+- 按用户“消费 / 充值 / 购买 / 扣次应该全自动，不可能天天盯后台”的拍板，继续把额度待补扣从“后台可人工处理”推进到“后台自动追账 + 自动终结 + 异常提醒”：`needs_ops` 不再等同于停止自动处理，数据库短抖、锁等待、连接超时等可重试错误会按默认 6 小时低频自动追账，成功后转 `done`；历史或新产生的 `needs_ops` 到期后也会继续被 worker 捞起处理；`QUOTA_EXHAUSTED` 这类极少数不能安全追扣的业务边界不拿未来权益乱扣，会自动转 `uncollectable` 作为对账记录关闭，后台显示为“自动终结”。会员额度页和监控文案改为“扣次自动对账 / 自动追账”，不再把待补扣包装成 owner 日常待办；owner 操作接口只作为应急修账工具保留。SLS 告警脚本 / 巡检脚本新增 `nongji-quota-outbox-needs-ops` 与 `nongji-summary-failed` 两条规则，但记忆摘要普通模型失败 / 写文档失败不发邮件，只有待补偿状态写回失败才提醒；新增只读脚本 `scripts/check-admin-monitoring-actions.ps1`，可用后台账号读取 `/admin-api/v1/monitoring` 并把行动项脱敏输出成机器可读状态，默认不把上线准备 attention 当日常故障。本机已创建低权限 `ops_readonly` 自动巡检账号 `codex_ops_monitor`，密码只保存到本机私密 `prod-secrets.json`；本机 Codex 自动化 `运维自动化` 每天 23:00 可自动登录后台巡检，不再因缺凭据跳过。部署脚本也新增默认拒绝 `server-go` 脏工作区，避免未提交代码被打包上线但 revision 仍显示 HEAD。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`。
+
+- 继续按“不能让后台扣次失败挡住用户体验”收口额度待补扣后台治理：`quota_consume_outbox` 状态扩展为 `pending / done / failed / needs_ops / waived / uncollectable`，worker 自动重试到阈值后转 `needs_ops`；先补过 owner 应急接口，随后已按“全自动”口径把日常页面收成“扣次自动对账”，由系统继续追账或自动终结，owner 接口只作为技术应急工具保留。用户下一轮聊天仍不会因待补扣 `pending / failed / needs_ops` 被卡住。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡、`max_tokens` 或用户 / 客服内容拦截，也不部署线上服务。
 
 - 继续按“仓库有失败推送 / 全盘挑刺 / 联网校准”收口：先确认所谓失败推送实际是 GitHub Android CI 红灯，不是 git push 失败；`e851da48` 已修正吐字节奏 parity 断言并跑绿 Android CI / Project Memory。随后补三处实质边角：聊天表格正文续行必须有表格边界，表格后一段普通 `A | B` 文字不会被吞进上一张表，双反引号行内代码里的 `|` 也不会拆成假列；今日农情只有实际进入当前 `LazyColumn` 可见 item 范围后才算“用户已看到”，只保存远端展示记录或插入 timeline 不会提前持久化 shown day 或携带 `today_agri_context_day`；旧本机账号迁移到手机号账号时同步复制 `quota_consume_outbox`，避免待补扣队列留在旧身份。另用仓库配置脚本刷新了 ECS 今日农情 systemd 脚本，远端脚本已是严格解析唯一 active slot、无固定 3000 回退；未触发一次性生成。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不加模型输出过滤、不发布正式 APK。
 

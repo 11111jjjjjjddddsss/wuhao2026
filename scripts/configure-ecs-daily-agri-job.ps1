@@ -3,6 +3,7 @@ param(
     [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
     [string]$BackendBaseUrl = "https://api.nongjiqiancha.cn",
     [string]$TimerCalendar = "*-*-* 21:35:00 UTC",
+    [string[]]$CatchupTimerCalendars = @("*-*-* 21:50:00 UTC", "*-*-* 22:10:00 UTC"),
     [switch]$RunOnce
 )
 
@@ -96,6 +97,7 @@ if ($normalizedBaseUrl -ne "https://api.nongjiqiancha.cn") {
     Write-Warning "BackendBaseUrl is kept only for backward-compatible CLI shape; the ECS timer calls the local active slot via Nginx config."
 }
 $escapedTimerCalendar = $TimerCalendar
+$catchupTimerCalendarLines = ($CatchupTimerCalendars | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { "OnCalendar=$_" }) -join "`n"
 $runOnceFlag = if ($RunOnce) { "1" } else { "0" }
 
 $remoteScript = @'
@@ -153,6 +155,7 @@ Description=Run Nongji Qiancha daily agri generation every morning (Asia/Shangha
 
 [Timer]
 OnCalendar=__TIMER_CALENDAR__
+__CATCHUP_TIMER_CALENDARS__
 Persistent=true
 RandomizedDelaySec=300
 Unit=nongji-daily-agri.service
@@ -177,6 +180,7 @@ echo '== last service =='
 systemctl status nongji-daily-agri.service --no-pager || true
 '@
 $remoteScript = $remoteScript.Replace("__TIMER_CALENDAR__", $escapedTimerCalendar)
+$remoteScript = $remoteScript.Replace("__CATCHUP_TIMER_CALENDARS__", $catchupTimerCalendarLines)
 $remoteScript = $remoteScript.Replace("__RUN_ONCE__", $runOnceFlag)
 
 Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-configure-daily-agri.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null

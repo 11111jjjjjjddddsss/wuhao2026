@@ -15,6 +15,8 @@ $expectedAlerts = @(
     @{ Name = "nongji-server-slow"; Logstore = "server-go"; Severity = 6; Query = "http_request_slow | select count(1) as cnt"; Condition = "cnt >= 5"; RepeatInterval = "60m" },
     @{ Name = "nongji-nginx-upstream"; Logstore = "nginx-error"; Severity = 8; Query = "upstream | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "30m" },
     @{ Name = "nongji-daily-agri-failed"; Logstore = "server-go"; Severity = 8; Query = "generate today agri card failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" },
+    @{ Name = "nongji-quota-outbox-needs-ops"; Logstore = "server-go"; Severity = 6; Query = "quota consume outbox auto marked uncollectable OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "6h" },
+    @{ Name = "nongji-summary-failed"; Logstore = "server-go"; Severity = 6; Query = "keep memory pending failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "6h" },
     @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8; Query = "missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" }
 )
 

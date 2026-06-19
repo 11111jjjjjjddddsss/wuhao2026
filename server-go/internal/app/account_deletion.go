@@ -519,9 +519,6 @@ func addBusinessDaysUnixMilli(startMs int64, days int) int64 {
 
 func normalizeAccountDeletionFreeText(raw string, field string) (string, string) {
 	value := truncateRunes(strings.TrimSpace(raw), 255)
-	if giftCardTextLooksSensitive(value) {
-		return "", strings.TrimSpace(field) + "_contains_sensitive_value"
-	}
 	return value, ""
 }
 

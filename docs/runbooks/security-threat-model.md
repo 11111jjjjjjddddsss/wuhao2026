@@ -45,7 +45,7 @@
 - 第一版管理后台已部署到 `https://admin.nongjiqiancha.cn/`，并完成后台域名、Nginx 静态托管、`/admin-api/` 反代、HTTPS、bootstrap 初始化和 bootstrap 环境变量清理；当前 `/internal/*` 仍保留共享 secret 过渡入口给脚本兼容，不能把 secret 放进浏览器前端
 - Android 长期 auth token 仍保存在普通 SharedPreferences；备份已禁用，但 Root、恶意调试或设备被拿到时仍可能被窃取。后续可评估 EncryptedSharedPreferences、设备管理和远程吊销
 - 没买 WAF / 高防时，普通 Web 扫描和脚本刷接口主要靠 Nginx / Go / Redis 限流；大流量 DDoS 超过基础防护仍可能不可用
-- SLS 已有 5 条 AlertHub 最小告警，并已绑定邮件行动策略和最小仪表盘；当前不启用短信 / 电话 / 机器人，仍不能自动处置，第一封邮件送达需要在真实或测试告警触发时确认
+- SLS 已有 AlertHub 最小告警，并已绑定邮件行动策略和最小仪表盘；当前不启用短信 / 电话 / 机器人，仍不能自动处置，第一封邮件送达需要在真实或测试告警触发时确认
 - 多 ECS 前，记忆文档摘要 running guard 仍需升级为 Redis / MySQL lease，避免跨实例重复抽取
 
 ## 后续优先级

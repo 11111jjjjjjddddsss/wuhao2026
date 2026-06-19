@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"regexp"
 	"strings"
 	"testing"
@@ -73,6 +74,29 @@ func TestGiftCardTextLooksSensitiveAllowsOperationalNotes(t *testing.T) {
 	}
 }
 
+func TestGiftCardRedeemHTTPStatusSeparatesBusinessAndSystemFailures(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want int
+	}{
+		{name: "invalid code", err: errGiftCardInvalidCode, want: http.StatusBadRequest},
+		{name: "not found", err: errGiftCardNotFound, want: http.StatusBadRequest},
+		{name: "inactive", err: errGiftCardInactive, want: http.StatusBadRequest},
+		{name: "expired", err: errGiftCardExpired, want: http.StatusBadRequest},
+		{name: "lower tier", err: errGiftCardLowerTier, want: http.StatusBadRequest},
+		{name: "secret missing", err: errGiftCardSecretMissing, want: http.StatusServiceUnavailable},
+		{name: "database failure", err: errors.New("database unavailable"), want: http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := giftCardRedeemHTTPStatus(tt.err); got != tt.want {
+				t.Fatalf("giftCardRedeemHTTPStatus(%v) = %d, want %d", tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAdminGiftCardBatchConfirmationRequiresQuantityTierAndDays(t *testing.T) {
 	body := adminGiftCardCreateBatchRequest{Quantity: 3, Tier: "pro", DurationDays: 30, Confirmation: "3 Pro 31"}
 	if got := adminGiftCardBatchConfirmationError(body, 3, TierPro, 30); got != "gift_card_batch_confirmation_required" {
@@ -115,6 +139,23 @@ func TestNormalizeGiftCardBatchInputUsesImmediateValidFrom(t *testing.T) {
 	}
 	if input.ValidUntil == nil || *input.ValidUntil <= input.ValidFrom {
 		t.Fatalf("valid_until = %v, want after valid_from %d", input.ValidUntil, input.ValidFrom)
+	}
+}
+
+func TestNormalizeGiftCardBatchInputAllowsOperationalNumbersInNote(t *testing.T) {
+	now := time.Date(2026, 6, 16, 10, 30, 0, 0, time.UTC)
+	input, reason := normalizeGiftCardBatchInput(adminGiftCardCreateBatchRequest{
+		Name:         "代理测试卡",
+		Tier:         "pro",
+		DurationDays: 30,
+		Quantity:     1,
+		Note:         "线下发给 138-0013-8000，旧码 NQ-M7AB-CD23-EF45-GH67 已作废",
+	}, "owner", now)
+	if reason != "" {
+		t.Fatalf("normalizeGiftCardBatchInput reason = %q, want empty", reason)
+	}
+	if input.Note == "" {
+		t.Fatalf("note with operational numbers should be preserved")
 	}
 }
 

@@ -311,11 +311,6 @@ func (s *Server) handleAdminVoidGiftCard(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusBadRequest, "reason_required")
 		return
 	}
-	if giftCardTextLooksSensitive(reason) {
-		s.recordAdminGiftCardVoidValidationFailure(r, admin.User.Username, body, "reason_contains_sensitive_value")
-		s.writeError(w, http.StatusBadRequest, "reason_contains_sensitive_value")
-		return
-	}
 	if code := adminGiftCardVoidConfirmationError(body); code != "" {
 		s.recordAdminGiftCardVoidValidationFailure(r, admin.User.Username, body, code)
 		s.writeError(w, http.StatusBadRequest, code)
@@ -393,9 +388,9 @@ func (s *Server) handleGiftCardRedeem(w http.ResponseWriter, r *http.Request) {
 	result, err := s.store.RedeemGiftCard(r.Context(), body.Code, auth.UserID, region, maskIP(GetClientIP(r)), time.Now().UnixMilli())
 	if err != nil {
 		code := giftCardErrorCode(err)
-		status := http.StatusBadRequest
-		if errors.Is(err, errGiftCardSecretMissing) {
-			status = http.StatusServiceUnavailable
+		status := giftCardRedeemHTTPStatus(err)
+		if status >= http.StatusInternalServerError {
+			s.logger.Error("gift card redeem system failed", "error", err)
 		}
 		s.recordAdminAuditLog(r, "app_user:"+auth.UserID, "gift_card.redeem", "gift_cards", "", auth.UserID, false, status, map[string]any{"error_code": code})
 		s.writeError(w, status, code)
@@ -959,9 +954,6 @@ func normalizeGiftCardBatchInput(body adminGiftCardCreateBatchRequest, actor str
 		return GiftCardBatchInput{}, "invalid_valid_until"
 	}
 	note := truncateRunes(strings.TrimSpace(body.Note), 255)
-	if giftCardTextLooksSensitive(note) {
-		return GiftCardBatchInput{}, "note_contains_sensitive_value"
-	}
 	return GiftCardBatchInput{
 		Name:         truncateRunes(strings.TrimSpace(body.Name), 128),
 		Tier:         tier,
@@ -1190,6 +1182,21 @@ func giftCardErrorCode(err error) string {
 		return "gift_card_not_configured"
 	default:
 		return "gift_card_redeem_failed"
+	}
+}
+
+func giftCardRedeemHTTPStatus(err error) int {
+	switch {
+	case errors.Is(err, errGiftCardNotFound),
+		errors.Is(err, errGiftCardInactive),
+		errors.Is(err, errGiftCardExpired),
+		errors.Is(err, errGiftCardLowerTier),
+		errors.Is(err, errGiftCardInvalidCode):
+		return http.StatusBadRequest
+	case errors.Is(err, errGiftCardSecretMissing):
+		return http.StatusServiceUnavailable
+	default:
+		return http.StatusInternalServerError
 	}
 }
 

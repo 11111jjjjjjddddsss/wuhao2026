@@ -247,7 +247,7 @@ func (s *Store) MarkQuotaConsumeOutboxDone(ctx context.Context, userID string, c
 		     next_attempt_at = 0,
 		     repaired_at = ?,
 		     updated_at = ?
-		 WHERE user_id = ? AND client_msg_id = ? AND status IN ('pending','failed')`,
+		 WHERE user_id = ? AND client_msg_id = ? AND status IN ('pending','failed','needs_ops')`,
 		repairedAt,
 		repairedAt,
 		userID,
@@ -275,20 +275,42 @@ func (s *Store) MarkQuotaConsumeOutboxFailed(ctx context.Context, userID string,
 	return err
 }
 
-func (s *Store) MarkQuotaConsumeOutboxNeedsOps(ctx context.Context, userID string, clientMsgID string, lastError string, nowMs int64) error {
+func (s *Store) MarkQuotaConsumeOutboxNeedsOps(ctx context.Context, userID string, clientMsgID string, lastError string, nextAttemptAt int64, nowMs int64) error {
 	_, err := s.db.ExecContext(
 		ctx,
 		`UPDATE quota_consume_outbox
 		 SET status = 'needs_ops',
 		     attempts = attempts + 1,
 		     last_error = ?,
-		     next_attempt_at = 0,
+		     next_attempt_at = ?,
 		     updated_at = ?
-		 WHERE user_id = ? AND client_msg_id = ? AND status IN ('pending','failed')`,
+		 WHERE user_id = ? AND client_msg_id = ? AND status IN ('pending','failed','needs_ops')`,
 		truncateRunes(strings.TrimSpace(lastError), 255),
+		nextAttemptAt,
 		nowMs,
 		userID,
 		clientMsgID,
+	)
+	return err
+}
+
+func (s *Store) MarkQuotaConsumeOutboxUncollectable(ctx context.Context, id int64, lastError string, nowMs int64) error {
+	if id <= 0 {
+		return nil
+	}
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE quota_consume_outbox
+		 SET status = 'uncollectable',
+		     last_error = ?,
+		     next_attempt_at = 0,
+		     repaired_at = ?,
+		     updated_at = ?
+		 WHERE id = ? AND status IN ('pending','failed','needs_ops')`,
+		truncateRunes(strings.TrimSpace(lastError), 255),
+		nowMs,
+		nowMs,
+		id,
 	)
 	return err
 }
@@ -358,9 +380,11 @@ func (s *Store) ListDueQuotaConsumeOutbox(ctx context.Context, limit int, nowMs 
 		ctx,
 		`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at, attempts
 		 FROM quota_consume_outbox
-		 WHERE status IN ('pending','failed') AND next_attempt_at <= ?
+		 WHERE (status IN ('pending','failed') AND next_attempt_at <= ?)
+		    OR (status = 'needs_ops' AND next_attempt_at <= ?)
 		 ORDER BY id ASC
 		 LIMIT ?`,
+		nowMs,
 		nowMs,
 		limit,
 	)

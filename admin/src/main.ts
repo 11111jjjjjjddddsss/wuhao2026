@@ -363,7 +363,7 @@ async function overviewPage(): Promise<string> {
               ${metricRow("活跃 App 登录 session", today.active_auth_sessions)}
               ${metricRow("问诊去重用户", today.chat_users)}
               ${metricRow("额度扣减", today.quota_deductions)}
-              ${metricRow("待补扣", today.quota_consume_pending ?? 0)}
+              ${metricRow("自动追账", today.quota_consume_pending ?? 0)}
               ${metricRow("近30天反馈会话", today.support_conversations)}
             </tbody>
           </table>
@@ -514,14 +514,14 @@ async function entitlementsPage(): Promise<string> {
   const quotaOutboxBlock = await quotaConsumeOutboxBlock();
   if (currentAdminRole() === "auditor") {
     return `
-      ${pageHead("会员额度", "查看会员总体情况和后台待补扣队列。审计角色不开放单用户权益查询。", "entitlements")}
+      ${pageHead("会员额度", "查看会员总体情况和自动扣次对账队列。审计角色不开放单用户权益查询。", "entitlements")}
       ${summaryBlock}
       ${quotaOutboxBlock}
     `;
   }
   return userScopedPage({
     title: "会员额度",
-    desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包、补偿和后台待补扣。",
+    desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包、补偿和自动扣次对账。",
     formID: "entitlements-form",
     inputName: "user_id",
     value: pageState.entitlementUserID,
@@ -742,8 +742,8 @@ async function accountDeletionPage(): Promise<string> {
       ${kpi("筛选状态", accountDeletionStatusLabel(pageState.accountDeletionStatus), pageState.accountDeletionUserID ? `账号 ${pageState.accountDeletionUserID}` : "全部账号")}
     </section>
     <div class="grid two" style="margin-top:12px">
-      ${notice("处理口径", "App 端提交的是注销申请，并立即退出当前设备；后台处理前先核验会员、订单、礼品卡、反馈和合规留存要求。这里的“已处理”表示线下处理流程已收口，不代表系统已自动物理删除全部数据。", "warn")}
-      ${notice("不要做什么", "不要把完整手机号、礼品卡完整码、密钥或内部排障细节写进处理备注；服务端会拦截这类敏感值。正式物理删除 / 匿名化规则后续按合规方案细化。", "info")}
+      ${notice("处理口径", "App 端提交的是注销申请，并立即退出当前设备；后台处理前先核验会员、订单、礼品卡、反馈和合规留存要求。这里的“流程已收口”表示线下处理流程已完成，不代表系统已自动物理删除全部数据。", "warn")}
+      ${notice("不要做什么", "处理备注按长度保存，不要主动写入密钥、礼品卡完整码或不必要的内部排障细节。正式物理删除 / 匿名化规则后续按合规方案细化。", "info")}
     </div>
     <section class="card">
       <div class="card-head"><div class="card-title">申请筛选</div><span class="small muted">默认看待处理</span></div>
@@ -1034,7 +1034,7 @@ async function healthPage(): Promise<string> {
         `)
         .join("")}
     </div>
-    <div style="margin-top:12px">${planningNotice("服务告警巡检", "服务 5xx、慢请求、网关异常、今日农情失败和智能问诊 / 认证配置错误按最近严格脚本巡检接入告警规则、邮件行动策略和最小仪表盘，资源水位另走云监控邮件；本页不实时读取阿里云告警规则，剩余重点是首封告警邮件送达确认和更细趋势。")}</div>
+    <div style="margin-top:12px">${planningNotice("服务告警巡检", "服务 5xx、慢请求、网关异常、今日农情失败、扣次补偿异常、记忆待补偿状态异常和智能问诊 / 认证配置错误按最近严格脚本巡检接入告警规则、邮件行动策略和最小仪表盘，资源水位另走云监控邮件；本页不实时读取阿里云告警规则，剩余重点是首封告警邮件送达确认和更细趋势。")}</div>
   `;
 }
 
@@ -1220,11 +1220,6 @@ async function handleAction(button: HTMLElement): Promise<void> {
   if (action === "clear-gift-card-codes") {
     lastGiftCardCodes = [];
     await render();
-    return;
-  }
-  if (action === "quota-outbox-action") {
-    if (!canManageQuotaOutbox()) return;
-    await updateQuotaConsumeOutbox(button);
     return;
   }
   if (action === "copy-text") {
@@ -1573,63 +1568,11 @@ async function submitManualTodayAgriCard(form: HTMLFormElement): Promise<void> {
   }, "人工发布失败");
 }
 
-async function updateQuotaConsumeOutbox(button: HTMLElement): Promise<void> {
-  const rawID = button.dataset.id || "";
-  const quotaAction = button.dataset.quotaAction || "";
-  const id = Number(rawID);
-  const labels: Record<string, string> = {
-    retry: "重试",
-    waive: "豁免",
-    uncollectable: "不可追回",
-  };
-  if (!Number.isFinite(id) || id <= 0 || !labels[quotaAction]) return;
-  let note = "";
-  if (quotaAction === "waive" || quotaAction === "uncollectable") {
-    const input = window.prompt("处理备注必填。写清原因，不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
-    if (input === null) return;
-    note = input.trim();
-    if (!note) {
-      window.alert("备注不能为空。");
-      return;
-    }
-  } else {
-    const input = window.prompt("重试备注，可留空。不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
-    if (input === null) return;
-    note = input.trim();
-  }
-  const confirmationText =
-    quotaAction === "retry" ? `重试 ${id}` : quotaAction === "waive" ? `豁免 ${id}` : `不可追回 ${id}`;
-  if (
-    !window.confirm(
-      [
-        `确认${labels[quotaAction]}这条扣次补偿记录？`,
-        `记录 ID：${id}`,
-        "这只处理后台账务队列，不会恢复成用户侧聊天限制。",
-      ].join("\n"),
-    )
-  ) {
-    return;
-  }
-  const typedConfirmation = window.prompt(`请输入 ${confirmationText} 确认操作。`);
-  if (typedConfirmation === null) return;
-  if (typedConfirmation.trim() !== confirmationText) {
-    window.alert("确认文字不一致，已取消操作。");
-    return;
-  }
-  await withButtonBusy(button, "处理中", async () => {
-    await apiFetch("/admin-api/v1/quota-consume-outbox/action", {
-      method: "POST",
-      json: { id, action: quotaAction, note, confirmation: typedConfirmation.trim() },
-    });
-    await render();
-  }, "处理失败");
-}
-
 async function updateAccountDeletionStatus(requestID: string, status: string, button?: HTMLElement): Promise<void> {
   if (!requestID || !status) return;
   const labels: Record<string, string> = {
     processing: "标记为处理中",
-    completed: "标记为已处理",
+    completed: "标记为流程已收口",
     rejected: "驳回申请",
     cancelled: "取消申请",
   };
@@ -1639,7 +1582,7 @@ async function updateAccountDeletionStatus(requestID: string, status: string, bu
     if (input === null) return;
     note = input.trim();
     if (!note) {
-      window.alert("已处理、驳回或取消注销申请时，处理备注不能为空。");
+      window.alert("流程收口、驳回或取消注销申请时，处理备注不能为空。");
       return;
     }
   }
@@ -2001,8 +1944,8 @@ async function quotaConsumeOutboxBlock(): Promise<string> {
     <section class="card" style="margin-top:12px">
       <div class="card-head">
         <div>
-          <div class="card-title">扣次补偿队列</div>
-          <div class="small muted">完整回答已归档但扣次还没结清的后台队列；不挡用户继续聊天。</div>
+          <div class="card-title">扣次自动对账</div>
+          <div class="small muted">完整回答已归档但扣次还没结清时，系统自动追账；极少数不能安全补扣的业务边界会自动终结为对账记录，不扣用户未来次数，不挡用户继续聊天。</div>
         </div>
         <span class="small muted">${entries.length} 条</span>
       </div>
@@ -2016,7 +1959,7 @@ async function quotaConsumeOutboxBlock(): Promise<string> {
 }
 
 function quotaConsumeOutboxTable(rows: AdminQuotaConsumeOutboxEntry[]): string {
-  if (!rows.length) return emptyState("没有待补扣", "后台没有 pending / failed / needs_ops 记录。");
+  if (!rows.length) return emptyState("自动对账正常", "后台没有未完成的扣次对账记录。");
   const canManage = canManageQuotaOutbox();
   return `
     <table class="table">
@@ -2027,13 +1970,13 @@ function quotaConsumeOutboxTable(rows: AdminQuotaConsumeOutboxEntry[]): string {
             (row) => `
               <tr>
                 <td>${row.id}</td>
-                <td>${statusPill(row.status, quotaOutboxStatusLevel(row.status))}</td>
+                <td>${statusPill(quotaOutboxStatusText(row.status), quotaOutboxStatusLevel(row.status))}</td>
                 <td><button class="link-button" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button><div class="small muted">${escapeHTML(row.client_msg_id)}</div></td>
                 <td>${escapeHTML(row.day_cn)}<div class="small muted">${escapeHTML(row.tier_at_completion || "free")} · ${formatTime(row.completion_at)}</div></td>
                 <td>${row.attempts}</td>
-                <td>${row.next_attempt_at ? formatTime(row.next_attempt_at) : "不自动重试"}</td>
+                <td>${row.next_attempt_at ? formatTime(row.next_attempt_at) : "系统复核中"}</td>
                 <td class="wrap">${escapeHTML(row.last_error || "")}</td>
-                <td>${canManage ? quotaOutboxActions(row) : `<span class="small muted">owner 可处理</span>`}</td>
+                <td>${canManage ? quotaOutboxActions(row) : `<span class="small muted">自动处理</span>`}</td>
               </tr>
             `,
           )
@@ -2048,27 +1991,26 @@ function quotaOutboxActions(row: AdminQuotaConsumeOutboxEntry): string {
     return `<span class="small muted">自动重试中</span>`;
   }
   if (row.status === "failed") {
-    return `
-      <div class="row-actions">
-        <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="retry" data-id="${row.id}">重试</button>
-      </div>
-    `;
+    return `<span class="small muted">自动追账中</span>`;
   }
   if (row.status !== "needs_ops") {
     return `<span class="small muted">已结束</span>`;
   }
-  return `
-    <div class="row-actions">
-      <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="retry" data-id="${row.id}">重试</button>
-      <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="waive" data-id="${row.id}">豁免</button>
-      <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="uncollectable" data-id="${row.id}">不可追回</button>
-    </div>
-  `;
+  return `<span class="small muted">自动追账中</span>`;
+}
+
+function quotaOutboxStatusText(status: string): string {
+  if (status === "pending") return "自动重试";
+  if (status === "failed" || status === "needs_ops") return "自动追账";
+  if (status === "done") return "已结清";
+  if (status === "waived") return "已豁免";
+  if (status === "uncollectable") return "自动终结";
+  return status;
 }
 
 function quotaOutboxStatusLevel(status: string): "ok" | "warn" | "bad" | "info" {
   if (status === "pending") return "warn";
-  if (status === "failed" || status === "needs_ops") return "bad";
+  if (status === "failed" || status === "needs_ops") return "warn";
   if (status === "done" || status === "waived" || status === "uncollectable") return "info";
   return "info";
 }
@@ -2244,7 +2186,7 @@ function accountDeletionFilterForm(): string {
           ${selectOption("", "全部", pageState.accountDeletionStatus)}
           ${selectOption("pending", "待处理", pageState.accountDeletionStatus)}
           ${selectOption("processing", "处理中", pageState.accountDeletionStatus)}
-          ${selectOption("completed", "已处理", pageState.accountDeletionStatus)}
+          ${selectOption("completed", "流程已收口", pageState.accountDeletionStatus)}
           ${selectOption("rejected", "已驳回", pageState.accountDeletionStatus)}
           ${selectOption("cancelled", "已取消", pageState.accountDeletionStatus)}
         </select>
@@ -2302,7 +2244,7 @@ function accountDeletionActions(row: AccountDeletionRequest): string {
   return `
     <div class="row-actions">
       ${row.status !== "processing" ? `<button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="processing">处理中</button>` : ""}
-      <button class="button primary" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="completed">已处理</button>
+      <button class="button primary" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="completed">流程已收口</button>
       <button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="rejected">驳回</button>
       <button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="cancelled">取消</button>
     </div>
@@ -2316,7 +2258,7 @@ function accountDeletionStatusLabel(status: string): string {
     case "processing":
       return "处理中";
     case "completed":
-      return "已处理";
+      return "流程已收口";
     case "rejected":
       return "已驳回";
     case "cancelled":
@@ -3213,7 +3155,7 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
     <table class="table">
       <thead>
         <tr>
-          <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>待补扣</th><th>App异常</th><th>登录排障</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
+          <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>自动追账</th><th>App异常</th><th>登录排障</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
         </tr>
       </thead>
       <tbody>
@@ -3258,6 +3200,8 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       : "当前无待处理注销申请";
   const authFailures = queues.auth_failures ?? 0;
   const crashReports = queues.crash_reports ?? 0;
+  const memoryPendingUsers = queues.memory_pending_users ?? 0;
+  const memoryPendingJobs = queues.memory_pending_jobs ?? 0;
   const crashRecency = latestCrashText(report.auth_logs);
   const authLevel = crashReports > 0 || authFailures >= 10 ? "bad" : authFailures > 0 ? "warn" : "ok";
   return `
@@ -3269,6 +3213,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", !update.enabled ? "已停更" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "warn" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可兑换`, giftBody, giftLevel)}
+      ${queueCard("记忆补偿", memoryPendingJobs || memoryPendingUsers, memoryPendingJobs || memoryPendingUsers ? `${memoryPendingUsers} 个账号 / ${memoryPendingJobs} 个冻结任务自动补偿中` : "当前无积压", "ok")}
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>
   `;

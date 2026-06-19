@@ -18,6 +18,7 @@ func TestAdminMonitoringActionItemsContract(t *testing.T) {
 			AuthFailures:           5,
 			CrashReports:           1,
 			AppUpdate: AdminMonitoringAppUpdate{
+				Enabled:                   true,
 				ConfigValid:               true,
 				DownloadArtifactsComplete: false,
 			},
@@ -48,6 +49,28 @@ func TestAdminMonitoringActionItemsContract(t *testing.T) {
 	if !hasAdminMonitoringActionTitle(items, "登录失败需要看") ||
 		!hasAdminMonitoringActionTitle(items, "App 闪退补报") {
 		t.Fatalf("missing auth/crash action items: %#v", items)
+	}
+}
+
+func TestAdminMonitoringDisabledAppUpdateMissingArtifactsIsNotDailyAction(t *testing.T) {
+	items := buildAdminMonitoringActionItems(AdminMonitoring{
+		Queues: AdminMonitoringQueues{
+			DailyAgriStatus:    "ready",
+			GiftCardBatchCount: 1,
+			GiftCardTotal:      1,
+			GiftCardActive:     1,
+			AppUpdate: AdminMonitoringAppUpdate{
+				Enabled:                   false,
+				ConfigValid:               true,
+				DownloadArtifactsComplete: false,
+			},
+		},
+	})
+	if hasAdminMonitoringActionTitle(items, "正式 APK 下载物料未齐") {
+		t.Fatalf("disabled app update should stay in launch readiness, not daily action items: %#v", items)
+	}
+	if !hasAdminMonitoringActionTitle(items, "当前没有必须马上处理的事项") {
+		t.Fatalf("expected no urgent action item for disabled app update: %#v", items)
 	}
 }
 
@@ -110,6 +133,83 @@ func TestAdminMonitoringSLSCopyMatchesCurrentOpsState(t *testing.T) {
 	}
 	assertContainsAll(t, capability.Body, "邮件行动策略", "最小仪表盘", "云监控邮件", "首封 SLS 告警邮件")
 	assertNotContains(t, capability.Body, "行动策略、仪表盘和资源水位告警仍待补")
+}
+
+func TestAdminMonitoringManualLaunchItemsDoNotBecomeProgramBlockers(t *testing.T) {
+	report := AdminMonitoring{
+		Health: AdminHealthStatus{
+			API:               "ok",
+			Bailian:           "ok",
+			SMS:               "ok",
+			Redis:             "ok",
+			UploadStorage:     "oss",
+			AuthStrict:        true,
+			DevOrderEndpoints: false,
+		},
+		Queues: AdminMonitoringQueues{
+			AppErrors:      99,
+			AuthFailures:   99,
+			CrashReports:   1,
+			AuditFailures:  1,
+			GiftCardTotal:  0,
+			GiftCardActive: 0,
+			SupportOpen:    1,
+			SupportReplied: 0,
+			SupportClosed:  0,
+			AppUpdate:      AdminMonitoringAppUpdate{ConfigValid: true, DownloadArtifactsComplete: true},
+		},
+	}
+	items := buildAdminMonitoringLaunchReadiness(report)
+	logs := findAdminMonitoringLaunchItem(items, "日志告警")
+	if logs == nil {
+		t.Fatalf("missing log alert readiness item: %#v", items)
+	}
+	if logs.Status != "attention" || !logs.Manual {
+		t.Fatalf("log alert readiness = %#v, want manual attention even when app quality action items exist", logs)
+	}
+	gift := findAdminMonitoringLaunchItem(items, "礼品卡权益")
+	if gift == nil {
+		t.Fatalf("missing gift card readiness item: %#v", items)
+	}
+	if gift.Status != "attention" {
+		t.Fatalf("gift card readiness status = %q, want attention instead of program blocker", gift.Status)
+	}
+}
+
+func TestAdminMonitoringInvalidDailyAgriContentIsActionItem(t *testing.T) {
+	items := buildAdminMonitoringActionItems(AdminMonitoring{
+		Queues: AdminMonitoringQueues{
+			DailyAgriStatus: "invalid_content",
+			DailyAgriError:  "content_json_invalid",
+		},
+	})
+	item := findAdminMonitoringActionItem(items, "今日农情内容结构异常")
+	if item == nil {
+		t.Fatalf("missing invalid daily agri action item: %#v", items)
+	}
+	if item.Level != "bad" || item.Route != "today-agri" {
+		t.Fatalf("invalid daily agri action item = %#v", item)
+	}
+}
+
+func TestAdminMonitoringMemoryPendingIsMetricOnly(t *testing.T) {
+	items := buildAdminMonitoringActionItems(AdminMonitoring{
+		Queues: AdminMonitoringQueues{
+			MemoryPendingUsers: 2,
+			MemoryPendingJobs:  3,
+			DailyAgriStatus:    "ready",
+			GiftCardBatchCount: 1,
+			GiftCardTotal:      1,
+			GiftCardActive:     1,
+			AppUpdate:          AdminMonitoringAppUpdate{ConfigValid: true, DownloadArtifactsComplete: true},
+		},
+	})
+	if hasAdminMonitoringActionTitle(items, "记忆摘要待补偿") {
+		t.Fatalf("ordinary pending memory jobs should stay a queue metric, not a daily action item: %#v", items)
+	}
+	if !hasAdminMonitoringActionTitle(items, "当前没有必须马上处理的事项") {
+		t.Fatalf("expected no urgent action item for ordinary pending memory jobs: %#v", items)
+	}
 }
 
 func TestAdminMonitoringHealthCountsPlainSMSStatus(t *testing.T) {

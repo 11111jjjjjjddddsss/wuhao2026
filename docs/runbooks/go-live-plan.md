@@ -53,7 +53,7 @@
 - DashScope 主 / 副模型 Key 已配置；继续按 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md) 固化来源、充值、告警和轮换责任。若后续要扩真实并发，必须使用不同阿里云主账号 Key；同一主账号多 Key 只适合轮换或应急。
 - 接手机号登录 / 服务端可验证 token，并在公开生产环境开启 `AUTH_STRICT=true`，逐步关闭裸 `X-User-Id` 兜底；正式 release APK 不使用共享静态 `SESSION_API_TOKEN`，由后端按真实用户动态签发 per-user token。
 - 接 OSS 图片存储，配置 `BASE_PUBLIC_URL / UPLOAD_BASE_URL`，确保模型能访问 https 图片。
-- SLS 最小日志集已接入服务端 JSON 日志和 Nginx error log，并已有 5 条 AlertHub 最小告警；已补邮件通知 / 最小仪表盘，后续继续覆盖主对话、上传、帮助与反馈、今日农情、检查更新、资源水位和模型调用失败。
+- SLS 最小日志集已接入服务端 JSON 日志和 Nginx error log，并已有 AlertHub 最小告警；已补邮件通知 / 最小仪表盘，后续继续覆盖主对话、上传、帮助与反馈、今日农情、检查更新、资源水位和模型调用失败。
 - 若首版暂不接 OSS，则 ECS 必须先保持单台；计划多后端实例前必须先把 `/upload` 和 `/uploads/` 从本机磁盘迁到 OSS 或等价共享对象存储。
 - 数据库迁移不要在多实例首次启动时抢跑；多实例发布前应把迁移改成单独发布步骤或补迁移锁。
 - 验证主聊天 SSE、图片上传、记忆文档摘要、今日农情、会员额度、帮助与反馈、礼品卡占位页 / 后端兑换接口、检查更新 APK 链路。
@@ -80,7 +80,7 @@
 .\scripts\check-launch-readiness.ps1
 ```
 
-默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、支付关闭护栏、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、费用中心总账巡检、短信发送统计和余额确认提示、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；如果当前 PowerShell 没有临时设置后台 smoke 凭据，登录后后台 smoke 会标成 attention，脚本退出码为 2，不再假绿。推荐使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`；`ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD` 是与单独 smoke 脚本一致的兼容别名。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。支付关闭护栏在正式支付未配置时会显示 `payment closed guard` attention：它只证明 Android 购买入口仍关闭、生产开发期订单端点仍关闭、回调 URL 和 runbook 边界齐全，不代表真实支付已接入。费用中心总账巡检会调用 `check-aliyun-costs.ps1`，把短信套餐包余额仍需控制台确认、模型资源包或当月账单需要关注、DYPNS / 融合认证只需确认不再使用且不自动续费 / 不新增购买等输出为 `aliyun costs` attention；已购融合认证包本身按沉没成本处理，不再作为上线前必须退款 / 退订动作。这是经营成本提醒，不代表 ECS / 后端不可用。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`，总门禁会把非 confirmed 状态保留为 attention。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
+默认会串联项目记忆校验、后台 surface 合同、Android debug / release 业务一致性、支付关闭护栏、ECS readiness、公网黑盒、SLS 告警严格巡检、资源容量严格巡检、费用中心总账巡检、短信发送统计和余额确认提示、后端账号资产归属 / 账号完整性巡检和“人工上线确认项”；登录后后台 smoke 优先使用 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`，兼容 `ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD`，也可读取本机私密 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 的 `admin_smoke_username/password`。本机日常自动巡检已使用低权限 `ops_readonly` 账号；正式上线需要 owner 全量 smoke 时仍应临时提供 owner 凭据并显式 `-RequireOwner`。日常只想看报告时可显式加 `-AllowAttentionExitZero`，正式上线门禁不要加。支付关闭护栏在正式支付未配置时会显示 `payment closed guard` attention：它只证明 Android 购买入口仍关闭、生产开发期订单端点仍关闭、回调 URL 和 runbook 边界齐全，不代表真实支付已接入。费用中心总账巡检会调用 `check-aliyun-costs.ps1`，把短信套餐包余额仍需控制台确认、模型资源包或当月账单需要关注、DYPNS / 融合认证只需确认不再使用且不自动续费 / 不新增购买等输出为 `aliyun costs` attention；已购融合认证包本身按沉没成本处理，不再作为上线前必须退款 / 退订动作。这是经营成本提醒，不代表 ECS / 后端不可用。短信统计巡检会校验阿里云接口状态，默认不按签名过滤，空统计默认短暂重试一次，并能看近期发送成功 / 失败 / 无回执趋势；它还会查询费用中心有效资源包，若没看到短信类套餐包会输出 `sms_package_status=not_visible_manual_required`，总门禁会把非 confirmed 状态保留为 attention。这些都不等于短信套餐包余额已人工确认；真实上架前仍要在短信服务控制台确认套餐包余量、到期、余量预警和自动复购。
 
 人工上线确认项用于把脚本无法自动证明的事项直接暴露在总门禁末尾。正式上架前逐项确认后，可在当前 PowerShell 临时设置对应环境变量为 `1 / true / yes / ok / ready / confirmed / done`；不要把这些确认变量写进仓库或长期 shell 配置。当前确认项包括：
 

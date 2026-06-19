@@ -30,6 +30,33 @@ function Get-ErrorBody {
     }
 }
 
+function Get-LocalAdminSmokeSecret {
+    param([string[]]$Names)
+    $secretPath = Join-Path $env:USERPROFILE ".nongjiqiancha\prod-secrets.json"
+    if (-not (Test-Path $secretPath)) {
+        return ""
+    }
+    try {
+        $secrets = Get-Content -Raw -Path $secretPath | ConvertFrom-Json
+        foreach ($name in $Names) {
+            $property = $secrets.PSObject.Properties[$name]
+            if ($null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+                return [string]$property.Value
+            }
+        }
+    } catch {
+        return ""
+    }
+    return ""
+}
+
+if ([string]::IsNullOrWhiteSpace($Username)) {
+    $Username = Get-LocalAdminSmokeSecret @("admin_smoke_username", "nongji_admin_username")
+}
+if ([string]::IsNullOrWhiteSpace($Password)) {
+    $Password = Get-LocalAdminSmokeSecret @("admin_smoke_password", "nongji_admin_password")
+}
+
 if ([string]::IsNullOrWhiteSpace($Username) -or [string]::IsNullOrWhiteSpace($Password)) {
     $message = "missing admin smoke credentials; set NONGJI_ADMIN_USERNAME/NONGJI_ADMIN_PASSWORD or ADMIN_SMOKE_USERNAME/ADMIN_SMOKE_PASSWORD"
     if ($SkipIfMissingCredentials) {

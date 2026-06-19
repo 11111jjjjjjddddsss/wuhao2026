@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"strings"
 	"time"
 )
 
@@ -10,6 +11,7 @@ const (
 	defaultQuotaConsumeRepairTimeout   = 10 * time.Second
 	quotaConsumeRepairBatchLimit       = 20
 	quotaConsumeRepairNeedsOpsAttempts = 12
+	defaultQuotaConsumeNeedsOpsRetry   = 6 * time.Hour
 )
 
 func (s *Server) startQuotaConsumeRepairWorker() {
@@ -60,11 +62,20 @@ func (s *Server) repairDueQuotaConsumes() {
 		nextNowMs := time.Now().UnixMilli()
 		nextAttempts := job.Attempts + 1
 		if nextAttempts >= quotaConsumeRepairNeedsOpsAttempts {
-			if markErr := s.store.MarkQuotaConsumeOutboxNeedsOps(ctx, job.UserID, job.ClientMsgID, err.Error(), nextNowMs); markErr != nil {
+			if quotaConsumeShouldAutoMarkUncollectable(err) {
+				if markErr := s.store.MarkQuotaConsumeOutboxUncollectable(ctx, job.ID, err.Error(), nextNowMs); markErr != nil {
+					s.logger.Warn("quota consume outbox mark uncollectable failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "error", markErr)
+					continue
+				}
+				s.logger.Warn("quota consume outbox auto marked uncollectable", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "attempts", nextAttempts, "error", err)
+				continue
+			}
+			nextAttemptAt := nextNowMs + int64(quotaConsumeNeedsOpsRetryDelay()/time.Millisecond)
+			if markErr := s.store.MarkQuotaConsumeOutboxNeedsOps(ctx, job.UserID, job.ClientMsgID, err.Error(), nextAttemptAt, nextNowMs); markErr != nil {
 				s.logger.Warn("quota consume outbox mark needs ops failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "error", markErr)
 				continue
 			}
-			s.logger.Warn("quota consume outbox needs owner repair", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "attempts", nextAttempts, "error", err)
+			s.logger.Warn("quota consume outbox needs ops automatic retry scheduled", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "attempts", nextAttempts, "nextAttemptAt", nextAttemptAt, "error", err)
 			continue
 		}
 		nextAttemptAt := nextNowMs + int64(quotaConsumeRepairBackoff(job.Attempts)/time.Millisecond)
@@ -74,6 +85,22 @@ func (s *Server) repairDueQuotaConsumes() {
 		}
 		s.logger.Warn("quota consume outbox repair failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "attempts", nextAttempts, "nextAttemptAt", nextAttemptAt, "error", err)
 	}
+}
+
+func quotaConsumeNeedsOpsRetryDelay() time.Duration {
+	delay := envDurationWithDefault("QUOTA_CONSUME_NEEDS_OPS_RETRY_SECONDS", defaultQuotaConsumeNeedsOpsRetry)
+	if delay <= 0 {
+		return defaultQuotaConsumeNeedsOpsRetry
+	}
+	return delay
+}
+
+func quotaConsumeShouldAutoMarkUncollectable(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(message, "quota_exhausted")
 }
 
 func quotaConsumeRepairBackoff(attempts int) time.Duration {

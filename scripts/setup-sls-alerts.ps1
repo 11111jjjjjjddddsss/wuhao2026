@@ -1,8 +1,8 @@
 param(
     [string]$RegionId = "cn-beijing",
     [string]$ProjectName = "nongjiqiancha-prod-1159547719787456",
-    [string]$ActionPolicyId = "",
-    [string]$DashboardId = "",
+    [string]$ActionPolicyId = "nongji-prod-email",
+    [string]$DashboardId = "nongji-prod-ops",
     [switch]$DryRun
 )
 
@@ -293,6 +293,26 @@ $alerts = @(
         Runbook = "docs/runbooks/today-agri-card.md";
     },
     @{
+        Name = "nongji-quota-outbox-needs-ops";
+        DisplayName = "Nongji quota outbox needs attention";
+        Description = "server-go Logstore detected quota consume outbox terminal failures or automatic uncollectable close events. Ordinary slow automatic retry scheduling is not alerted.";
+        Logstore = "server-go";
+        Query = "quota consume outbox auto marked uncollectable OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed | select count(1) as cnt";
+        Severity = 6;
+        RepeatInterval = "6h";
+        Runbook = "docs/runbooks/management-backend.md";
+    },
+    @{
+        Name = "nongji-summary-failed";
+        DisplayName = "Nongji memory pending state failed";
+        Description = "server-go Logstore detected memory summary retry-state persistence failures. Ordinary extraction failures stay pending and retry automatically.";
+        Logstore = "server-go";
+        Query = "keep memory pending failed | select count(1) as cnt";
+        Severity = 6;
+        RepeatInterval = "6h";
+        Runbook = "docs/runbooks/management-backend.md";
+    },
+    @{
         Name = "nongji-model-auth-config";
         DisplayName = "Nongji model or auth config";
         Description = "server-go Logstore detected model key or SMS critical config errors in 5 minutes.";
@@ -305,6 +325,12 @@ $alerts = @(
 )
 
 foreach ($alert in $alerts) {
+    if (-not $DryRun -and [string]::IsNullOrWhiteSpace($ActionPolicyId)) {
+        throw "ActionPolicyId is required for live SLS alert updates. Use -DryRun for preview, or pass -ActionPolicyId."
+    }
+    if (-not $DryRun -and [string]::IsNullOrWhiteSpace($DashboardId)) {
+        throw "DashboardId is required for live SLS alert updates. Use -DryRun for preview, or pass -DashboardId."
+    }
     Ensure-SlsAlert `
         -Name $alert.Name `
         -DisplayName $alert.DisplayName `
@@ -315,13 +341,6 @@ foreach ($alert in $alerts) {
         -Condition ($(if ($alert.ContainsKey("Condition")) { $alert.Condition } else { "cnt > 0" })) `
         -RepeatInterval ($(if ($alert.ContainsKey("RepeatInterval")) { $alert.RepeatInterval } else { "30m" })) `
         -Runbook ($(if ($alert.ContainsKey("Runbook")) { $alert.Runbook } else { "docs/runbooks/logs-sls.md" }))
-}
-
-if ([string]::IsNullOrWhiteSpace($ActionPolicyId)) {
-    Write-Warning "No ActionPolicyId was provided. Alerts will still enter SLS AlertHub, but external notification delivery remains unconfigured."
-}
-if ([string]::IsNullOrWhiteSpace($DashboardId)) {
-    Write-Warning "No DashboardId was provided. Alerts are not associated with a custom SLS dashboard yet."
 }
 
 Write-Host

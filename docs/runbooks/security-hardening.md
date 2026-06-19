@@ -23,7 +23,7 @@
 - 安全组公网入站仍只有 `80 / 443 / ICMP`，公网 SSH `22` 关闭
 - ECS 本机 `ssh` 服务 inactive / disabled，Go 服务只监听 `127.0.0.1:3000`
 - Nginx 配置语法 OK，公网黑盒 API / 官网 / 后台入口 ready，后台未登录仍返回 401
-- fail2ban active，云安全中心 agent 在线，SLS 5 条应用告警和云监控 9 条资源水位告警均 ready
+- fail2ban active，云安全中心 agent 在线，SLS 应用告警和云监控 9 条资源水位告警均 ready
 - 近期 Go 日志没有业务 5xx / 429；普通扫描多为 `/`、`/login`、`/mcp`、`/sse` 等路径，当前返回 404，不构成立刻购买 WAF 的理由
 - Nginx error 里有少量 TLS 握手失败和公网扫描噪声，属于公开 HTTPS 服务常见背景流量；后续如果数量持续放大或伴随 5xx / 带宽打满，再升级处理
 - Go 依赖和工具链补丁级安全复查：`govulncheck` 首次扫描发现本机 Go 1.26.2 标准库和旧 `golang.org/x/net` 有已修复漏洞命中调用链；已将 `server-go/go.mod` 钉到 `toolchain go1.26.4`，并把 `golang.org/x/net` 升到 `v0.53.0`。`server-go/Dockerfile` 也同步到 `golang:1.26.4-alpine`，GitHub server CI 已增加 `govulncheck ./...`。复查 `govulncheck ./...` 显示“Your code is affected by 0 vulnerabilities”。后续发布必须用该工具链重新编译线上二进制
@@ -47,7 +47,7 @@
 - Nginx 安全响应头：隐藏版本号、`nosniff`、`frame-ancestors / X-Frame-Options`、HSTS、Referrer Policy
 - Go 接口限流和 body 限制：即使绕过 Nginx 也有第二层保护
 - fail2ban：识别 SSH 暴力尝试；公网 SSH 已关后主要作为兜底观察
-- 日志巡检：当前已接 SLS 最小日志集和 5 条 AlertHub 最小告警，Nginx error、`journalctl` 和 App 自动日志继续作为兜底；SLS 邮件行动策略和最小仪表盘已补，后续确认第一封邮件送达
+- 日志巡检：当前已接 SLS 最小日志集和 AlertHub 最小告警，Nginx error、`journalctl` 和 App 自动日志继续作为兜底；SLS 邮件行动策略和最小仪表盘已补，后续确认第一封邮件送达
 
 ## 已执行加固
 

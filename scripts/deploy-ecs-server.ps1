@@ -5,6 +5,7 @@ param(
     [string]$MigrationDiffBase = "",
     [int]$ChunkSize = 20000,
     [switch]$AllowHighRiskMigrations,
+    [switch]$AllowDirtyWorktree,
     [switch]$PackageOnly
 )
 
@@ -136,8 +137,22 @@ function Wait-RunCommand {
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $serverDir = Join-Path $repoRoot "server-go"
+$headCommit = (& git -C $repoRoot rev-parse --short HEAD).Trim()
 if ([string]::IsNullOrWhiteSpace($Commit)) {
-    $Commit = (& git -C $repoRoot rev-parse --short HEAD).Trim()
+    $Commit = $headCommit
+} elseif ($Commit -ne $headCommit) {
+    throw "Production deploy packages the current worktree, so -Commit must match HEAD ($headCommit). Commit first or deploy from that commit's worktree."
+}
+
+if (-not $AllowDirtyWorktree) {
+    $serverWorktreeStatus = @(& git -C $repoRoot status --porcelain -- server-go)
+    if ($serverWorktreeStatus.Count -gt 0) {
+        Write-Host "server_go_worktree_status=dirty"
+        foreach ($line in $serverWorktreeStatus) {
+            Write-Host ("dirty_path={0}" -f $line)
+        }
+        throw "server-go worktree has uncommitted changes. Commit them before deploy, or pass -AllowDirtyWorktree for a deliberate local-only package."
+    }
 }
 
 $migrationRiskScript = Join-Path $PSScriptRoot "check-server-migration-risk.ps1"
@@ -209,6 +224,12 @@ try {
 
 $sha256 = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
 $shaPrefix = $sha256.Substring(0, 12)
+if ($AllowDirtyWorktree) {
+    $Commit = "$Commit-dirty-$shaPrefix"
+    $archiveWithDirtyRevision = Join-Path $tmpDir "server-go-src-$Commit.tgz"
+    Move-Item -LiteralPath $archive -Destination $archiveWithDirtyRevision -Force
+    $archive = $archiveWithDirtyRevision
+}
 $archiveInfo = Get-Item -LiteralPath $archive
 Write-Host "Packaged $($archiveInfo.FullName) ($($archiveInfo.Length) bytes)"
 Write-Host "SHA256 $sha256"

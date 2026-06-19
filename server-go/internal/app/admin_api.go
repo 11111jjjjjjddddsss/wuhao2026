@@ -183,6 +183,8 @@ type AdminMonitoringQueues struct {
 	GiftCardFailedAttempts int64                    `json:"gift_card_failed_attempts"`
 	AuditFailures          int64                    `json:"audit_failures"`
 	QuotaConsumePending    int64                    `json:"quota_consume_pending"`
+	MemoryPendingUsers     int64                    `json:"memory_pending_users"`
+	MemoryPendingJobs      int64                    `json:"memory_pending_jobs"`
 	AppErrors              int64                    `json:"app_errors"`
 	AuthFailures           int64                    `json:"auth_failures"`
 	CrashReports           int64                    `json:"crash_reports"`
@@ -1941,6 +1943,14 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if queues.QuotaConsumePending, err = s.CountPendingQuotaConsumeOutbox(ctx); err != nil {
 		return queues, err
 	}
+	queues.MemoryPendingUsers, err = s.countQuery(ctx, "SELECT COUNT(*) FROM session_ab WHERE pending_retry_b = 1 OR COALESCE(JSON_LENGTH(pending_memory_jobs_json), 0) > 0", nil)
+	if err != nil {
+		return queues, err
+	}
+	queues.MemoryPendingJobs, err = s.countQuery(ctx, "SELECT COALESCE(SUM(COALESCE(JSON_LENGTH(pending_memory_jobs_json), 0)), 0) FROM session_ab WHERE pending_retry_b = 1 OR COALESCE(JSON_LENGTH(pending_memory_jobs_json), 0) > 0", nil)
+	if err != nil {
+		return queues, err
+	}
 	if queues.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
 		return queues, err
 	}
@@ -2276,15 +2286,6 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Count: queues.AuthFailures,
 		})
 	}
-	if queues.QuotaConsumePending > 0 {
-		items = append(items, AdminMonitoringActionItem{
-			Title: "扣次补偿待处理",
-			Body:  "已有完整回答归档，但扣次补偿还未完成；系统会自动重试，长期失败会进会员额度页由 owner 重试、豁免或标记不可追回，不会挡用户聊天。",
-			Level: "warn",
-			Route: "entitlements",
-			Count: queues.QuotaConsumePending,
-		})
-	}
 	if report.AppUpdateLogs.CheckFailures > 0 || report.AppUpdateLogs.DownloadFailures > 0 || report.AppUpdateLogs.InstallFailures > 0 {
 		failures := report.AppUpdateLogs.CheckFailures + report.AppUpdateLogs.DownloadFailures + report.AppUpdateLogs.InstallFailures
 		level := "warn"
@@ -2383,28 +2384,19 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Level: "bad",
 			Route: "today-agri",
 		})
+	case "invalid_content", "content_json_invalid", "content_shape_invalid", "sources_json_invalid", "sources_shape_invalid":
+		items = append(items, AdminMonitoringActionItem{
+			Title: "今日农情内容结构异常",
+			Body:  firstNonEmpty(queues.DailyAgriError, "今日农情已生成但结构不可展示；这不是内容过滤，只是 JSON / 展示字段异常，需要补跑或人工发布。"),
+			Level: "bad",
+			Route: "today-agri",
+		})
 	case "pending", "running", "missing", "disabled", "":
 		items = append(items, AdminMonitoringActionItem{
 			Title: "今日农情未就绪",
 			Body:  "今天的农情卡片还没有 ready，发布前或早晨巡检时需要确认；必要时可在后台直接补跑。",
 			Level: "warn",
 			Route: "today-agri",
-		})
-	}
-	if queues.GiftCardBatchCount == 0 || queues.GiftCardTotal == 0 {
-		items = append(items, AdminMonitoringActionItem{
-			Title: "还没有生产礼品卡",
-			Body:  "生产库没有礼品卡批次和卡码；先在礼品卡页生成 1 张正式卡，再用 Android 礼品卡入口兑换测试。",
-			Level: "warn",
-			Route: "gift-cards",
-		})
-	} else if queues.GiftCardActive == 0 {
-		items = append(items, AdminMonitoringActionItem{
-			Title: "没有可兑换礼品卡",
-			Body:  "已有礼品卡记录，但当前没有未过期的 active 卡；测试兑换前需要新生成或检查有效期。",
-			Level: "warn",
-			Route: "gift-cards",
-			Count: queues.GiftCardTotal,
 		})
 	}
 	if queues.GiftCardFailedAttempts > 0 {
@@ -2425,7 +2417,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Count: queues.AuditFailures,
 		})
 	}
-	if !queues.AppUpdate.ConfigValid {
+	if queues.AppUpdate.Enabled && !queues.AppUpdate.ConfigValid {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "安装包配置非法",
 			Body:  "检查更新配置至少要有版本号；如果配置 APK 地址，必须使用 HTTPS。",
@@ -2433,7 +2425,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Route: "app-update",
 		})
 	}
-	if queues.AppUpdate.ConfigValid && !queues.AppUpdate.DownloadArtifactsComplete {
+	if queues.AppUpdate.Enabled && queues.AppUpdate.ConfigValid && !queues.AppUpdate.DownloadArtifactsComplete {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "正式 APK 下载物料未齐",
 			Body:  "上架前必须同时配置 HTTPS APK、SHA-256 和文件大小；物料不齐时后端不会向旧版 App 下发新包。",
@@ -2508,11 +2500,11 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	giftStatus := "ready"
 	giftBody := "有可兑换礼品卡，可在 Android 设置页兑换并在后台追溯账号ID。"
 	if queues.GiftCardBatchCount == 0 || queues.GiftCardTotal == 0 {
-		giftStatus = "blocked"
-		giftBody = "生产库还没有生成礼品卡；先在后台生成正式卡，才能支撑权益发放。"
+		giftStatus = "attention"
+		giftBody = "生产库还没有生成礼品卡；这是运营准备项，不影响免费版和主问诊，但发放权益前要先生成正式卡并完成兑换验收。"
 	} else if queues.GiftCardActive == 0 {
-		giftStatus = "blocked"
-		giftBody = "已有礼品卡记录，但当前没有未过期的 active 卡；先生成或检查有效期。"
+		giftStatus = "attention"
+		giftBody = "已有礼品卡记录，但当前没有未过期的 active 卡；这是发卡准备项，先生成或检查有效期。"
 	} else if queues.GiftCardFailedAttempts > 0 {
 		giftStatus = "attention"
 		giftBody = "已有可兑换卡，但最近 24 小时存在失败尝试；先看尾号和失败原因。"
@@ -2608,18 +2600,14 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner:       "发布",
 		Manual:      true,
 	})
-	slsStatus := "attention"
-	if queues.AppErrors >= 10 || queues.AuthFailures >= 10 || queues.CrashReports > 0 || queues.AuditFailures > 0 {
-		slsStatus = "blocked"
-	}
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:       "日志告警",
-		Status:      slsStatus,
-		Body:        "Go / Nginx 日志和 App 自动日志已接入；SLS 邮件行动策略、最小仪表盘和资源水位云监控邮件以最近严格巡检脚本为准，本页不实时读取云上规则；剩余重点是确认首封告警邮件真实送达。",
-		ConfirmHint: ternary(slsStatus == "attention", "用测试触发或真实告警确认 NongjiQianchaOps 邮箱收到首封 SLS / 云监控邮件；脚本只能证明规则和行动策略存在。", ""),
+		Status:      "attention",
+		Body:        "Go / Nginx 日志和 App 自动日志已接入；SLS 邮件行动策略、最小仪表盘和资源水位云监控邮件以最近严格巡检脚本为准，本页不实时读取云上规则；剩余重点是确认首封告警邮件真实送达。App 报错、崩溃和审计失败会在自动行动项里单独报警。",
+		ConfirmHint: "用测试触发或真实告警确认 NongjiQianchaOps 邮箱收到首封 SLS / 云监控邮件；脚本只能证明规则和行动策略存在。",
 		Route:       "app-logs",
 		Owner:       "运维",
-		Manual:      slsStatus == "attention",
+		Manual:      true,
 	})
 	supportStatus := "ready"
 	supportBody := "后台已支持待回复 / 已处理 / 已关闭队列、搜索、回复、关闭和重开；正式运营后再补坐席分配、标签、站外通知和保存 / 删除规则。"
@@ -2633,6 +2621,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Body:   supportBody,
 		Route:  "support",
 		Owner:  "客服 / 运营",
+		Manual: supportStatus == "attention",
 	})
 	accountDeletionStatus := "attention"
 	accountDeletionBody := "App 内已提供注销申请入口，用户提交后退出当前设备；后台可核验并标记处理进度，物理删除 / 匿名化规则仍需合规收口。"
@@ -2646,6 +2635,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Body:   accountDeletionBody,
 		Route:  "account-deletion",
 		Owner:  "客服 / 运营",
+		Manual: true,
 	})
 	return items
 }
@@ -2678,7 +2668,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
-		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
+		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败、扣次补偿异常、记忆待补偿状态异常和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
 }

@@ -236,3 +236,48 @@ func TestSetUserMemoryPendingIfCurrentGuardsSnapshotGenerationAndUpdatedAt(t *te
 		t.Fatalf("unmet sql expectations: %v", err)
 	}
 }
+
+func TestTouchSessionContextDoesNotAdvanceMemorySnapshotVersion(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	defer db.Close()
+
+	store := NewStore(db, nil)
+	query := regexp.QuoteMeta(`INSERT INTO session_ab(
+		   user_id,
+		   a_json,
+		   b_summary,
+		   round_total,
+		   updated_at,
+		   last_region,
+		   last_region_source,
+		   last_region_reliability,
+		   last_seen_at
+		 )
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON DUPLICATE KEY UPDATE
+		   last_region = VALUES(last_region),
+		   last_region_source = VALUES(last_region_source),
+		   last_region_reliability = VALUES(last_region_reliability),
+		   last_seen_at = VALUES(last_seen_at)`)
+
+	mock.ExpectExec(query).
+		WithArgs("acct_touch", "[]", "", 0, int64(1800000000000), "山东省寿光市", "gps", "reliable", int64(1800000000000)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := store.TouchSessionContext(
+		context.Background(),
+		"acct_touch",
+		"山东省寿光市",
+		RegionSourceGPS,
+		RegionReliable,
+		1800000000000,
+	); err != nil {
+		t.Fatalf("TouchSessionContext failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet sql expectations: %v", err)
+	}
+}

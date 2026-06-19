@@ -248,6 +248,77 @@ func TestUpdateQuotaConsumeOutboxAdminStatusWaivesRowTerminal(t *testing.T) {
 	}
 }
 
+func TestMarkQuotaConsumeOutboxNeedsOpsSchedulesSlowRetry(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_002_000)
+	nextAttemptAt := nowMs + int64(6*time.Hour/time.Millisecond)
+	mock.ExpectExec("UPDATE quota_consume_outbox").
+		WithArgs("database still unavailable", nextAttemptAt, nowMs, "acct_quota_needs_ops", "cm_needs_ops").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := store.MarkQuotaConsumeOutboxNeedsOps(context.Background(), "acct_quota_needs_ops", "cm_needs_ops", "database still unavailable", nextAttemptAt, nowMs); err != nil {
+		t.Fatalf("MarkQuotaConsumeOutboxNeedsOps failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestMarkQuotaConsumeOutboxUncollectableClosesBusinessMismatch(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_002_500)
+	mock.ExpectExec("UPDATE quota_consume_outbox").
+		WithArgs("QUOTA_EXHAUSTED", nowMs, nowMs, int64(45)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := store.MarkQuotaConsumeOutboxUncollectable(context.Background(), 45, "QUOTA_EXHAUSTED", nowMs); err != nil {
+		t.Fatalf("MarkQuotaConsumeOutboxUncollectable failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestListDueQuotaConsumeOutboxIncludesNeedsOpsForAutomaticRetry(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_003_000)
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at, attempts
+		 FROM quota_consume_outbox
+		 WHERE (status IN ('pending','failed') AND next_attempt_at <= ?)
+		    OR (status = 'needs_ops' AND next_attempt_at <= ?)
+		 ORDER BY id ASC
+		 LIMIT ?`)).
+		WithArgs(nowMs, nowMs, 20).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "client_msg_id", "day_cn", "tier_at_completion", "completion_at", "attempts"}).
+			AddRow(int64(44), "acct_quota_needs_ops", "cm_needs_ops", "20260619", "pro", nowMs-1000, 12))
+
+	jobs, err := store.ListDueQuotaConsumeOutbox(context.Background(), 20, nowMs)
+	if err != nil {
+		t.Fatalf("ListDueQuotaConsumeOutbox failed: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].ClientMsgID != "cm_needs_ops" || jobs[0].Attempts != 12 || jobs[0].Tier != TierPro {
+		t.Fatalf("jobs mismatch: %#v", jobs)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestQuotaConsumeShouldAutoMarkUncollectableOnlyForQuotaExhausted(t *testing.T) {
+	if !quotaConsumeShouldAutoMarkUncollectable(errors.New("QUOTA_EXHAUSTED")) {
+		t.Fatal("quota exhausted should be terminally closed instead of charging future quota")
+	}
+	if quotaConsumeShouldAutoMarkUncollectable(errors.New("lock wait timeout exceeded")) {
+		t.Fatal("temporary database errors should keep slow automatic retry")
+	}
+}
+
 func quotaOutboxAdminRows() *sqlmock.Rows {
 	return sqlmock.NewRows([]string{
 		"id",

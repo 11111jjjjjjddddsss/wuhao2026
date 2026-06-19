@@ -165,6 +165,8 @@ export interface AdminMonitoringQueues {
   gift_card_failed_attempts: number;
   audit_failures: number;
   quota_consume_pending: number;
+  memory_pending_users: number;
+  memory_pending_jobs: number;
   app_errors: number;
   auth_failures: number;
   crash_reports: number;

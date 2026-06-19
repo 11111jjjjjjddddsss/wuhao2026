@@ -28,7 +28,7 @@
 - 响应头会回写 `X-Request-Id`；App 自动日志、Nginx 和 Go journal 后续可用该 ID 串联排障
 - 健康检查 `/healthz` 和 `/uploads/` 静态图片成功请求默认降噪；但 4xx / 5xx 或慢请求仍会记录
 - 慢请求阈值由 `ACCESS_LOG_SLOW_MS` 控制，默认 `3000` 毫秒；`0` 表示关闭慢请求标记。`/api/chat/stream` 是正常 SSE 长连接，2026-06-12 起正常 200 长流会记录为 `http_sse_stream` 普通信息日志，不再进入 `http_request_slow`，避免真实聊天一多污染慢请求告警；5xx 仍按 `http_request_error` 记录
-- 2026-06-10 已创建 5 条最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 非 SSE 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / 认证关键配置错误。2026-06-12 已把模型 / 认证配置告警查询从宽泛 `dypns` 收窄到明确的配置错误关键词，避免普通 DYPNS 日志误触发；同日已绑定邮件行动策略 `nongji-prod-email` 和仪表盘 `nongji-prod-ops`。当前 SLS 应用告警先走邮件，不启用短信、电话或机器人，避免费用和噪音；ECS / RDS / Redis 资源水位另走云监控邮件告警，见 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)
+- 2026-06-10 已创建最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 非 SSE 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / 认证关键配置错误；2026-06-19 又补充额度补扣自动终结 / 终态写入失败和记忆摘要待补偿状态写回失败两条主动提醒规则。普通扣次慢重试排期、普通记忆摘要模型失败或写文档失败不会直接发邮件，因为它们已经有后台自动补偿；只有自动终结、终态写入失败或 `keep memory pending failed` 这类极小概率风险才提醒。2026-06-12 已把模型 / 认证配置告警查询从宽泛 `dypns` 收窄到明确的配置错误关键词，避免普通 DYPNS 日志误触发；同日已绑定邮件行动策略 `nongji-prod-email` 和仪表盘 `nongji-prod-ops`。当前 SLS 应用告警先走邮件，不启用短信、电话或机器人，避免费用和噪音；ECS / RDS / Redis 资源水位另走云监控邮件告警，见 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)
 
 ## SLS 告警规则
 
@@ -38,7 +38,7 @@
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1
 ```
 
-如果已经在 SLS 控制台创建好行动策略 / 仪表盘，可以把对应 ID 传给脚本，把 5 条规则统一绑定；不要把联系人手机号、机器人 webhook、邮箱或通知模板密钥写进仓库：
+如果已经在 SLS 控制台创建好行动策略 / 仪表盘，可以把对应 ID 传给脚本，把仓库期望的应用日志规则统一绑定；不要把联系人手机号、机器人 webhook、邮箱或通知模板密钥写进仓库：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\setup-sls-alerts.ps1 -ActionPolicyId <sls-action-policy-id> -DashboardId <sls-dashboard-id>
@@ -86,6 +86,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-data-
 | `nongji-server-slow` | `server-go` | `http_request_slow \| select count(1) as cnt` | `cnt >= 5` | 60 分钟 |
 | `nongji-nginx-upstream` | `nginx-error` | `upstream \| select count(1) as cnt` | `cnt > 0` | 30 分钟 |
 | `nongji-daily-agri-failed` | `server-go` | `generate today agri card failed \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
+| `nongji-quota-outbox-needs-ops` | `server-go` | `quota consume outbox auto marked uncollectable OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed \| select count(1) as cnt` | `cnt > 0` | 6 小时 |
+| `nongji-summary-failed` | `server-go` | `keep memory pending failed \| select count(1) as cnt` | `cnt > 0` | 6 小时 |
 | `nongji-model-auth-config` | `server-go` | `missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
 
 验证云上规则：
@@ -99,7 +101,7 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 
 - 这些规则是“最小生产兜底”，不是完整告警中心
 - 当前会进入 AlertHub，并通过行动策略 `nongji-prod-email` 走邮件通知；后台页面不会自动弹窗，App 用户也不会收到系统通知
-- 2026-06-13 只读巡检确认 5 条规则均存在、启用且进入 AlertHub，查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 均符合仓库期望；`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 返回 `status=ready`
+- 2026-06-13 只读巡检确认当时 5 条规则均存在、启用且进入 AlertHub；2026-06-19 起仓库期望规则扩展为 7 条，额外覆盖扣次补偿自动终结 / 终态写入失败和记忆摘要待补偿状态写回失败。巡检会校验查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 是否符合仓库期望；`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 应返回 `status=ready`
 - 后续仍需在真实或测试告警触发时确认第一封邮件可达，并继续补普通短信发送用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 
@@ -195,4 +197,4 @@ systemctl status nginx --no-pager
 - 暂不把所有 Nginx access log、聊天正文、AI 回复、图片 URL、手机号、token、模型 Key、数据库密码采进 SLS
 - 如果后续 App 自动日志要进 SLS，优先从 `client_app_logs` 做管理后台查询或脱敏聚合，不直接上传原始聊天内容
 - 如果日志量上涨，优先减少写入、减少索引字段、缩短保留期或对高频 App 事件采样，再评估 SLS 资源包、告警规则、仪表盘和更细的采集过滤
-- 不删除阿里云系统 / 产品托管 Project。若只是 `InstanceStatus:ArmsStopped` 这类 ARMS stopped 红点噪音，只评估事件订阅 / 消息通知静音，不动默认 CMS 工作空间、农技千查专用 SLS Project、SLS 5 条应用告警、云监控 9 条资源水位规则和 `NongjiQianchaOps` 联系人组
+- 不删除阿里云系统 / 产品托管 Project。若只是 `InstanceStatus:ArmsStopped` 这类 ARMS stopped 红点噪音，只评估事件订阅 / 消息通知静音，不动默认 CMS 工作空间、农技千查专用 SLS Project、SLS 应用告警、云监控 9 条资源水位规则和 `NongjiQianchaOps` 联系人组

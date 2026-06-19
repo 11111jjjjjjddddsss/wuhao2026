@@ -278,7 +278,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-e
 - `nongji-daily-agri.service`
 - `nongji-daily-agri.timer`
 
-默认 timer 使用 `*-*-* 21:35:00 UTC`，对应北京时间次日 `05:35` 左右；脚本会顺手 `-RunOnce` 触发一次，便于安装完立刻验证。ECS timer 是每天一次，`Persistent=true` 负责 ECS 停机错过时在启动后补触发；服务端生成流程内部最多做 2 次模型生成尝试，用来接住单次模型输出解析失败，不是每天启动两次 timer。2026-06-18 起，安装脚本生成的 ECS 侧 bash 会从 Nginx 配置解析唯一 active upstream port，解析结果不是唯一值时直接失败，不再悄悄 fallback 到固定端口，避免双端口切换后打到旧 slot。
+默认主 timer 使用 `*-*-* 21:35:00 UTC`，对应北京时间次日 `05:35` 左右；脚本还会默认追加 `21:50 UTC / 22:10 UTC` 两次早晨补查，防止 05:35 正好遇到未过期 pending lease 或外层短暂异常后当天没人再捞。多次触发仍调用同一个服务端生成接口：遇到人工锁定或 ready 内容会直接复用 / 跳过，不会覆盖人工稿，也不会重复发布；只有 missing、failed、过期 pending 或 ready 但结构不可展示时才会重新生成。脚本会顺手 `-RunOnce` 触发一次，便于安装完立刻验证；`Persistent=true` 负责 ECS 停机错过时在启动后补触发。服务端生成流程内部最多做 2 次模型生成尝试，用来接住单次模型输出解析失败。2026-06-18 起，安装脚本生成的 ECS 侧 bash 会从 Nginx 配置解析唯一 active upstream port，解析结果不是唯一值时直接失败，不再悄悄 fallback 到固定端口，避免双端口切换后打到旧 slot。
 
 ## 质量边界
 
