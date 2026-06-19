@@ -10,7 +10,9 @@ const adminTypes = read("admin/src/types.ts");
 const serverRoutes = read("server-go/internal/app/server.go");
 const adminAPI = read("server-go/internal/app/admin_api.go");
 const giftCards = read("server-go/internal/app/gift_cards.go");
-const serverSurface = `${adminAPI}\n${giftCards}`;
+const supportGo = read("server-go/internal/app/support.go");
+const uploadGo = read("server-go/internal/app/upload.go");
+const serverSurface = `${adminAPI}\n${giftCards}\n${supportGo}\n${uploadGo}`;
 
 const fail = [];
 
@@ -163,7 +165,7 @@ if (/\battrs\b|\bmasked_ip\b|device_model|os_version/.test(compactLogsBlock)) {
 }
 expectAdminPattern("readiness separates program attention", /程序需处理/);
 expectAdminPattern("monitoring shows program action strip", /程序需处理项/);
-expectAdminPattern("monitoring program strip excludes manual items", /filter\(\(row\)\s*=>\s*!row\.manual\s*&&\s*row\.status\s*!==\s*"ready"\)/);
+expectAdminPattern("monitoring program strip excludes manual and launch-only items", /filter\(\(row\)\s*=>\s*!row\.manual\s*&&\s*!row\.launch_only\s*&&\s*row\.status\s*!==\s*"ready"\)/);
 expectAdminPattern("monitoring program strip explains actionable work", /代码、配置、部署或后台操作/);
 expectAdminPattern("launch readiness cards show item owner type", /class="launch-kind \$\{row\.manual \? "manual" : "program"\}"/);
 expectAdminPattern("launch readiness cards distinguish manual items", /row\.manual \? "人工确认" : "程序处理"/);
@@ -193,6 +195,9 @@ expectServerPattern("gift card void validation failures are audited", /recordAdm
 expectAdminPattern("gift card page states immediate redemption policy", /生成后就是 active 可兑换卡/);
 expectAdminPattern("gift card redeemed KPI avoids activation wording", /权益已发放/);
 expectAdminPattern("gift card table uses redeem account label", /兑换账号ID/);
+expectAdminPattern("gift card note placeholder avoids sensitive identifiers", /用途备注，不写手机号、完整卡码或密钥/);
+expectAdminPattern("gift card status active is localized", /active:\s*\{\s*label:\s*"未兑换"/);
+expectAdminPattern("gift card attempt status is localized", /statusPill\("成功",\s*"ok"\)/);
 expectAdminPattern("gift card create button makes production effect clear", /生成真实可兑换卡/);
 expectAdminPattern("gift card monitoring shortcut is trace entry", /礼品卡追溯/);
 expectAdminPattern("gift card void requires typed keyword", /请输入 作废 确认作废这张礼品卡/);
@@ -216,6 +221,15 @@ expectAdminPattern("app update official url checks download host", /download\.no
 expectAdminPattern("app update rejects short-lived signed apk url", /短期签名参数的临时链接，不能配置到正式检查更新/);
 expectServerPattern("app update API rejects internal test apk url", /isOfficialAndroidAPKURL/);
 expectAdminPattern("support reply button says production user send", /发送给用户（生产）/);
+expectAdminPattern("support long history has truncation notice", /仅显示最近消息/);
+expectServerPattern("admin support messages use admin list limit", /ListSupportMessages\(ctx,\s*userID,\s*adminSupportMessageListLimit\)/);
+expectServerPattern("admin support message limit is explicit", /adminSupportMessageListLimit\s*=\s*200/);
+expectServerPattern("admin support images are normalized to same-origin paths", /adminSupportImageURLs/);
+expectServerPattern("support uploads are not publicly cached", /Cache-Control",\s*"private,\s*no-store"/);
+rejectAdminPattern("admin empty states should not say backend did not return", /后端未返回/);
+expectAdminPattern("launch readiness tracks launch-only attention", /launchOnlyAttention/);
+expectAdminPattern("program strip excludes launch-only items", /!row\.manual && !row\.launch_only && row\.status !== "ready"/);
+expectServerPattern("launch readiness exposes launch_only flag", /LaunchOnly\s+bool\s+`json:"launch_only,omitempty"`/);
 [
   "auth.login_network_failed",
   "auth.sms_send_failed",

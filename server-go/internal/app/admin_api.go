@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -279,6 +280,7 @@ type AdminMonitoringLaunchItem struct {
 	Route       string `json:"route,omitempty"`
 	Owner       string `json:"owner,omitempty"`
 	Manual      bool   `json:"manual,omitempty"`
+	LaunchOnly  bool   `json:"launch_only,omitempty"`
 }
 
 type AdminRegionMetric struct {
@@ -894,7 +896,7 @@ func (s *Server) handleAdminSupportMessages(w http.ResponseWriter, r *http.Reque
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
 	defer cancel()
-	messages, err := s.store.ListSupportMessages(ctx, userID, supportMessageListLimit)
+	messages, err := s.store.ListSupportMessages(ctx, userID, adminSupportMessageListLimit)
 	if err != nil {
 		s.logger.Error("admin list support messages failed", "userId", userID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -2423,7 +2425,8 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 			Level: "bad",
 			Route: "today-agri",
 		})
-	case "pending", "running", "missing", "disabled", "":
+	case "disabled":
+	case "pending", "running", "missing", "":
 		items = append(items, AdminMonitoringActionItem{
 			Title: "今日农情未就绪",
 			Body:  "今天的农情卡片还没有 ready，发布前或早晨巡检时需要确认；必要时可在后台直接补跑。",
@@ -2531,48 +2534,57 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	})
 	giftStatus := "ready"
 	giftBody := "有可兑换礼品卡，可在 Android 设置页兑换并在后台追溯账号ID。"
+	giftLaunchOnly := false
 	if queues.GiftCardBatchCount == 0 || queues.GiftCardTotal == 0 {
 		giftStatus = "attention"
 		giftBody = "生产库还没有生成礼品卡；这是运营准备项，不影响免费版和主问诊，但发放权益前要先生成正式卡并完成兑换验收。"
+		giftLaunchOnly = true
 	} else if queues.GiftCardActive == 0 {
 		giftStatus = "attention"
 		giftBody = "已有礼品卡记录，但当前没有未过期的 active 卡；这是发卡准备项，先生成或检查有效期。"
+		giftLaunchOnly = true
 	} else if queues.GiftCardFailedAttempts > 0 {
 		giftStatus = "attention"
 		giftBody = "已有可兑换卡，但最近 24 小时存在失败尝试；先看尾号和失败原因。"
 	}
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "礼品卡权益",
-		Status: giftStatus,
-		Body:   giftBody,
-		Route:  "gift-cards",
-		Owner:  "运营 / 后端",
+		Title:      "礼品卡权益",
+		Status:     giftStatus,
+		Body:       giftBody,
+		Route:      "gift-cards",
+		Owner:      "运营 / 后端",
+		LaunchOnly: giftLaunchOnly,
 	})
 	updateStatus := "attention"
 	updateBody := "版本号、HTTPS APK、SHA-256 和文件大小已齐，可进入真机覆盖安装验证；完成旧包覆盖安装前不要标成正式验收。"
+	updateLaunchOnly := false
 	if !queues.AppUpdate.Enabled {
 		updateStatus = "attention"
 		updateBody = "检查更新当前处于停更状态；用户点“检查更新”不会拿到新包。"
+		updateLaunchOnly = true
 	} else if !queues.AppUpdate.ConfigValid {
 		updateStatus = "blocked"
 		updateBody = "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。"
 	} else if !queues.AppUpdate.DownloadArtifactsComplete {
 		updateStatus = "attention"
 		updateBody = "检查更新配置合法，但正式下载物料未齐；上架前必须补 HTTPS APK、SHA-256 和文件大小，否则后端不会下发新包。"
+		updateLaunchOnly = true
 	}
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "安装包更新",
-		Status: updateStatus,
-		Body:   updateBody,
-		Route:  "app-update",
-		Owner:  "发布",
+		Title:      "安装包更新",
+		Status:     updateStatus,
+		Body:       updateBody,
+		Route:      "app-update",
+		Owner:      "发布",
+		LaunchOnly: updateLaunchOnly,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
-		Title:  "支付接入",
-		Status: "attention",
-		Body:   "微信 / 支付宝支付申请和真实回调未完成；购买入口保持关闭、开发期订单端点关闭时，不阻塞免费版、礼品卡内测或不含内购的正式上架。开放真实收费前必须完成申请、验签、回调、对账和权益发放闭环。",
-		Route:  "orders",
-		Owner:  "外部申请 / 后端",
+		Title:      "支付接入",
+		Status:     "attention",
+		Body:       "微信 / 支付宝支付申请和真实回调未完成；购买入口保持关闭、开发期订单端点关闭时，不阻塞免费版、礼品卡内测或不含内购的正式上架。开放真实收费前必须完成申请、验签、回调、对账和权益发放闭环。",
+		Route:      "orders",
+		Owner:      "外部申请 / 后端",
+		LaunchOnly: true,
 	})
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:  "App 备案",
@@ -3696,12 +3708,70 @@ func adminSupportMessageFromSupport(message SupportMessage, includeBody bool) Ad
 	if includeBody {
 		result.Body = message.Body
 		result.BodyExcerpt = truncateRunes(strings.TrimSpace(message.Body), adminExcerptRunes)
-		result.ImageURLs = message.ImageURLs
+		result.ImageURLs = adminSupportImageURLs(message.ImageURLs)
 	} else {
 		result.BodyRedacted = strings.TrimSpace(message.Body) != ""
 		result.ImagesRedacted = len(message.ImageURLs) > 0
 	}
 	return result
+}
+
+func adminSupportImageURLs(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	urls := make([]string, 0, len(values))
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		parsed, err := url.Parse(trimmed)
+		if err != nil {
+			continue
+		}
+		path := trimmed
+		if parsed.IsAbs() {
+			if parsed.Scheme != "https" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" || !adminSupportImageHostAllowed(parsed.Hostname()) {
+				continue
+			}
+			path = parsed.Path
+		} else if parsed.RawQuery != "" || parsed.Fragment != "" {
+			continue
+		}
+		if !isAdminSupportUploadPath(path) {
+			continue
+		}
+		urls = append(urls, path)
+	}
+	return urls
+}
+
+func adminSupportImageHostAllowed(host string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(host))
+	if normalized == "" {
+		return false
+	}
+	if normalized == "api.nongjiqiancha.cn" {
+		return true
+	}
+	base := resolvePublicBaseURL(nil)
+	if base == "" {
+		return false
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return false
+	}
+	return normalized == strings.ToLower(parsed.Hostname())
+}
+
+func isAdminSupportUploadPath(path string) bool {
+	const prefix = "/uploads/support/"
+	if !strings.HasPrefix(path, prefix) {
+		return false
+	}
+	return isPlainUploadFilename(strings.TrimPrefix(path, prefix))
 }
 
 func adminSupportSummaryFromSupport(summary *SupportSummary, includeBody bool) *AdminSupportSummary {

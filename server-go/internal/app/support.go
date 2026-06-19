@@ -24,6 +24,7 @@ import (
 const (
 	supportMessageMaxRunes                      = 2000
 	supportMessageListLimit                     = 100
+	adminSupportMessageListLimit                = 200
 	defaultSupportConversationListLimit         = 100
 	maxSupportConversationListLimit             = 200
 	defaultSupportConversationSinceDuration     = 30 * 24 * time.Hour

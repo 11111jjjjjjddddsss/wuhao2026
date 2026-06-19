@@ -74,6 +74,25 @@ func TestResolveAuthUserIDAllowsLegacyBearerTokenWhenExplicitlyEnabled(t *testin
 	}
 }
 
+func TestRequireAuthRejectsLegacyBearerTokenWhenStrictEvenIfCompatEnabled(t *testing.T) {
+	secret := "test-secret"
+	t.Setenv("AUTH_STRICT", "true")
+	t.Setenv("AUTH_ALLOW_LEGACY_TOKEN", "true")
+	t.Setenv("APP_SECRET", secret)
+
+	req := httptest.NewRequest("GET", "/api/me", nil)
+	req.Header.Set("Authorization", "Bearer "+makeAuthTestToken("legacy-user", secret))
+	rec := httptest.NewRecorder()
+	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+
+	if auth, ok := server.requireAuth(rec, req); ok || auth != nil {
+		t.Fatalf("strict auth must reject legacy bearer tokens on business APIs, auth=%#v ok=%v", auth, ok)
+	}
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("strict legacy token rejection status=%d, want 401", rec.Code)
+	}
+}
+
 func TestResolveAuthUserIDAllowsV2BearerTokenWhenStrict(t *testing.T) {
 	secret := "test-secret"
 	userID := "acct_test"

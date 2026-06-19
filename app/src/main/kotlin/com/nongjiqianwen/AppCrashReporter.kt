@@ -86,16 +86,25 @@ object AppCrashReporter {
                 level = "error",
                 event = event,
                 message = event,
-                attrs = attrs
+                attrs = attrs,
+                onComplete = { success ->
+                    if (success) clearPendingReport(prefs)
+                }
             )
         } else {
             SessionApi.reportClientLog(
                 level = "error",
                 event = event,
                 message = event,
-                attrs = attrs
+                attrs = attrs,
+                onComplete = { success ->
+                    if (success) clearPendingReport(prefs)
+                }
             )
         }
+    }
+
+    private fun clearPendingReport(prefs: android.content.SharedPreferences) {
         prefs.edit()
             .remove(KEY_PENDING)
             .remove(KEY_PENDING_ATTEMPTS)

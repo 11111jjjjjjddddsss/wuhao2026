@@ -382,6 +382,16 @@ server {
     add_header Content-Security-Policy "default-src 'self'; connect-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'; upgrade-insecure-requests" always;
     add_header Strict-Transport-Security "max-age=15552000; includeSubDomains" always;
 
+    location /uploads/support/ {
+        proxy_pass http://127.0.0.1:`$active_port;
+        proxy_http_version 1.1;
+        proxy_set_header Host \`$host;
+        proxy_set_header X-Real-IP \`$remote_addr;
+        proxy_set_header X-Forwarded-For \`$remote_addr;
+        proxy_set_header X-Forwarded-Proto \`$scheme;
+        proxy_read_timeout 60s;
+    }
+
     location /admin-api/ {
         proxy_pass http://127.0.0.1:`$active_port;
         proxy_http_version 1.1;

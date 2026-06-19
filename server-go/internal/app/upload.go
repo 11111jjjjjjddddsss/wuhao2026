@@ -119,7 +119,11 @@ func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
 		contentType = "image/jpeg"
 	}
 	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Cache-Control", "public, max-age=3600")
+	if strings.HasPrefix(name, uploadPurposeSupport+"/") {
+		w.Header().Set("Cache-Control", "private, no-store")
+	} else {
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+	}
 	if r.Method == http.MethodHead {
 		return
 	}

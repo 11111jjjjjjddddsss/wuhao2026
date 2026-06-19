@@ -386,7 +386,7 @@ async function overviewPage(): Promise<string> {
           ${
             overview.notes?.length
               ? overview.notes.map((note) => notice(note.title, note.body, note.level)).join("")
-              : emptyState("没有备注", "后端未返回额外状态说明。")
+              : emptyState("没有备注", "暂无额外状态说明。")
           }
         </div>
       </section>
@@ -473,7 +473,7 @@ async function monitoringPage(): Promise<string> {
     <section class="card" style="margin-top:12px">
       <div class="card-head"><div class="card-title">隐私边界</div></div>
       <div class="card-body stack">
-        ${report.notes?.length ? report.notes.map((note) => notice(note.title, note.body, note.level)).join("") : emptyState("没有备注", "后端未返回监控备注。")}
+        ${report.notes?.length ? report.notes.map((note) => notice(note.title, note.body, note.level)).join("") : emptyState("没有备注", "暂无监控备注。")}
       </div>
     </section>
     <section class="card" style="margin-top:12px">
@@ -671,7 +671,7 @@ async function giftCardsPage(): Promise<string> {
                 </label>
                 <label>张数<input name="quantity" type="number" min="1" max="200" value="1" /></label>
                 <label>天数<input name="duration_days" type="number" min="1" max="366" value="30" /></label>
-                <label>备注<input name="note" placeholder="发放对象或用途，可为空" /></label>
+                <label>备注<input name="note" placeholder="用途备注，不写手机号、完整卡码或密钥" /></label>
                 <button class="button primary" type="submit">生成真实可兑换卡</button>
               </form>
               ${createdGiftCardCodesBlock(lastGiftCardCodes)}
@@ -1785,7 +1785,7 @@ function pageHead(title: string, desc: string, route: RouteKey): string {
 }
 
 function usersTable(users: AdminUserListEntry[]): string {
-  if (!users.length) return emptyState("没有用户数据", "后端未返回匹配用户。");
+  if (!users.length) return emptyState("没有用户数据", "当前筛选条件下暂无匹配用户。");
   return `
     <table class="table">
       <thead>
@@ -1828,7 +1828,7 @@ function phoneDisplay(phoneNumber?: string, phoneMask?: string): string {
     return `${escapeHTML(fullPhone)} <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(fullPhone)}">复制</button>`;
   }
   if (fullPhone) {
-    const masked = phoneMask ? escapeHTML(phoneMask) : "完整号";
+    const masked = phoneMask ? escapeHTML(phoneMask) : "已绑定手机号";
     return `${masked} <span class="small muted">仅授权角色可见</span>`;
   }
   if (phoneMask) {
@@ -1844,7 +1844,7 @@ function phoneDisplayMaskedInline(phoneNumber?: string, phoneMask?: string): str
   if ((phoneNumber || "").trim()) {
     return "已绑定手机号";
   }
-  return "未返回手机号";
+  return "暂无手机号";
 }
 
 function userKV(user: AdminUserListEntry): string {
@@ -2016,7 +2016,7 @@ function quotaOutboxStatusLevel(status: string): "ok" | "warn" | "bad" | "info" 
 }
 
 function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
-  if (!rows.length) return emptyState("没有扣次流水", "后端未返回该用户额度流水。");
+  if (!rows.length) return emptyState("没有扣次流水", "该用户当前暂无额度流水。");
   return `
     <table class="table">
       <thead><tr><th>ID</th><th>日期</th><th>来源</th><th>delta</th><th>client_msg_id</th><th>时间</th></tr></thead>
@@ -2351,7 +2351,7 @@ function giftCardFailureReasonTable(rows: AdminGiftCardSummary["failure_reasons"
 }
 
 function insightWindowTable(rows: AdminInsights["windows"]): string {
-  if (!rows.length) return emptyState("没有洞察窗口", "后端未返回产品洞察窗口数据。");
+  if (!rows.length) return emptyState("没有洞察窗口", "当前暂无产品洞察窗口数据。");
   return `
     <table class="table">
       <thead>
@@ -2386,7 +2386,7 @@ function insightWindowTable(rows: AdminInsights["windows"]): string {
 
 function breakdownBars(rows: AdminInsightBreakdown[] | null | undefined, foot: string): string {
   rows = (rows || []).filter((row) => row.count >= 0);
-  if (!rows.length) return emptyState("没有分类数据", "后端未返回分类聚合。");
+  if (!rows.length) return emptyState("没有分类数据", "当前暂无分类聚合。");
   const max = Math.max(...rows.map((row) => row.count), 1);
   return `
     <div class="insight-breakdown">
@@ -2432,7 +2432,7 @@ function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
 }
 
 function giftCardTable(rows: AdminGiftCardEntry[]): string {
-  if (!rows.length) return emptyState("没有礼品卡", "后端未返回礼品卡记录。");
+  if (!rows.length) return emptyState("没有礼品卡", "当前暂无礼品卡记录。");
   const canVoid = canManageGiftCards();
   const canViewCodes = canViewGiftCardCodes();
   return `
@@ -2445,7 +2445,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
               <tr>
                 <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
                 <td><div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "仅授权角色可见"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
-                <td>${statusPill(row.tier)}</td><td>${statusPill(row.status)}</td>
+                <td>${statusPill(row.tier)}</td><td>${giftCardStatusPill(row.status)}</td>
                 <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
                 <td>${escapeHTML(row.redeemed_region || "")}<div class="small muted">${escapeHTML([row.redeemed_region_source, row.redeemed_region_reliability].filter(Boolean).join(" / "))}</div></td>
@@ -2461,6 +2461,17 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
       </tbody>
     </table>
   `;
+}
+
+function giftCardStatusPill(status: string): string {
+  const normalized = (status || "").trim();
+  const labels: Record<string, { label: string; level: "ok" | "warn" | "bad" | "info" }> = {
+    active: { label: "未兑换", level: "ok" },
+    redeemed: { label: "已兑换", level: "info" },
+    void: { label: "已作废", level: "bad" },
+  };
+  const mapped = labels[normalized];
+  return mapped ? statusPill(mapped.label, mapped.level) : statusPill(normalized || "未知", "warn");
 }
 
 function giftCardFailureReasonLabel(reason?: string): string {
@@ -2479,7 +2490,7 @@ function giftCardFailureReasonLabel(reason?: string): string {
 }
 
 function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
-  if (!rows.length) return emptyState("没有兑换尝试", "后端未返回兑换尝试记录。");
+  if (!rows.length) return emptyState("没有兑换尝试", "当前暂无兑换尝试记录。");
   return `
     <table class="table">
       <thead><tr><th>ID</th><th>卡尾号</th><th>账号ID</th><th>结果</th><th>原因</th><th>地区</th><th>IP</th><th>时间</th></tr></thead>
@@ -2489,7 +2500,7 @@ function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
             (row) => `
               <tr>
                 <td>${row.id}</td><td class="mono">${escapeHTML(row.code_suffix || "")}</td><td>${row.user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>` : ""}</td>
-                <td>${row.success ? statusPill("success") : statusPill("failed")}</td><td>${escapeHTML(giftCardFailureReasonLabel(row.failure_reason))}</td>
+                <td>${row.success ? statusPill("成功", "ok") : statusPill("失败", "bad")}</td><td>${escapeHTML(giftCardFailureReasonLabel(row.failure_reason))}</td>
                 <td>${escapeHTML(row.region || "")}<div class="small muted">${escapeHTML([row.region_source, row.region_reliability].filter(Boolean).join(" / "))}</div></td>
                 <td>${escapeHTML(row.masked_ip || "")}</td><td>${formatTime(row.created_at)}</td>
               </tr>
@@ -2547,9 +2558,18 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
 
 function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], conversation?: AdminSupportConversation, loadError = ""): string {
   const canManage = canManageSupport();
+  const truncatedMessageNotice =
+    conversation && messages.length > 0 && conversation.message_count > messages.length
+      ? notice(
+          "仅显示最近消息",
+          `当前显示最近 ${messages.length} 条，共 ${conversation.message_count} 条；可用上方搜索查找更早线索。`,
+          "info",
+        )
+      : "";
   return `
     ${conversation ? supportConversationMeta(conversation) : ""}
     ${loadError ? errorBlock(new Error(loadError)) : ""}
+    ${truncatedMessageNotice}
     <div class="message-list">
       ${
         !loadError && messages.length
@@ -2570,7 +2590,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
               .join("")
           : loadError
             ? ""
-            : emptyState("没有消息", "当前会话未返回消息明细。")
+            : emptyState("没有消息", "当前会话暂无消息明细。")
       }
     </div>
     <div class="divider"></div>
@@ -2656,7 +2676,7 @@ function supportStatusPill(item: AdminSupportConversation): string {
 }
 
 function appLogsTable(rows: ClientAppLogEntry[]): string {
-  if (!rows.length) return emptyState("没有 App 日志", "当前筛选条件下后端未返回日志。");
+  if (!rows.length) return emptyState("没有 App 日志", "当前筛选条件下暂无日志。");
   return `
     <table class="table">
       <thead><tr><th>时间</th><th>级别</th><th>事件</th><th>账号ID</th><th>版本</th><th>设备</th><th>消息</th><th>attrs</th></tr></thead>
@@ -2679,7 +2699,7 @@ function appLogsTable(rows: ClientAppLogEntry[]): string {
 }
 
 function appLogSummaryTable(rows: ClientAppLogSummaryEntry[]): string {
-  if (!rows?.length) return emptyState("没有聚合", "后端未返回事件聚合。");
+  if (!rows?.length) return emptyState("没有聚合", "当前暂无事件聚合。");
   return `
     <table class="table">
       <thead><tr><th>事件</th><th>级别</th><th>数量</th></tr></thead>
@@ -2689,7 +2709,7 @@ function appLogSummaryTable(rows: ClientAppLogSummaryEntry[]): string {
 }
 
 function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
-  if (!rows.length) return emptyState("没有今日农情记录", "后端未返回 daily_agri_cards。");
+  if (!rows.length) return emptyState("没有今日农情记录", "当前暂无今日农情记录。");
   return `
     <table class="table">
       <thead><tr><th>日期</th><th>状态</th><th>来源</th><th>标题</th><th>条目/来源</th><th>模型</th><th>生成时间</th><th>错误</th></tr></thead>
@@ -2854,7 +2874,7 @@ function todayAgriItems(content: JsonValue | undefined): DailyAgriItem[] {
 }
 
 function auditTable(rows: AdminAuditLogEntry[]): string {
-  if (!rows.length) return emptyState("没有审计日志", "当前筛选条件下后端未返回审计记录。");
+  if (!rows.length) return emptyState("没有审计日志", "当前筛选条件下暂无审计记录。");
   return `
     <table class="table">
       <thead><tr><th>时间</th><th>actor</th><th>action</th><th>目标</th><th>目标账号ID</th><th>结果</th><th>状态码</th><th>详情</th></tr></thead>
@@ -3186,7 +3206,7 @@ function healthGrid(health: AdminOverview["health"]): string {
 }
 
 function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
-  if (!rows.length) return emptyState("没有窗口指标", "后端未返回监控窗口数据。");
+  if (!rows.length) return emptyState("没有窗口指标", "当前暂无监控窗口数据。");
   return `
     <table class="table">
       <thead>
@@ -3261,7 +3281,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
 }
 
 function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): string {
-  if (!rows.length) return emptyState("没有模型口径", "后端未返回 model_usage_policy。");
+  if (!rows.length) return emptyState("没有模型口径", "当前暂无模型使用口径数据。");
   return `
     <div class="stack">
       ${notice("看百炼控制台时先分清", "qwen-turbo 是模型名，且不在当前后端生产链路里；search_strategy=turbo 是联网搜索策略。当前项目后端只按下表这些链路调用模型，Android 不保存模型 Key。", "info")}
@@ -3296,7 +3316,7 @@ function modelSearchPolicyText(row: AdminMonitoring["model_usage_policy"][number
 }
 
 function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undefined): string {
-  if (!authLogs) return emptyState("没有登录排障数据", "后端未返回 auth_logs 聚合。");
+  if (!authLogs) return emptyState("没有登录排障数据", "当前暂无登录排障数据。");
   const failures = authLogs.failures ?? 0;
   const crashReports = authLogs.crash_reports ?? 0;
   const envBlocked = authLogs.env_blocked ?? 0;
@@ -3339,7 +3359,7 @@ function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undef
 }
 
 function authFunnelTable(stages: AdminMonitoring["auth_logs"]["funnel"]): string {
-  if (!stages?.length) return emptyState("暂无登录阶段漏斗", "后端未返回登录阶段聚合。");
+  if (!stages?.length) return emptyState("暂无登录阶段漏斗", "当前暂无登录阶段聚合。");
   return `
     <div class="section-title-row">
       <div>
@@ -3445,7 +3465,7 @@ function authEventLabel(event: string): string {
 }
 
 function appUpdateTroubleshootingBlock(updateLogs: AdminMonitoring["app_update_logs"] | undefined): string {
-  if (!updateLogs) return emptyState("没有检查更新排障数据", "后端未返回 app_update_logs 聚合。");
+  if (!updateLogs) return emptyState("没有检查更新排障数据", "当前暂无检查更新排障数据。");
   const failures = (updateLogs.check_failures ?? 0) + (updateLogs.download_failures ?? 0) + (updateLogs.install_failures ?? 0);
   const permissionRequired = updateLogs.permission_required ?? 0;
   const level = updateLogs.download_failures || updateLogs.install_failures ? "bad" : failures || permissionRequired ? "warn" : "ok";
@@ -3557,7 +3577,7 @@ function regionMetricsTable(rows: AdminMonitoring["top_regions"]): string {
 }
 
 function userRegionOverviewBlock(overview: AdminMonitoring["user_regions"] | undefined): string {
-  if (!overview) return emptyState("没有用户地区概览", "后端未返回注册用户和会员用户地区聚合。");
+  if (!overview) return emptyState("没有用户地区概览", "当前暂无注册用户和会员用户地区聚合。");
   return `
     <div class="monitor-region-grid">
       ${userRegionPanel(
@@ -3649,13 +3669,16 @@ function launchReadinessCounts(rows: AdminMonitoring["launch_readiness"]): {
   ready: number;
   programAttention: number;
   manualAttention: number;
+  launchOnlyAttention: number;
   blocked: number;
 } {
+  const dailyProgramRows = rows.filter((row) => !row.manual && !row.launch_only);
   return {
     ready: rows.filter((row) => row.status === "ready").length,
-    programAttention: rows.filter((row) => !row.manual && row.status !== "ready" && row.status !== "blocked").length,
+    programAttention: dailyProgramRows.filter((row) => row.status !== "ready" && row.status !== "blocked").length,
     manualAttention: rows.filter((row) => row.manual && row.status !== "ready" && row.status !== "blocked").length,
-    blocked: rows.filter((row) => row.status === "blocked").length,
+    launchOnlyAttention: rows.filter((row) => row.launch_only && row.status !== "ready" && row.status !== "blocked").length,
+    blocked: dailyProgramRows.filter((row) => row.status === "blocked").length,
   };
 }
 
@@ -3696,7 +3719,7 @@ function monitoringOperatorGuide(report: AdminMonitoring): string {
       <div class="operator-guide-copy">
         <span class="small muted">处理顺序</span>
         <strong>请先查看状态颜色，再进入对应处理入口。</strong>
-        <p>${escapeHTML(firstText)} 当前还有 ${actionCount} 个先处理事项、${readiness.blocked} 个上架阻塞项、${readiness.programAttention} 个程序需处理、${readiness.manualAttention} 个人工确认。</p>
+          <p>${escapeHTML(firstText)} 当前还有 ${actionCount} 个先处理事项、${readiness.blocked} 个上架阻塞项、${readiness.programAttention} 个程序需处理、${readiness.manualAttention} 个人工确认、${readiness.launchOnlyAttention} 个上线准备提醒。</p>
       </div>
       <div class="operator-guide-steps">
         ${operatorGuideStep("1", "当前结论", "查看顶部状态和下一步建议；红色优先处理，黄色优先确认，绿色继续回归。", routeActionButton(primaryRoute, "打开重点项"))}
@@ -3762,7 +3785,7 @@ function monitoringManualCheckStrip(report: AdminMonitoring): string {
 
 function monitoringProgramCheckStrip(report: AdminMonitoring): string {
   const rows = (report.launch_readiness || [])
-    .filter((row) => !row.manual && row.status !== "ready")
+    .filter((row) => !row.manual && !row.launch_only && row.status !== "ready")
     .sort((left, right) => (left.status === "blocked" ? 0 : 1) - (right.status === "blocked" ? 0 : 1));
   if (!rows.length) return "";
   const visibleRows = rows.slice(0, 4);
@@ -3772,7 +3795,7 @@ function monitoringProgramCheckStrip(report: AdminMonitoring): string {
       <div class="manual-check-head">
         <div>
           <strong>程序需处理项</strong>
-          <p>这些通常能通过代码、配置、部署或后台操作推进；先处理红色，再看黄色。</p>
+          <p>这些通常能通过代码、配置、部署或后台操作推进；正常未发布、未发卡、未接支付等上线准备项不混在这里。</p>
         </div>
         <span class="small muted">${rows.length} 项待处理</span>
       </div>
@@ -4083,7 +4106,7 @@ function actionItemList(items: AdminMonitoring["action_items"]): string {
 }
 
 function capabilityGrid(rows: AdminMonitoring["capabilities"]): string {
-  if (!rows.length) return emptyState("没有能力状态", "后端未返回 capabilities。");
+  if (!rows.length) return emptyState("没有能力状态", "当前暂无后台能力状态。");
   return `
     <div class="capability-grid">
       ${rows
@@ -4106,7 +4129,7 @@ function capabilityGrid(rows: AdminMonitoring["capabilities"]): string {
 }
 
 function launchReadinessGrid(rows: AdminMonitoring["launch_readiness"]): string {
-  if (!rows.length) return emptyState("没有上线检查", "后端未返回 launch_readiness。");
+  if (!rows.length) return emptyState("没有上线检查", "当前暂无上线检查结果。");
   return `
     <div class="launch-grid">
       ${rows
@@ -4311,7 +4334,7 @@ function appErrorTopTable(rows: ClientAppLogSummaryEntry[]): string {
 }
 
 function roundExcerptList(rows: AdminUserDetail["recent_rounds"]): string {
-  if (!rows.length) return emptyState("没有最近问诊", "后端未返回最近问诊摘录。");
+  if (!rows.length) return emptyState("没有最近问诊", "当前暂无最近问诊摘录。");
   return rows
     .slice(0, 4)
     .map(
@@ -4328,7 +4351,7 @@ function roundExcerptList(rows: AdminUserDetail["recent_rounds"]): string {
 }
 
 function compactLogs(rows: ClientAppLogEntry[]): string {
-  if (!rows.length) return emptyState("没有最近日志", "后端未返回该用户最近 App 日志。");
+  if (!rows.length) return emptyState("没有最近日志", "该用户当前暂无最近 App 日志。");
   return rows
     .slice(0, 4)
     .map(

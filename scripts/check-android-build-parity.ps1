@@ -448,7 +448,7 @@ if ($failures.Count -eq 0) {
         "Foreground chat 401 after retry must deliver the interrupted auth state before clearing runtime generation."
     Require-Match $failures $loginScreen 'SessionApi\.addAuthInvalidListener\s*\{\s*reason\s*->(?s:.*?)AuthSessionClearReason\.Invalid\s*->\s*"登录已失效，请重新登录后继续使用"(?s:.*?)AuthSessionClearReason\.LocalLogout\s*->\s*null' `
         "LoginGate must explain expired auth without showing an expired-login warning after user-initiated logout."
-    Require-Match $failures $sessionApi 'fun\s+logoutCurrentSession\b(?s:.*?)override\s+fun\s+onFailure(?s:.*?)clearLocalAuthRuntimeSession\s*\((?s:.*?)reason\s*=\s*AuthSessionClearReason\.LocalLogout(?s:.*?)mainHandler\.post\s*\{\s*onResult\(true\)\s*\}' `
+    Require-Match $failures $sessionApi 'fun\s+logoutCurrentSession\b(?s:.*?)override\s+fun\s+onFailure(?s:.*?)clearLocalAuthRuntimeSession\s*\((?s:.*?)reason\s*=\s*AuthSessionClearReason\.LocalLogout(?s:.*?)mainHandler\.post\s*\{\s*onResult\(LogoutCurrentSessionResult\(localCleared\s*=\s*true,\s*remoteConfirmed\s*=\s*false\)\)\s*\}' `
         "Logout must clear the current device locally even when the remote logout request fails."
     Require-Match $failures $idManager 'KEY_AUTH_INVALID_LOGIN_HINT(?s:.*?)fun\s+markAuthInvalidLoginHint(?s:.*?)fun\s+clearAuthInvalidLoginHint(?s:.*?)fun\s+consumeAuthInvalidLoginHint' `
         "IdManager must persist a one-time expired-login hint across cold start."

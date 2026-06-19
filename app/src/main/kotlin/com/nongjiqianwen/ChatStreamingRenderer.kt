@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -2264,35 +2265,37 @@ private fun RendererMarkdownTableImpl(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (copyEnabled) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 2.dp),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    enabled = copyEnabled,
-                    onClick = {
-                        clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
-                        Toast.makeText(context, "表格已复制，可粘贴到表格软件", Toast.LENGTH_SHORT).show()
-                    },
+            DisableSelection {
+                Row(
                     modifier = Modifier
-                        .heightIn(min = 36.dp)
-                        .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
-                    shape = RoundedCornerShape(999.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = Color(0xFF5F6368),
-                        containerColor = Color.Transparent,
-                        disabledContentColor = Color(0xFF9AA0A6),
-                        disabledContainerColor = Color.Transparent
-                    )
+                        .fillMaxWidth()
+                        .padding(bottom = 2.dp),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Text(
-                        text = "复制表格",
-                        fontSize = 13.sp,
-                        lineHeight = 16.sp
-                    )
+                    TextButton(
+                        enabled = copyEnabled,
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
+                            Toast.makeText(context, "表格已复制，可粘贴到表格软件", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier
+                            .heightIn(min = 36.dp)
+                            .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
+                        shape = RoundedCornerShape(999.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = Color(0xFF5F6368),
+                            containerColor = Color.Transparent,
+                            disabledContentColor = Color(0xFF9AA0A6),
+                            disabledContainerColor = Color.Transparent
+                        )
+                    ) {
+                        Text(
+                            text = "复制表格",
+                            fontSize = 13.sp,
+                            lineHeight = 16.sp
+                        )
+                    }
                 }
             }
         }

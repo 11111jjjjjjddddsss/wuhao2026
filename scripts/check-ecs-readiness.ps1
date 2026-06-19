@@ -136,6 +136,19 @@ if [ "$active_port" != "unknown" ]; then
     echo "active upstream service is not active: $active_service" >&2
     exit 10
   fi
+  if [ "$active_port" = "3000" ]; then
+    inactive_port=3001
+  else
+    inactive_port=3000
+  fi
+  inactive_service="nongji-server-${inactive_port}"
+  inactive_state=$(systemctl is-active "$inactive_service" 2>/dev/null || true)
+  drain_units=$(systemctl list-units 'nongji-drain-stop-*' --all --no-legend --plain 2>/dev/null | awk '{print $1 ":" $3}' | tr '\n' ' ' || true)
+  echo "inactive_slot_service=$inactive_service state=${inactive_state:-unknown} drain_units=${drain_units:-none}"
+  if [ "$inactive_state" = "active" ] && ! printf '%s' "$drain_units" | grep -Eq ':(active|activating)'; then
+    echo "inactive slot is still active without an active drain-stop unit: $inactive_service" >&2
+    exit 10
+  fi
 fi
 if [ -f "$admin_nginx_site" ]; then
   admin_port=$(extract_unique_upstream_port "$admin_nginx_site" "admin nginx")

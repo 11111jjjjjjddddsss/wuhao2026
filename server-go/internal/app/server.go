@@ -804,6 +804,11 @@ func (s *Server) requireAuth(w http.ResponseWriter, r *http.Request) (*AuthInfo,
 		s.writeError(w, http.StatusUnauthorized, "unauthorized")
 		return nil, false
 	}
+	if IsAuthStrict() && auth.AuthMode == AuthModeToken && auth.SessionID == "" {
+		s.logger.Warn("auth legacy token rejected in strict mode", "masked_ip", auth.MaskedIP)
+		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+		return nil, false
+	}
 	if auth.AuthMode == AuthModeToken && auth.SessionID != "" {
 		if IsAuthStrict() && !isAccountUserID(auth.UserID) {
 			s.logger.Warn("auth session non-account user rejected", "userId", auth.UserID, "masked_ip", auth.MaskedIP)

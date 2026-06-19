@@ -13,7 +13,7 @@
 - `support_conversations.status` 当前取值：`open`、`replied`、`closed`；用户发新消息会把会话重新打开为 `open`，后台回复会标为 `replied`，后台可手动关闭或重开
 - `assigned_to` 当前记录最后处理人，`note` 当前用于关闭备注；处理备注可以记录排障必需的数字、手机号、订单号、礼品卡码等信息，不做内容拦截。后台密钥、token、AccessKey、模型 Key、数据库密码等系统秘密仍不得写入备注、日志、审计或项目文档
 - 设置页红点只看 `sender_type IN ('admin', 'system') AND read_by_user_at IS NULL`
-- 图片附件存储在 `image_urls_json`，只保存本后端 `/upload` 返回的公开 HTTPS 图片 URL。2026-06-13 起，帮助与反馈图片上传会传 `purpose=support`，后端返回 `/uploads/support/<file>.jpg` 并写入 OSS `support/` 30 天生命周期；客服聊天记录正文、发送人、时间和已读状态仍在 MySQL，不随图片自动过期
+- 图片附件存储在 `image_urls_json`，只保存本后端 `/upload` 返回的 HTTPS 图片 URL。2026-06-13 起，帮助与反馈图片上传会传 `purpose=support`，后端返回 `/uploads/support/<file>.jpg` 并写入 OSS `support/` 30 天生命周期；2026-06-20 起 support 图片响应头为 `Cache-Control: private, no-store`，管理后台 API 会把合法 support 图片 URL 归一成同源 `/uploads/support/*.jpg` 展示路径。客服聊天记录正文、发送人、时间和已读状态仍在 MySQL，不随图片自动过期
 
 ## 用户侧接口
 
@@ -67,7 +67,7 @@
   - 列表排序为待回复优先，其次按最新消息时间倒序，避免大量消息时把未处理会话压到下面
   - owner / support 可在会话详情查看、复制完整手机号并回复客户消息；会话列表默认只展示脱敏号，减少列表页肩窥和误复制。只读 / 审计角色只看脱敏号。`finance_ops` 可在用户、订单和礼品卡等财务 / 权益页面查看必要完整手机号，但默认不作为帮助反馈客服入口。审计只记录是否展示完整号，不记录手机号值
 - `GET /admin-api/v1/support/messages?user_id=<user_id>`
-  - 读取指定账号ID的最近消息，按时间正序展示
+  - 读取指定账号ID最近 200 条消息，按时间正序展示；如果会话总消息数更多，后台页面会显示“仅显示最近消息”的提示
 - `POST /admin-api/v1/support/messages`
   - 后台回复用户，会写 `sender_type=admin` 消息、更新会话状态并写审计
 - `POST /admin-api/v1/support/conversations/status`

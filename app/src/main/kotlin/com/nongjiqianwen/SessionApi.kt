@@ -173,6 +173,11 @@ object SessionApi {
         @SerializedName("expires_at") val expiresAt: Long? = null
     )
 
+    data class LogoutCurrentSessionResult(
+        val localCleared: Boolean,
+        val remoteConfirmed: Boolean
+    )
+
     private data class ApiErrorBody(
         val error: String? = null,
         @SerializedName("retry_after_seconds") val retryAfterSeconds: Int? = null
@@ -386,7 +391,7 @@ object SessionApi {
         )
     }
 
-    fun logoutCurrentSession(onResult: (Boolean) -> Unit) {
+    fun logoutCurrentSession(onResult: (LogoutCurrentSessionResult) -> Unit) {
         val base = baseUrl()
         val token = authTokenSync()
         if (base.isEmpty() || token.isNullOrBlank()) {
@@ -394,7 +399,7 @@ object SessionApi {
                 notifyListeners = true,
                 reason = AuthSessionClearReason.LocalLogout
             )
-            mainHandler.post { onResult(true) }
+            mainHandler.post { onResult(LogoutCurrentSessionResult(localCleared = true, remoteConfirmed = false)) }
             return
         }
         val request = applyIdentityHeaders(
@@ -420,7 +425,7 @@ object SessionApi {
                     notifyListeners = true,
                     reason = AuthSessionClearReason.LocalLogout
                 )
-                mainHandler.post { onResult(true) }
+                mainHandler.post { onResult(LogoutCurrentSessionResult(localCleared = true, remoteConfirmed = false)) }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -442,7 +447,7 @@ object SessionApi {
                         notifyListeners = true,
                         reason = AuthSessionClearReason.LocalLogout
                     )
-                    mainHandler.post { onResult(true) }
+                    mainHandler.post { onResult(LogoutCurrentSessionResult(localCleared = true, remoteConfirmed = remoteOk)) }
                 }
             }
         })
@@ -572,7 +577,8 @@ object SessionApi {
         level: String,
         event: String,
         message: String,
-        attrs: Map<String, Any?> = emptyMap()
+        attrs: Map<String, Any?> = emptyMap(),
+        onComplete: ((Boolean) -> Unit)? = null
     ) {
         reportClientLogToEndpoint(
             endpoint = "/api/app/logs",
@@ -580,7 +586,8 @@ object SessionApi {
             level = level,
             event = event,
             message = message,
-            attrs = attrs
+            attrs = attrs,
+            onComplete = onComplete
         )
     }
 
@@ -588,17 +595,22 @@ object SessionApi {
         level: String,
         event: String,
         message: String,
-        attrs: Map<String, Any?> = emptyMap()
+        attrs: Map<String, Any?> = emptyMap(),
+        onComplete: ((Boolean) -> Unit)? = null
     ) {
         val normalizedEvent = normalizeClientLogIdentifier(event, maxLength = 96)
-        if (!normalizedEvent.startsWith("auth.")) return
+        if (!normalizedEvent.startsWith("auth.")) {
+            finishClientLogUpload(onComplete, false)
+            return
+        }
         reportClientLogToEndpoint(
             endpoint = "/api/app/logs/preauth",
             authenticated = false,
             level = level,
             event = normalizedEvent,
             message = message,
-            attrs = attrs
+            attrs = attrs,
+            onComplete = onComplete
         )
     }
 
@@ -608,17 +620,27 @@ object SessionApi {
         level: String,
         event: String,
         message: String,
-        attrs: Map<String, Any?> = emptyMap()
+        attrs: Map<String, Any?> = emptyMap(),
+        onComplete: ((Boolean) -> Unit)? = null
     ) {
         val base = baseUrl()
-        if (base.isEmpty()) return
+        if (base.isEmpty()) {
+            finishClientLogUpload(onComplete, false)
+            return
+        }
         val normalizedLevel = when (level.trim().lowercase()) {
             "info", "warn", "error" -> level.trim().lowercase()
             else -> "warn"
         }
         val normalizedEvent = normalizeClientLogIdentifier(event, maxLength = 96)
-        if (normalizedEvent.isEmpty()) return
-        if (!isCrashClientLogEvent(normalizedEvent) && !shouldSendClientLog(normalizedEvent)) return
+        if (normalizedEvent.isEmpty()) {
+            finishClientLogUpload(onComplete, false)
+            return
+        }
+        if (!isCrashClientLogEvent(normalizedEvent) && !shouldSendClientLog(normalizedEvent)) {
+            finishClientLogUpload(onComplete, false)
+            return
+        }
         val payload = mapOf(
             "level" to normalizedLevel,
             "event" to normalizedEvent,
@@ -645,10 +667,13 @@ object SessionApi {
             client.newCall(request).enqueue(object : Callback {
                 override fun onFailure(call: Call, e: IOException) {
                     if (BuildConfig.DEBUG) Log.d(TAG, "preauth client log upload failed: ${e.javaClass.simpleName}")
+                    finishClientLogUpload(onComplete, false)
                 }
 
                 override fun onResponse(call: Call, response: Response) {
+                    val ok = response.isSuccessful
                     response.close()
+                    finishClientLogUpload(onComplete, ok)
                 }
             })
             return
@@ -668,14 +693,22 @@ object SessionApi {
                 client.newCall(request).enqueue(object : Callback {
                     override fun onFailure(call: Call, e: IOException) {
                         if (BuildConfig.DEBUG) Log.d(TAG, "client log upload failed: ${e.javaClass.simpleName}")
+                        finishClientLogUpload(onComplete, false)
                     }
 
                     override fun onResponse(call: Call, response: Response) {
+                        val ok = response.isSuccessful
                         response.close()
+                        finishClientLogUpload(onComplete, ok)
                     }
                 })
             }
         )
+    }
+
+    private fun finishClientLogUpload(onComplete: ((Boolean) -> Unit)?, success: Boolean) {
+        onComplete ?: return
+        mainHandler.post { onComplete(success) }
     }
 
     private fun shouldSendClientLog(event: String): Boolean {

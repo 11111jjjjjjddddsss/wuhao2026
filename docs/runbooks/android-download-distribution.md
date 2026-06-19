@@ -39,7 +39,7 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 - DNS：`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`。
 - OSS：Bucket 仍保持 private，不开放公共读；测试包通过签名 URL 下载。
 - HTTPS：下载域名已绑定免费 Let’s Encrypt 证书，当前证书到期日为 `2026-09-15 07:03:04 UTC`；2026-06-17 已因旧同步脚本曾把私钥放进 Cloud Assistant 输出而强制重签该证书，并用加固后的脚本重新同步到 OSS。ECS 上 `certbot.timer` 负责后续免费证书续期。
-- 验证：`scripts/check-android-download-domain.ps1` 会检查 DNS、OSS CNAME、HTTPS 证书可见性，并用自有域名签名 HEAD 探针验证访问。2026-06-18 起，`scripts/check-resource-capacity.ps1 -Strict` 也会调用这条下载域名检查；正式发布前资源门禁不能漏掉下载域名。
+- 验证：`scripts/check-android-download-domain.ps1` 会检查 DNS、OSS CNAME、HTTPS 证书可见性、公网 TLS 证书到期时间，并用自有域名签名 HEAD 探针验证访问；证书临期时会提示同步 OSS CNAME 证书。2026-06-18 起，`scripts/check-resource-capacity.ps1 -Strict` 也会调用这条下载域名检查；正式发布前资源门禁不能漏掉下载域名。
 - 发布：`scripts/publish-android-test-apk.ps1` 默认会上传 debug/internal APK 到 OSS `test-apks/debug/...`，生成 `https://download.nongjiqiancha.cn/...` 签名链接，默认 72 小时有效；正常清理由 OSS `test-apks/` 生命周期 3 天自动完成，发布脚本会在上传前只读校验该生命周期规则仍启用。脚本不再主动清理旧测试包或旧 ECS 镜像，也不写 ECS 清理 cron；异常残留只在用户明确要求时单次人工处理。`-UseEcsDownloadFallback` 已退役并会被脚本拒绝，不能再临时回退旧 ECS `/test-apks/` 路径。
 
 发测试包前先跑：

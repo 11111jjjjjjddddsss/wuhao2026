@@ -868,12 +868,12 @@ internal fun HamburgerMenuSheet(
                 if (mainLogoutSubmitting) return@HamburgerLogoutConfirmDialog
                 val accountScopeId = IdManager.getUserId()
                 mainLogoutSubmitting = true
-                SessionApi.logoutCurrentSession { ok ->
+                SessionApi.logoutCurrentSession { result ->
                     mainLogoutSubmitting = false
-                    if (ok) {
+                    if (result.localCleared) {
                         mainLogoutDialogVisible = false
                         PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
-                        showNotice("已退出当前设备")
+                        showNotice(if (result.remoteConfirmed) "已退出当前设备" else "本机已退出，服务端吊销未确认")
                         finishAfterAuthSessionCleared()
                     } else {
                         showNotice("退出失败，请检查网络后重试")
@@ -2290,12 +2290,12 @@ private fun HamburgerAccountManagementContent(
                 if (logoutSubmitting) return@HamburgerLogoutConfirmDialog
                 val accountScopeId = IdManager.getUserId()
                 logoutSubmitting = true
-                SessionApi.logoutCurrentSession { ok ->
+                SessionApi.logoutCurrentSession { result ->
                     logoutSubmitting = false
-                    if (ok) {
+                    if (result.localCleared) {
                         logoutDialogVisible = false
                         PendingChatSendWorkScheduler.cancelAllForScope(context, accountScopeId)
-                        onPendingAction("已退出登录")
+                        onPendingAction(if (result.remoteConfirmed) "已退出登录" else "本机已退出，服务端吊销未确认")
                         onAuthSessionCleared()
                     } else {
                         onPendingAction("退出失败，请检查网络后重试")

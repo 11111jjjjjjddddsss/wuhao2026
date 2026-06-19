@@ -4,6 +4,7 @@ param(
     [string]$Endpoint = "oss-cn-beijing.aliyuncs.com",
     [string]$ProbeObjectKey = "download-probes/probe.txt",
     [int]$ProbeExpiresSeconds = 600,
+    [int]$CertificateExpiryAttentionDays = 30,
     [switch]$AllowAttentionExitZero
 )
 
@@ -120,6 +121,30 @@ function New-OssCnameSignedUrl {
     return $url
 }
 
+function Get-RemoteTlsCertificateNotAfter {
+    param([string]$HostName)
+    $tcpClient = $null
+    $sslStream = $null
+    try {
+        $tcpClient = [Net.Sockets.TcpClient]::new()
+        $connectTask = $tcpClient.ConnectAsync($HostName, 443)
+        if (-not $connectTask.Wait([TimeSpan]::FromSeconds(10))) {
+            throw "TLS connect timed out"
+        }
+        $sslStream = [Net.Security.SslStream]::new(
+            $tcpClient.GetStream(),
+            $false,
+            { param($sender, $certificate, $chain, $sslPolicyErrors) return $true }
+        )
+        $sslStream.AuthenticateAsClient($HostName)
+        $cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new($sslStream.RemoteCertificate)
+        return $cert.NotAfter
+    } finally {
+        if ($sslStream) { $sslStream.Dispose() }
+        if ($tcpClient) { $tcpClient.Dispose() }
+    }
+}
+
 Write-Host "== android download domain check =="
 Write-Host "download_domain=$Domain"
 Write-Host "oss_bucket=$Bucket"
@@ -149,6 +174,17 @@ try {
     }
 } catch {
     Add-Attention "download domain DNS is not ready: $($_.Exception.Message)"
+}
+
+try {
+    $notAfter = Get-RemoteTlsCertificateNotAfter -HostName $Domain
+    $daysLeft = [math]::Floor(($notAfter.ToUniversalTime() - (Get-Date).ToUniversalTime()).TotalDays)
+    Write-Host ("download_tls_not_after={0:yyyy-MM-ddTHH:mm:ssZ} days_left={1}" -f $notAfter.ToUniversalTime(), $daysLeft)
+    if ($daysLeft -lt $CertificateExpiryAttentionDays) {
+        Add-Attention "download domain TLS certificate expires in $daysLeft days; sync OSS CNAME certificate after certbot renewal"
+    }
+} catch {
+    Add-Attention "download domain TLS certificate could not be inspected: $($_.Exception.Message)"
 }
 
 if (Require-Command "aliyun") {
