@@ -842,8 +842,8 @@ if ($failures.Count -eq 0) {
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
     Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)trimmed\.matches\(Regex\("""\[-\+\*\]\\s\+\.\+"""\)\)' `
         "Markdown table body parsing must stop before obvious new block starts such as indented code, fences, quotes, headings, and lists."
-    Require-Match $failures $chatStreamingRenderer 'rawHeaders\.size\s*<\s*2\s*\|\|\s*rawHeaders\.size\s*!=\s*separatorColumnCount(?s:.*?)val\s+columnCount\s*=\s*rawHeaders\.size(?s:.*?)row\.take\(columnCount\)\.getOrNull\(index\)' `
-        "Markdown table parsing must keep GFM-style header/separator column counts fixed and ignore extra body cells instead of inventing columns."
+    Require-Match $failures $chatStreamingRenderer 'rawHeaders\.size\s*<\s*2\s*\|\|\s*rawHeaders\.size\s*!=\s*separatorColumnCount(?s:.*?)val\s+columnCount\s*=\s*rawHeaders\.size(?s:.*?)index\s*<\s*columnCount\s*-\s*1(?s:.*?)row\.drop\(index\)\.joinToString\(" \| "\)' `
+        "Markdown table parsing must keep GFM-style header/separator column counts fixed and merge extra body cells into the last column instead of dropping text or inventing columns."
     Require-Match $failures $chatStreamingRenderer 'treatTrailingLineAsComplete(?s:.*?)cursor\s*<\s*lines\.lastIndex' `
         "Streaming Markdown table parsing must avoid absorbing an unfinished tail line into a table before it is line-complete."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableAcceptsRowsWithoutOuterPipesWhenColumnsMatch' `
@@ -856,8 +856,8 @@ if ($failures.Count -eq 0) {
         "Markdown table tests must prove settled/history tables still parse without a trailing line break."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableHeaderDelimiterMismatchStaysPlainText' `
         "Markdown table tests must prove header/delimiter column mismatches stay plain text."
-    Require-Match $failures $chatStreamingRendererTest 'markdownTableBodyExtraCellsAreIgnored' `
-        "Markdown table tests must prove extra body cells are ignored instead of producing invented columns."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableBodyExtraCellsMergeIntoLastColumn' `
+        "Markdown table tests must prove extra body cells are merged into the last column instead of dropping text or producing invented columns."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableBreaksBeforeIndentedCodeAfterDelimiter' `
         "Markdown table tests must prove table parsing stops before indented code after a delimiter line."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableBreaksBeforeListPipeParagraph' `

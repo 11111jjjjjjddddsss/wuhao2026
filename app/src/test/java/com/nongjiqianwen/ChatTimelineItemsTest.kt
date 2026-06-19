@@ -142,6 +142,84 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriCardVisibilityIgnoresComposerCoveredBottom() {
+        val user = userMessage("u1")
+        val assistant = assistantMessage("assistant_u1")
+        val items = buildChatTimelineItems(
+            messages = listOf(user, assistant),
+            todayAgriCard = todayAgriCard(),
+            todayAgriAfterMessageId = assistant.id
+        )
+        val todayAgriIndex = items.indexOfFirst { item ->
+            item is ChatTimelineItem.TodayAgriCard
+        }
+
+        assertFalse(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItems = listOf(
+                    VisibleChatListItem(index = todayAgriIndex, offset = 330, size = 100)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 400,
+                minVisiblePx = 24,
+                coveredBottomPx = 80
+            )
+        )
+        assertTrue(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItems = listOf(
+                    VisibleChatListItem(index = todayAgriIndex, offset = 250, size = 100)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 400,
+                minVisiblePx = 24,
+                coveredBottomPx = 80
+            )
+        )
+    }
+
+    @Test
+    fun todayAgriVisualAnchorKeepsLocalAnchorUntilServerSaveReturns() {
+        assertEquals(
+            "assistant_u1",
+            resolveTodayAgriVisualAnchorMessageId(
+                savedAnchorMessageId = null,
+                localAnchorMessageId = "assistant_u1",
+                latestCompletedAssistantTailId = "assistant_u2",
+                existingMessageIds = setOf("u1", "assistant_u1", "u2", "assistant_u2")
+            )
+        )
+    }
+
+    @Test
+    fun todayAgriVisualAnchorFallsBackWhenLocalAnchorMissing() {
+        assertEquals(
+            "assistant_u2",
+            resolveTodayAgriVisualAnchorMessageId(
+                savedAnchorMessageId = null,
+                localAnchorMessageId = "assistant_trimmed",
+                latestCompletedAssistantTailId = "assistant_u2",
+                existingMessageIds = setOf("u1", "assistant_u1", "u2", "assistant_u2")
+            )
+        )
+    }
+
+    @Test
+    fun todayAgriVisualAnchorPrefersSavedServerAnchor() {
+        assertEquals(
+            "u1",
+            resolveTodayAgriVisualAnchorMessageId(
+                savedAnchorMessageId = "u1",
+                localAnchorMessageId = "assistant_u2",
+                latestCompletedAssistantTailId = "assistant_u3",
+                existingMessageIds = setOf("u2", "assistant_u2", "u3", "assistant_u3")
+            )
+        )
+    }
+
+    @Test
     fun todayAgriCardWithoutAnchorFallsBackAfterLatestCompletedAssistant() {
         val first = userMessage("m1")
         val second = assistantMessage("m2")

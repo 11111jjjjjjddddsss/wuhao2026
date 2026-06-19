@@ -562,6 +562,49 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun bulletBoldLabelKeepsBodyAfterColon() {
+        val model = classifyStreamingLine("- **农业场景：** 面对高温多湿，先让农户看见真实对比。")
+
+        assertTrue(model is StreamingLineModel.Bullet)
+        val rendered = buildRendererInlineAnnotatedString(
+            text = (model as StreamingLineModel.Bullet).text,
+            mode = RendererInlineMode.Settled
+        )
+        assertEquals("农业场景： 面对高温多湿，先让农户看见真实对比。", rendered.text)
+        assertTrue(rendered.hasSpanFor("农业场景：") { it.fontWeight == FontWeight.SemiBold })
+    }
+
+    @Test
+    fun bulletBoldLabelContinuationLineIsNotDropped() {
+        val blockState = splitStreamingBlockState(
+            "- **农业场景：** 面对高温多湿，先让农户看见真实对比。\n" +
+                "再补一句现场做法，不能被下一条吞掉。\n" +
+                "- **负面案例：** 只盯着卖货容易丢信任。"
+        )
+        val models = blockState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(blockState.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(3, models.size)
+        val first = models[0]
+        val continuation = models[1]
+        val next = models[2]
+        assertTrue(first is StreamingLineModel.Bullet)
+        assertTrue(continuation is StreamingLineModel.Paragraph)
+        assertTrue(next is StreamingLineModel.Bullet)
+        assertEquals(
+            "农业场景： 面对高温多湿，先让农户看见真实对比。",
+            buildRendererInlineAnnotatedString(
+                text = (first as StreamingLineModel.Bullet).text,
+                mode = RendererInlineMode.Settled
+            ).text
+        )
+        assertEquals(
+            "再补一句现场做法，不能被下一条吞掉。",
+            (continuation as StreamingLineModel.Paragraph).text
+        )
+    }
+
+    @Test
     fun streamingTailBlockKeepsStreamingInlineModeAfterNewline() {
         assertEquals(
             RendererInlineMode.Streaming,
@@ -738,7 +781,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun markdownTableBodyExtraCellsAreIgnored() {
+    fun markdownTableBodyExtraCellsMergeIntoLastColumn() {
         val state = splitStreamingBlockState(
             content = "|项目|建议|\n|---|---|\n|水分|控水|傍晚|",
             treatTrailingLineAsComplete = true
@@ -750,11 +793,11 @@ class ChatStreamingRendererTest {
             .table
 
         assertEquals(listOf("项目", "建议"), table.headers)
-        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+        assertEquals(listOf(listOf("水分", "控水 | 傍晚")), table.rows)
     }
 
     @Test
-    fun markdownTableBodyExtraCellsWithoutOuterPipesAreIgnored() {
+    fun markdownTableBodyExtraCellsWithoutOuterPipesMergeIntoLastColumn() {
         val state = splitStreamingBlockState(
             content = "|项目|建议|\n|---|---|\n水分 | 控水 | 傍晚",
             treatTrailingLineAsComplete = true
@@ -766,7 +809,7 @@ class ChatStreamingRendererTest {
             .table
 
         assertEquals(listOf("项目", "建议"), table.headers)
-        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+        assertEquals(listOf(listOf("水分", "控水 | 傍晚")), table.rows)
     }
 
     @Test

@@ -5,6 +5,8 @@
 
 ## 2026-06-19
 
+- 按用户真机截图纠偏继续收口主聊天渲染：截图里的问题是 `• 农业场景：` 后面少字，不是输入框遮挡。Android renderer 新增单测锁住加粗 bullet 标签后冒号正文必须保留、下一行续句不能被下一条列表吞掉；如果新包“全文复制”同样没有冒号后的正文，应优先判断为模型原文输出了空标签，而不是当前渲染吃字。表格正文行多出的列不再被静默丢弃，统一合并进最后一列；流式中断前会把已经收到但尚未逐字显示的 reveal buffer 冲刷进可见失败态，降低弱网断流时尾部文字丢失。今日农情可见判定扣除底部输入区覆盖高度，本地视觉锚点会在保存远端展示记录前冻结，避免保存接口慢或用户继续发送后卡片漂到最新 AI 回复后。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡、`max_tokens`，不发布正式 Android 包。
+
 - 按不同 Android 版本 / 机型适配巡检先收口两处低风险 P1：`androidx.activity:activity-compose` 从 `1.9.2` 升到官方已修复 Photo / Video `ActivityResultContracts` URI 安全兼容问题的 `1.12.4`，降低部分系统补丁机型打不开 Photo Picker 的风险；`PendingChatSendWorker` 后台带图兜底调用完整 SSE 时给 `SessionApi.streamChatToCompletion` 增加 8 分钟墙钟取消，超时后按可恢复失败退避重试，避免普通 WorkManager Worker 在弱网 / 长回复下无上限挂住。该改动不改图片数量、图片压缩规则、主聊天前台 SSE、滚动链、模型提示词、模型输出过滤或 Android 正式发布；低端机长回复 / 表格渲染性能、定位权限精简、老系统相机相册保存一致性仍需后续单独评估。
 
 - 继续按“低成本运维”口径收口 SLS 日志留存：没有新买 WAF / 高防 / CDN / SLS 资源包，没有新增 Logstore，没有采完整 Nginx access，也没有把聊天正文、AI 回复、图片 URL、完整手机号、token 或密钥写进 SLS。现有业务 Project 仍只保留 `server-go` / `nginx-error` 两个 Logstore、1 shard、邮件告警；为满足网络 / 安全日志 6 个月证据，TTL 调整为 180 天，但只保留 7 天热存储、173 天低频存储，避免 180 天全热存储。`setup-sls-logging.ps1` 会创建或更新该低成本分层配置，`check-sls-cost-guard.ps1` 同时检查 TTL 下限 / 上限、热存储天数、低频存储天数、Logstore 数、Shard、自动分裂、append meta 和归档存储漂移；日志 / 合规 / 成本 runbook 和项目记忆已同步。该改动不改变模型输出、不新增内容过滤、不发布 Android 包。

@@ -417,20 +417,38 @@ internal fun isTodayAgriCardVisibleInViewport(
     visibleItems: List<VisibleChatListItem>,
     viewportStartOffset: Int,
     viewportEndOffset: Int,
-    minVisiblePx: Int
+    minVisiblePx: Int,
+    coveredBottomPx: Int = 0
 ): Boolean {
     val todayAgriVisualIndex = chatListItems.indexOfFirst { item ->
         item is ChatTimelineItem.TodayAgriCard
     }
-    if (todayAgriVisualIndex < 0 || viewportEndOffset <= viewportStartOffset || minVisiblePx <= 0) {
+    val effectiveViewportEndOffset = (viewportEndOffset - coveredBottomPx.coerceAtLeast(0))
+        .coerceAtLeast(viewportStartOffset)
+    if (todayAgriVisualIndex < 0 || effectiveViewportEndOffset <= viewportStartOffset || minVisiblePx <= 0) {
         return false
     }
     val visibleItem = visibleItems.firstOrNull { it.index == todayAgriVisualIndex } ?: return false
     val itemStart = visibleItem.offset
     val itemEnd = visibleItem.offset + visibleItem.size
     val visibleStart = maxOf(itemStart, viewportStartOffset)
-    val visibleEnd = minOf(itemEnd, viewportEndOffset)
+    val visibleEnd = minOf(itemEnd, effectiveViewportEndOffset)
     return visibleEnd > visibleStart && visibleEnd - visibleStart >= minVisiblePx
+}
+
+internal fun resolveTodayAgriVisualAnchorMessageId(
+    savedAnchorMessageId: String?,
+    localAnchorMessageId: String?,
+    latestCompletedAssistantTailId: String?,
+    existingMessageIds: Set<String>
+): String? {
+    savedAnchorMessageId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+    localAnchorMessageId
+        ?.takeIf { it.isNotBlank() && it in existingMessageIds }
+        ?.let { return it }
+    return latestCompletedAssistantTailId?.takeIf { it.isNotBlank() }
 }
 
 internal data class VisibleChatListItem(
@@ -2237,6 +2255,7 @@ fun ChatScreen() {
     }
     var todayAgriCard by remember(uiRuntimeResetKey) { mutableStateOf(initialTodayAgriCard) }
     var todayAgriMainItem by remember(uiRuntimeResetKey) { mutableStateOf<TodayAgriMainItem?>(null) }
+    var todayAgriLocalAnchorMessageId by rememberSaveable(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
     var pendingHydratedTodayAgriMainItem by remember(uiRuntimeResetKey) { mutableStateOf<TodayAgriMainItem?>(null) }
     var pendingHydratedSnapshot by remember(uiRuntimeResetKey) { mutableStateOf<PendingHydratedSnapshot?>(null) }
     var todayAgriRemoteConfirmedDay by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
@@ -2310,12 +2329,19 @@ fun ChatScreen() {
             )
         }
     }
-    val todayAgriAfterMessageIdForRender by remember(currentTodayAgriMainItem, latestCompletedAssistantTailId) {
+    val todayAgriAfterMessageIdForRender by remember(
+        currentTodayAgriMainItem,
+        todayAgriLocalAnchorMessageId,
+        latestCompletedAssistantTailId,
+        messages
+    ) {
         derivedStateOf {
-            currentTodayAgriMainItem
-                ?.anchor_client_msg_id
-                ?.takeIf { it.isNotBlank() }
-                ?: latestCompletedAssistantTailId
+            resolveTodayAgriVisualAnchorMessageId(
+                savedAnchorMessageId = currentTodayAgriMainItem?.anchor_client_msg_id,
+                localAnchorMessageId = todayAgriLocalAnchorMessageId,
+                latestCompletedAssistantTailId = latestCompletedAssistantTailId,
+                existingMessageIds = messages.mapTo(mutableSetOf()) { it.id }
+            )
         }
     }
     val hasStreamingItem by remember(isStreaming, streamingMessageId, messages.size) {
@@ -2477,6 +2503,7 @@ fun ChatScreen() {
 
     fun applyHydratedTodayAgriMainItem(item: TodayAgriMainItem) {
         todayAgriMainItem = item
+        todayAgriLocalAnchorMessageId = item.anchor_client_msg_id.takeIf { it.isNotBlank() }
         todayAgriCard = item.card
         context.saveTodayAgriCardCacheSync(chatScopeId, item.card)
         todayAgriRemoteConfirmedDay = item.day_cn
@@ -2499,6 +2526,7 @@ fun ChatScreen() {
         todayAgriAutoInsertSuppressedThisRuntime = false
         todayAgriUserSendEpoch = 0
         todayAgriMainItem = null
+        todayAgriLocalAnchorMessageId = null
         pendingHydratedTodayAgriMainItem = null
         pendingHydratedSnapshot = null
         todayAgriCard = null
@@ -2941,11 +2969,22 @@ fun ChatScreen() {
         hasStreamingItem,
         hasStartedConversation,
         latestCompletedAssistantTailId,
+        todayAgriLocalAnchorMessageId,
+        messages,
         todayAgriItemSaveRetryAttempt
     ) {
         if (!shouldShowTodayAgriCard || isStreaming || hasStreamingItem) return@LaunchedEffect
         if (shouldHydrateRemoteHistory && !remoteSnapshotHydrationComplete) return@LaunchedEffect
-        val anchorMessageId = latestCompletedAssistantTailId ?: return@LaunchedEffect
+        val existingMessageIds = messages.mapTo(mutableSetOf()) { it.id }
+        val anchorMessageId = resolveTodayAgriVisualAnchorMessageId(
+            savedAnchorMessageId = null,
+            localAnchorMessageId = todayAgriLocalAnchorMessageId,
+            latestCompletedAssistantTailId = latestCompletedAssistantTailId,
+            existingMessageIds = existingMessageIds
+        ) ?: return@LaunchedEffect
+        if (todayAgriLocalAnchorMessageId != anchorMessageId) {
+            todayAgriLocalAnchorMessageId = anchorMessageId
+        }
         val cardToSave = todayAgriCard?.takeIf { card ->
             todayAgriCardDayKey(card) == currentTodayAgriCardDay &&
                 card.isRenderableTodayAgriCard()
@@ -2987,6 +3026,7 @@ fun ChatScreen() {
                         card = cardToSave,
                         updated_at = System.currentTimeMillis()
                     )
+                    todayAgriLocalAnchorMessageId = anchorMessageId
                     todayAgriRemoteConfirmedDay = currentTodayAgriCardDay
                 } else if (!saved &&
                     saveClearEpoch == chatHistoryClearEpoch &&
@@ -3015,6 +3055,7 @@ fun ChatScreen() {
                     card = cardToSave,
                     updated_at = System.currentTimeMillis()
                 )
+                todayAgriLocalAnchorMessageId = anchorMessageId
             }
         }
     }
@@ -3202,7 +3243,8 @@ fun ChatScreen() {
                 },
                 viewportStartOffset = layoutInfo.viewportStartOffset,
                 viewportEndOffset = layoutInfo.viewportEndOffset,
-                minVisiblePx = todayAgriMinVisiblePx
+                minVisiblePx = todayAgriMinVisiblePx,
+                coveredBottomPx = measuredComposerHostHeightPx.coerceAtLeast(stableComposerBottomBarHeightPx)
             )
         }
             .distinctUntilChanged()
@@ -3272,6 +3314,7 @@ fun ChatScreen() {
                 todayAgriRefreshDayKey = currentDay
                 todayAgriCard = null
                 todayAgriMainItem = null
+                todayAgriLocalAnchorMessageId = null
                 pendingHydratedTodayAgriMainItem = null
                 pendingHydratedSnapshot = null
                 todayAgriRemoteConfirmedDay = null
@@ -3291,6 +3334,7 @@ fun ChatScreen() {
             todayAgriRefreshDayKey = currentChinaDateKey()
             todayAgriCard = null
             todayAgriMainItem = null
+            todayAgriLocalAnchorMessageId = null
             pendingHydratedTodayAgriMainItem = null
             pendingHydratedSnapshot = null
             todayAgriRemoteConfirmedDay = null
@@ -4713,6 +4757,7 @@ fun ChatScreen() {
                 localSnapshotForMergeDeferred.cancel()
                 localStreamingDraftForMergeDeferred.cancel()
                 todayAgriMainItem = null
+                todayAgriLocalAnchorMessageId = null
                 todayAgriCard = null
                 pendingHydratedSnapshot = null
                 pendingHydratedTodayAgriMainItem = null
@@ -4873,6 +4918,7 @@ fun ChatScreen() {
                 canApplyHydratedVisuals
             ) {
                 todayAgriMainItem = null
+                todayAgriLocalAnchorMessageId = null
                 pendingHydratedTodayAgriMainItem = null
                 pendingHydratedSnapshot = null
             }
@@ -5319,6 +5365,24 @@ fun ChatScreen() {
         finalizeStreamingStop(shouldRestoreBottomAnchor = false)
     }
 
+    fun flushPendingStreamingRevealBufferForInterrupt() {
+        if (streamingRevealBuffer.isBlank()) return
+        streamRevealJob?.cancel()
+        streamRevealJob = null
+        flushStreamingRevealBuffer(
+            currentMessageId = streamingMessageId,
+            currentContent = streamingMessageContent,
+            currentRevealBuffer = streamingRevealBuffer,
+            anchoredUserMessageId = anchoredUserMessageId,
+            assistantIdProvider = ::assistantMessageIdForSourceUser,
+            fallbackIdProvider = { "assistant_${UUID.randomUUID()}" }
+        )?.let { flushed ->
+            streamingMessageId = flushed.messageId
+            streamingMessageContent = flushed.content
+        }
+        streamingRevealBuffer = ""
+    }
+
     fun finishStreaming() {
         val finishClearEpoch = chatHistoryClearEpoch
         mainHandler.post {
@@ -5437,6 +5501,7 @@ fun ChatScreen() {
             if (reason == "quota") {
                 quotaExhaustedDayKey = currentQuotaDayKey()
             }
+            flushPendingStreamingRevealBufferForInterrupt()
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent)
             clearPendingStreamingFinalize()

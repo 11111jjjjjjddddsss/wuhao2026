@@ -486,7 +486,12 @@ private fun encodeRendererMarkdownTableBlock(
             ?: "列${index + 1}"
     }
     val rowCells = rawRows.map { row ->
-        List(columnCount) { index -> row.take(columnCount).getOrNull(index).orEmpty() }
+        List(columnCount) { index ->
+            when {
+                index < columnCount - 1 -> row.getOrNull(index).orEmpty()
+                else -> row.drop(index).joinToString(" | ")
+            }
+        }
     }
     return buildString {
         append(RENDERER_TABLE_BLOCK_PREFIX)
