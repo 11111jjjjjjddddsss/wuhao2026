@@ -196,6 +196,22 @@ type QuotaConsumeOutboxJob struct {
 	Attempts     int
 }
 
+type QuotaConsumeOutboxAdminEntry struct {
+	ID            int64  `json:"id"`
+	UserID        string `json:"user_id"`
+	ClientMsgID   string `json:"client_msg_id"`
+	DayCN         string `json:"day_cn"`
+	Tier          string `json:"tier_at_completion"`
+	CompletionAt  int64  `json:"completion_at"`
+	Status        string `json:"status"`
+	Attempts      int    `json:"attempts"`
+	LastError     string `json:"last_error,omitempty"`
+	NextAttemptAt int64  `json:"next_attempt_at,omitempty"`
+	RepairedAt    int64  `json:"repaired_at,omitempty"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
+}
+
 func (s *Store) insertPendingQuotaConsumeOutboxTx(ctx context.Context, tx *sql.Tx, userID string, clientMsgID string, tier Tier, dayCN string, completionAt int64) error {
 	if strings.TrimSpace(userID) == "" || strings.TrimSpace(clientMsgID) == "" || strings.TrimSpace(dayCN) == "" {
 		return nil
@@ -231,7 +247,7 @@ func (s *Store) MarkQuotaConsumeOutboxDone(ctx context.Context, userID string, c
 		     next_attempt_at = 0,
 		     repaired_at = ?,
 		     updated_at = ?
-		 WHERE user_id = ? AND client_msg_id = ?`,
+		 WHERE user_id = ? AND client_msg_id = ? AND status IN ('pending','failed')`,
 		repairedAt,
 		repairedAt,
 		userID,
@@ -249,7 +265,7 @@ func (s *Store) MarkQuotaConsumeOutboxFailed(ctx context.Context, userID string,
 		     last_error = ?,
 		     next_attempt_at = ?,
 		     updated_at = ?
-		 WHERE user_id = ? AND client_msg_id = ? AND status <> 'done'`,
+		 WHERE user_id = ? AND client_msg_id = ? AND status IN ('pending','failed')`,
 		truncateRunes(strings.TrimSpace(lastError), 255),
 		nextAttemptAt,
 		nowMs,
@@ -257,6 +273,81 @@ func (s *Store) MarkQuotaConsumeOutboxFailed(ctx context.Context, userID string,
 		clientMsgID,
 	)
 	return err
+}
+
+func (s *Store) MarkQuotaConsumeOutboxNeedsOps(ctx context.Context, userID string, clientMsgID string, lastError string, nowMs int64) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE quota_consume_outbox
+		 SET status = 'needs_ops',
+		     attempts = attempts + 1,
+		     last_error = ?,
+		     next_attempt_at = 0,
+		     updated_at = ?
+		 WHERE user_id = ? AND client_msg_id = ? AND status IN ('pending','failed')`,
+		truncateRunes(strings.TrimSpace(lastError), 255),
+		nowMs,
+		userID,
+		clientMsgID,
+	)
+	return err
+}
+
+func (s *Store) UpdateQuotaConsumeOutboxAdminStatus(ctx context.Context, id int64, status string, note string, nowMs int64) (QuotaConsumeOutboxAdminEntry, bool, error) {
+	status = normalizeQuotaConsumeOutboxAdminStatus(status)
+	if id <= 0 || status == "" {
+		return QuotaConsumeOutboxAdminEntry{}, false, nil
+	}
+	var query string
+	var args []any
+	switch status {
+	case "pending":
+		query = `UPDATE quota_consume_outbox
+		          SET status = 'pending',
+		              attempts = 0,
+		              last_error = NULLIF(?, ''),
+		              next_attempt_at = 0,
+		              repaired_at = NULL,
+		              updated_at = ?
+		        WHERE id = ? AND status IN ('pending','failed','needs_ops')`
+		args = []any{truncateRunes(strings.TrimSpace(note), 255), nowMs, id}
+	case "waived", "uncollectable":
+		query = `UPDATE quota_consume_outbox
+		          SET status = ?,
+		              last_error = ?,
+		              next_attempt_at = 0,
+		              repaired_at = ?,
+		              updated_at = ?
+		        WHERE id = ? AND status = 'needs_ops'`
+		args = []any{status, truncateRunes(strings.TrimSpace(note), 255), nowMs, nowMs, id}
+	default:
+		return QuotaConsumeOutboxAdminEntry{}, false, nil
+	}
+	result, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return QuotaConsumeOutboxAdminEntry{}, false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return QuotaConsumeOutboxAdminEntry{}, false, err
+	}
+	if rows == 0 {
+		return QuotaConsumeOutboxAdminEntry{}, false, nil
+	}
+	entry, found, err := s.GetQuotaConsumeOutboxAdminEntry(ctx, id)
+	if err != nil {
+		return QuotaConsumeOutboxAdminEntry{}, false, err
+	}
+	return entry, found, nil
+}
+
+func normalizeQuotaConsumeOutboxAdminStatus(status string) string {
+	switch strings.TrimSpace(strings.ToLower(status)) {
+	case "pending", "waived", "uncollectable":
+		return strings.TrimSpace(strings.ToLower(status))
+	default:
+		return ""
+	}
 }
 
 func (s *Store) ListDueQuotaConsumeOutbox(ctx context.Context, limit int, nowMs int64) ([]QuotaConsumeOutboxJob, error) {
@@ -301,12 +392,114 @@ func (s *Store) CountPendingQuotaConsumeOutbox(ctx context.Context) (int64, erro
 	var count sql.NullInt64
 	err := s.db.QueryRowContext(
 		ctx,
-		"SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed')",
+		"SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed','needs_ops')",
 	).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
 	return count.Int64, nil
+}
+
+func (s *Store) ListQuotaConsumeOutboxAdminEntries(ctx context.Context, status string, limit int) ([]QuotaConsumeOutboxAdminEntry, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	status = strings.TrimSpace(strings.ToLower(status))
+	where := "status IN ('pending','failed','needs_ops')"
+	args := []any{}
+	switch status {
+	case "pending", "failed", "needs_ops", "waived", "uncollectable", "done":
+		where = "status = ?"
+		args = append(args, status)
+	case "", "active":
+	default:
+		status = "active"
+	}
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at,
+		        status, attempts, last_error, next_attempt_at, repaired_at, created_at, updated_at
+		   FROM quota_consume_outbox
+		  WHERE `+where+`
+		  ORDER BY updated_at ASC, id ASC
+		  LIMIT ?`,
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []QuotaConsumeOutboxAdminEntry{}
+	for rows.Next() {
+		entry, err := scanQuotaConsumeOutboxAdminEntry(rows)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, entry)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return entries, nil
+}
+
+func (s *Store) GetQuotaConsumeOutboxAdminEntry(ctx context.Context, id int64) (QuotaConsumeOutboxAdminEntry, bool, error) {
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at,
+		        status, attempts, last_error, next_attempt_at, repaired_at, created_at, updated_at
+		   FROM quota_consume_outbox
+		  WHERE id = ?
+		  LIMIT 1`,
+		id,
+	)
+	entry, err := scanQuotaConsumeOutboxAdminEntry(row)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return QuotaConsumeOutboxAdminEntry{}, false, nil
+		}
+		return QuotaConsumeOutboxAdminEntry{}, false, err
+	}
+	return entry, true, nil
+}
+
+type quotaConsumeOutboxAdminScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanQuotaConsumeOutboxAdminEntry(scanner quotaConsumeOutboxAdminScanner) (QuotaConsumeOutboxAdminEntry, error) {
+	var entry QuotaConsumeOutboxAdminEntry
+	var lastError sql.NullString
+	var nextAttemptAt sql.NullInt64
+	var repairedAt sql.NullInt64
+	if err := scanner.Scan(
+		&entry.ID,
+		&entry.UserID,
+		&entry.ClientMsgID,
+		&entry.DayCN,
+		&entry.Tier,
+		&entry.CompletionAt,
+		&entry.Status,
+		&entry.Attempts,
+		&lastError,
+		&nextAttemptAt,
+		&repairedAt,
+		&entry.CreatedAt,
+		&entry.UpdatedAt,
+	); err != nil {
+		return QuotaConsumeOutboxAdminEntry{}, err
+	}
+	if lastError.Valid {
+		entry.LastError = lastError.String
+	}
+	if nextAttemptAt.Valid {
+		entry.NextAttemptAt = nextAttemptAt.Int64
+	}
+	if repairedAt.Valid {
+		entry.RepairedAt = repairedAt.Int64
+	}
+	return entry, nil
 }
 
 func (s *Store) GetTopupStatus(ctx context.Context, userID string) (int, *int64, error) {

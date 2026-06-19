@@ -5,6 +5,8 @@
 
 ## 2026-06-19
 
+- 继续按“不能让后台扣次失败挡住用户体验”收口额度待补扣后台治理：`quota_consume_outbox` 状态扩展为 `pending / done / failed / needs_ops / waived / uncollectable`，worker 自动重试到阈值后转 `needs_ops` 并停止自动噪声；新增后台只读列表和 owner 操作接口，会员额度页展示“扣次补偿队列”，owner 需输入确认文字才能重试、豁免或标记不可追回，操作写审计且不记录备注正文；监控面板待补扣行动项跳转会员额度页。用户下一轮聊天仍不会因待补扣 `pending / failed / needs_ops` 被卡住。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡、`max_tokens` 或用户 / 客服内容拦截，也不部署线上服务。
+
 - 继续按“仓库有失败推送 / 全盘挑刺 / 联网校准”收口：先确认所谓失败推送实际是 GitHub Android CI 红灯，不是 git push 失败；`e851da48` 已修正吐字节奏 parity 断言并跑绿 Android CI / Project Memory。随后补三处实质边角：聊天表格正文续行必须有表格边界，表格后一段普通 `A | B` 文字不会被吞进上一张表，双反引号行内代码里的 `|` 也不会拆成假列；今日农情只有实际进入当前 `LazyColumn` 可见 item 范围后才算“用户已看到”，只保存远端展示记录或插入 timeline 不会提前持久化 shown day 或携带 `today_agri_context_day`；旧本机账号迁移到手机号账号时同步复制 `quota_consume_outbox`，避免待补扣队列留在旧身份。另用仓库配置脚本刷新了 ECS 今日农情 systemd 脚本，远端脚本已是严格解析唯一 active slot、无固定 3000 回退；未触发一次性生成。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不加模型输出过滤、不发布正式 APK。
 
 - 修复上一笔 `173b2e7e` 的 GitHub `Android CI` 红灯：本地和远端 `master` 都已是 `173b2e7e`，不是 Git push 失败；失败点是 `check-android-build-parity.ps1` 仍锁着旧吐字节奏断言。现已把 parity 门禁同步到新口径：streaming 换行延迟 `86/66ms`、中文单字 `19ms`；小球最短展示、呼吸节奏和尺寸断言不动。本轮仍不发布正式 APK、不改三份保护提示词、不新增模型输出过滤。
@@ -33,7 +35,7 @@
 
 - 主对话锚点收口提交 `c8caace6` 已通过 `scripts/deploy-ecs-server.ps1` 部署到 ECS，部署包提交为 `c8caace6`，Nginx active upstream 从 `3000` 切到 `3001`；部署过程在 ECS 上重新跑 `go test ./...` 并重建二进制，切换后 readiness 显示公网 healthz 200、严格鉴权、百炼、短信、Redis 和 OSS 上传均正常，后台未登录接口继续 401。该部署只更新后端服务和 `server-go/assets`，不发布 Android APK、不配置检查更新、不动官网或管理后台静态前端。
 
-- 按用户“不能让后台扣次失败挡住用户体验”的拍板，`/api/chat/stream` 取消了入口处按当前用户 `quota_consume_outbox pending / failed` 返回 `QUOTA_SETTLEMENT_PENDING` 的前台门闩。`quota_consume_outbox` 仍在归档事务内作为待补扣队列写入，`quota_ledger` 继续按 `user_id + client_msg_id` 幂等防重复扣，服务端短重试和后台 worker 仍按回答完成时档位、自然日和完成时间补扣；后台总览 / 监控面板继续显示“待补扣”。当前取舍是前台放行、后台追账：不再把待补扣失败转成用户下一轮聊天卡死，剩余风险转成后台待处理和短期成本 / 额度对账压力，后续应补 owner 级 repair / 豁免 / 终结状态和审计，而不是重新加用户侧限制。本轮不改主对话锚点、记忆提示词、今日农情提示词，不新增模型输出过滤或 `max_tokens`。
+- 按用户“不能让后台扣次失败挡住用户体验”的拍板，`/api/chat/stream` 取消了入口处按当前用户 `quota_consume_outbox pending / failed` 返回 `QUOTA_SETTLEMENT_PENDING` 的前台门闩。`quota_consume_outbox` 仍在归档事务内作为待补扣队列写入，`quota_ledger` 继续按 `user_id + client_msg_id` 幂等防重复扣，服务端短重试和后台 worker 仍按回答完成时档位、自然日和完成时间补扣；后台总览 / 监控面板继续显示“待补扣”。当前取舍是前台放行、后台追账：不再把待补扣失败转成用户下一轮聊天卡死，剩余风险转成后台待处理和短期成本 / 额度对账压力，后续不要重新加用户侧限制。本轮不改主对话锚点、记忆提示词、今日农情提示词，不新增模型输出过滤或 `max_tokens`。
 
 - 交互代理挑刺后补主聊天失败态和今日农情保存边界：`clearStaleFailureAffordancesForNewSend` 不再因为新发送擦掉旧失败用户消息或失败 AI 消息的重试入口，发送 / 重试起步也不再保留旧 `UserBrowsing` 浏览态，点击发送即交回现有 AutoFollow / 正向底部锚点主链。今日农情主卡在远端模式下不再“刚可见就持久化当天已展示”，只有远端展示项保存成功或 snapshot 已确认存在展示项时才写本地 shown day；若保存失败，下次启动仍可再次展示并继续补保存，避免当天卡片被本地标记抑制。本轮不恢复反向列表、overlay、raw delta、streaming 小分割，不改主对话锚点或模型输出限制。
 

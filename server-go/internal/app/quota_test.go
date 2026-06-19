@@ -147,23 +147,123 @@ func TestTopupPackStatusAfterConsumeUsesRemainingBeforeConsume(t *testing.T) {
 	}
 }
 
-func TestCountPendingQuotaConsumeOutboxCountsPendingAndFailedRows(t *testing.T) {
+func TestCountPendingQuotaConsumeOutboxCountsActiveRows(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()
 
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed')")).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed','needs_ops')")).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
 
 	count, err := store.CountPendingQuotaConsumeOutbox(context.Background())
 	if err != nil {
 		t.Fatalf("CountPendingQuotaConsumeOutbox failed: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("pending count = %d, want 2", count)
+	if count != 3 {
+		t.Fatalf("pending count = %d, want 3", count)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet SQL expectations: %v", err)
 	}
+}
+
+func TestUpdateQuotaConsumeOutboxAdminStatusRetryMakesRowPending(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_000_000)
+	mock.ExpectExec("UPDATE quota_consume_outbox").
+		WithArgs("owner retry", nowMs, int64(42)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at,").
+		WithArgs(int64(42)).
+		WillReturnRows(quotaOutboxAdminRows().AddRow(
+			int64(42),
+			"acct_quota_retry",
+			"cm_retry",
+			"20260619",
+			"plus",
+			nowMs-1000,
+			"pending",
+			0,
+			nil,
+			int64(0),
+			nil,
+			nowMs-2000,
+			nowMs,
+		))
+
+	entry, updated, err := store.UpdateQuotaConsumeOutboxAdminStatus(context.Background(), 42, "pending", "owner retry", nowMs)
+	if err != nil {
+		t.Fatalf("UpdateQuotaConsumeOutboxAdminStatus failed: %v", err)
+	}
+	if !updated {
+		t.Fatal("expected row to be updated")
+	}
+	if entry.Status != "pending" || entry.Attempts != 0 || entry.UserID != "acct_quota_retry" {
+		t.Fatalf("entry mismatch: %#v", entry)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestUpdateQuotaConsumeOutboxAdminStatusWaivesRowTerminal(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_001_000)
+	mock.ExpectExec("UPDATE quota_consume_outbox").
+		WithArgs("waived", "owner waived after manual review", nowMs, nowMs, int64(43)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at,").
+		WithArgs(int64(43)).
+		WillReturnRows(quotaOutboxAdminRows().AddRow(
+			int64(43),
+			"acct_quota_waive",
+			"cm_waive",
+			"20260619",
+			"free",
+			nowMs-1000,
+			"waived",
+			12,
+			"owner waived after manual review",
+			int64(0),
+			nowMs,
+			nowMs-2000,
+			nowMs,
+		))
+
+	entry, updated, err := store.UpdateQuotaConsumeOutboxAdminStatus(context.Background(), 43, "waived", "owner waived after manual review", nowMs)
+	if err != nil {
+		t.Fatalf("UpdateQuotaConsumeOutboxAdminStatus failed: %v", err)
+	}
+	if !updated {
+		t.Fatal("expected row to be updated")
+	}
+	if entry.Status != "waived" || entry.RepairedAt != nowMs || entry.LastError == "" {
+		t.Fatalf("entry mismatch: %#v", entry)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func quotaOutboxAdminRows() *sqlmock.Rows {
+	return sqlmock.NewRows([]string{
+		"id",
+		"user_id",
+		"client_msg_id",
+		"day_cn",
+		"tier_at_completion",
+		"completion_at",
+		"status",
+		"attempts",
+		"last_error",
+		"next_attempt_at",
+		"repaired_at",
+		"created_at",
+		"updated_at",
+	})
 }
 
 func TestConsumeOnDoneAtDoesNotUseBenefitsCreatedAfterCompletion(t *testing.T) {

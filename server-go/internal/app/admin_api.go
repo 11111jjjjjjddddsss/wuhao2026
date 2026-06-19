@@ -351,6 +351,13 @@ type AdminEntitlementSummary struct {
 	NowMs                    int64 `json:"now_ms"`
 }
 
+type adminQuotaConsumeOutboxActionRequest struct {
+	ID           int64  `json:"id"`
+	Action       string `json:"action"`
+	Note         string `json:"note"`
+	Confirmation string `json:"confirmation"`
+}
+
 type AdminQuotaLedgerEntry struct {
 	ID          int64  `json:"id"`
 	ClientMsgID string `json:"client_msg_id"`
@@ -618,7 +625,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAdminEntitlementSummary(w http.ResponseWriter, r *http.Request) {
-	admin, ok := s.requireAdmin(w, r, "ops_readonly", "support", "finance_ops")
+	admin, ok := s.requireAdmin(w, r, "ops_readonly", "support", "finance_ops", "auditor")
 	if !ok {
 		return
 	}
@@ -637,6 +644,109 @@ func (s *Server) handleAdminEntitlementSummary(w http.ResponseWriter, r *http.Re
 		"expiring_7d":  summary.ExpiringIn7d,
 	})
 	s.writeJSON(w, http.StatusOK, summary)
+}
+
+func (s *Server) handleAdminQuotaConsumeOutbox(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "ops_readonly", "finance_ops", "auditor")
+	if !ok {
+		return
+	}
+	status := strings.TrimSpace(strings.ToLower(r.URL.Query().Get("status")))
+	limit := parseAdminLimit(r.URL.Query().Get("limit"))
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	entries, err := s.store.ListQuotaConsumeOutboxAdminEntries(ctx, status, limit)
+	if err != nil {
+		s.logger.Error("admin quota consume outbox list failed", "status", status, "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.list", "quota_consume_outbox", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.list", "quota_consume_outbox", "", "", true, http.StatusOK, map[string]any{
+		"status":    status,
+		"limit":     limit,
+		"row_count": len(entries),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"entries": entries,
+		"status":  status,
+		"limit":   limit,
+	})
+}
+
+func (s *Server) handleAdminQuotaConsumeOutboxAction(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "owner")
+	if !ok {
+		return
+	}
+	var body adminQuotaConsumeOutboxActionRequest
+	if err := decodeJSONBodyLimited(r, &body, 8*1024); err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	action := strings.TrimSpace(strings.ToLower(body.Action))
+	note := truncateRunes(strings.TrimSpace(body.Note), 255)
+	targetStatus := ""
+	expectedConfirmation := ""
+	noteRequired := false
+	switch action {
+	case "retry":
+		targetStatus = "pending"
+		expectedConfirmation = "重试 " + strconv.FormatInt(body.ID, 10)
+	case "waive":
+		targetStatus = "waived"
+		expectedConfirmation = "豁免 " + strconv.FormatInt(body.ID, 10)
+		noteRequired = true
+	case "uncollectable":
+		targetStatus = "uncollectable"
+		expectedConfirmation = "不可追回 " + strconv.FormatInt(body.ID, 10)
+		noteRequired = true
+	default:
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", strconv.FormatInt(body.ID, 10), "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_action"})
+		s.writeError(w, http.StatusBadRequest, "invalid_action")
+		return
+	}
+	if body.ID <= 0 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "id_required", "action": action})
+		s.writeError(w, http.StatusBadRequest, "id_required")
+		return
+	}
+	if strings.TrimSpace(body.Confirmation) != expectedConfirmation {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", strconv.FormatInt(body.ID, 10), "", false, http.StatusBadRequest, map[string]any{"error_code": "confirmation_mismatch", "action": action})
+		s.writeError(w, http.StatusBadRequest, "confirmation_mismatch")
+		return
+	}
+	if noteRequired && note == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", strconv.FormatInt(body.ID, 10), "", false, http.StatusBadRequest, map[string]any{"error_code": "note_required", "action": action})
+		s.writeError(w, http.StatusBadRequest, "note_required")
+		return
+	}
+	if action == "retry" && note == "" {
+		note = "owner retry"
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	entry, updated, err := s.store.UpdateQuotaConsumeOutboxAdminStatus(ctx, body.ID, targetStatus, note, time.Now().UnixMilli())
+	if err != nil {
+		s.logger.Error("admin quota consume outbox action failed", "id", body.ID, "action", action, "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", strconv.FormatInt(body.ID, 10), "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error", "action": action})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if !updated {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", strconv.FormatInt(body.ID, 10), "", false, http.StatusConflict, map[string]any{"error_code": "quota_outbox_not_actionable", "action": action})
+		s.writeError(w, http.StatusConflict, "quota_outbox_not_actionable")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.quota_outbox.action", "quota_consume_outbox", strconv.FormatInt(body.ID, 10), entry.UserID, true, http.StatusOK, map[string]any{
+		"action":       action,
+		"status":       entry.Status,
+		"note_present": note != "",
+		"note_length":  len([]rune(note)),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "entry": entry})
 }
 
 func (s *Server) handleAdminOrders(w http.ResponseWriter, r *http.Request) {
@@ -1722,7 +1832,7 @@ func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, labe
 	if window.QuotaDeductions, err = s.countQuery(ctx, "SELECT COALESCE(SUM(delta),0) FROM quota_ledger WHERE created_at >= ?", []any{sinceMs}); err != nil {
 		return window, err
 	}
-	if window.QuotaConsumePending, err = s.countQuery(ctx, "SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed') AND completion_at >= ?", []any{sinceMs}); err != nil {
+	if window.QuotaConsumePending, err = s.countQuery(ctx, "SELECT COUNT(*) FROM quota_consume_outbox WHERE status IN ('pending','failed','needs_ops') AND completion_at >= ?", []any{sinceMs}); err != nil {
 		return window, err
 	}
 	if window.AppErrors, err = s.countQuery(ctx, "SELECT COUNT(*) FROM client_app_logs WHERE created_at >= ? AND level = 'error'", []any{sinceMs}); err != nil {
@@ -2169,9 +2279,9 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 	if queues.QuotaConsumePending > 0 {
 		items = append(items, AdminMonitoringActionItem{
 			Title: "扣次补偿待处理",
-			Body:  "已有完整回答归档，但扣次补偿还未完成；系统会自动重试，持续增加时再查数据库和额度日志。",
+			Body:  "已有完整回答归档，但扣次补偿还未完成；系统会自动重试，长期失败会进会员额度页由 owner 重试、豁免或标记不可追回，不会挡用户聊天。",
 			Level: "warn",
-			Route: "monitoring",
+			Route: "entitlements",
 			Count: queues.QuotaConsumePending,
 		})
 	}
@@ -2651,8 +2761,10 @@ func adminRouteAllowed(role string, route string) bool {
 	switch strings.TrimSpace(route) {
 	case "", "overview", "monitoring", "health", "insights", "account":
 		return adminRoleAllowed(role)
-	case "users", "entitlements", "orders":
+	case "users", "orders":
 		return adminRoleAllowed(role, "ops_readonly", "support", "finance_ops")
+	case "entitlements":
+		return adminRoleAllowed(role, "ops_readonly", "support", "finance_ops", "auditor")
 	case "gift-cards":
 		return adminRoleAllowed(role, "finance_ops", "ops_readonly", "auditor")
 	case "account-deletion":

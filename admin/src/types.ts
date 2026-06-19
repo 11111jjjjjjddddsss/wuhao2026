@@ -379,6 +379,22 @@ export interface AdminEntitlementSummary {
   now_ms: number;
 }
 
+export interface AdminQuotaConsumeOutboxEntry {
+  id: number;
+  user_id: string;
+  client_msg_id: string;
+  day_cn: string;
+  tier_at_completion: string;
+  completion_at: number;
+  status: string;
+  attempts: number;
+  last_error?: string;
+  next_attempt_at?: number;
+  repaired_at?: number;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface AdminQuotaLedgerEntry {
   id: number;
   client_msg_id: string;

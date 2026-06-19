@@ -18,6 +18,7 @@ import type {
   AdminOrderEntry,
   AdminOrdersResponse,
   AdminOverview,
+  AdminQuotaConsumeOutboxEntry,
   AdminQuotaLedgerEntry,
   AdminRegionMetric,
   AdminSupportConversation,
@@ -49,7 +50,7 @@ const routes: RouteItem[] = [
   { key: "overview", label: "总览", section: "工作台", hint: "可用" },
   { key: "monitoring", label: "监控面板", section: "工作台", hint: "可用" },
   { key: "users", label: "用户管理", section: "用户与增长", hint: "可查", roles: ["ops_readonly", "support", "finance_ops"] },
-  { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops"] },
+  { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops", "auditor"] },
   { key: "orders", label: "订单", section: "权益与交易", hint: "只读核查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "发卡/追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
   { key: "account-deletion", label: "注销申请", section: "运营工作台", hint: "待处理/核验", roles: ["support", "ops_readonly", "auditor", "finance_ops"] },
@@ -510,25 +511,34 @@ async function usersPage(): Promise<string> {
 async function entitlementsPage(): Promise<string> {
   const summary = await apiFetch<AdminEntitlementSummary>("/admin-api/v1/entitlements/summary");
   const summaryBlock = entitlementOverviewBlock(summary);
+  const quotaOutboxBlock = await quotaConsumeOutboxBlock();
+  if (currentAdminRole() === "auditor") {
+    return `
+      ${pageHead("会员额度", "查看会员总体情况和后台待补扣队列。审计角色不开放单用户权益查询。", "entitlements")}
+      ${summaryBlock}
+      ${quotaOutboxBlock}
+    `;
+  }
   return userScopedPage({
     title: "会员额度",
-    desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包和补偿。",
+    desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包、补偿和后台待补扣。",
     formID: "entitlements-form",
     inputName: "user_id",
     value: pageState.entitlementUserID,
     placeholder: "输入账号ID查询权益",
     content: async (userID) => {
       if (!userID) {
-        return summaryBlock;
+        return `${summaryBlock}${quotaOutboxBlock}`;
       }
       let detail: AdminUserDetail;
       try {
         detail = await fetchUserDetail(userID);
       } catch (error) {
-        return `${summaryBlock}${errorBlock(error)}`;
+        return `${summaryBlock}${quotaOutboxBlock}${errorBlock(error)}`;
       }
       return `
         ${summaryBlock}
+        ${quotaOutboxBlock}
         <div class="grid two">
           <section class="card">
             <div class="card-head"><div class="card-title">权益概览</div></div>
@@ -1212,6 +1222,11 @@ async function handleAction(button: HTMLElement): Promise<void> {
     await render();
     return;
   }
+  if (action === "quota-outbox-action") {
+    if (!canManageQuotaOutbox()) return;
+    await updateQuotaConsumeOutbox(button);
+    return;
+  }
   if (action === "copy-text") {
     await copyText(button.dataset.copy || "");
     return;
@@ -1556,6 +1571,58 @@ async function submitManualTodayAgriCard(form: HTMLFormElement): Promise<void> {
     window.alert(`人工发布完成：${result.status || "ready"}，${result.item_count || 0} 条，已锁定。`);
     await render();
   }, "人工发布失败");
+}
+
+async function updateQuotaConsumeOutbox(button: HTMLElement): Promise<void> {
+  const rawID = button.dataset.id || "";
+  const quotaAction = button.dataset.quotaAction || "";
+  const id = Number(rawID);
+  const labels: Record<string, string> = {
+    retry: "重试",
+    waive: "豁免",
+    uncollectable: "不可追回",
+  };
+  if (!Number.isFinite(id) || id <= 0 || !labels[quotaAction]) return;
+  let note = "";
+  if (quotaAction === "waive" || quotaAction === "uncollectable") {
+    const input = window.prompt("处理备注必填。写清原因，不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
+    if (input === null) return;
+    note = input.trim();
+    if (!note) {
+      window.alert("备注不能为空。");
+      return;
+    }
+  } else {
+    const input = window.prompt("重试备注，可留空。不要写完整手机号、礼品卡完整码、密钥或内部敏感信息。");
+    if (input === null) return;
+    note = input.trim();
+  }
+  const confirmationText =
+    quotaAction === "retry" ? `重试 ${id}` : quotaAction === "waive" ? `豁免 ${id}` : `不可追回 ${id}`;
+  if (
+    !window.confirm(
+      [
+        `确认${labels[quotaAction]}这条扣次补偿记录？`,
+        `记录 ID：${id}`,
+        "这只处理后台账务队列，不会恢复成用户侧聊天限制。",
+      ].join("\n"),
+    )
+  ) {
+    return;
+  }
+  const typedConfirmation = window.prompt(`请输入 ${confirmationText} 确认操作。`);
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== confirmationText) {
+    window.alert("确认文字不一致，已取消操作。");
+    return;
+  }
+  await withButtonBusy(button, "处理中", async () => {
+    await apiFetch("/admin-api/v1/quota-consume-outbox/action", {
+      method: "POST",
+      json: { id, action: quotaAction, note, confirmation: typedConfirmation.trim() },
+    });
+    await render();
+  }, "处理失败");
 }
 
 async function updateAccountDeletionStatus(requestID: string, status: string, button?: HTMLElement): Promise<void> {
@@ -1916,6 +1983,94 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
       </section>
     </div>
   `;
+}
+
+async function quotaConsumeOutboxBlock(): Promise<string> {
+  if (!canViewQuotaOutbox()) return "";
+  let entries: AdminQuotaConsumeOutboxEntry[] = [];
+  let loadError = "";
+  try {
+    const response = await apiFetch<{ entries: AdminQuotaConsumeOutboxEntry[] }>(
+      "/admin-api/v1/quota-consume-outbox?status=active&limit=50",
+    );
+    entries = response.entries || [];
+  } catch (error) {
+    loadError = errorMessage(error);
+  }
+  return `
+    <section class="card" style="margin-top:12px">
+      <div class="card-head">
+        <div>
+          <div class="card-title">扣次补偿队列</div>
+          <div class="small muted">完整回答已归档但扣次还没结清的后台队列；不挡用户继续聊天。</div>
+        </div>
+        <span class="small muted">${entries.length} 条</span>
+      </div>
+      ${
+        loadError
+          ? `<div class="card-body">${notice("队列暂时不可用", `后台返回 ${loadError}，稍后刷新即可。`, "warn")}</div>`
+          : `<div class="table-wrap">${quotaConsumeOutboxTable(entries)}</div>`
+      }
+    </section>
+  `;
+}
+
+function quotaConsumeOutboxTable(rows: AdminQuotaConsumeOutboxEntry[]): string {
+  if (!rows.length) return emptyState("没有待补扣", "后台没有 pending / failed / needs_ops 记录。");
+  const canManage = canManageQuotaOutbox();
+  return `
+    <table class="table">
+      <thead><tr><th>ID</th><th>状态</th><th>账号ID</th><th>日期/档位</th><th>尝试</th><th>下次处理</th><th>错误</th><th>操作</th></tr></thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                <td>${row.id}</td>
+                <td>${statusPill(row.status, quotaOutboxStatusLevel(row.status))}</td>
+                <td><button class="link-button" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button><div class="small muted">${escapeHTML(row.client_msg_id)}</div></td>
+                <td>${escapeHTML(row.day_cn)}<div class="small muted">${escapeHTML(row.tier_at_completion || "free")} · ${formatTime(row.completion_at)}</div></td>
+                <td>${row.attempts}</td>
+                <td>${row.next_attempt_at ? formatTime(row.next_attempt_at) : "不自动重试"}</td>
+                <td class="wrap">${escapeHTML(row.last_error || "")}</td>
+                <td>${canManage ? quotaOutboxActions(row) : `<span class="small muted">owner 可处理</span>`}</td>
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function quotaOutboxActions(row: AdminQuotaConsumeOutboxEntry): string {
+  if (row.status === "pending") {
+    return `<span class="small muted">自动重试中</span>`;
+  }
+  if (row.status === "failed") {
+    return `
+      <div class="row-actions">
+        <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="retry" data-id="${row.id}">重试</button>
+      </div>
+    `;
+  }
+  if (row.status !== "needs_ops") {
+    return `<span class="small muted">已结束</span>`;
+  }
+  return `
+    <div class="row-actions">
+      <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="retry" data-id="${row.id}">重试</button>
+      <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="waive" data-id="${row.id}">豁免</button>
+      <button class="button" type="button" data-action="quota-outbox-action" data-quota-action="uncollectable" data-id="${row.id}">不可追回</button>
+    </div>
+  `;
+}
+
+function quotaOutboxStatusLevel(status: string): "ok" | "warn" | "bad" | "info" {
+  if (status === "pending") return "warn";
+  if (status === "failed" || status === "needs_ops") return "bad";
+  if (status === "done" || status === "waived" || status === "uncollectable") return "info";
+  return "info";
 }
 
 function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
@@ -4079,6 +4234,15 @@ function canViewGiftCardCodes(): boolean {
 function canViewAccountPhone(): boolean {
   const role = currentAdminRole();
   return role === "owner" || role === "support" || role === "finance_ops";
+}
+
+function canViewQuotaOutbox(): boolean {
+  const role = currentAdminRole();
+  return role === "owner" || role === "ops_readonly" || role === "finance_ops" || role === "auditor";
+}
+
+function canManageQuotaOutbox(): boolean {
+  return currentAdminRole() === "owner";
 }
 
 function canManageSupport(): boolean {

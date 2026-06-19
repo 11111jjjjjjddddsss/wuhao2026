@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	defaultQuotaConsumeRepairInterval = 30 * time.Second
-	defaultQuotaConsumeRepairTimeout  = 10 * time.Second
-	quotaConsumeRepairBatchLimit      = 20
+	defaultQuotaConsumeRepairInterval  = 30 * time.Second
+	defaultQuotaConsumeRepairTimeout   = 10 * time.Second
+	quotaConsumeRepairBatchLimit       = 20
+	quotaConsumeRepairNeedsOpsAttempts = 12
 )
 
 func (s *Server) startQuotaConsumeRepairWorker() {
@@ -57,12 +58,21 @@ func (s *Server) repairDueQuotaConsumes() {
 			continue
 		}
 		nextNowMs := time.Now().UnixMilli()
+		nextAttempts := job.Attempts + 1
+		if nextAttempts >= quotaConsumeRepairNeedsOpsAttempts {
+			if markErr := s.store.MarkQuotaConsumeOutboxNeedsOps(ctx, job.UserID, job.ClientMsgID, err.Error(), nextNowMs); markErr != nil {
+				s.logger.Warn("quota consume outbox mark needs ops failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "error", markErr)
+				continue
+			}
+			s.logger.Warn("quota consume outbox needs owner repair", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "attempts", nextAttempts, "error", err)
+			continue
+		}
 		nextAttemptAt := nextNowMs + int64(quotaConsumeRepairBackoff(job.Attempts)/time.Millisecond)
 		if markErr := s.store.MarkQuotaConsumeOutboxFailed(ctx, job.UserID, job.ClientMsgID, err.Error(), nextAttemptAt, nextNowMs); markErr != nil {
 			s.logger.Warn("quota consume outbox repair mark failed failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "error", markErr)
 			continue
 		}
-		s.logger.Warn("quota consume outbox repair failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "attempts", job.Attempts+1, "nextAttemptAt", nextAttemptAt, "error", err)
+		s.logger.Warn("quota consume outbox repair failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "attempts", nextAttempts, "nextAttemptAt", nextAttemptAt, "error", err)
 	}
 }
 
