@@ -27,6 +27,7 @@ const (
 var (
 	ErrSessionRoundRequestConflict = errors.New("session round request conflict")
 	ErrSessionRoundArchiveMissing  = errors.New("session round archive missing")
+	ErrTodayAgriAnchorNotArchived  = errors.New("today agri anchor not archived")
 )
 
 func NewStore(db *sql.DB, shanghai *time.Location) *Store {

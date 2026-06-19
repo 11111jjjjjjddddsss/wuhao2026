@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -67,7 +68,8 @@ func TestUpsertTodayAgriUserItemSavesCurrentRecordAndDropsOtherDays(t *testing.T
 
 	userID := "acct_agri_ok"
 	dayCN := "20260617"
-	anchorID := "assistant-1"
+	anchorID := "assistant_msg-1"
+	normalizedAnchorID := "msg-1"
 	expectedGeneration := 3
 
 	mock.ExpectBegin()
@@ -82,6 +84,9 @@ func TestUpsertTodayAgriUserItemSavesCurrentRecordAndDropsOtherDays(t *testing.T
 		 LIMIT 1 FOR UPDATE`)).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"generation", "cleared_at"}).AddRow(expectedGeneration, int64(0)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT 1 FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1`)).
+		WithArgs(userID, normalizedAnchorID).
+		WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
 	mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM today_agri_user_items
 		 WHERE user_id = ? AND day_cn <> ?`)).
 		WithArgs(userID, dayCN).
@@ -92,7 +97,7 @@ func TestUpsertTodayAgriUserItemSavesCurrentRecordAndDropsOtherDays(t *testing.T
 		   anchor_client_msg_id = VALUES(anchor_client_msg_id),
 		   content_json = VALUES(content_json),
 		   updated_at = VALUES(updated_at)`)).
-		WithArgs(userID, dayCN, anchorID, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WithArgs(userID, dayCN, normalizedAnchorID, sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectCommit()
 
@@ -102,6 +107,50 @@ func TestUpsertTodayAgriUserItemSavesCurrentRecordAndDropsOtherDays(t *testing.T
 	}
 	if !saved {
 		t.Fatalf("matching generation should save today agri main item")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestUpsertTodayAgriUserItemRejectsMissingArchivedAnchor(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	userID := "acct_agri_missing_anchor"
+	dayCN := "20260617"
+	expectedGeneration := 3
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO session_generation(user_id, generation, cleared_at, updated_at)
+		 VALUES (?, 0, 0, ?)
+		 ON DUPLICATE KEY UPDATE user_id = user_id`)).
+		WithArgs(userID, sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT generation, cleared_at
+		 FROM session_generation
+		 WHERE user_id = ?
+		 LIMIT 1 FOR UPDATE`)).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"generation", "cleared_at"}).AddRow(expectedGeneration, int64(0)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT 1 FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1`)).
+		WithArgs(userID, "missing").
+		WillReturnRows(sqlmock.NewRows([]string{"1"}))
+	mock.ExpectRollback()
+
+	saved, err := store.UpsertTodayAgriUserItem(
+		context.Background(),
+		userID,
+		dayCN,
+		"assistant_missing",
+		testDailyAgriCard(dayCN),
+		&expectedGeneration,
+	)
+	if !errors.Is(err, ErrTodayAgriAnchorNotArchived) {
+		t.Fatalf("expected ErrTodayAgriAnchorNotArchived, got saved=%v err=%v", saved, err)
+	}
+	if saved {
+		t.Fatalf("missing archive anchor must not save today agri main item")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

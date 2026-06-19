@@ -190,6 +190,17 @@ func (s *Store) UpsertTodayAgriUserItem(ctx context.Context, userID string, dayC
 		}
 		return false, nil
 	}
+	normalizedAnchorClientMsgID := normalizeTodayAgriAnchorClientMsgID(anchorClientMsgID)
+	if normalizedAnchorClientMsgID == "" || len(normalizedAnchorClientMsgID) > 128 {
+		return false, ErrTodayAgriAnchorNotArchived
+	}
+	anchorExists, err := s.sessionRoundArchiveExistsTx(ctx, tx, userID, normalizedAnchorClientMsgID)
+	if err != nil {
+		return false, err
+	}
+	if !anchorExists {
+		return false, ErrTodayAgriAnchorNotArchived
+	}
 	if _, err := tx.ExecContext(
 		ctx,
 		`DELETE FROM today_agri_user_items
@@ -209,7 +220,7 @@ func (s *Store) UpsertTodayAgriUserItem(ctx context.Context, userID string, dayC
 		   updated_at = VALUES(updated_at)`,
 		userID,
 		dayCN,
-		anchorClientMsgID,
+		normalizedAnchorClientMsgID,
 		string(content),
 		now,
 		now,

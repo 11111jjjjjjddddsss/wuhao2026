@@ -1,6 +1,7 @@
 param(
     [string]$RegionId = "cn-beijing",
-    [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh"
+    [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
+    [string]$ExpectedRevision = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -434,4 +435,14 @@ $final = Wait-RunCommand $run.InvokeId
 Write-Host $final.Output
 if ($final.Status -ne "Success" -or $final.ExitCode -ne 0) {
     throw "Readiness check failed: status=$($final.Status) exit=$($final.ExitCode)"
+}
+if (-not [string]::IsNullOrWhiteSpace($ExpectedRevision)) {
+    $actualRevision = [regex]::Match($final.Output, "(?m)^server_revision=([^\s]+)\s*$").Groups[1].Value
+    if ([string]::IsNullOrWhiteSpace($actualRevision)) {
+        throw "Readiness check did not report server_revision; expected $ExpectedRevision"
+    }
+    if ($actualRevision -ne $ExpectedRevision) {
+        throw "Readiness revision mismatch: expected=$ExpectedRevision actual=$actualRevision"
+    }
+    Write-Host "expected_revision_match=true"
 }

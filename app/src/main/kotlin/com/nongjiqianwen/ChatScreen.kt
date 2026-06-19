@@ -1352,6 +1352,8 @@ private fun Context.saveTodayAgriMainShownDaySync(
     }
 }
 
+internal fun todayAgriMainShownDayAfterHistoryClear(): String = ""
+
 private fun Context.loadTodayAgriCardCacheSync(chatScopeId: String): SessionApi.TodayAgriCard? {
     val prefs = getSharedPreferences(CHAT_CACHE_PREFS, Context.MODE_PRIVATE)
     val currentDay = currentChinaDateKey()
@@ -2347,8 +2349,7 @@ fun ChatScreen() {
     }
 
     fun resetTodayAgriRuntimeAfterHistoryClear() {
-        todayAgriMainShownDay = currentChinaDateKey()
-        context.saveTodayAgriMainShownDaySync(chatScopeId, todayAgriMainShownDay)
+        todayAgriMainShownDay = todayAgriMainShownDayAfterHistoryClear()
         todayAgriShownThisRuntime = false
         todayAgriAutoInsertSuppressedThisRuntime = false
         todayAgriUserSendEpoch = 0

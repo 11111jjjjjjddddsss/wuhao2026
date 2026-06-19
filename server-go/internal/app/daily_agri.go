@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -393,6 +394,10 @@ func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request)
 	}
 	saved, err := s.store.UpsertTodayAgriUserItem(r.Context(), auth.UserID, dayCN, anchorID, *card, body.SessionGeneration)
 	if err != nil {
+		if errors.Is(err, ErrTodayAgriAnchorNotArchived) {
+			s.writeError(w, http.StatusConflict, "today_agri_anchor_not_archived")
+			return
+		}
 		s.logger.Error("save today agri user item failed", "userId", auth.UserID, "day_cn", dayCN, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return

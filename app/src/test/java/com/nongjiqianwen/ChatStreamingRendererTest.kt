@@ -572,6 +572,21 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun markdownTableKeepsPipesInsideInlineCodeCell() {
+        val state = splitStreamingBlockState(
+            "|项目|内容|\n" +
+                "|---|---|\n" +
+                "|配比|`N|P|K`|\n"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+
+        assertEquals(listOf("项目", "内容"), table.headers)
+        assertEquals(listOf(listOf("配比", "`N|P|K`")), table.rows)
+    }
+
+    @Test
     fun markdownTableCopyWaitsForWholeMessageSettled() {
         assertFalse(
             shouldEnableRendererMarkdownTableCopy(

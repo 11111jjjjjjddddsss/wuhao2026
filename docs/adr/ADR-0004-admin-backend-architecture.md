@@ -41,6 +41,12 @@
 - 礼品卡批次、生成、发放、兑换、作废和导出。
 - 人工补权益和高风险财务操作。
 
+实施状态更新（2026-06-19）：
+
+- 第一阶段已经不再只是“只读或占位”。礼品卡生成、兑换、作废、完整卡码加密查看、批次 / 尾号 / 账号追溯，会员额度只读追溯，帮助反馈队列，今日农情人工发布和检查更新配置都已落地。
+- 真实支付、正式订单回调、退款、对账和自动权益发放仍未接入；这些继续按支付接入后的高风险财务能力处理。
+- 当前运行状态以 [current-status.md](D:/wuhao/docs/project-state/current-status.md)、[open-risks.md](D:/wuhao/docs/project-state/open-risks.md) 和 [management-backend.md](D:/wuhao/docs/runbooks/management-backend.md) 为准，本 ADR 保留原始架构取舍和阶段意图。
+
 ## 安全要求
 
 - 后台初始账号必须通过一次性初始化脚本或环境变量写入数据库 hash，不能写进仓库。

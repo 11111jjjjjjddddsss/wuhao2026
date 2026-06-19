@@ -276,6 +276,7 @@ private fun splitRendererMarkdownTableCells(line: String): List<String> {
     val cells = mutableListOf<String>()
     val current = StringBuilder()
     var escaped = false
+    var inInlineCode = false
     trimmed.forEach { ch ->
         when {
             escaped -> {
@@ -284,6 +285,11 @@ private fun splitRendererMarkdownTableCells(line: String): List<String> {
                 escaped = false
             }
             ch == '\\' -> escaped = true
+            ch == '`' -> {
+                inInlineCode = !inInlineCode
+                current.append(ch)
+            }
+            ch == '|' && inInlineCode -> current.append(ch)
             ch == '|' -> {
                 cells += current.toString().trim()
                 current.clear()

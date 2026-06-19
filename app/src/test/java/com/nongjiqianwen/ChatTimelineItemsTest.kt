@@ -411,6 +411,23 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun historyClearLeavesTodayAgriShownDayEmptyForNextCompletedAssistant() {
+        val shownDayAfterClear = todayAgriMainShownDayAfterHistoryClear()
+
+        assertEquals("", shownDayAfterClear)
+        assertTrue(
+            shouldShowTodayAgriMainCard(
+                card = todayAgriCard(),
+                currentDayKey = "20260615",
+                shownDayKey = shownDayAfterClear,
+                shownThisRuntime = false,
+                hasAssistantAnswerTail = true,
+                suppressedThisRuntime = false
+            )
+        )
+    }
+
+    @Test
     fun todayAgriCardWaitsForRemoteHydrationBeforeTimelineRender() {
         assertFalse(
             shouldRenderTodayAgriMainCardInTimeline(

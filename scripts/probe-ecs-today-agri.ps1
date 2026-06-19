@@ -109,10 +109,17 @@ if [ -z "${DAILY_AGRI_JOB_SECRET:-}" ]; then
   exit 12
 fi
 
-active_port=$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' /etc/nginx/sites-available/nongjiqiancha-api 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | head -n 1)
-if [ -z "${active_port:-}" ]; then
-  active_port=3000
+active_ports=$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' /etc/nginx/sites-available/nongjiqiancha-api 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | sort -u || true)
+active_port_count=$(printf '%s\n' "$active_ports" | sed '/^$/d' | wc -l | tr -d ' ')
+if [ "$active_port_count" != "1" ]; then
+  NONGJI_ACTIVE_PORTS="$active_ports" python3 -c 'import json, os
+print(json.dumps({
+    "error": "invalid_active_upstream_port",
+    "ports": [p for p in os.environ.get("NONGJI_ACTIVE_PORTS", "").split() if p],
+}, ensure_ascii=False))'
+  exit 13
 fi
+active_port=$(printf '%s\n' "$active_ports" | sed '/^$/d' | head -n 1)
 
 curl --silent --show-error --fail \
   --max-time 360 \
