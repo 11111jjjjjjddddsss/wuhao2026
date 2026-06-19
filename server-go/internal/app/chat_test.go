@@ -360,6 +360,54 @@ func TestBuildPromptMessagesAddsPendingMemoryJobAfterItSlidesOutOfWindow(t *test
 	}
 }
 
+func TestBuildPromptMessagesOnlyAddsPendingMemoryRoundsMissingFromActiveWindow(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+	pendingRounds := []SessionRound{
+		{ClientMsgID: "r1", User: "第1轮已滑出", Assistant: "答1"},
+		{ClientMsgID: "r2", User: "第2轮仍在滑窗", Assistant: "答2"},
+		{ClientMsgID: "r3", User: "第3轮仍在滑窗", Assistant: "答3"},
+	}
+	activeRounds := []SessionRound{
+		{ClientMsgID: "r2", User: "第2轮仍在滑窗", Assistant: "答2"},
+		{ClientMsgID: "r3", User: "第3轮仍在滑窗", Assistant: "答3"},
+		{ClientMsgID: "r4", User: "第4轮", Assistant: "答4"},
+	}
+	snapshot := &SessionSnapshot{
+		UserID:      "u1",
+		ARoundsFull: activeRounds,
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{RoundTotal: 3, Rounds: pendingRounds},
+		},
+	}
+
+	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
+		snapshot,
+		3,
+		"继续",
+		nil,
+		"context",
+		"",
+	)
+
+	if usedCount != 3 || hasMemoryDocument {
+		t.Fatalf("usedCount=%d hasMemoryDocument=%v", usedCount, hasMemoryDocument)
+	}
+	if len(messages) < 4 || messages[2].Role != "system" {
+		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
+	}
+	content := messages[2].Content.(string)
+	if !strings.Contains(content, "第1轮已滑出") {
+		t.Fatalf("missing slid-out pending round in fallback context: %q", content)
+	}
+	for _, duplicate := range []string{"第2轮仍在滑窗", "第3轮仍在滑窗"} {
+		if strings.Contains(content, duplicate) {
+			t.Fatalf("pending fallback should not duplicate active-window round %q: %q", duplicate, content)
+		}
+	}
+}
+
 func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 	server := &Server{
 		systemAnchor: "anchor",

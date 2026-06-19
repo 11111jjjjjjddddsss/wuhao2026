@@ -227,32 +227,26 @@ trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_pre_switch_rollback; fi;
 
 restore_matching_runtime_backup() {
   suffix="`$1"
-  if [ -d "`$install_dir/assets.bak-`$suffix" ]; then
-    rm -rf "`$install_dir/assets"
-    cp -a "`$install_dir/assets.bak-`$suffix" "`$install_dir/assets"
-    echo "restored assets.bak-`$suffix"
-  else
-    echo "assets backup not found for `$suffix; keeping current assets" >&2
+  missing_runtime_backup=''
+  [ -d "`$install_dir/assets.bak-`$suffix" ] || missing_runtime_backup="`$missing_runtime_backup assets.bak-`$suffix"
+  [ -d "`$install_dir/migrations.bak-`$suffix" ] || missing_runtime_backup="`$missing_runtime_backup migrations.bak-`$suffix"
+  [ -f "`$install_dir/go.mod.bak-`$suffix" ] || missing_runtime_backup="`$missing_runtime_backup go.mod.bak-`$suffix"
+  [ -f "`$install_dir/go.sum.bak-`$suffix" ] || missing_runtime_backup="`$missing_runtime_backup go.sum.bak-`$suffix"
+  if [ -n "`$missing_runtime_backup" ]; then
+    echo "rollback runtime backup incomplete for `$suffix; missing:`$missing_runtime_backup" >&2
+    echo "refusing mixed binary/assets rollback; choose a complete backup suffix or perform manual recovery" >&2
+    exit 24
   fi
-  if [ -d "`$install_dir/migrations.bak-`$suffix" ]; then
-    rm -rf "`$install_dir/migrations"
-    cp -a "`$install_dir/migrations.bak-`$suffix" "`$install_dir/migrations"
-    echo "restored migrations.bak-`$suffix"
-  else
-    echo "migrations backup not found for `$suffix; keeping current migrations" >&2
-  fi
-  if [ -f "`$install_dir/go.mod.bak-`$suffix" ]; then
-    cp -a "`$install_dir/go.mod.bak-`$suffix" "`$install_dir/go.mod"
-    echo "restored go.mod.bak-`$suffix"
-  else
-    echo "go.mod backup not found for `$suffix; keeping current go.mod" >&2
-  fi
-  if [ -f "`$install_dir/go.sum.bak-`$suffix" ]; then
-    cp -a "`$install_dir/go.sum.bak-`$suffix" "`$install_dir/go.sum"
-    echo "restored go.sum.bak-`$suffix"
-  else
-    echo "go.sum backup not found for `$suffix; keeping current go.sum" >&2
-  fi
+  rm -rf "`$install_dir/assets"
+  cp -a "`$install_dir/assets.bak-`$suffix" "`$install_dir/assets"
+  echo "restored assets.bak-`$suffix"
+  rm -rf "`$install_dir/migrations"
+  cp -a "`$install_dir/migrations.bak-`$suffix" "`$install_dir/migrations"
+  echo "restored migrations.bak-`$suffix"
+  cp -a "`$install_dir/go.mod.bak-`$suffix" "`$install_dir/go.mod"
+  echo "restored go.mod.bak-`$suffix"
+  cp -a "`$install_dir/go.sum.bak-`$suffix" "`$install_dir/go.sum"
+  echo "restored go.sum.bak-`$suffix"
   if [ -f "`$install_dir/REVISION.bak-`$suffix" ]; then
     cp -a "`$install_dir/REVISION.bak-`$suffix" "`$install_dir/REVISION"
     rollback_revision_check_required=1
@@ -418,7 +412,6 @@ if ! nginx -t; then
   nginx -t || true
   exit 30
 fi
-systemctl reload nginx
 
 restore_nginx_after_switch() {
   if [ -f "`$nginx_backup" ]; then
@@ -430,6 +423,12 @@ restore_nginx_after_switch() {
   fi
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
+
+if ! systemctl reload nginx; then
+  echo "nginx reload failed after rollback upstream switch; restoring previous nginx config" >&2
+  restore_nginx_after_switch
+  exit 30
+fi
 
 health_body='/tmp/nongji-rollback-health.json'
 health_status=`$(curl -sS --resolve api.nongjiqiancha.cn:443:127.0.0.1 -o "`$health_body" -w '%{http_code}' https://api.nongjiqiancha.cn/healthz || true)

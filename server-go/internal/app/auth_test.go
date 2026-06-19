@@ -275,7 +275,9 @@ func TestLegacyMergePreservesSessionABMemoryWhenTargetExists(t *testing.T) {
 		"concat",
 		"target.pending_retry_b",
 		"source.pending_retry_b",
-		"json_length(target.a_json)",
+		"json_merge_preserve(target.a_json, source.a_json)",
+		"json_length(coalesce(source.a_json, json_array())) = 0",
+		"json_length(coalesce(target.a_json, json_array())) = 0",
 	} {
 		if !strings.Contains(normalized, want) {
 			t.Fatalf("session_ab merge must preserve source memory and pending state, missing %q in %s", want, mergeSessionABSQL)

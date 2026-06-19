@@ -541,8 +541,9 @@ const mergeSessionABSQL = `UPDATE session_ab AS target
  JOIN session_ab AS source ON source.user_id = ?
  SET
    target.a_json = CASE
-     WHEN (target.a_json IS NULL OR JSON_LENGTH(target.a_json) = 0) AND source.a_json IS NOT NULL THEN source.a_json
-     ELSE target.a_json
+     WHEN JSON_LENGTH(COALESCE(source.a_json, JSON_ARRAY())) = 0 THEN target.a_json
+     WHEN JSON_LENGTH(COALESCE(target.a_json, JSON_ARRAY())) = 0 THEN source.a_json
+     ELSE JSON_MERGE_PRESERVE(target.a_json, source.a_json)
    END,
    target.b_summary = CASE
      WHEN NULLIF(TRIM(COALESCE(source.b_summary, '')), '') IS NULL THEN target.b_summary

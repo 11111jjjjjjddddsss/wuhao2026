@@ -808,6 +808,50 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun pendingImageSendFooterShowsOnlyWhileBackgroundSendIsPending() {
+        val pendingImageUser = ChatMessage(
+            id = "u1",
+            role = ChatRole.USER,
+            content = "看下这个病害",
+            imageUris = listOf("file:///tmp/local.jpg"),
+            imageUrls = emptyList()
+        )
+        val uploadedImageUser = pendingImageUser.copy(
+            imageUris = emptyList(),
+            imageUrls = listOf("/uploads/u1.jpg")
+        )
+
+        assertTrue(
+            shouldShowPendingImageSendFooter(
+                message = pendingImageUser,
+                pendingExists = true,
+                failedUserStateExists = false
+            )
+        )
+        assertFalse(
+            shouldShowPendingImageSendFooter(
+                message = pendingImageUser,
+                pendingExists = false,
+                failedUserStateExists = false
+            )
+        )
+        assertFalse(
+            shouldShowPendingImageSendFooter(
+                message = pendingImageUser,
+                pendingExists = true,
+                failedUserStateExists = true
+            )
+        )
+        assertFalse(
+            shouldShowPendingImageSendFooter(
+                message = uploadedImageUser,
+                pendingExists = true,
+                failedUserStateExists = false
+            )
+        )
+    }
+
+    @Test
     fun terminalImageFailureWaitsForSnapshotUnlessFailureCannotRecoverByWaiting() {
         assertFalse(
             shouldApplyPendingImageTerminalFailure(

@@ -313,6 +313,15 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
         imageUris.orEmpty().isNotEmpty() &&
         imageUrls.orEmpty().isEmpty()
 
+internal fun shouldShowPendingImageSendFooter(
+    message: ChatMessage,
+    pendingExists: Boolean,
+    failedUserStateExists: Boolean
+): Boolean =
+    message.isLocalImageUploadPendingUserMessage() &&
+        pendingExists &&
+        !failedUserStateExists
+
 private fun ChatMessage.isCompletedAssistantAnswer(failedAssistantMessageIds: Set<String> = emptySet()): Boolean =
     role == ChatRole.ASSISTANT && content.isNotBlank() && id !in failedAssistantMessageIds
 
@@ -721,6 +730,8 @@ private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
 private const val USER_RETRYING_STATUS_TEXT = "正在重发..."
 private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
+private const val USER_PENDING_IMAGE_SEND_STATUS_TEXT = "后台发送中 · 稍后自动重试"
+private const val USER_PENDING_IMAGE_SEND_PREVIEW_TEXT = "后台发送中 · 稍后自动重试"
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -6882,6 +6893,13 @@ fun ChatScreen() {
                         val userImageUris = msg.imageUris.orEmpty()
                         val userImageUrls = msg.imageUrls.orEmpty()
                         val userMessageHasImages = userImageUris.isNotEmpty() || userImageUrls.isNotEmpty()
+                        val isLocalPendingImageMessage = msg.isLocalImageUploadPendingUserMessage()
+                        val showPendingImageSendFooter = shouldShowPendingImageSendFooter(
+                            message = msg,
+                            pendingExists = isLocalPendingImageMessage &&
+                                PendingChatSendStore.has(context, chatScopeId, msg.id),
+                            failedUserStateExists = failedUserState != null
+                        )
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -6955,6 +6973,14 @@ fun ChatScreen() {
                                         performButtonHaptic()
                                         retryFailedUserMessage(msg.id)
                                     }
+                                )
+                            } else if (showPendingImageSendFooter) {
+                                MessageStatusFooter(
+                                    statusText = USER_PENDING_IMAGE_SEND_STATUS_TEXT,
+                                    actionText = null,
+                                    alignEnd = true,
+                                    enabled = false,
+                                    onActionClick = {}
                                 )
                             }
                         }
@@ -8167,6 +8193,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
                     UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 尾部补上传图片时", UiCopyPreviewKind.AssistantRetrying),
                     UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
+                    UiCopyPreviewItem(USER_PENDING_IMAGE_SEND_PREVIEW_TEXT, "用户带图后台发送中尾部", UiCopyPreviewKind.UserRetrying),
                     UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户尾部补上传图片时", UiCopyPreviewKind.UserRetrying)
                 )
             ),
