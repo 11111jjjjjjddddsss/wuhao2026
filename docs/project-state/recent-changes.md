@@ -5,6 +5,8 @@
 
 ## 2026-06-19
 
+- 继续按“低成本运维”口径收口 SLS 日志留存：没有新买 WAF / 高防 / CDN / SLS 资源包，没有新增 Logstore，没有采完整 Nginx access，也没有把聊天正文、AI 回复、图片 URL、完整手机号、token 或密钥写进 SLS。现有业务 Project 仍只保留 `server-go` / `nginx-error` 两个 Logstore、1 shard、邮件告警；为满足网络 / 安全日志 6 个月证据，TTL 调整为 180 天，但只保留 7 天热存储、173 天低频存储，避免 180 天全热存储。`setup-sls-logging.ps1` 会创建或更新该低成本分层配置，`check-sls-cost-guard.ps1` 同时检查 TTL 下限 / 上限、热存储天数、低频存储天数、Logstore 数、Shard、自动分裂、append meta 和归档存储漂移；日志 / 合规 / 成本 runbook 和项目记忆已同步。该改动不改变模型输出、不新增内容过滤、不发布 Android 包。
+
 - 继续修正长期记忆提取失败的兜底边界：如果用户半夜忘记充值、模型摘要长期不可用，`session_ab.pending_memory_jobs_json` 可能排队多批冻结 job。主聊天现在不会只补队首 job，而是扫描整个 pending 队列，把所有已经滑出当前 A 窗口的轮次按顺序临时作为静默后台背景补给模型，并按 `client_msg_id` 去重；仍在 A 窗口里的轮次不重复补。每次摘要“提取 + 写库”成功后仍只弹出队首 job，剩余 job 后续继续提取和补偿。该改动不修改主对话锚点、今日农情提示词或记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`。
 
 - 本轮继续按“收口收尾、不发散”修复多代理抓到的实锤风险：记忆摘要提取失败时，待补偿 job 仍保留用于后台继续提取，但主聊天兜底只临时补入已经滑出当前 A 窗口的轮次，仍在普通滑窗里的轮次不重复灌给模型，避免“失败一次就整批上下文塞进去”和重复成本；旧本机身份合并到既有手机号账号时，`session_ab.a_json` 现在会合并 target/source A 窗口，避免目标账号已有 A 窗口时丢掉旧本机未摘要对话。Android 带图后台发送如果仍在 `PendingChatSendStore` 队列中，用户图文下方会显示“后台发送中 · 稍后自动重试”，终态失败仍走原来的“发送失败 / 重发”，避免弱网 pending 静默挂起。ECS 回滚脚本在 Nginx reload 失败时会恢复旧配置，运行期资源备份缺 `assets / migrations / go.mod / go.sum` 时拒绝混版本回滚；`current-status.md` 不再把某个历史 commit 写成长期当前线上版本，线上 revision 以 readiness 实测为准。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词、官网首页文案，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`，不发布正式 Android 包。

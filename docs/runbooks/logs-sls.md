@@ -1,6 +1,6 @@
 # 日志排查 Runbook
 
-最后更新：2026-06-18
+最后更新：2026-06-19
 
 ## 目的
 
@@ -13,10 +13,10 @@
   - Project：`nongjiqiancha-prod-1159547719787456`
   - Logstore：`server-go`，采集 `/var/log/nongjiqiancha/server.log`
   - Logstore：`nginx-error`，采集 `/var/log/nginx/error.log`
-  - TTL：7 天
+  - TTL：180 天，其中热存储 7 天、低频存储 173 天
   - Shard：1
   - ECS 采集器：Logtail / ilogtail，机器组 `nongjiqiancha-prod-ecs`，当前连接 IP `192.168.1.237`
-- 当前未购买 SLS 节省计划 / 资源包；先按低保留天数、小日志量过渡
+- 当前未购买 SLS 节省计划 / 资源包；按“小日志量、少 Logstore、1 shard、短热存储 + 长低频存储”低成本过渡，保留相关网络 / 安全日志 6 个月证据，不采集聊天正文或完整访问流水
 - 北京区当前可见 3 个阿里云系统 / 产品托管 Project：
   - `default-cms-1159547719787456-cn-beijing`：CMS / 云监控托管
   - `proj-xtrace-fcd9c65ffd26d6c2a8e8f356745e42db-cn-beijing`：XTrace / APM 托管
@@ -62,13 +62,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-a
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning
 ```
 
-低成本护栏只读巡检：
+低成本与留存护栏只读巡检：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sls-cost-guard.ps1
 ```
 
-它会确认农技千查业务 Project 当前只保留 `server-go` 和 `nginx-error` 两个 Logstore、TTL 不超过 7 天、每个 Logstore 仍是 1 个 Shard、未开启自动分裂、append meta 或归档存储。正式严格巡检可加 `-FailOnWarning`，`check-resource-capacity.ps1 -Strict` 也会调用它；如果后续确实需要增加 Logstore、延长保留期、扩 Shard 或采 Nginx access，必须先确认费用影响并同步更新本 runbook 和项目记忆。
+它会确认农技千查业务 Project 当前只保留 `server-go` 和 `nginx-error` 两个 Logstore、TTL 不低于也不超过 180 天、热存储 7 天、低频存储 173 天、每个 Logstore 仍是 1 个 Shard、未开启自动分裂、append meta 或归档存储。正式严格巡检可加 `-FailOnWarning`，`check-resource-capacity.ps1 -Strict` 也会调用它；如果后续确实需要增加 Logstore、延长保留期、扩 Shard 或采 Nginx access，必须先确认费用影响并同步更新本 runbook 和项目记忆。
 
 数据库侧日志 / 文本留存也有独立只读护栏：
 
@@ -193,7 +193,7 @@ systemctl status nginx --no-pager
 
 ## SLS 接入建议
 
-- 首版已经创建农技千查专用 Project / Logstore，设置 7 天 TTL，先采集 Go 结构化日志和 Nginx error log
+- 首版已经创建农技千查专用 Project / Logstore，按 180 天 TTL（热存储 7 天、低频存储 173 天）采集 Go 结构化日志和 Nginx error log，作为低成本网络 / 安全日志留存证据
 - 暂不把所有 Nginx access log、聊天正文、AI 回复、图片 URL、手机号、token、模型 Key、数据库密码采进 SLS
 - 如果后续 App 自动日志要进 SLS，优先从 `client_app_logs` 做管理后台查询或脱敏聚合，不直接上传原始聊天内容
 - 如果日志量上涨，优先减少写入、减少索引字段、缩短保留期或对高频 App 事件采样，再评估 SLS 资源包、告警规则、仪表盘和更细的采集过滤

@@ -3,7 +3,10 @@ param(
     [string]$ProjectName = "nongjiqiancha-prod-1159547719787456",
     [string[]]$ExpectedLogstores = @("server-go", "nginx-error"),
     [int]$MaxLogstoreCount = 2,
-    [int]$MaxTtlDays = 7,
+    [int]$MinTtlDays = 180,
+    [int]$MaxTtlDays = 180,
+    [int]$ExpectedHotTtlDays = 7,
+    [int]$ExpectedInfrequentAccessTtlDays = 173,
     [int]$MaxShardCount = 1,
     [switch]$FailOnWarning
 )
@@ -81,7 +84,7 @@ function Invoke-JsonCommand {
 }
 
 Write-Host "== SLS cost guard =="
-Write-Host "project=$ProjectName region=$RegionId max_logstores=$MaxLogstoreCount max_ttl_days=$MaxTtlDays max_shards_per_logstore=$MaxShardCount"
+Write-Host "project=$ProjectName region=$RegionId max_logstores=$MaxLogstoreCount min_ttl_days=$MinTtlDays max_ttl_days=$MaxTtlDays expected_hot_ttl_days=$ExpectedHotTtlDays expected_infrequent_access_ttl_days=$ExpectedInfrequentAccessTtlDays max_shards_per_logstore=$MaxShardCount"
 
 $list = Invoke-JsonCommand @(
     "aliyun", "sls", "list-log-stores",
@@ -119,13 +122,25 @@ foreach ($logstoreName in $actualLogstores) {
         "--logstore", $logstoreName
     )
     $ttl = [int]$detail.ttl
+    $hotTtl = if ($detail.PSObject.Properties.Name -contains "hotTtl") { [int]$detail.hotTtl } elseif ($detail.PSObject.Properties.Name -contains "hot_ttl") { [int]$detail.hot_ttl } else { $ttl }
+    $infrequentAccessTtl = if ($detail.PSObject.Properties.Name -contains "infrequentAccessTTL") { [int]$detail.infrequentAccessTTL } else { 0 }
     $shardCount = [int]$detail.shardCount
     $autoSplit = [bool]$detail.autoSplit
     $appendMeta = [bool]$detail.appendMeta
     $archiveSeconds = [int]$detail.archiveSeconds
-    Write-Host "logstore=$logstoreName ttl_days=$ttl shard_count=$shardCount auto_split=$autoSplit append_meta=$appendMeta archive_seconds=$archiveSeconds"
-    if ($ttl -le 0 -or $ttl -gt $MaxTtlDays) {
-        Add-WarningItem "logstore_ttl_exceeds_low_cost_budget:${logstoreName}:$ttl"
+    Write-Host "logstore=$logstoreName ttl_days=$ttl hot_ttl_days=$hotTtl infrequent_access_ttl_days=$infrequentAccessTtl shard_count=$shardCount auto_split=$autoSplit append_meta=$appendMeta archive_seconds=$archiveSeconds"
+    if ($ttl -le 0) {
+        Add-ErrorItem "logstore_ttl_invalid:${logstoreName}:$ttl"
+    } elseif ($ttl -lt $MinTtlDays) {
+        Add-ErrorItem "logstore_ttl_less_than_required_retention:${logstoreName}:$ttl/$MinTtlDays"
+    } elseif ($ttl -gt $MaxTtlDays) {
+        Add-WarningItem "logstore_ttl_exceeds_retention_cost_budget:${logstoreName}:$ttl/$MaxTtlDays"
+    }
+    if ($hotTtl -ne $ExpectedHotTtlDays) {
+        Add-WarningItem "logstore_hot_ttl_not_low_cost_expected:${logstoreName}:$hotTtl/$ExpectedHotTtlDays"
+    }
+    if ($infrequentAccessTtl -ne $ExpectedInfrequentAccessTtlDays) {
+        Add-WarningItem "logstore_infrequent_access_ttl_not_expected:${logstoreName}:$infrequentAccessTtl/$ExpectedInfrequentAccessTtlDays"
     }
     if ($shardCount -gt $MaxShardCount) {
         Add-WarningItem "logstore_shards_exceed_low_cost_budget:${logstoreName}:$shardCount"

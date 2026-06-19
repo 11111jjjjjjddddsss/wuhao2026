@@ -4,7 +4,9 @@ param(
     [string]$ProjectName = "nongjiqiancha-prod-1159547719787456",
     [string]$PrivateIP = "192.168.1.237",
     [string]$PublicIP = "39.106.1.151",
-    [int]$TTL = 7
+    [int]$TTL = 180,
+    [int]$HotTTL = 7,
+    [int]$InfrequentAccessTTL = 173
 )
 
 $ErrorActionPreference = "Stop"
@@ -95,8 +97,33 @@ function Ensure-Project {
 
 function Ensure-Logstore {
     param([string]$LogstoreName)
-    if (Test-SlsResourceExists { Invoke-JsonCommand @("aliyun", "sls", "get-log-store", "--region", $RegionId, "--project", $ProjectName, "--logstore", $LogstoreName) }) {
-        Write-Host "logstore=exists:$LogstoreName"
+    $detail = $null
+    try {
+        $detail = Invoke-JsonCommand @("aliyun", "sls", "get-log-store", "--region", $RegionId, "--project", $ProjectName, "--logstore", $LogstoreName)
+    } catch {
+        $detail = $null
+    }
+    if ($null -ne $detail) {
+        $currentTtl = [int]$detail.ttl
+        $currentHotTtl = if ($detail.PSObject.Properties.Name -contains "hotTtl") { [int]$detail.hotTtl } elseif ($detail.PSObject.Properties.Name -contains "hot_ttl") { [int]$detail.hot_ttl } else { $TTL }
+        $currentInfrequentAccessTtl = if ($detail.PSObject.Properties.Name -contains "infrequentAccessTTL") { [int]$detail.infrequentAccessTTL } else { 0 }
+        $appendMeta = [bool]$detail.appendMeta
+        if ($currentTtl -ne $TTL -or $currentHotTtl -ne $HotTTL -or $currentInfrequentAccessTtl -ne $InfrequentAccessTTL -or $appendMeta) {
+            Invoke-JsonCommand @(
+                "aliyun", "sls", "update-log-store",
+                "--region", $RegionId,
+                "--project", $ProjectName,
+                "--logstore", $LogstoreName,
+                "--logstore-name", $LogstoreName,
+                "--ttl", "$TTL",
+                "--hot-ttl", "$HotTTL",
+                "--infrequent-access-ttl", "$InfrequentAccessTTL",
+                "--append-meta", "false"
+            ) | Out-Null
+            Write-Host "logstore=updated:$LogstoreName ttl=$TTL hot_ttl=$HotTTL infrequent_access_ttl=$InfrequentAccessTTL append_meta=false"
+            return
+        }
+        Write-Host "logstore=exists:$LogstoreName ttl=$currentTtl hot_ttl=$currentHotTtl infrequent_access_ttl=$currentInfrequentAccessTtl"
         return
     }
     Invoke-JsonCommand @(
@@ -106,6 +133,8 @@ function Ensure-Logstore {
         "--logstore-name", $LogstoreName,
         "--shard-count", "1",
         "--ttl", "$TTL",
+        "--hot-ttl", "$HotTTL",
+        "--infrequent-access-ttl", "$InfrequentAccessTTL",
         "--append-meta", "false",
         "--biz-mode", "standard"
     ) | Out-Null

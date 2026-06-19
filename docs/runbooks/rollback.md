@@ -1,6 +1,6 @@
 # 回滚 Runbook
 
-最后更新：2026-06-18
+最后更新：2026-06-19
 
 ## 目的
 
@@ -22,7 +22,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
 
 先运行不带参数的命令查看最新备份名，再把要回滚的 `BackupName` 填进执行命令；只传 `-Apply` 不会执行回滚。
 
-脚本会通过 Cloud Assistant 在 ECS 上执行，不打印真实密钥。回滚前会清理旧的 drain-stop 定时任务，选择当前非 active slot 启动备份二进制，并按同一个备份时间后缀尽量恢复 `assets`、`migrations`、`go.mod`、`go.sum` 的对应备份；通过 healthz 后再切 Nginx upstream，旧 slot 只在排空窗口后停止。
+脚本会通过 Cloud Assistant 在 ECS 上执行，不打印真实密钥。回滚前会清理旧的 drain-stop 定时任务，选择当前非 active slot 启动备份二进制，并按同一个备份时间后缀恢复 `assets`、`migrations`、`go.mod`、`go.sum` 的对应备份；如果这些运行期资源备份不完整，脚本会拒绝混版本回滚。通过 healthz 后再切 Nginx upstream，旧 slot 只在排空窗口后停止。
 
 ## 回滚前检查
 
@@ -66,4 +66,4 @@ curl.exe --resolve api.nongjiqiancha.cn:443:39.106.1.151 https://api.nongjiqianc
 - ECS `/etc/nongjiqiancha/server.env` 配置
 - DNS、证书、安全组、SLS 采集配置
 
-这些内容需要按对应 runbook 单独处理，不能指望后端回滚脚本自动恢复。若脚本输出某个同后缀 `assets / migrations / go.mod / go.sum` 备份不存在，说明目标备份来自旧部署脚本或备份不完整；此时脚本会保留当前运行资源文件，回滚后必须重点看 `/healthz`、启动日志和本次提交是否改过提示词资产或迁移文件。
+这些内容需要按对应 runbook 单独处理，不能指望后端回滚脚本自动恢复。若脚本输出某个同后缀 `assets / migrations / go.mod / go.sum` 备份不存在，说明目标备份来自旧部署脚本或备份不完整；当前脚本会拒绝继续混用旧二进制和当前运行资源文件，需选择完整备份后缀或按日志手工恢复。

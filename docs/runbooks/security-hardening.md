@@ -1,6 +1,6 @@
 # ECS / 官网基础安全加固 Runbook
 
-最后更新：2026-06-16
+最后更新：2026-06-19
 
 ## 当前结论
 
@@ -47,7 +47,7 @@
 - Nginx 安全响应头：隐藏版本号、`nosniff`、`frame-ancestors / X-Frame-Options`、HSTS、Referrer Policy
 - Go 接口限流和 body 限制：即使绕过 Nginx 也有第二层保护
 - fail2ban：识别 SSH 暴力尝试；公网 SSH 已关后主要作为兜底观察
-- 日志巡检：当前已接 SLS 最小日志集和 AlertHub 最小告警，Nginx error、`journalctl` 和 App 自动日志继续作为兜底；SLS 邮件行动策略和最小仪表盘已补，后续确认第一封邮件送达
+- 日志巡检：当前已接 SLS 最小日志集和 AlertHub 最小告警，业务 Logstore 只保留 `server-go` / `nginx-error` 两个，180 天 TTL 里只保留 7 天热存储、173 天低频存储；Nginx error、`journalctl` 和 App 自动日志继续作为兜底；SLS 邮件行动策略和最小仪表盘已补，后续确认第一封邮件送达
 
 ## 已执行加固
 
