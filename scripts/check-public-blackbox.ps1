@@ -240,9 +240,9 @@ Invoke-HttpProbe `
     -ExpectedStatus @(200) `
     -RequiredBodyMarkers $appUpdateRequiredMarkers
 Invoke-HttpProbe `
-    -Name "api_internal_today_agri_manual_unauthorized" `
+    -Name "api_internal_today_agri_manual_public_rejected" `
     -Url "https://api.nongjiqiancha.cn/internal/jobs/today-agri-card/manual" `
-    -ExpectedStatus @(401) `
+    -ExpectedStatus @(403) `
     -Method "POST" `
     -Body "{}"
 Invoke-HttpProbe `
