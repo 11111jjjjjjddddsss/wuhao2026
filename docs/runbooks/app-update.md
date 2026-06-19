@@ -12,17 +12,11 @@
 
 测试包链接禁止写入管理后台“检查更新”、`APP_ANDROID_APK_URL`、`APP_ANDROID_*` 环境变量、官网 `VITE_ANDROID_APK_URL` 或正式下载按钮。正式检查更新和官网下载当前只接受 `https://download.nongjiqiancha.cn/android/releases/...apk` 这种自有下载域名下的稳定 release 地址；正式发版校验脚本会对原始 URL 和 URL 解码后的路径一起拒绝包含 `test-apks`、`debug`、`internal` 或 `staging` 的 APK URL，避免把测试包误下发给用户。
 
-## 正式包留存与本地清理
+## 正式包留存与本地产物
 
 正式 release APK 不按测试包 3 天生命周期删除。已经对外发布过的正式包属于回滚、审计和问题定位材料，云端 / 发布记录至少要保留“当前正在下发的正式包 + 最近若干个可回滚正式包 + 对应 `versionCode / versionName / SHA-256 / 文件大小 / commit / 签名指纹`”。APK 体积很小，早期不建议为了省极低的 OSS 存储费删除最近正式物料；后续如果版本很多，再按“保留最近 10 个或最近 12 个月正式包，老包只保留发布记录和 SHA”的口径单独清理。
 
-本机不作为正式包仓库，不需要长期堆 APK。日常构建后只保留最近少量 Gradle 产物即可；需要清理本机生成的 APK 时，运行：
-
-```powershell
-.\scripts\clean-local-android-apks.ps1
-```
-
-该脚本只清理仓库内 `app/build/outputs/apk`、`app/build/intermediates/apk` 和 `tmp` 下的生成 APK，不会删除源码、签名配置、Git 记录、云端正式包或后台发布历史。
+本机不作为正式包仓库，不需要长期堆 APK。仓库不再保留本机 APK 清理脚本，也不做后台自动清理；需要整理本机 APK 构建产物时，由用户明确提出后，Codex 再先列出目标路径和体积，确认只涉及生成物后单次人工处理。任何清理都不得删除源码、签名配置、Git 记录、云端正式包或后台发布历史。
 
 ## 用户侧入口
 

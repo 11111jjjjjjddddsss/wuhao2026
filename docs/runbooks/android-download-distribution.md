@@ -1,6 +1,6 @@
 # Android 下载分发 Runbook
 
-最后更新：2026-06-18
+最后更新：2026-06-19
 
 本 runbook 记录 Android APK 的低成本下载方案。它只解决“安装包从哪里下载、如何校验、如何控制成本”，不等于正式发布口令。
 
@@ -12,7 +12,7 @@
 2. 绑定自有下载域名 `download.nongjiqiancha.cn` 到 OSS Bucket。
 3. 给下载域名配置 HTTPS 证书。
 4. 测试包和正式包走不同前缀：
-   - 内部测试包：`test-apks/debug/...`，短期保留，默认只留最新。
+   - 内部测试包：`test-apks/debug/...`，短期测试链接，仓库脚本不再主动清理旧对象；需要清理时用户明确提出后再人工处理。
    - 正式包：`android/releases/<versionCode>/...apk`，长期保留当前版本和最近若干可回滚版本。
 5. 早期不默认上 CDN，不买高防。下载量或管理层集中下载造成明显卡顿时，再把 CDN 放在 OSS 前面。
 
@@ -40,7 +40,7 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 - OSS：Bucket 仍保持 private，不开放公共读；测试包通过签名 URL 下载。
 - HTTPS：下载域名已绑定免费 Let’s Encrypt 证书，当前证书到期日为 `2026-09-15 07:03:04 UTC`；2026-06-17 已因旧同步脚本曾把私钥放进 Cloud Assistant 输出而强制重签该证书，并用加固后的脚本重新同步到 OSS。ECS 上 `certbot.timer` 负责后续免费证书续期。
 - 验证：`scripts/check-android-download-domain.ps1` 会检查 DNS、OSS CNAME、HTTPS 证书可见性，并用自有域名签名 HEAD 探针验证访问。2026-06-18 起，`scripts/check-resource-capacity.ps1 -Strict` 也会调用这条下载域名检查；正式发布前资源门禁不能漏掉下载域名。
-- 发布：`scripts/publish-android-test-apk.ps1` 默认会上传 debug/internal APK 到 OSS `test-apks/debug/...`，生成 `https://download.nongjiqiancha.cn/...` 签名链接，默认 72 小时有效，并清理旧测试包只留最新；只有显式 `-UseEcsDownloadFallback` 才允许临时回退旧 ECS `/test-apks/` 路径。
+- 发布：`scripts/publish-android-test-apk.ps1` 默认会上传 debug/internal APK 到 OSS `test-apks/debug/...`，生成 `https://download.nongjiqiancha.cn/...` 签名链接，默认 72 小时有效；脚本不再主动清理旧测试包或旧 ECS 镜像，清理只在用户明确要求时单次人工处理。只有显式 `-UseEcsDownloadFallback` 才允许临时回退旧 ECS `/test-apks/` 路径。
 
 发测试包前先跑：
 

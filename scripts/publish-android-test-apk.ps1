@@ -13,7 +13,6 @@ param(
     [string]$ExpectedPackageName = "com.nongjiqiancha",
     [string]$PublicInfoPath = "",
     [int]$ExpireHours = 72,
-    [int]$KeepNewestRemote = 1,
     [switch]$NoBuild,
     [switch]$AllowDirty,
     [switch]$UseOssSignedDownload,
@@ -194,7 +193,7 @@ function Assert-SafeOssPrefix {
     $normalized = $Value.Replace("\", "/").Trim("/")
     $normalizedLower = $normalized.ToLowerInvariant()
     if ([string]::IsNullOrWhiteSpace($normalized) -or ($normalizedLower -ne "test-apks/debug" -and -not $normalizedLower.StartsWith("test-apks/debug/"))) {
-        throw "internal test APKs must be stored under test-apks/debug so the short lifecycle policy and cleanup scripts apply"
+        throw "internal test APKs must be stored under test-apks/debug so the short lifecycle policy applies"
     }
     foreach ($part in $normalized.Split("/")) {
         if ([string]::IsNullOrWhiteSpace($part) -or $part -eq "." -or $part -eq ".." -or $part -match '[^\w.\-]') {
@@ -266,34 +265,6 @@ function Test-PublicDownloadUrl {
         }
     } catch {
         throw "test APK public download probe failed for ${Url}: $($_.Exception.Message)"
-    }
-}
-
-function Clear-EcsTestApkMirror {
-    $remoteRoot = Assert-SafeEcsTestApkRoot -Value $EcsTestApkRoot
-    $safeRoot = Escape-BashSingleQuoted $remoteRoot
-    $remoteScript = @"
-set -eu
-download_root='$safeRoot'
-if [ -d "`$download_root" ]; then
-  find "`$download_root" -type f -name '*.apk' -delete 2>/dev/null || true
-  find "`$download_root" -mindepth 1 -type d -empty -delete 2>/dev/null || true
-fi
-echo "ecs_test_apk_mirror_cleanup=done"
-"@
-    $run = Invoke-JsonCommand @(
-        "aliyun", "ecs", "RunCommand",
-        "--RegionId", $EcsRegionId,
-        "--Type", "RunShellScript",
-        "--InstanceId.1", $EcsInstanceId,
-        "--Name", "clean-test-apk-mirror-$commit",
-        "--CommandContent", $remoteScript,
-        "--Timeout", "120"
-    )
-    $runResult = Wait-RunCommand -RegionId $EcsRegionId -InvokeId $run.InvokeId
-    Write-Host $runResult.Output.Trim()
-    if ($runResult.Status -ne "Success" -or $runResult.ExitCode -ne 0) {
-        throw "ECS test APK mirror cleanup failed: status=$($runResult.Status) exit=$($runResult.ExitCode)`n$($runResult.Output)"
     }
 }
 
@@ -424,9 +395,6 @@ function Assert-DebugApk {
 if ($ExpireHours -lt 1 -or $ExpireHours -gt 168) {
     throw "ExpireHours must be between 1 and 168"
 }
-if ($KeepNewestRemote -lt 1 -or $KeepNewestRemote -gt 10) {
-    throw "KeepNewestRemote must be between 1 and 10"
-}
 
 $normalizedOssPrefix = Assert-SafeOssPrefix -Value $OssPrefix
 Assert-SafeHostname -Name "DownloadDomain" -Value $DownloadDomain
@@ -542,7 +510,6 @@ if (-not $SkipEcsDownloadPublish -and -not $useOssSignedDownloadEffective) {
     $remoteRelative = Escape-BashSingleQuoted $downloadPathUnderTestApks
     $remoteSha = Escape-BashSingleQuoted $sha256
     $remoteSize = [string]$apkItem.Length
-    $remoteExpireMinutes = [string]($ExpireHours * 60)
     $remoteScript = @"
 set -eu
 download_url='$remoteDownloadUrl'
@@ -550,12 +517,10 @@ download_root='$remoteRoot'
 relative_path='$remoteRelative'
 expected_sha='$remoteSha'
 expected_size='$remoteSize'
-expire_minutes='$remoteExpireMinutes'
 target="`$download_root/`$relative_path"
 tmp="`$target.tmp.`$$"
 nginx_site='/etc/nginx/sites-available/nongjiqiancha-site'
 nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-site'
-cleanup_cron='/etc/cron.d/nongjiqiancha-test-apks-clean'
 mkdir -p "`$(dirname "`$target")"
 curl -fsSL --retry 3 --connect-timeout 10 --max-time 300 -o "`$tmp" "`$download_url"
 actual_size=`$(stat -c '%s' "`$tmp")
@@ -572,15 +537,6 @@ if [ "`$actual_sha" != "`$expected_sha" ]; then
 fi
 chmod 0644 "`$tmp"
 mv -f "`$tmp" "`$target"
-find "`$download_root" -type f -name '*.apk' ! -path "`$target" -delete 2>/dev/null || true
-find "`$download_root" -type f -name '*.apk' -mmin "+`$expire_minutes" -delete 2>/dev/null || true
-find "`$download_root" -type d -empty -delete 2>/dev/null || true
-cat > "`$cleanup_cron" <<EOF
-# Managed by nongjiqiancha publish-android-test-apk.ps1.
-# Internal debug APKs are short-lived and must not become official downloads.
-17 3 * * * root find "`$download_root" -type f -name '*.apk' -mmin +`$expire_minutes -delete 2>/dev/null; find "`$download_root" -mindepth 1 -type d -empty -delete 2>/dev/null
-EOF
-chmod 0644 "`$cleanup_cron"
 if [ -f "`$nginx_site" ] && ! grep -q 'location \^~ /test-apks/' "`$nginx_site"; then
   cp -f "`$nginx_site" "`$nginx_site.test-apks-bak.`$(date +%Y%m%d%H%M%S)"
   python3 - "`$nginx_site" "`$download_root" <<'PY'
@@ -630,17 +586,6 @@ echo "ecs_test_apk_size=`$actual_size"
     }
 }
 
-$cleanupScript = Join-Path $PSScriptRoot "clean-oss-test-apks.ps1"
-if (Test-Path -LiteralPath $cleanupScript -PathType Leaf) {
-    & $cleanupScript -Bucket $Bucket -OssPrefix $normalizedOssPrefix -Endpoint $Endpoint -KeepNewest $KeepNewestRemote
-    if ($LASTEXITCODE -ne 0) {
-        throw "clean-oss-test-apks.ps1 failed with exit code $LASTEXITCODE"
-    }
-}
-if ($useOssSignedDownloadEffective -and -not $SkipEcsDownloadPublish) {
-    Clear-EcsTestApkMirror
-}
-
 if ($useOssSignedDownloadEffective) {
     Test-PublicDownloadUrl -Url $ossSignedHeadUrl -ExpectedSize $apkItem.Length -Method "Head"
     Test-PublicDownloadUrl -Url $ossSignedDownloadUrl -ExpectedSize $apkItem.Length -Method "GetRange"
@@ -650,7 +595,7 @@ if ($useOssSignedDownloadEffective) {
 
 Write-Host "test_apk_build_type=debug"
 Write-Host ("test_apk_expires_hours={0}" -f $ExpireHours)
-Write-Host ("test_apk_remote_keep_newest={0}" -f $KeepNewestRemote)
+Write-Host "test_apk_cleanup=manual_only"
 if ($UseOssSignedDownload) {
     Write-Host "test_apk_download_mode=oss_signed"
 } elseif ($UseEcsDownloadFallback) {
