@@ -424,6 +424,15 @@ internal fun resolveTodayAgriContextDayForTimeline(
     return day.takeIf { userMessagesAfterAnchor < 3 }
 }
 
+internal fun canAttachTodayAgriContextForCurrentRuntime(
+    hasTodayAgriCard: Boolean,
+    shouldRenderTodayAgriCardInTimeline: Boolean,
+    shownThisRuntime: Boolean
+): Boolean =
+    hasTodayAgriCard &&
+        shouldRenderTodayAgriCardInTimeline &&
+        shownThisRuntime
+
 internal fun isTodayAgriCardVisibleInViewport(
     chatListItems: List<ChatTimelineItem>,
     visibleItems: List<VisibleChatListItem>,
@@ -1258,6 +1267,30 @@ private fun retainLocalRecoverySnapshotForRemoteFallback(
     )
 }
 
+internal fun retainLocalSnapshotForArchiveUnavailable(
+    localSnapshot: LocalChatWindowSnapshot,
+    remoteMessages: List<ChatMessage> = emptyList(),
+    shouldKeepPendingUserMessage: (String) -> Boolean = { false }
+): LocalChatWindowSnapshot {
+    val retainedLocalSnapshot = markLocalImageUploadPendingAsFailed(
+        snapshot = localSnapshot,
+        shouldKeepPending = shouldKeepPendingUserMessage
+    )
+    val hasOrdinaryLocalHistory = retainedLocalSnapshot.messages.any { message ->
+        message.id !in retainedLocalSnapshot.failedUserMessageStates &&
+            message.id !in retainedLocalSnapshot.failedAssistantMessageStates &&
+            !message.isLocalImageUploadPendingUserMessage()
+    }
+    if (hasOrdinaryLocalHistory || remoteMessages.isEmpty()) {
+        return retainedLocalSnapshot
+    }
+    return mergeHydratedMessagesWithLocalPendingState(
+        remoteMessages = remoteMessages,
+        localSnapshot = retainedLocalSnapshot,
+        shouldKeepPendingUserMessage = shouldKeepPendingUserMessage
+    )
+}
+
 internal fun recoverStreamingDraftAsInterruptedSnapshot(
     localSnapshot: LocalChatWindowSnapshot,
     draft: LocalStreamingDraft?
@@ -1951,6 +1984,18 @@ internal fun shouldHoldHydratedVisualMutationForBrowsing(
         !hasStreamingItem &&
         userBlocksHydratedVisualMutation
 
+internal fun shouldApplyPendingTodayAgriMainItem(
+    pendingDayCn: String?,
+    currentDayKey: String,
+    isStreaming: Boolean,
+    hasStreamingItem: Boolean,
+    userBlocksHydratedVisualMutation: Boolean
+): Boolean =
+    pendingDayCn == currentDayKey &&
+        !isStreaming &&
+        !hasStreamingItem &&
+        !userBlocksHydratedVisualMutation
+
 @Composable
 private fun LongArrowIcon(
     tint: Color,
@@ -2236,7 +2281,7 @@ fun ChatScreen() {
     val initialWorklineBottomSwitchOverflowPx =
         with(density) { INITIAL_WORKLINE_BOTTOM_SWITCH_OVERFLOW.roundToPx() }
     val chatMessageItemVerticalPaddingPx = with(density) { CHAT_MESSAGE_ITEM_VERTICAL_PADDING.roundToPx() }
-    val todayAgriMinVisiblePx = with(density) { 24.dp.roundToPx() }
+    val todayAgriMinVisiblePx = with(density) { 96.dp.roundToPx() }
     val streamingRuntime = rememberChatStreamingRuntimeState(uiRuntimeResetKey)
     var isStreaming by streamingRuntime.isStreaming
     var streamingMessageId by streamingRuntime.streamingMessageId
@@ -2353,7 +2398,7 @@ fun ChatScreen() {
     var todayAgriMainShownDay by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(initialTodayAgriMainShownDay)
     }
-    var todayAgriShownThisRuntime by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
+    var todayAgriShownThisRuntime by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var todayAgriInsertedThisRuntime by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
     var todayAgriAutoInsertSuppressedThisRuntime by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(false)
@@ -2567,10 +2612,13 @@ fun ChatScreen() {
         )
     }
     fun todayAgriContextDayForNextSend(existingUserMessageId: String? = null): String? {
-        if (!hasTodayAgriCard || !shouldRenderTodayAgriCardInTimeline) return null
-        if (!todayAgriShownThisRuntime && todayAgriMainShownDay != currentTodayAgriCardDay) {
-            return null
-        }
+        if (
+            !canAttachTodayAgriContextForCurrentRuntime(
+                hasTodayAgriCard = hasTodayAgriCard,
+                shouldRenderTodayAgriCardInTimeline = shouldRenderTodayAgriCardInTimeline,
+                shownThisRuntime = todayAgriShownThisRuntime
+            )
+        ) return null
         return resolveTodayAgriContextDayForTimeline(
             chatListItems = chatListItems,
             currentTodayAgriCardDay = currentTodayAgriCardDay,
@@ -4959,19 +5007,23 @@ fun ChatScreen() {
                     )
             }
             val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
+            val archiveUnavailable = snapshot?.archive_unavailable == true
             val hydratedHiddenRemoteRoundCount =
-                if (snapshot == null) {
-                    0
-                } else {
-                    (snapshot.round_total - snapshot.a_rounds_for_ui.size).coerceAtLeast(0)
+                when {
+                    snapshot == null || archiveUnavailable -> hiddenRemoteRoundCount
+                    else -> (snapshot.round_total - snapshot.a_rounds_for_ui.size).coerceAtLeast(0)
                 }
-            val hydratedSnapshot = if (snapshot == null) {
-                retainLocalRecoverySnapshotForRemoteFallback(
+            val hydratedSnapshot = when {
+                archiveUnavailable -> retainLocalSnapshotForArchiveUnavailable(
+                    localSnapshot = localSnapshotForMerge,
+                    remoteMessages = remoteMessages,
+                    shouldKeepPendingUserMessage = shouldKeepPendingUserMessage
+                )
+                snapshot == null -> retainLocalRecoverySnapshotForRemoteFallback(
                     localSnapshot = localSnapshotForMerge,
                     shouldKeepPendingUserMessage = shouldKeepPendingUserMessage
                 )
-            } else {
-                mergeHydratedMessagesWithLocalPendingState(
+                else -> mergeHydratedMessagesWithLocalPendingState(
                     remoteMessages = remoteMessages,
                     localSnapshot = localSnapshotForMerge,
                     shouldKeepPendingUserMessage = shouldKeepPendingUserMessage
@@ -4982,7 +5034,7 @@ fun ChatScreen() {
                 ignoredUserMessageIds = hydratedSnapshot.failedUserMessageStates.keys,
                 failedAssistantMessageStates = hydratedSnapshot.failedAssistantMessageStates
             )
-            val prewarmMessages = if (snapshot == null) hydratedSnapshot.messages else remoteMessages
+            val prewarmMessages = if (snapshot == null || archiveUnavailable) hydratedSnapshot.messages else remoteMessages
             if (prewarmMessages.isNotEmpty()) {
                 snackbarScope.launch {
                     prewarmAssistantMarkdown(prewarmMessages)
@@ -5123,15 +5175,20 @@ fun ChatScreen() {
         val pendingSnapshot = pendingHydratedSnapshot
         val pendingItem = pendingHydratedTodayAgriMainItem
         if (pendingSnapshot == null && pendingItem == null) return@LaunchedEffect
-        if (hasStartedConversation || isStreaming || hasStreamingItem) {
+        if (isStreaming || hasStreamingItem) {
             pendingHydratedSnapshot = null
-            pendingHydratedTodayAgriMainItem = null
+            if (pendingItem?.day_cn != currentChinaDateKey()) {
+                pendingHydratedTodayAgriMainItem = null
+            }
             return@LaunchedEffect
+        }
+        if (hasStartedConversation && pendingSnapshot != null) {
+            pendingHydratedSnapshot = null
         }
         if (userBlocksHydratedVisualMutation()) {
             return@LaunchedEffect
         }
-        if (pendingSnapshot != null) {
+        if (pendingSnapshot != null && !hasStartedConversation) {
             pendingHydratedSnapshot = null
             applyHydratedSnapshotToUi(
                 pendingSnapshot = pendingSnapshot,
@@ -5139,11 +5196,21 @@ fun ChatScreen() {
             )
         }
         val itemAfterSnapshot = pendingHydratedTodayAgriMainItem
-        if (itemAfterSnapshot != null) {
+        if (
+            shouldApplyPendingTodayAgriMainItem(
+                pendingDayCn = itemAfterSnapshot?.day_cn,
+                currentDayKey = currentChinaDateKey(),
+                isStreaming = isStreaming,
+                hasStreamingItem = hasStreamingItem,
+                userBlocksHydratedVisualMutation = userBlocksHydratedVisualMutation()
+            )
+        ) {
             pendingHydratedTodayAgriMainItem = null
-            if (itemAfterSnapshot.day_cn == currentChinaDateKey()) {
+            if (itemAfterSnapshot != null) {
                 applyHydratedTodayAgriMainItem(itemAfterSnapshot)
             }
+        } else if (itemAfterSnapshot != null && itemAfterSnapshot.day_cn != currentChinaDateKey()) {
+            pendingHydratedTodayAgriMainItem = null
         }
     }
 
@@ -6557,12 +6624,12 @@ fun ChatScreen() {
         val chatListTopPaddingPx = with(density) { topBarReservedHeight.roundToPx() }
         suspend fun uploadComposerImagesForSend(
             images: List<ComposerImageAttachment>
-        ): Pair<List<String>?, String?> = withContext(Dispatchers.IO) {
+        ): ImageUploader.UploadImagesResult = withContext(Dispatchers.IO) {
             val compressedImages = mutableListOf<ByteArray>()
             for (image in images) {
                 val imageUri = Uri.parse(image.uri)
                 val originalBytes = context.readImageBytes(imageUri)
-                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                    ?: return@withContext ImageUploader.UploadImagesResult(null, ImageUploader.DECODE_FAIL_MESSAGE)
                 val uploadBytes = if (
                     context.isPrivateComposerImage(imageUri) &&
                     originalBytes.hasJpegStartMarker() &&
@@ -6571,16 +6638,15 @@ fun ChatScreen() {
                     originalBytes
                 } else {
                     val compressed = ImageUploader.compressImage(originalBytes)
-                        ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                        ?: return@withContext ImageUploader.UploadImagesResult(null, ImageUploader.DECODE_FAIL_MESSAGE)
                     compressed.bytes
                 }
                 compressedImages.add(uploadBytes)
             }
             if (compressedImages.isEmpty()) {
-                emptyList<String>() to null
+                ImageUploader.UploadImagesResult(emptyList(), null)
             } else {
-                val result = ImageUploader.uploadImagesWithResult(compressedImages)
-                if (result.urls == null) null to result.errorMessage else result.urls to null
+                ImageUploader.uploadImagesWithResult(compressedImages)
             }
         }
         fun retryFailedUserMessage(messageId: String) {
@@ -6629,9 +6695,11 @@ fun ChatScreen() {
                 imageSendJob?.cancel()
                 imageSendJob = snackbarScope.launch {
                     try {
-                        val (uploadedUrls, uploadError) = uploadComposerImagesForSend(
+                        val uploadResult = uploadComposerImagesForSend(
                             previewImageUris.map(::ComposerImageAttachment)
                         )
+                        val uploadedUrls = uploadResult.urls
+                        val uploadError = uploadResult.errorMessage
                         if (uploadClearEpoch != chatHistoryClearEpoch) return@launch
                         if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
                             PendingChatSendWorkScheduler.cancelAndRemove(
@@ -6639,7 +6707,8 @@ fun ChatScreen() {
                                 chatScopeId,
                                 failedMessage.id
                             )
-                            failedUserMessageStates[failedMessage.id] = "network"
+                            failedUserMessageStates[failedMessage.id] =
+                                if (uploadResult.authExpired) "auth" else "network"
                             retryingUserMessageIds.remove(failedMessage.id)
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
@@ -6741,9 +6810,11 @@ fun ChatScreen() {
                 imageSendJob?.cancel()
                 imageSendJob = snackbarScope.launch {
                     try {
-                        val (retryUploadedUrls, uploadError) = uploadComposerImagesForSend(
+                        val uploadResult = uploadComposerImagesForSend(
                             previewImageUris.map(::ComposerImageAttachment)
                         )
+                        val retryUploadedUrls = uploadResult.urls
+                        val uploadError = uploadResult.errorMessage
                         if (uploadClearEpoch != chatHistoryClearEpoch) return@launch
                         if (uploadError != null || retryUploadedUrls.isNullOrEmpty()) {
                             PendingChatSendWorkScheduler.cancelAndRemove(
@@ -6752,6 +6823,9 @@ fun ChatScreen() {
                                 sourceUserMessage.id
                             )
                             failedAssistantMessageStates[assistantMessageId] = failedState
+                            if (uploadResult.authExpired) {
+                                failedUserMessageStates[sourceUserMessage.id] = "auth"
+                            }
                             retryingAssistantMessageIds.remove(assistantMessageId)
                             persistTick++
                             uploadError?.let(::showComposerStatusHint)
@@ -6890,7 +6964,9 @@ fun ChatScreen() {
             imageSendJob?.cancel()
             imageSendJob = snackbarScope.launch {
                 try {
-                    val (uploadedUrls, uploadError) = uploadComposerImagesForSend(imageSnapshot)
+                    val uploadResult = uploadComposerImagesForSend(imageSnapshot)
+                    val uploadedUrls = uploadResult.urls
+                    val uploadError = uploadResult.errorMessage
                     if (uploadClearEpoch != chatHistoryClearEpoch) return@launch
                     if (uploadError != null || uploadedUrls.isNullOrEmpty()) {
                         PendingChatSendWorkScheduler.cancelAndRemove(
@@ -6898,7 +6974,8 @@ fun ChatScreen() {
                             chatScopeId,
                             stagedUserMessageId
                         )
-                        failedUserMessageStates[stagedUserMessageId] = "network"
+                        failedUserMessageStates[stagedUserMessageId] =
+                            if (uploadResult.authExpired) "auth" else "network"
                         persistTick++
                         context.saveLocalChatWindowIfEpoch(
                             chatScopeId = chatScopeId,
@@ -8354,6 +8431,7 @@ private fun UiCopyPreviewOverlay(
                 title = "适配与回退",
                 items = listOf(
                     UiCopyPreviewItem("远端快照失败兜底", "只保留 pending / 失败态，不回灌普通本地历史", UiCopyPreviewKind.RemoteSnapshotFallback),
+                    UiCopyPreviewItem("远端归档暂不可用", "不让不完整 snapshot 覆盖本地时间线", UiCopyPreviewKind.RemoteArchiveUnavailableFallback),
                     UiCopyPreviewItem("删除历史 hydrate 拦截", "旧请求晚回来不覆盖 clean-state", UiCopyPreviewKind.ClearHistoryHydrateGuard),
                     UiCopyPreviewItem("图片预览安全区", "页码和关闭按钮避开横向 cutout", UiCopyPreviewKind.ImagePreviewTopChrome),
                     UiCopyPreviewItem("会员面板短屏安全区", "顶部 safe drawing 限制最大高度", UiCopyPreviewKind.MembershipSheetSafeArea)
@@ -8420,6 +8498,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "物料完整且版本更高才提示更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
+                    UiCopyPreviewItem("更新失败原因", "校验、地址、大小、网络和缓存失败文案", UiCopyPreviewKind.AppUpdateFailureReasons),
                     UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
                     UiCopyPreviewItem("更新权限大字体", "1.6x 字体下真实更新弹窗", UiCopyPreviewKind.AppUpdatePermissionLargeFont),
@@ -8455,7 +8534,9 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("今日农情", "主聊天普通文本项，标题加粗、正文可复制", UiCopyPreviewKind.TodayAgriCard),
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
+                    UiCopyPreviewItem("农情时间线组合", "历史提示、AI 回复、农情和后续用户消息同列表", UiCopyPreviewKind.TodayAgriTimelineComposite),
                     UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方三轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
+                    UiCopyPreviewItem("农情晚到不打断", "用户发送 / 生成中暂存，不强插不拉底", UiCopyPreviewKind.TodayAgriPendingNoInterrupt),
                     UiCopyPreviewItem("农情历史页", "日期收进卡片内，旧简报先展示后刷新", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
                 )
@@ -8495,7 +8576,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
                     UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 尾部补上传图片时", UiCopyPreviewKind.AssistantRetrying),
                     UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
-                    UiCopyPreviewItem(USER_PENDING_IMAGE_SEND_PREVIEW_TEXT, "用户带图后台发送中尾部", UiCopyPreviewKind.UserRetrying),
+                    UiCopyPreviewItem(USER_PENDING_IMAGE_SEND_PREVIEW_TEXT, "用户带图后台发送中尾部", UiCopyPreviewKind.UserPendingImageSend),
+                    UiCopyPreviewItem(USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT, "后台已发完、等远端快照回填", UiCopyPreviewKind.UserRemoteCompletionAwaiting),
                     UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户尾部补上传图片时", UiCopyPreviewKind.UserRetrying)
                 )
             ),
@@ -8701,6 +8783,7 @@ private enum class UiCopyPreviewKind {
     CleanStateFirstSend,
     CleanStateChecklist,
     RemoteSnapshotFallback,
+    RemoteArchiveUnavailableFallback,
     ClearHistoryHydrateGuard,
     ImagePreviewTopChrome,
     MembershipSheetSafeArea,
@@ -8741,6 +8824,7 @@ private enum class UiCopyPreviewKind {
     HamburgerSupportLongInput,
     HamburgerAppUpdateDialog,
     HamburgerAppUpdateDownloading,
+    AppUpdateFailureReasons,
     AppUpdateInstallPermissionHint,
     AppUpdateInstallNotCompletedHint,
     AppUpdatePermissionLargeFont,
@@ -8760,7 +8844,9 @@ private enum class UiCopyPreviewKind {
     TodayAgriCard,
     TodayAgriLongSummaryCard,
     TodayAgriNarrow,
+    TodayAgriTimelineComposite,
     TodayAgriContextRule,
+    TodayAgriPendingNoInterrupt,
     HamburgerTodayAgriHistoryPage,
     HamburgerTodayAgriHistoryFailed,
     AssistantMarkdownSample,
@@ -8772,6 +8858,8 @@ private enum class UiCopyPreviewKind {
     AssistantRetry,
     AssistantRetrying,
     UserRetry,
+    UserPendingImageSend,
+    UserRemoteCompletionAwaiting,
     UserRetrying,
     Network,
     SupportSendFailed,
@@ -8991,6 +9079,16 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.RemoteSnapshotFallback -> {
                     UiCopyPreviewRemoteSnapshotFallback()
                 }
+                UiCopyPreviewKind.RemoteArchiveUnavailableFallback -> {
+                    UiCopyPreviewPlainText(
+                        listOf(
+                            "远端 snapshot 返回 archive_unavailable=true 时，本次视为历史不完整",
+                            "保留本地 pending、失败态和已经可见的时间线，不用短 A 窗口覆盖",
+                            "待后续完整 snapshot 恢复后，再按平台记录合并",
+                            "避免用户看到历史和分割线一会儿有、一会儿没"
+                        )
+                    )
+                }
                 UiCopyPreviewKind.ClearHistoryHydrateGuard -> {
                     UiCopyPreviewClearHistoryHydrateGuard()
                 }
@@ -9209,6 +9307,17 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.HamburgerAppUpdateDownloading -> {
                     HamburgerAppUpdateDialogPreview(downloading = true)
                 }
+                UiCopyPreviewKind.AppUpdateFailureReasons -> {
+                    UiCopyPreviewPlainText(
+                        listOf(
+                            "安装包校验未通过，请稍后再试",
+                            "更新地址异常，请稍后再试",
+                            "安装包大小异常，请稍后再试",
+                            "网络不稳定，更新下载失败",
+                            "本机缓存不可用，更新下载失败"
+                        )
+                    )
+                }
                 UiCopyPreviewKind.AppUpdateInstallPermissionHint -> {
                     HamburgerAppUpdateDialogPreview(installPermissionPending = true)
                 }
@@ -9290,6 +9399,48 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         )
                     }
                 }
+                UiCopyPreviewKind.TodayAgriTimelineComposite -> {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        ChatHistoryWindowNotice(
+                            hiddenRoundCount = 2,
+                            horizontalPadding = 0.dp,
+                            maxCardWidth = 320.dp
+                        )
+                        ChatStreamingRenderer(
+                            content = "辣椒叶片发黄，先看浇水、根系和叶背虫害。需要结合棚内温度、湿度和近期用药记录一起判断。",
+                            renderMode = StreamingRenderMode.Settled,
+                            showWaitingBall = false,
+                            selectionEnabled = true,
+                            showDisclaimer = true,
+                            onStreamingContentBoundsChanged = null,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        TodayAgriNewsText(
+                            card = uiCopyPreviewTodayAgriCard(),
+                            textSelectionColors = previewSelectionColors
+                        )
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            SelectableRenderedUserMessageBubble(
+                                content = "这个和我棚里的辣椒有关系吗",
+                                textSelectionColors = TextSelectionColors(
+                                    handleColor = CHAT_SELECTION_HANDLE_COLOR,
+                                    backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
+                                ),
+                                textToolbar = LocalTextToolbar.current,
+                                selectionResetKey = 0,
+                                userBubbleMaxWidth = 280.dp,
+                                userBubbleColor = Color(0xFF050505),
+                                userBubbleBorderColor = Color(0xFF050505)
+                            )
+                        }
+                    }
+                }
                 UiCopyPreviewKind.TodayAgriContextRule -> {
                     UiCopyPreviewPlainText(
                         listOf(
@@ -9300,6 +9451,16 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             "远端确认当天 ready 后，用户在它后面发送的后三轮会临时带当天农情标记",
                             "后端只在日期等于服务器当天时读取农情正文作为临时背景",
                             "第四轮起自动不带；记忆整理、聊天归档和扣次都不写入农情正文"
+                        )
+                    )
+                }
+                UiCopyPreviewKind.TodayAgriPendingNoInterrupt -> {
+                    UiCopyPreviewPlainText(
+                        listOf(
+                            "冷启动 hydrate 晚到时，如果用户已经发送或 AI 正在生成，今日农情先暂存",
+                            "同一天保存项不因正在发送就丢掉，等非浏览、非生成状态再应用",
+                            "用户正在看上方内容或刚完成操作时，不强制拉到底",
+                            "开机进入、正常回到底部和用户本来就在底部时，仍尽量贴底"
                         )
                     )
                 }
@@ -9376,6 +9537,24 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         statusText = USER_RETRY_STATUS_TEXT,
                         actionText = USER_RETRY_ACTION_TEXT,
                         alignEnd = true,
+                        onActionClick = {}
+                    )
+                }
+                UiCopyPreviewKind.UserPendingImageSend -> {
+                    MessageStatusFooter(
+                        statusText = USER_PENDING_IMAGE_SEND_STATUS_TEXT,
+                        actionText = null,
+                        alignEnd = true,
+                        enabled = false,
+                        onActionClick = {}
+                    )
+                }
+                UiCopyPreviewKind.UserRemoteCompletionAwaiting -> {
+                    MessageStatusFooter(
+                        statusText = USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT,
+                        actionText = null,
+                        alignEnd = true,
+                        enabled = false,
                         onActionClick = {}
                     )
                 }

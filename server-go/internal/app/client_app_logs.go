@@ -967,12 +967,32 @@ func (s *Store) maybePruneExpiredClientAppLogs(ctx context.Context, nowMs int64)
 	if cutoffMs <= 0 {
 		return
 	}
-	_, _ = s.db.ExecContext(
+	_, _ = s.PruneExpiredClientAppLogs(ctx, nowMs)
+}
+
+func (s *Store) PruneExpiredClientAppLogs(ctx context.Context, nowMs int64) (int64, error) {
+	retention := envDurationWithDefault("CLIENT_APP_LOG_RETENTION_SECONDS", defaultClientAppLogRetention)
+	if retention <= 0 {
+		return 0, nil
+	}
+	cutoffMs := nowMs - int64(retention/time.Millisecond)
+	if cutoffMs <= 0 {
+		return 0, nil
+	}
+	result, err := s.db.ExecContext(
 		ctx,
 		"DELETE FROM client_app_logs WHERE created_at < ? LIMIT ?",
 		cutoffMs,
 		defaultClientAppLogPruneBatchLimit,
 	)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return rows, nil
 }
 
 func shouldPruneClientAppLogs(nowMs int64, interval time.Duration) bool {

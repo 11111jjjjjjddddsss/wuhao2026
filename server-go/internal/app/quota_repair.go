@@ -12,7 +12,9 @@ const (
 	defaultQuotaConsumeRepairLease     = 10 * time.Minute
 	quotaConsumeRepairBatchLimit       = 20
 	quotaConsumeRepairNeedsOpsAttempts = 12
+	quotaConsumeRepairTerminalAttempts = 40
 	defaultQuotaConsumeNeedsOpsRetry   = 6 * time.Hour
+	defaultQuotaConsumeAutoTerminalAge = 7 * 24 * time.Hour
 )
 
 func (s *Server) startQuotaConsumeRepairWorker() {
@@ -74,8 +76,8 @@ func (s *Server) repairDueQuotaConsumes() {
 		nextNowMs := time.Now().UnixMilli()
 		nextAttempts := job.Attempts + 1
 		if nextAttempts >= quotaConsumeRepairNeedsOpsAttempts {
-			if quotaConsumeShouldAutoMarkUncollectable(err) {
-				if markErr := s.store.MarkQuotaConsumeOutboxUncollectable(ctx, job.ID, err.Error(), nextNowMs); markErr != nil {
+			if quotaConsumeShouldAutoMarkUncollectable(err) || quotaConsumeShouldAutoTerminal(job, nextAttempts, nextNowMs) {
+				if markErr := s.store.MarkQuotaConsumeOutboxUncollectableAfterAttempt(ctx, job.ID, err.Error(), nextAttempts, nextNowMs); markErr != nil {
 					s.logger.Warn("quota consume outbox mark uncollectable failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "error", markErr)
 					continue
 				}
@@ -113,6 +115,24 @@ func quotaConsumeShouldAutoMarkUncollectable(err error) bool {
 	}
 	message := strings.ToLower(strings.TrimSpace(err.Error()))
 	return strings.Contains(message, "quota_exhausted")
+}
+
+func quotaConsumeShouldAutoTerminal(job QuotaConsumeOutboxJob, attempts int, nowMs int64) bool {
+	if attempts >= quotaConsumeRepairTerminalAttempts {
+		return true
+	}
+	if attempts < quotaConsumeRepairNeedsOpsAttempts || job.CreatedAt <= 0 || nowMs <= job.CreatedAt {
+		return false
+	}
+	return nowMs-job.CreatedAt >= int64(quotaConsumeAutoTerminalAge()/time.Millisecond)
+}
+
+func quotaConsumeAutoTerminalAge() time.Duration {
+	age := envDurationWithDefault("QUOTA_CONSUME_AUTO_TERMINAL_AGE_SECONDS", defaultQuotaConsumeAutoTerminalAge)
+	if age <= 0 {
+		return defaultQuotaConsumeAutoTerminalAge
+	}
+	return age
 }
 
 func quotaConsumeRepairBackoff(attempts int) time.Duration {

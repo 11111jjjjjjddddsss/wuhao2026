@@ -57,7 +57,11 @@ class PendingChatSendWorker(
                     if (isStopped) return@withContext Result.retry()
                     return@withContext failTerminal(chatScopeId, userMessageId, "image_read_failed")
                 }
-            ImageUploader.uploadImages(uploadBytes)
+            val uploadResult = ImageUploader.uploadImagesWithResult(uploadBytes)
+            if (uploadResult.authExpired) {
+                return@withContext failTerminal(chatScopeId, userMessageId, "auth")
+            }
+            uploadResult.urls
                 ?: return@withContext retryRecoverableOrFail(chatScopeId, userMessageId)
         }
         if (isStopped) return@withContext Result.retry()

@@ -4,6 +4,8 @@ param(
     [string]$Commit = "",
     [string]$MigrationDiffBase = "",
     [int]$ChunkSize = 20000,
+    [int]$RemoteBackupRetentionCount = 8,
+    [int]$RemoteTempRetentionDays = 2,
     [switch]$AllowHighRiskMigrations,
     [switch]$AllowDirtyWorktree,
     [switch]$PackageOnly
@@ -155,6 +157,13 @@ if (-not $AllowDirtyWorktree) {
     }
 }
 
+if ($RemoteBackupRetentionCount -lt 3 -or $RemoteBackupRetentionCount -gt 30) {
+    throw "RemoteBackupRetentionCount must be between 3 and 30"
+}
+if ($RemoteTempRetentionDays -lt 1 -or $RemoteTempRetentionDays -gt 30) {
+    throw "RemoteTempRetentionDays must be between 1 and 30"
+}
+
 $migrationRiskScript = Join-Path $PSScriptRoot "check-server-migration-risk.ps1"
 if (Test-Path -LiteralPath $migrationRiskScript) {
     $migrationRiskArgs = @(
@@ -289,6 +298,8 @@ nginx_site='/etc/nginx/sites-available/nongjiqiancha-api'
 admin_nginx_site='/etc/nginx/sites-available/nongjiqiancha-admin'
 legacy_service='nongji-server.service'
 drain_seconds=1800
+backup_retention_count=$RemoteBackupRetentionCount
+temp_retention_days=$RemoteTempRetentionDays
 
 read_active_port() {
   matches=`$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' "`$nginx_site" 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | sort -u)
@@ -313,6 +324,60 @@ require_production_health() {
 cancel_stale_drains() {
   systemctl list-units 'nongji-drain-stop-*' --all --no-legend --plain 2>/dev/null | awk '{print `$1}' | while read -r unit; do
     [ -n "`$unit" ] && systemctl stop "`$unit" 2>/dev/null || true
+  done
+}
+
+cleanup_deploy_temp() {
+  rm -rf -- "`$chunks" "`$archive" "`$stage" "`$bin_tmp" \
+    /tmp/nongji-health.json /tmp/nongji-upstream-health.json /tmp/nongji-admin-auth-me.json \
+    "/tmp/nongji-deploy-`$commit.sh" 2>/dev/null || true
+  find /tmp -maxdepth 1 -type d -name 'nongji-deploy-chunks-*' -mtime +"`$temp_retention_days" -exec rm -rf -- {} + 2>/dev/null || true
+  find /tmp -maxdepth 1 -type d -name 'nongji-server-src-*' -mtime +"`$temp_retention_days" -exec rm -rf -- {} + 2>/dev/null || true
+  find /tmp -maxdepth 1 -type f -name 'server-go-src-*.tgz' -mtime +"`$temp_retention_days" -delete 2>/dev/null || true
+  find /tmp -maxdepth 1 -type f -name 'nongji-server-*' -mtime +"`$temp_retention_days" -delete 2>/dev/null || true
+  find /tmp -maxdepth 1 -type f -name 'nongji-*.json' -mtime +"`$temp_retention_days" -delete 2>/dev/null || true
+  find /tmp -maxdepth 1 -type f -name 'nongji-deploy-*.sh' -mtime +"`$temp_retention_days" -delete 2>/dev/null || true
+}
+
+prune_old_deploy_backups() {
+  find "`$install_dir" -maxdepth 1 -type f -name 'nongji-server.bak-*' -printf '%f\n' 2>/dev/null |
+    sort -r |
+    sed -n "`$((backup_retention_count + 1)),\`$p" |
+    while read -r backup_name; do
+      [ -n "`$backup_name" ] || continue
+      suffix="`${backup_name#nongji-server.bak-}"
+      if ! printf '%s' "`$suffix" | grep -Eq '^[0-9]{14}`$'; then
+        continue
+      fi
+      rm -f -- "`$install_dir/nongji-server.bak-`$suffix" \
+        "`$install_dir/go.mod.bak-`$suffix" \
+        "`$install_dir/go.sum.bak-`$suffix" \
+        "`$install_dir/REVISION.bak-`$suffix" 2>/dev/null || true
+      rm -rf -- "`$install_dir/assets.bak-`$suffix" "`$install_dir/migrations.bak-`$suffix" 2>/dev/null || true
+      echo "pruned_deploy_backup=`$suffix"
+    done
+}
+
+prune_old_nginx_backups() {
+  for site in "`$nginx_site" "`$admin_nginx_site"; do
+    [ -n "`$site" ] || continue
+    dir=`$(dirname "`$site")
+    base=`$(basename "`$site")
+    find "`$dir" -maxdepth 1 -type f -name "`$base.bak-*" -printf '%f\n' 2>/dev/null |
+      while read -r backup_name; do
+        [ -n "`$backup_name" ] || continue
+        suffix="`${backup_name#`$base.bak-}"
+        if printf '%s' "`$suffix" | grep -Eq '^[0-9]{14}`$'; then
+          printf '%s\n' "`$backup_name"
+        fi
+      done |
+      sort -r |
+      sed -n "`$((backup_retention_count + 1)),\`$p" |
+      while read -r backup_name; do
+        [ -n "`$backup_name" ] || continue
+        rm -f -- "`$dir/`$backup_name" 2>/dev/null || true
+        echo "pruned_nginx_backup=`$backup_name"
+      done
   done
 }
 
@@ -381,7 +446,7 @@ restore_pre_switch_install() {
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
 
-trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_nginx_after_switch; restore_pre_switch_install; fi; exit "`$status"' EXIT
+trap 'status=`$?; if [ "`$status" -ne 0 ]; then restore_nginx_after_switch; restore_pre_switch_install; cleanup_deploy_temp; fi; exit "`$status"' EXIT
 
 echo reassemble
 rm -f "`$archive"
@@ -601,6 +666,10 @@ systemd-run --unit="`$drain_unit" --on-active="`${drain_seconds}s" /bin/sh -c "s
 }
 systemctl is-active "`$inactive_service"
 switch_completed=1
+cleanup_deploy_temp
+prune_old_deploy_backups
+prune_old_nginx_backups
+echo "deploy_cleanup=done backup_retention_count=`$backup_retention_count temp_retention_days=`$temp_retention_days"
 "@
 
 Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-deploy-$Commit.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null

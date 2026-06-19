@@ -78,6 +78,7 @@ const pageState = {
   supportUserID: "",
   supportStatus: "open",
   supportQuery: "",
+  supportSinceRange: "30d",
   entitlementUserID: "",
   orderUserID: "",
   giftCardBatchID: "",
@@ -757,10 +758,12 @@ async function accountDeletionPage(): Promise<string> {
 }
 
 async function supportPage(): Promise<string> {
+  const supportSinceMs = supportSinceRangeToMs(pageState.supportSinceRange);
   const params = {
     limit: 100,
     status: pageState.supportStatus,
     query: pageState.supportQuery,
+    since_ms: supportSinceMs,
   };
   const response = await apiFetch<{ conversations: AdminSupportConversation[] }>(
     `/admin-api/v1/support/conversations${toQuery(params)}`,
@@ -1139,8 +1142,9 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
     return;
   }
   if (form.id === "support-filter-form") {
-    pageState.supportStatus = formValue(form, "status");
     pageState.supportQuery = formValue(form, "query");
+    pageState.supportStatus = pageState.supportQuery.trim() ? "" : formValue(form, "status");
+    pageState.supportSinceRange = pageState.supportQuery.trim() ? "all" : formValue(form, "since_range") || "30d";
     pageState.supportUserID = "";
     await render();
     return;
@@ -1833,16 +1837,12 @@ function phoneDisplay(phoneNumber?: string, phoneMask?: string): string {
   return "未返回";
 }
 
-function phoneDisplayInline(phoneNumber?: string, phoneMask?: string): string {
-  const fullPhone = (phoneNumber || "").trim();
-  if (fullPhone && canViewAccountPhone()) {
-    return escapeHTML(fullPhone);
-  }
-  if (fullPhone) {
-    return phoneMask ? escapeHTML(phoneMask) : "完整号仅授权角色可见";
-  }
+function phoneDisplayMaskedInline(phoneNumber?: string, phoneMask?: string): string {
   if (phoneMask) {
     return escapeHTML(phoneMask);
+  }
+  if ((phoneNumber || "").trim()) {
+    return "完整号";
   }
   return "未返回手机号";
 }
@@ -1996,7 +1996,7 @@ function quotaOutboxActions(row: AdminQuotaConsumeOutboxEntry): string {
   if (row.status !== "needs_ops") {
     return `<span class="small muted">已结束</span>`;
   }
-  return `<span class="small muted">自动追账中</span>`;
+  return `<span class="small muted">低频追账中，长期失败自动终结</span>`;
 }
 
 function quotaOutboxStatusText(status: string): string {
@@ -2508,14 +2508,25 @@ function supportFilterForm(): string {
         <span>队列</span>
         ${selectHTML("status", pageState.supportStatus, [["", "全部"], ["open", "待回复"], ["replied", "已处理"], ["closed", "已关闭"]])}
       </label>
+      <label class="field">
+        <span>时间范围</span>
+        ${selectHTML("since_range", pageState.supportSinceRange, [["30d", "近30天"], ["90d", "近90天"], ["all", "全部历史"]])}
+      </label>
       <label class="field wide">
         <span>搜索</span>
-        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 最近消息（按权限）" />
-        <span class="small muted">按当前角色权限搜索账号ID、手机号或会话最新消息。</span>
+        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 会话消息（按权限）" />
+        <span class="small muted">按当前角色权限搜索账号ID、手机号或会话消息；输入搜索词后自动查全部队列和全部历史。</span>
       </label>
       <button class="button primary" type="submit">筛选</button>
     </form>
   `;
+}
+
+function supportSinceRangeToMs(value: string): number {
+  const now = Date.now();
+  if (value === "all") return 0;
+  if (value === "90d") return now - 90 * 24 * 60 * 60 * 1000;
+  return now - 30 * 24 * 60 * 60 * 1000;
 }
 
 function supportConversationList(conversations: AdminSupportConversation[]): string {
@@ -2525,7 +2536,7 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
       (item) => `
         <button class="selectable-row ${item.user_id === pageState.supportUserID ? "active" : ""}" data-action="support-select" data-user-id="${escapeAttr(item.user_id)}">
           <strong class="truncate">${escapeHTML(item.user_id)}</strong>
-          <span class="small muted truncate">${phoneDisplayInline(item.phone_number, item.phone_mask)} · ${formatTime(item.latest_message.created_at)}</span>
+          <span class="small muted truncate">${phoneDisplayMaskedInline(item.phone_number, item.phone_mask)} · ${formatTime(item.latest_message.created_at)}</span>
           <span class="small muted truncate">${escapeHTML(supportMessageText(item.latest_message))}</span>
           <span>${supportStatusPill(item)} <span class="small muted">${item.message_count} 条</span></span>
         </button>
@@ -3220,6 +3231,10 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       : "当前无待处理注销申请";
   const authFailures = queues.auth_failures ?? 0;
   const crashReports = queues.crash_reports ?? 0;
+  const quotaPending = queues.quota_consume_pending ?? 0;
+  const quotaBody = quotaPending
+    ? "系统会继续自动追账；长期无法安全追扣时自动终结为对账记录"
+    : "当前无未完成扣次对账";
   const memoryPendingUsers = queues.memory_pending_users ?? 0;
   const memoryPendingJobs = queues.memory_pending_jobs ?? 0;
   const crashRecency = latestCrashText(report.auth_logs);
@@ -3233,6 +3248,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
       ${queueCard("安装包下载", !update.enabled ? "未发布新版本" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "info" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可兑换`, giftBody, giftLevel)}
+      ${queueCard("扣次自动对账", quotaPending, quotaBody, quotaPending ? "warn" : "ok", "entitlements")}
       ${queueCard("记忆补偿", memoryPendingJobs || memoryPendingUsers, memoryPendingJobs || memoryPendingUsers ? `${memoryPendingUsers} 个账号 / ${memoryPendingJobs} 个冻结任务自动补偿中` : "当前无积压", "ok")}
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
     </div>

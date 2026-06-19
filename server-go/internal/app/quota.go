@@ -194,6 +194,7 @@ type QuotaConsumeOutboxJob struct {
 	Tier         Tier
 	CompletionAt int64
 	Attempts     int
+	CreatedAt    int64
 }
 
 type QuotaConsumeOutboxAdminEntry struct {
@@ -315,6 +316,33 @@ func (s *Store) MarkQuotaConsumeOutboxUncollectable(ctx context.Context, id int6
 	return err
 }
 
+func (s *Store) MarkQuotaConsumeOutboxUncollectableAfterAttempt(ctx context.Context, id int64, lastError string, attempts int, nowMs int64) error {
+	if id <= 0 {
+		return nil
+	}
+	if attempts <= 0 {
+		return s.MarkQuotaConsumeOutboxUncollectable(ctx, id, lastError, nowMs)
+	}
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE quota_consume_outbox
+		 SET status = 'uncollectable',
+		     attempts = CASE WHEN attempts < ? THEN ? ELSE attempts END,
+		     last_error = ?,
+		     next_attempt_at = 0,
+		     repaired_at = ?,
+		     updated_at = ?
+		 WHERE id = ? AND status IN ('pending','failed','needs_ops')`,
+		attempts,
+		attempts,
+		truncateRunes(strings.TrimSpace(lastError), 255),
+		nowMs,
+		nowMs,
+		id,
+	)
+	return err
+}
+
 func (s *Store) UpdateQuotaConsumeOutboxAdminStatus(ctx context.Context, id int64, status string, note string, nowMs int64) (QuotaConsumeOutboxAdminEntry, bool, error) {
 	status = normalizeQuotaConsumeOutboxAdminStatus(status)
 	if id <= 0 || status == "" {
@@ -412,7 +440,7 @@ func (s *Store) ListDueQuotaConsumeOutbox(ctx context.Context, limit int, nowMs 
 	}
 	rows, err := s.db.QueryContext(
 		ctx,
-		`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at, attempts
+		`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at, attempts, created_at
 		 FROM quota_consume_outbox
 		 WHERE (status IN ('pending','failed') AND next_attempt_at <= ?)
 		    OR (status = 'needs_ops' AND next_attempt_at <= ?)
@@ -431,7 +459,7 @@ func (s *Store) ListDueQuotaConsumeOutbox(ctx context.Context, limit int, nowMs 
 	for rows.Next() {
 		var job QuotaConsumeOutboxJob
 		var tier string
-		if err := rows.Scan(&job.ID, &job.UserID, &job.ClientMsgID, &job.DayCN, &tier, &job.CompletionAt, &job.Attempts); err != nil {
+		if err := rows.Scan(&job.ID, &job.UserID, &job.ClientMsgID, &job.DayCN, &tier, &job.CompletionAt, &job.Attempts, &job.CreatedAt); err != nil {
 			return nil, err
 		}
 		job.Tier = Tier(tier)

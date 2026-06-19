@@ -468,12 +468,13 @@ func supportMessageRateLimitKey(userID string, ip string) string {
 }
 
 func parseSupportConversationQuery(values url.Values, now time.Time) (SupportConversationQuery, string) {
+	rawSinceValue := strings.TrimSpace(values.Get("since_ms"))
 	filter := SupportConversationQuery{
 		SinceMs: now.Add(-defaultSupportConversationSinceDuration).UnixMilli(),
 		Limit:   defaultSupportConversationListLimit,
 	}
-	if rawSince := strings.TrimSpace(values.Get("since_ms")); rawSince != "" {
-		since, err := strconv.ParseInt(rawSince, 10, 64)
+	if rawSinceValue != "" {
+		since, err := strconv.ParseInt(rawSinceValue, 10, 64)
 		if err != nil || since < 0 {
 			return SupportConversationQuery{}, "invalid_since_ms"
 		}
@@ -491,6 +492,9 @@ func parseSupportConversationQuery(values url.Values, now time.Time) (SupportCon
 	}
 	filter.Status = normalizeSupportConversationStatus(values.Get("status"))
 	filter.Query = truncateRunes(strings.TrimSpace(values.Get("query")), 128)
+	if filter.Query != "" && rawSinceValue == "" {
+		filter.SinceMs = 0
+	}
 	return filter, ""
 }
 

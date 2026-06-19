@@ -280,12 +280,12 @@ Invoke-HttpProbe `
         "2026031728",
         "11010602202723"
     )
-Invoke-HttpProbe -Name "site_user_agreement" -Url "https://nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement", 'name="nongji-legal-version" content="20260618"', 'name="nongji-legal-section" content="user-agreement-usage-norms"')
-Invoke-HttpProbe -Name "site_privacy_policy" -Url "https://nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy", 'name="nongji-legal-version" content="20260618"', 'name="nongji-privacy-section" content="long-term-memory"')
+Invoke-HttpProbe -Name "site_user_agreement" -Url "https://nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement", 'name="nongji-legal-version" content="20260620"', 'name="nongji-legal-section" content="user-agreement-usage-norms"')
+Invoke-HttpProbe -Name "site_privacy_policy" -Url "https://nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy", 'name="nongji-legal-version" content="20260620"', 'name="nongji-privacy-section" content="long-term-memory"')
 Invoke-HttpProbe -Name "site_gongan_icon" -Url "https://nongjiqiancha.cn/gongan.png" -ExpectedStatus @(200)
 Invoke-HttpProbe -Name "site_test_apks_disabled" -Url "https://nongjiqiancha.cn/test-apks/" -ExpectedStatus @(404)
-Invoke-HttpProbe -Name "site_www_user_agreement" -Url "https://www.nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement", 'name="nongji-legal-version" content="20260618"', 'name="nongji-legal-section" content="user-agreement-usage-norms"')
-Invoke-HttpProbe -Name "site_www_privacy_policy" -Url "https://www.nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy", 'name="nongji-legal-version" content="20260618"', 'name="nongji-privacy-section" content="long-term-memory"')
+Invoke-HttpProbe -Name "site_www_user_agreement" -Url "https://www.nongjiqiancha.cn/legal/user-agreement/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-user-agreement", 'name="nongji-legal-version" content="20260620"', 'name="nongji-legal-section" content="user-agreement-usage-norms"')
+Invoke-HttpProbe -Name "site_www_privacy_policy" -Url "https://www.nongjiqiancha.cn/legal/privacy-policy/" -ExpectedStatus @(200) -RequiredBodyMarkers @("nongji-page-privacy-policy", 'name="nongji-legal-version" content="20260620"', 'name="nongji-privacy-section" content="long-term-memory"')
 Invoke-HttpProbe -Name "site_www_gongan_icon" -Url "https://www.nongjiqiancha.cn/gongan.png" -ExpectedStatus @(200)
 Invoke-HttpProbe -Name "admin_https_root" -Url "https://admin.nongjiqiancha.cn/" -ExpectedStatus @(200) -RequiredBodyMarkers @('id="app"', "/assets/")
 Invoke-AdminAssetProbe

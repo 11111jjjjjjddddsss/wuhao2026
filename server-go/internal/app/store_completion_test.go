@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
@@ -26,6 +27,50 @@ func TestGetSessionRoundCompletionRequiresArchive(t *testing.T) {
 	}
 	if !completion.ArchiveMissing {
 		t.Fatalf("ledger-only completion should be marked archive-missing: %#v", completion)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestPruneExpiredSessionRoundArchiveUsesRetentionWindow(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_005_000)
+	cutoffMs := nowMs - int64(sessionRoundArchiveRetention/time.Millisecond)
+	mock.ExpectExec("DELETE FROM session_round_archive").
+		WithArgs(cutoffMs).
+		WillReturnResult(sqlmock.NewResult(0, 3))
+
+	rows, err := store.PruneExpiredSessionRoundArchive(context.Background(), nowMs)
+	if err != nil {
+		t.Fatalf("PruneExpiredSessionRoundArchive failed: %v", err)
+	}
+	if rows != 3 {
+		t.Fatalf("rows=%d, want 3", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestPruneExpiredClientAppLogsUsesRetentionWindow(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_006_000)
+	cutoffMs := nowMs - int64(defaultClientAppLogRetention/time.Millisecond)
+	mock.ExpectExec("DELETE FROM client_app_logs").
+		WithArgs(cutoffMs, defaultClientAppLogPruneBatchLimit).
+		WillReturnResult(sqlmock.NewResult(0, 5))
+
+	rows, err := store.PruneExpiredClientAppLogs(context.Background(), nowMs)
+	if err != nil {
+		t.Fatalf("PruneExpiredClientAppLogs failed: %v", err)
+	}
+	if rows != 5 {
+		t.Fatalf("rows=%d, want 5", rows)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet SQL expectations: %v", err)

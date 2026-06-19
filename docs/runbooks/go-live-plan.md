@@ -101,7 +101,7 @@
 .\scripts\check-launch-readiness.ps1 -IncludeBuilds
 ```
 
-`-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建、最终 release APK 物料校验，再重新跑 parity。release APK 物料校验由 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1) 读取最终 APK 本体，核对包名、版本、权限、不可调试、固定 release 证书指纹，并输出 `apk_size_bytes` 和 `apk_sha256`。这个脚本不替代真机回归、App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
+`-IncludeBuilds` 会额外跑 `server-go` 测试 / build、`admin` production build、Android debug + release 双包构建、最终 release APK 物料校验，再重新跑 parity。release APK 物料校验由 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1) 读取最终 APK 本体，核对包名、版本、权限、不可调试、固定 release 证书指纹，并确认 APK 不早于当前 Android 构建输入，避免旧 `app-release.apk` 留在目录里被误判可发布；脚本会输出 `apk_size_bytes` 和 `apk_sha256`。这个脚本不替代真机回归、App 公安备案、支付渠道申请、首封 SLS 告警邮件送达确认或 AccessKey 轮换；这些仍必须按本 runbook 和 `open-risks.md` 人工闭环。
 
 如果这次正式包已经上传到后台“检查更新”并准备对外启用，再加后台配置对账：
 

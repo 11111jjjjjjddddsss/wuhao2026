@@ -843,6 +843,23 @@ func (s *Store) pruneExpiredSessionRoundArchiveTx(ctx context.Context, tx *sql.T
 	return err
 }
 
+func (s *Store) PruneExpiredSessionRoundArchive(ctx context.Context, nowMs int64) (int64, error) {
+	cutoffMs := nowMs - int64(sessionRoundArchiveRetention/time.Millisecond)
+	result, err := s.db.ExecContext(
+		ctx,
+		"DELETE FROM session_round_archive WHERE created_at < ? LIMIT 1000",
+		cutoffMs,
+	)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return rows, nil
+}
+
 func (s *Store) readSnapshotForUpdateTx(ctx context.Context, tx *sql.Tx, userID string) (*SessionSnapshot, error) {
 	snapshot, err := s.readSnapshotRow(
 		tx.QueryRowContext(

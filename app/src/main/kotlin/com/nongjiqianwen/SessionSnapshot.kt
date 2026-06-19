@@ -14,7 +14,8 @@ data class SessionSnapshot(
     val round_total: Int = 0,
     val session_generation: Int = 0,
     val today_agri_items: List<TodayAgriMainItem> = emptyList(),
-    val today_agri_items_unavailable: Boolean = false
+    val today_agri_items_unavailable: Boolean = false,
+    val archive_unavailable: Boolean = false
 ) {
     /** 兼容旧接口只返回 a_rounds 时：视为 for_ui，full 用 for_ui */
     constructor(memoryDocument: String, a_rounds: List<ARound>) : this(memoryDocument, memoryDocument, a_rounds, a_rounds)

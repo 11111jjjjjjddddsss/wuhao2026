@@ -451,6 +451,45 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriContextRequiresCurrentRuntimeVisibilityBeforeNewSend() {
+        assertFalse(
+            canAttachTodayAgriContextForCurrentRuntime(
+                hasTodayAgriCard = true,
+                shouldRenderTodayAgriCardInTimeline = true,
+                shownThisRuntime = false
+            )
+        )
+        assertTrue(
+            canAttachTodayAgriContextForCurrentRuntime(
+                hasTodayAgriCard = true,
+                shouldRenderTodayAgriCardInTimeline = true,
+                shownThisRuntime = true
+            )
+        )
+        assertFalse(
+            canAttachTodayAgriContextForCurrentRuntime(
+                hasTodayAgriCard = false,
+                shouldRenderTodayAgriCardInTimeline = true,
+                shownThisRuntime = true
+            )
+        )
+    }
+
+    @Test
+    fun todayAgriContextDoesNotTrustPersistedShownDayWithoutRuntimeVisibility() {
+        val persistedShownDayMatchesToday = true
+
+        assertTrue(persistedShownDayMatchesToday)
+        assertFalse(
+            canAttachTodayAgriContextForCurrentRuntime(
+                hasTodayAgriCard = true,
+                shouldRenderTodayAgriCardInTimeline = true,
+                shownThisRuntime = false
+            )
+        )
+    }
+
+    @Test
     fun todayAgriContextDayIgnoresFailedLocalUserMessages() {
         val items = listOf(
             ChatTimelineItem.TodayAgriCard(todayAgriCard()),
@@ -547,6 +586,63 @@ class ChatTimelineItemsTest {
         assertFalse(
             shouldHoldHydratedVisualMutationForBrowsing(
                 hasStartedConversation = false,
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = false
+            )
+        )
+    }
+
+    @Test
+    fun archiveUnavailableFallbackKeepsOrdinaryLocalHistory() {
+        val user = userMessage("u1", "辣椒叶片发黄")
+        val assistant = assistantMessage("a1", "先看排水和根系。")
+
+        val retained = retainLocalSnapshotForArchiveUnavailable(
+            localSnapshot = LocalChatWindowSnapshot(messages = listOf(user, assistant))
+        )
+
+        assertEquals(listOf(user, assistant), retained.messages)
+        assertEquals(emptyMap<String, String>(), retained.failedUserMessageStates)
+    }
+
+    @Test
+    fun archiveUnavailableFallbackUsesRemoteAWindowWhenLocalHistoryIsEmpty() {
+        val remoteUser = userMessage("u_remote", "黄瓜叶背有虫")
+        val remoteAssistant = assistantMessage("a_remote", "先看蚜虫和白粉虱。")
+
+        val retained = retainLocalSnapshotForArchiveUnavailable(
+            localSnapshot = LocalChatWindowSnapshot(),
+            remoteMessages = listOf(remoteUser, remoteAssistant)
+        )
+
+        assertEquals(listOf(remoteUser, remoteAssistant), retained.messages)
+    }
+
+    @Test
+    fun pendingTodayAgriMainItemCanApplyAfterUserSendWhenIdle() {
+        assertTrue(
+            shouldApplyPendingTodayAgriMainItem(
+                pendingDayCn = "20260620",
+                currentDayKey = "20260620",
+                isStreaming = false,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = false
+            )
+        )
+        assertFalse(
+            shouldApplyPendingTodayAgriMainItem(
+                pendingDayCn = "20260620",
+                currentDayKey = "20260620",
+                isStreaming = true,
+                hasStreamingItem = false,
+                userBlocksHydratedVisualMutation = false
+            )
+        )
+        assertFalse(
+            shouldApplyPendingTodayAgriMainItem(
+                pendingDayCn = "20260619",
+                currentDayKey = "20260620",
                 isStreaming = false,
                 hasStreamingItem = false,
                 userBlocksHydratedVisualMutation = false

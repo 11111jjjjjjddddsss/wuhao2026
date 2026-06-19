@@ -180,6 +180,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	}
 	server.registerRoutes()
 	server.startQuotaConsumeRepairWorker()
+	server.startDataMaintenanceWorker()
 	return server, nil
 }
 
@@ -441,6 +442,7 @@ func (s *Server) handleSessionSnapshot(w http.ResponseWriter, r *http.Request) {
 		"a_json":                       safe.ARoundsFull,
 		"a_rounds_full":                safe.ARoundsFull,
 		"a_rounds_for_ui":              uiRounds,
+		"archive_unavailable":          snapshotWarnings.ArchiveErr != nil,
 		"today_agri_items":             todayAgriItems,
 		"today_agri_items_unavailable": snapshotWarnings.TodayAgriErr != nil,
 		"memory_document":              safe.MemoryDocument,

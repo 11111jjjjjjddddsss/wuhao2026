@@ -4,12 +4,7 @@ param(
     [string]$Bucket = "nongjiqiancha-prod",
     [string]$OssPrefix = "test-apks/debug",
     [string]$Endpoint = "oss-cn-beijing.aliyuncs.com",
-    [string]$OssInternalEndpoint = "oss-cn-beijing-internal.aliyuncs.com",
-    [string]$DownloadDomain = "nongjiqiancha.cn",
     [string]$OssDownloadDomain = "download.nongjiqiancha.cn",
-    [string]$EcsRegionId = "cn-beijing",
-    [string]$EcsInstanceId = "i-2ze5nrem0jrchln4f0eh",
-    [string]$EcsTestApkRoot = "/var/www/nongjiqiancha-test-apks",
     [string]$ExpectedPackageName = "com.nongjiqiancha",
     [string]$PublicInfoPath = "",
     [int]$ExpireHours = 72,
@@ -54,113 +49,6 @@ function Ensure-CleanGitTree {
     Write-Host "git_tree_status=clean"
 }
 
-function Extract-FirstUrl {
-    param([string[]]$Lines)
-    foreach ($line in $Lines) {
-        $text = [string]$line
-        if ($text -match "https?://\S+") {
-            return $Matches[0].Trim()
-        }
-    }
-    return ""
-}
-
-function Invoke-JsonCommand {
-    param([string[]]$CommandArgs)
-    if ($CommandArgs.Length -eq 0) {
-        throw "Command failed: empty command"
-    }
-    $exe = $CommandArgs[0]
-    $arguments = @()
-    if ($CommandArgs.Length -gt 1) {
-        $arguments = $CommandArgs[1..($CommandArgs.Length - 1)]
-    }
-    if ($exe -eq "aliyun") {
-        $arguments += @(
-            "--connect-timeout", "20",
-            "--read-timeout", "120",
-            "--retry-count", "3"
-        )
-    }
-    $stderrPath = [IO.Path]::GetTempFileName()
-    $stdout = @()
-    $stderr = ""
-    $exitCode = 0
-    $oldErrorActionPreference = $ErrorActionPreference
-    $oldNativeErrorPreference = $null
-    $hasNativeErrorPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
-    try {
-        $ErrorActionPreference = "Continue"
-        if ($null -ne $hasNativeErrorPreference) {
-            $oldNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $false
-        }
-        $stdout = & $exe @arguments 2> $stderrPath
-        $exitCode = $LASTEXITCODE
-        if (Test-Path -LiteralPath $stderrPath) {
-            $stderr = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
-        }
-    } finally {
-        $ErrorActionPreference = $oldErrorActionPreference
-        if ($null -ne $hasNativeErrorPreference) {
-            $PSNativeCommandUseErrorActionPreference = $oldNativeErrorPreference
-        }
-        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
-    }
-    if ($exitCode -ne 0) {
-        $safeOutput = (($stdout | Out-String) + "`n" + $stderr) `
-            -replace '(?i)(AccessKeyId=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(AccessKeySecret=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(Signature=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
-            -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content)"\s*:\s*")[^"]+', '${1}REDACTED'
-        $safeCommand = if ($CommandArgs.Length -ge 3) {
-            "$($CommandArgs[0]) $($CommandArgs[1]) $($CommandArgs[2])"
-        } else {
-            $CommandArgs -join " "
-        }
-        throw "Command failed: $safeCommand`n$safeOutput"
-    }
-    $jsonText = $stdout | Out-String
-    if ([string]::IsNullOrWhiteSpace($jsonText)) {
-        return $null
-    }
-    return $jsonText | ConvertFrom-Json
-}
-
-function Wait-RunCommand {
-    param(
-        [string]$RegionId,
-        [string]$InvokeId
-    )
-    for ($i = 0; $i -lt 120; $i++) {
-        Start-Sleep -Seconds 5
-        $result = Invoke-JsonCommand @(
-            "aliyun", "ecs", "DescribeInvocationResults",
-            "--RegionId", $RegionId,
-            "--InvokeId", $InvokeId
-        )
-        $item = $result.Invocation.InvocationResults.InvocationResult[0]
-        if ($item.InvokeRecordStatus -eq "Finished") {
-            $decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($item.Output))
-            [pscustomobject]@{
-                Status = $item.InvocationStatus
-                ExitCode = [int]$item.ExitCode
-                Output = $decoded
-            }
-            return
-        }
-    }
-    throw "Timed out waiting for RunCommand $InvokeId"
-}
-
-function Escape-BashSingleQuoted {
-    param([string]$Value)
-    return $Value.Replace("'", "'\''")
-}
-
 function Normalize-Hex {
     param([string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -199,15 +87,6 @@ function Assert-SafeOssPrefix {
         if ([string]::IsNullOrWhiteSpace($part) -or $part -eq "." -or $part -eq ".." -or $part -match '[^\w.\-]') {
             throw "OssPrefix contains an unsafe path segment: $Value"
         }
-    }
-    return $normalized
-}
-
-function Assert-SafeEcsTestApkRoot {
-    param([string]$Value)
-    $normalized = $Value.Replace("\", "/").TrimEnd("/")
-    if ($normalized -ne "/var/www/nongjiqiancha-test-apks") {
-        throw "refusing to use unexpected ECS test APK root: $Value"
     }
     return $normalized
 }
@@ -292,6 +171,88 @@ function New-OssCnameSignedUrl {
         throw "OSS CNAME signing produced an unexpected URL host"
     }
     return $url
+}
+
+function Invoke-TextCommand {
+    param([string[]]$CommandArgs)
+    if ($CommandArgs.Length -eq 0) {
+        throw "Command failed: empty command"
+    }
+    $exe = $CommandArgs[0]
+    $arguments = @()
+    if ($CommandArgs.Length -gt 1) {
+        $arguments = $CommandArgs[1..($CommandArgs.Length - 1)]
+    }
+    $output = & $exe @arguments 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed: $($CommandArgs -join ' ')`n$($output | Out-String)"
+    }
+    return ($output | Out-String)
+}
+
+function ConvertFrom-OssLifecycleText {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+    $start = $Text.IndexOf("<?xml", [StringComparison]::OrdinalIgnoreCase)
+    if ($start -lt 0) {
+        $start = $Text.IndexOf("<LifecycleConfiguration", [StringComparison]::OrdinalIgnoreCase)
+    }
+    $endTag = "</LifecycleConfiguration>"
+    $end = $Text.IndexOf($endTag, [StringComparison]::OrdinalIgnoreCase)
+    if ($start -lt 0 -or $end -lt 0) {
+        return $null
+    }
+    $xmlText = $Text.Substring($start, $end + $endTag.Length - $start)
+    try {
+        return [xml]$xmlText
+    } catch {
+        return $null
+    }
+}
+
+function Get-XmlNodeText {
+    param(
+        [object]$Node,
+        [string]$XPath
+    )
+    if ($null -eq $Node) {
+        return ""
+    }
+    $found = $Node.SelectSingleNode($XPath)
+    if ($null -eq $found) {
+        return ""
+    }
+    return ([string]$found.InnerText).Trim()
+}
+
+function Assert-TestApkLifecycle {
+    param(
+        [string]$BucketName,
+        [string]$OssEndpoint
+    )
+    $text = Invoke-TextCommand @("aliyun", "oss", "lifecycle", "--method", "get", "oss://$BucketName", "--endpoint", $OssEndpoint)
+    $doc = ConvertFrom-OssLifecycleText $text
+    if ($null -eq $doc) {
+        throw "cannot verify OSS lifecycle for test-apks/ on bucket $BucketName"
+    }
+    $rules = @($doc.LifecycleConfiguration.Rule)
+    $rule = @($rules | Where-Object { (Get-XmlNodeText $_ "Prefix") -eq "test-apks/" } | Select-Object -First 1)
+    if ($rule.Count -eq 0) {
+        throw "OSS lifecycle rule for test-apks/ is missing; refusing to publish a test APK that may not auto-clean"
+    }
+    $ruleNode = $rule[0]
+    $status = Get-XmlNodeText $ruleNode "Status"
+    $expirationDays = Get-XmlNodeText $ruleNode "Expiration/Days"
+    $abortDays = Get-XmlNodeText $ruleNode "AbortMultipartUpload/Days"
+    if ($status -ne "Enabled" -or $expirationDays -ne "3") {
+        throw "OSS lifecycle rule for test-apks/ must be Enabled with Expiration/Days=3; actual status=$status expiration_days=$expirationDays"
+    }
+    if ($abortDays -ne "1") {
+        throw "OSS lifecycle rule for test-apks/ must abort multipart uploads after 1 day; actual abort_multipart_days=$abortDays"
+    }
+    Write-Host "test_apk_lifecycle_status=verified prefix=test-apks/ expiration_days=3 abort_multipart_days=1"
 }
 
 function Invoke-AndroidTool {
@@ -392,32 +353,28 @@ function Assert-DebugApk {
     Write-Host ("android_build_tools={0}" -f $tools.Version)
 }
 
-if ($ExpireHours -lt 1 -or $ExpireHours -gt 168) {
-    throw "ExpireHours must be between 1 and 168"
+if ($ExpireHours -lt 1 -or $ExpireHours -gt 72) {
+    throw "ExpireHours must be between 1 and 72 because OSS test-apks/ lifecycle is 3 days"
 }
 
 $normalizedOssPrefix = Assert-SafeOssPrefix -Value $OssPrefix
-Assert-SafeHostname -Name "DownloadDomain" -Value $DownloadDomain
 Assert-SafeHostname -Name "OssDownloadDomain" -Value $OssDownloadDomain
 Assert-SafeHostname -Name "Endpoint" -Value $Endpoint
-Assert-SafeHostname -Name "OssInternalEndpoint" -Value $OssInternalEndpoint
-Assert-ExpectedValue -Name "DownloadDomain" -Value $DownloadDomain -Expected "nongjiqiancha.cn"
+Assert-ExpectedValue -Name "Bucket" -Value $Bucket -Expected "nongjiqiancha-prod"
 Assert-ExpectedValue -Name "OssDownloadDomain" -Value $OssDownloadDomain -Expected "download.nongjiqiancha.cn"
 Assert-ExpectedValue -Name "Endpoint" -Value $Endpoint -Expected "oss-cn-beijing.aliyuncs.com"
-Assert-ExpectedValue -Name "OssInternalEndpoint" -Value $OssInternalEndpoint -Expected "oss-cn-beijing-internal.aliyuncs.com"
-Assert-SafeEcsTestApkRoot -Value $EcsTestApkRoot | Out-Null
 
 Require-Command "git"
 Require-Command "aliyun"
-. (Join-Path $PSScriptRoot "cloud-assistant-safe.ps1")
+Assert-TestApkLifecycle -BucketName $Bucket -OssEndpoint $Endpoint
 
-if ($UseEcsDownloadFallback -and $SkipEcsDownloadPublish) {
-    throw "-UseEcsDownloadFallback cannot be combined with -SkipEcsDownloadPublish"
+if ($UseEcsDownloadFallback) {
+    throw "-UseEcsDownloadFallback has been retired. Internal test APKs must use private OSS test-apks/debug/... with the 3-day lifecycle and signed download.nongjiqiancha.cn URLs."
 }
 if ($UseOssSignedDownload -and $SkipEcsDownloadPublish) {
     throw "-UseOssSignedDownload cannot be combined with -SkipEcsDownloadPublish"
 }
-$useOssSignedDownloadEffective = -not $UseEcsDownloadFallback -and -not $SkipEcsDownloadPublish
+$useOssSignedDownloadEffective = -not $SkipEcsDownloadPublish
 if ($UseOssSignedDownload) {
     $useOssSignedDownloadEffective = $true
 }
@@ -465,8 +422,6 @@ $fileName = "nongjiqiancha-debug-internal-$stamp-$commit.apk"
 $objectKey = ($normalizedOssPrefix, $dateDir, $fileName) -join "/"
 $ossUrl = "oss://$Bucket/$objectKey"
 $downloadRelativePath = ($normalizedOssPrefix, $dateDir, $fileName) -join "/"
-$downloadPathUnderTestApks = $downloadRelativePath -replace '^test-apks/', ''
-$downloadUrl = "https://$DownloadDomain/test-apks/$downloadPathUnderTestApks"
 
 Write-Host ("test_apk_local_path={0}" -f $ApkPath)
 Write-Host ("test_apk_size_bytes={0}" -f $apkItem.Length)
@@ -490,116 +445,17 @@ if ($useOssSignedDownloadEffective) {
     Write-Host "test_apk_public_status=oss_signed"
 }
 
-if (-not $SkipEcsDownloadPublish -and -not $useOssSignedDownloadEffective) {
-    $internalSignOutput = @(& aliyun oss sign $ossUrl --endpoint $OssInternalEndpoint --timeout 3600 2>&1)
-    if ($LASTEXITCODE -ne 0) {
-        $joined = ($internalSignOutput | ForEach-Object { $_.ToString() }) -join "`n"
-        throw "aliyun oss internal sign failed with exit code $LASTEXITCODE`n$joined"
-    }
-    $internalSignedUrl = Extract-FirstUrl $internalSignOutput
-    if ([string]::IsNullOrWhiteSpace($internalSignedUrl)) {
-        $joined = ($internalSignOutput | ForEach-Object { $_.ToString() }) -join "`n"
-        throw "failed to parse internal signed URL from aliyun oss sign output`n$joined"
-    }
-    if ($internalSignedUrl.StartsWith("http://")) {
-        $internalSignedUrl = "https://" + $internalSignedUrl.Substring(7)
-    }
-
-    $remoteDownloadUrl = Escape-BashSingleQuoted $internalSignedUrl
-    $remoteRoot = Escape-BashSingleQuoted ($EcsTestApkRoot.TrimEnd("/"))
-    $remoteRelative = Escape-BashSingleQuoted $downloadPathUnderTestApks
-    $remoteSha = Escape-BashSingleQuoted $sha256
-    $remoteSize = [string]$apkItem.Length
-    $remoteScript = @"
-set -eu
-download_url='$remoteDownloadUrl'
-download_root='$remoteRoot'
-relative_path='$remoteRelative'
-expected_sha='$remoteSha'
-expected_size='$remoteSize'
-target="`$download_root/`$relative_path"
-tmp="`$target.tmp.`$$"
-nginx_site='/etc/nginx/sites-available/nongjiqiancha-site'
-nginx_enabled='/etc/nginx/sites-enabled/nongjiqiancha-site'
-mkdir -p "`$(dirname "`$target")"
-curl -fsSL --retry 3 --connect-timeout 10 --max-time 300 -o "`$tmp" "`$download_url"
-actual_size=`$(stat -c '%s' "`$tmp")
-if [ "`$actual_size" != "`$expected_size" ]; then
-  echo "apk size mismatch: expected=`$expected_size actual=`$actual_size" >&2
-  rm -f "`$tmp"
-  exit 20
-fi
-actual_sha=`$(sha256sum "`$tmp" | awk '{print `$1}')
-if [ "`$actual_sha" != "`$expected_sha" ]; then
-  echo "apk sha256 mismatch: expected=`$expected_sha actual=`$actual_sha" >&2
-  rm -f "`$tmp"
-  exit 21
-fi
-chmod 0644 "`$tmp"
-mv -f "`$tmp" "`$target"
-if [ -f "`$nginx_site" ] && ! grep -q 'location \^~ /test-apks/' "`$nginx_site"; then
-  cp -f "`$nginx_site" "`$nginx_site.test-apks-bak.`$(date +%Y%m%d%H%M%S)"
-  python3 - "`$nginx_site" "`$download_root" <<'PY'
-import sys
-path, root = sys.argv[1], sys.argv[2].rstrip("/")
-with open(path, "r", encoding="utf-8") as f:
-    text = f.read()
-if "location ^~ /test-apks/" not in text:
-    marker = "    location / {\n        try_files `$uri `$uri/ /index.html;\n    }\n"
-    block = f"""    location ^~ /test-apks/ {{
-        alias {root}/;
-        default_type application/vnd.android.package-archive;
-        add_header Cache-Control \"private, max-age=300\" always;
-        add_header X-Robots-Tag \"noindex, nofollow\" always;
-    }}
-
-"""
-    if marker not in text:
-        raise SystemExit("site nginx marker not found")
-    text = text.replace(marker, block + marker, 1)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(text)
-PY
-  ln -sfn "`$nginx_site" "`$nginx_enabled"
-  nginx -t
-  systemctl reload nginx
-fi
-echo "ecs_test_apk_path=`$target"
-echo "ecs_test_apk_sha256=`$actual_sha"
-echo "ecs_test_apk_size=`$actual_size"
-"@
-    $remoteScriptPath = "/tmp/nongji-test-apk-publish-$commit.sh"
-    Send-CloudAssistantScriptFile -RegionId $EcsRegionId -InstanceId $EcsInstanceId -RemotePath $remoteScriptPath -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null
-    $run = Invoke-JsonCommand @(
-        "aliyun", "ecs", "RunCommand",
-        "--RegionId", $EcsRegionId,
-        "--Type", "RunShellScript",
-        "--InstanceId.1", $EcsInstanceId,
-        "--Name", "publish-test-apk-$commit",
-        "--CommandContent", "bash $remoteScriptPath",
-        "--Timeout", "600"
-    )
-    $runResult = Wait-RunCommand -RegionId $EcsRegionId -InvokeId $run.InvokeId
-    Write-Host $runResult.Output.Trim()
-    if ($runResult.Status -ne "Success" -or $runResult.ExitCode -ne 0) {
-        throw "ECS test APK publish failed: status=$($runResult.Status) exit=$($runResult.ExitCode)`n$($runResult.Output)"
-    }
-}
-
 if ($useOssSignedDownloadEffective) {
     Test-PublicDownloadUrl -Url $ossSignedHeadUrl -ExpectedSize $apkItem.Length -Method "Head"
     Test-PublicDownloadUrl -Url $ossSignedDownloadUrl -ExpectedSize $apkItem.Length -Method "GetRange"
-} elseif (-not $SkipEcsDownloadPublish) {
-    Test-PublicDownloadUrl -Url $downloadUrl -ExpectedSize $apkItem.Length
 }
 
 Write-Host "test_apk_build_type=debug"
 Write-Host ("test_apk_expires_hours={0}" -f $ExpireHours)
-Write-Host "test_apk_cleanup=manual_only"
+Write-Host "test_apk_cleanup=oss_lifecycle_3d"
+Write-Host "test_apk_cleanup_note=normal internal test APK cleanup is handled by the OSS test-apks/ lifecycle; manual cleanup is only for abnormal residue after explicit review."
 if ($UseOssSignedDownload) {
     Write-Host "test_apk_download_mode=oss_signed"
-} elseif ($UseEcsDownloadFallback) {
-    Write-Host "test_apk_download_mode=ecs_fallback"
 } elseif ($SkipEcsDownloadPublish) {
     Write-Host "test_apk_download_mode=staged_only"
 } else {
@@ -615,8 +471,4 @@ if ($useOssSignedDownloadEffective) {
     Write-Host "test_apk_public_status=staged_only"
     Write-Host "test_apk_url=none"
     Write-Host "test_apk_note=No public download URL was published because -SkipEcsDownloadPublish was set."
-} else {
-    Write-Host "test_apk_status=ready"
-    Write-Host "test_apk_public_status=published"
-    Write-Host ("test_apk_url={0}" -f $downloadUrl)
 }

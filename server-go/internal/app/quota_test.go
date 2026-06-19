@@ -283,30 +283,68 @@ func TestMarkQuotaConsumeOutboxUncollectableClosesBusinessMismatch(t *testing.T)
 	}
 }
 
+func TestMarkQuotaConsumeOutboxUncollectableAfterAttemptRecordsFinalAttempt(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_002_700)
+	mock.ExpectExec("UPDATE quota_consume_outbox").
+		WithArgs(40, 40, "database still unavailable", nowMs, nowMs, int64(46)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	if err := store.MarkQuotaConsumeOutboxUncollectableAfterAttempt(context.Background(), 46, "database still unavailable", 40, nowMs); err != nil {
+		t.Fatalf("MarkQuotaConsumeOutboxUncollectableAfterAttempt failed: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 func TestListDueQuotaConsumeOutboxIncludesNeedsOpsForAutomaticRetry(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()
 
 	nowMs := int64(1_800_000_003_000)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at, attempts
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, user_id, client_msg_id, day_cn, tier_at_completion, completion_at, attempts, created_at
 		 FROM quota_consume_outbox
 		 WHERE (status IN ('pending','failed') AND next_attempt_at <= ?)
 		    OR (status = 'needs_ops' AND next_attempt_at <= ?)
 		 ORDER BY id ASC
 		 LIMIT ?`)).
 		WithArgs(nowMs, nowMs, 20).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "client_msg_id", "day_cn", "tier_at_completion", "completion_at", "attempts"}).
-			AddRow(int64(44), "acct_quota_needs_ops", "cm_needs_ops", "20260619", "pro", nowMs-1000, 12))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "client_msg_id", "day_cn", "tier_at_completion", "completion_at", "attempts", "created_at"}).
+			AddRow(int64(44), "acct_quota_needs_ops", "cm_needs_ops", "20260619", "pro", nowMs-1000, 12, nowMs-int64(24*time.Hour/time.Millisecond)))
 
 	jobs, err := store.ListDueQuotaConsumeOutbox(context.Background(), 20, nowMs)
 	if err != nil {
 		t.Fatalf("ListDueQuotaConsumeOutbox failed: %v", err)
 	}
-	if len(jobs) != 1 || jobs[0].ClientMsgID != "cm_needs_ops" || jobs[0].Attempts != 12 || jobs[0].Tier != TierPro {
+	if len(jobs) != 1 || jobs[0].ClientMsgID != "cm_needs_ops" || jobs[0].Attempts != 12 || jobs[0].Tier != TierPro || jobs[0].CreatedAt == 0 {
 		t.Fatalf("jobs mismatch: %#v", jobs)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestQuotaConsumeShouldAutoTerminalAfterLongRetryWindow(t *testing.T) {
+	nowMs := int64(1_800_000_004_000)
+	oldJob := QuotaConsumeOutboxJob{
+		ID:        45,
+		UserID:    "acct_quota_old",
+		Attempts:  quotaConsumeRepairNeedsOpsAttempts,
+		CreatedAt: nowMs - int64(defaultQuotaConsumeAutoTerminalAge/time.Millisecond) - 1,
+	}
+	if !quotaConsumeShouldAutoTerminal(oldJob, quotaConsumeRepairNeedsOpsAttempts, nowMs) {
+		t.Fatal("expected old needs_ops quota outbox job to auto terminal")
+	}
+	freshJob := oldJob
+	freshJob.CreatedAt = nowMs - int64(time.Hour/time.Millisecond)
+	if quotaConsumeShouldAutoTerminal(freshJob, quotaConsumeRepairNeedsOpsAttempts, nowMs) {
+		t.Fatal("fresh needs_ops quota outbox job should keep retrying")
+	}
+	if !quotaConsumeShouldAutoTerminal(freshJob, quotaConsumeRepairTerminalAttempts, nowMs) {
+		t.Fatal("high-attempt quota outbox job should auto terminal")
 	}
 }
 

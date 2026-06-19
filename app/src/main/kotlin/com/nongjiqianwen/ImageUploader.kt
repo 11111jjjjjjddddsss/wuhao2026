@@ -69,7 +69,8 @@ object ImageUploader {
 
     data class UploadImagesResult(
         val urls: List<String>?,
-        val errorMessage: String?
+        val errorMessage: String?,
+        val authExpired: Boolean = false
     )
 
     /**
@@ -489,7 +490,8 @@ object ImageUploader {
             Log.e(TAG, "图片上传失败: 成功 ${orderedUrls.size}/${imageBytesList.size}")
             return UploadImagesResult(
                 urls = null,
-                errorMessage = errorRef.get() ?: UPLOAD_FAIL_MESSAGE
+                errorMessage = errorRef.get() ?: UPLOAD_FAIL_MESSAGE,
+                authExpired = errorRef.get() == UPLOAD_AUTH_EXPIRED_MESSAGE
             )
         }
         

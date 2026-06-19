@@ -1,6 +1,6 @@
 # 官方网站 Runbook
 
-最后更新：2026-06-19
+最后更新：2026-06-20
 
 ## 当前状态
 
@@ -12,7 +12,7 @@
 - DNS：`@` 和 `www` A 记录均指向 ECS 公网 IP `39.106.1.151`
 - Nginx 配置：`/etc/nginx/sites-available/nongjiqiancha-site`
 - 站点目录：`/var/www/nongjiqiancha-site/current`
-- 内部测试包推荐下载主链：`download.nongjiqiancha.cn + OSS private object + signed URL`；仓库脚本不再主动清理旧 debug/internal APK，ECS `/test-apks/` 只作为显式 `-UseEcsDownloadFallback` 的临时回退，不挂官网正式下载按钮，不进入检查更新
+- 内部测试包下载主链：`download.nongjiqiancha.cn + OSS private object + signed URL`；debug/internal APK 只走 OSS `test-apks/debug/...` 短签名链接，正常由 OSS `test-apks/` 3 天生命周期自动删除。ECS `/test-apks/` 已停用，`-UseEcsDownloadFallback` 已退役并会被脚本拒绝，不挂官网正式下载按钮，不进入检查更新
 - 证书：Let's Encrypt / certbot，路径 `/etc/letsencrypt/live/nongjiqiancha.cn/`，有效期到 2026-09-04，自动续期 timer 已启用；只记录证书路径，不记录私钥内容
 - 公网验证：根域名 HTTP 会 301 到 HTTPS，根域名 / www HTTPS 返回官网首页 200；`/gongan.png` 返回图片；`/legal/user-agreement/` 和 `/legal/privacy-policy/` 在根域名与 www 域名下均返回 200；`api.nongjiqiancha.cn` healthz 仍独立走 API Nginx 配置
 - Nginx 静态站 HTTPS 配置包含 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`、`Content-Security-Policy` 和 HSTS；全局安全头兜底见 [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md)
@@ -46,6 +46,7 @@ npm run build
 5. 写入 / 刷新 Nginx 静态站配置
 6. 通过 certbot 申请或续用 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书
 7. 验证入口状态码和关键内容：证书存在时根域名 HTTP 301、协议页 HTTP 301、根域名 HTTPS 200、`www` HTTPS 200、`/gongan.png` 200，且首页 / 协议页正文包含 ICP、公安备案号、公安查询链接和对应页面标题；证书尚未签发时至少断言 HTTP 首页、协议页和警徽可访问
+8. 若旧版 ECS 上残留 `/var/www/nongjiqiancha-test-apks`，部署脚本会在官网验证通过后移除该旧目录；测试包下载异常时应修 OSS CNAME、证书或签名链，不恢复 ECS `/test-apks/` 回退链
 
 `site/vite.config.ts` 当前关闭官网 CSS 压缩，避免 Vite / Lightning CSS 把传统 `max-width` 媒体查询压成部分旧安卓浏览器不识别的范围语法，导致手机浏览器文字竖排。不要为了产物更小随手恢复 CSS 压缩；如要恢复，必须先用旧安卓浏览器或对应真机页面截图验证。
 

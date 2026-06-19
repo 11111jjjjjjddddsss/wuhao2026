@@ -176,7 +176,36 @@ function Test-OfficialAndroidApkUrl {
         return $false
     }
     $path = $parsed.AbsolutePath.ToLowerInvariant()
-    return $path.StartsWith("/android/releases/") -and $path.EndsWith(".apk")
+    try {
+        $decodedPath = [System.Uri]::UnescapeDataString($parsed.AbsolutePath).ToLowerInvariant()
+    } catch {
+        return $false
+    }
+    if (-not $path.StartsWith("/android/releases/") -or -not $decodedPath.StartsWith("/android/releases/")) {
+        return $false
+    }
+    if (-not $path.EndsWith(".apk") -or -not $decodedPath.EndsWith(".apk")) {
+        return $false
+    }
+    if ($path.Contains("..") -or $decodedPath.Contains("..")) {
+        return $false
+    }
+    if ($decodedPath -match "test-apks|debug|internal|staging") {
+        return $false
+    }
+    $signedQueryKeys = @("expires", "signature", "ossaccesskeyid", "security-token", "x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token")
+    foreach ($keyValue in $parsed.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
+        $queryKey = ($keyValue -split "=", 2)[0].ToLowerInvariant()
+        try {
+            $queryKey = [System.Uri]::UnescapeDataString($queryKey).ToLowerInvariant()
+        } catch {
+            return $false
+        }
+        if ($signedQueryKeys -contains $queryKey) {
+            return $false
+        }
+    }
+    return $true
 }
 
 function Get-RequiredOfficialApkSha256 {
@@ -352,7 +381,7 @@ $userAgreementDist = Get-Content -LiteralPath (Join-Path $distDir "legal/user-ag
 $privacyPolicyDist = Get-Content -LiteralPath (Join-Path $distDir "legal/privacy-policy/index.html") -Raw -Encoding UTF8
 foreach ($marker in @(
     'nongji-page-user-agreement',
-    'name="nongji-legal-version" content="20260618"',
+    'name="nongji-legal-version" content="20260620"',
     'name="nongji-legal-section" content="user-agreement-usage-norms"'
 )) {
     if ($userAgreementDist -notlike "*$marker*") {
@@ -361,7 +390,7 @@ foreach ($marker in @(
 }
 foreach ($marker in @(
     'nongji-page-privacy-policy',
-    'name="nongji-legal-version" content="20260618"',
+    'name="nongji-legal-version" content="20260620"',
     'name="nongji-privacy-section" content="long-term-memory"'
 )) {
     if ($privacyPolicyDist -notlike "*$marker*") {
@@ -440,7 +469,7 @@ sha_prefix='$shaPrefix'
 chunks='/tmp/nongji-site-chunks-$shaPrefix'
 archive='/tmp/nongjiqiancha-site.tgz'
 site_base='/var/www/nongjiqiancha-site'
-test_apks_root='/var/www/nongjiqiancha-test-apks'
+legacy_test_apks_root='/var/www/nongjiqiancha-test-apks'
 release_dir="`$site_base/releases/`$sha_prefix"
 current_link="`$site_base/current"
 previous_current_target=`$(readlink -f "`$current_link" 2>/dev/null || true)
@@ -480,6 +509,23 @@ restore_current_link() {
     ln -sfn "`$previous_current_target" "`$current_link"
   else
     rm -f "`$current_link"
+  fi
+}
+
+cleanup_legacy_test_apks_root() {
+  if [ "`$legacy_test_apks_root" != "/var/www/nongjiqiancha-test-apks" ]; then
+    echo "site_test_apks_legacy_root=unexpected_path"
+    return 0
+  fi
+  if [ -d "`$legacy_test_apks_root" ]; then
+    if rm -rf -- "`$legacy_test_apks_root"; then
+      echo "site_test_apks_legacy_root=removed"
+    else
+      echo "site_test_apks_legacy_root=cleanup_warning"
+      return 0
+    fi
+  else
+    echo "site_test_apks_legacy_root=absent"
   fi
 }
 
@@ -576,7 +622,7 @@ fi
 
 echo install-site
 rm -rf "`$release_dir"
-mkdir -p "`$release_dir" "`$site_base/releases" "`$cert_root" "`$test_apks_root"
+mkdir -p "`$release_dir" "`$site_base/releases" "`$cert_root"
 tar -xzf "`$archive" -C "`$release_dir"
 ln -sfn "`$release_dir" "`$current_link"
 site_switched=1
@@ -671,26 +717,27 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_status "site-https-legal-user" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_status "site-https-legal-privacy" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
-  expect_contains "site-legal-user-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_contains "site-legal-user-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-user-norms" "name=\"nongji-legal-section\" content=\"user-agreement-usage-norms\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-user-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_not_contains "site-legal-user-no-old-title" "禁止行为" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
-  expect_contains "site-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-privacy-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-www-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
-  expect_contains "site-www-legal-user-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
+  expect_contains "site-www-legal-user-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-user-norms" "name=\"nongji-legal-section\" content=\"user-agreement-usage-norms\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_not_contains "site-www-legal-user-no-old-title" "禁止行为" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
-  expect_contains "site-www-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260618\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
+  expect_contains "site-www-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
   expect_contains "site-www-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
 else
   echo 'site certificate missing after deploy' >&2
   exit 23
 fi
 site_verified=1
+cleanup_legacy_test_apks_root
 "@
 
 Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-site-deploy.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null

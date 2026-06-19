@@ -1864,7 +1864,8 @@ object SessionApi {
                                     round_total = roundTotal,
                                     session_generation = snapshotGeneration,
                                     today_agri_items = todayAgriItems,
-                                    today_agri_items_unavailable = json.today_agri_items_unavailable == true
+                                    today_agri_items_unavailable = json.today_agri_items_unavailable == true,
+                                    archive_unavailable = json.archive_unavailable == true
                                 )
                             )
                         } catch (e: Exception) {
@@ -2329,7 +2330,8 @@ object SessionApi {
         @SerializedName("round_total") val round_total: Int? = null,
         @SerializedName("session_generation") val session_generation: Int? = null,
         @SerializedName("today_agri_items") val today_agri_items: List<TodayAgriMainItemJson>? = null,
-        @SerializedName("today_agri_items_unavailable") val today_agri_items_unavailable: Boolean? = null
+        @SerializedName("today_agri_items_unavailable") val today_agri_items_unavailable: Boolean? = null,
+        @SerializedName("archive_unavailable") val archive_unavailable: Boolean? = null
     )
 
     private data class SessionClearResponse(

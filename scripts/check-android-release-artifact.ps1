@@ -5,7 +5,8 @@ param(
     [int]$ExpectedVersionCode = 0,
     [string]$ExpectedVersionName = "",
     [string]$PublicInfoPath = "",
-    [int64]$MaxApkBytes = 209715200
+    [int64]$MaxApkBytes = 209715200,
+    [switch]$AllowStaleArtifact
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +40,92 @@ function Get-FileSha256Hex {
         }
     } finally {
         $stream.Dispose()
+    }
+}
+
+function Get-GitOutputLines {
+    param([string[]]$GitArgs)
+    $output = & git -C $RepoRoot @GitArgs 2>$null
+    if ($LASTEXITCODE -ne 0 -or $null -eq $output) {
+        return @()
+    }
+    return @($output | ForEach-Object { $_.ToString() } | Where-Object { $_ -ne "" })
+}
+
+function Get-GitPorcelainPaths {
+    param([string[]]$Pathspecs)
+    $lines = Get-GitOutputLines -GitArgs (@("status", "--porcelain", "--") + $Pathspecs)
+    $paths = New-Object System.Collections.Generic.List[string]
+    foreach ($line in $lines) {
+        if ($line.Length -lt 4) {
+            continue
+        }
+        $pathText = $line.Substring(3).Trim()
+        if ($pathText.Contains(" -> ")) {
+            $pathText = ($pathText -split " -> ", 2)[1].Trim()
+        }
+        if ($pathText.StartsWith('"') -and $pathText.EndsWith('"')) {
+            $pathText = $pathText.Substring(1, $pathText.Length - 2)
+        }
+        if (-not [string]::IsNullOrWhiteSpace($pathText)) {
+            $paths.Add($pathText) | Out-Null
+        }
+    }
+    return @($paths | Select-Object -Unique)
+}
+
+function Get-AndroidBuildInputPaths {
+    return @(
+        "app",
+        "gradle",
+        "gradlew",
+        "gradlew.bat",
+        "settings.gradle.kts",
+        "build.gradle.kts",
+        "gradle.properties"
+    )
+}
+
+function Add-StaleArtifactFailures {
+    param(
+        [System.Collections.Generic.List[string]]$Failures,
+        [System.IO.FileInfo]$ApkItem
+    )
+    if ($AllowStaleArtifact) {
+        Write-Host "apk_staleness_check=skipped"
+        return
+    }
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Add-Failure $Failures "Cannot verify release APK freshness because git is not available. Run this check from the repository with git available, or pass -AllowStaleArtifact only for an explicit emergency override."
+        Write-Host "apk_staleness_check=failed_no_git"
+        return
+    }
+    $failureCountBefore = $Failures.Count
+    $inputPaths = Get-AndroidBuildInputPaths
+    $apkWriteUtc = $ApkItem.LastWriteTimeUtc
+    Write-Host ("apk_last_write_utc={0:o}" -f $apkWriteUtc)
+
+    $latestCommitUnix = (Get-GitOutputLines -GitArgs (@("log", "-1", "--format=%ct", "--") + $inputPaths) | Select-Object -First 1)
+    $latestCommitSeconds = 0L
+    if (-not [string]::IsNullOrWhiteSpace($latestCommitUnix) -and [long]::TryParse($latestCommitUnix.Trim(), [ref]$latestCommitSeconds)) {
+        $latestCommitUtc = [DateTimeOffset]::FromUnixTimeSeconds($latestCommitSeconds).UtcDateTime
+        Write-Host ("android_build_inputs_latest_commit_utc={0:o}" -f $latestCommitUtc)
+        if ($apkWriteUtc.AddSeconds(2) -lt $latestCommitUtc) {
+            Add-Failure $Failures "Release APK is older than the latest Android build input commit. apk=$($apkWriteUtc.ToString("o")) latest_input_commit=$($latestCommitUtc.ToString("o")). Run ./gradlew.bat :app:assembleRelease again before publishing."
+        }
+    } else {
+        Write-Host "android_build_inputs_latest_commit_utc=unknown"
+        Add-Failure $Failures "Cannot verify release APK freshness because the latest Android build input commit could not be resolved. Run this check from a valid git checkout before publishing."
+    }
+
+    $dirtyPaths = Get-GitPorcelainPaths -Pathspecs $inputPaths
+    if ($dirtyPaths.Count -gt 0) {
+        Add-Failure $Failures "Android build input(s) have uncommitted staged/unstaged/untracked/deleted changes: $($dirtyPaths -join ', '). Commit the intended state and rebuild release APK before publishing, or pass -AllowStaleArtifact only for an explicit emergency override."
+    }
+    if ($Failures.Count -gt $failureCountBefore) {
+        Write-Host "apk_staleness_check=failed"
+    } else {
+        Write-Host "apk_staleness_check=ready"
     }
 }
 
@@ -118,6 +205,7 @@ if ($failures.Count -eq 0) {
     if ($apkItem.Length -gt $MaxApkBytes) {
         Add-Failure $failures "Release APK is larger than the update download limit. size=$($apkItem.Length) max=$MaxApkBytes"
     }
+    Add-StaleArtifactFailures -Failures $failures -ApkItem $apkItem
 
     $tools = Find-AndroidBuildTools
     $badging = Invoke-AndroidTool -FilePath $tools.Aapt -Arguments @("dump", "badging", $resolvedApk)

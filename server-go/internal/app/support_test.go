@@ -449,6 +449,16 @@ func TestParseSupportConversationQuery(t *testing.T) {
 		defaultFilter.SinceMs != time.UnixMilli(10_000).Add(-defaultSupportConversationSinceDuration).UnixMilli() {
 		t.Fatalf("default filter mismatch: %#v", defaultFilter)
 	}
+
+	queryOnlyFilter, validationError := parseSupportConversationQuery(url.Values{
+		"query": {"13800138000"},
+	}, time.UnixMilli(10_000))
+	if validationError != "" {
+		t.Fatalf("unexpected query-only validation error: %s", validationError)
+	}
+	if queryOnlyFilter.SinceMs != 0 {
+		t.Fatalf("query-only since_ms = %d, want 0", queryOnlyFilter.SinceMs)
+	}
 }
 
 func TestNormalizeSupportConversationStatus(t *testing.T) {
