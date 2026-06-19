@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -556,6 +557,62 @@ func (s *Store) ListSupportMessages(ctx context.Context, userID string, limit in
 		messages[left], messages[right] = messages[right], messages[left]
 	}
 	return messages, nil
+}
+
+func (s *Store) ListSupportMessagesWithSearchMatches(ctx context.Context, userID string, limit int, searchQuery string) ([]SupportMessage, int, error) {
+	messages, err := s.ListSupportMessages(ctx, userID, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	searchQuery = strings.TrimSpace(searchQuery)
+	if searchQuery == "" {
+		return messages, 0, nil
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
+		   FROM support_messages
+		  WHERE user_id = ?
+		    AND sender_type <> 'system'
+		    AND body LIKE ?
+		  ORDER BY created_at DESC, id DESC
+		  LIMIT ?`,
+		userID,
+		"%"+searchQuery+"%",
+		adminSupportMessageListLimit,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	seen := make(map[int64]struct{}, len(messages))
+	for _, message := range messages {
+		seen[message.ID] = struct{}{}
+	}
+	matchedAdded := 0
+	for rows.Next() {
+		message, err := scanSupportMessage(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		if _, ok := seen[message.ID]; ok {
+			continue
+		}
+		seen[message.ID] = struct{}{}
+		messages = append(messages, message)
+		matchedAdded++
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	sort.SliceStable(messages, func(i, j int) bool {
+		if messages[i].CreatedAt == messages[j].CreatedAt {
+			return messages[i].ID < messages[j].ID
+		}
+		return messages[i].CreatedAt < messages[j].CreatedAt
+	})
+	return messages, matchedAdded, nil
 }
 
 func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConversationQuery) ([]SupportConversationEntry, error) {

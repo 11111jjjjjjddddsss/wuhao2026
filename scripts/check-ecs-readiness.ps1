@@ -143,10 +143,20 @@ if [ "$active_port" != "unknown" ]; then
   fi
   inactive_service="nongji-server-${inactive_port}"
   inactive_state=$(systemctl is-active "$inactive_service" 2>/dev/null || true)
-  drain_units=$(systemctl list-units 'nongji-drain-stop-*' --all --no-legend --plain 2>/dev/null | awk '{print $1 ":" $3}' | tr '\n' ' ' || true)
-  echo "inactive_slot_service=$inactive_service state=${inactive_state:-unknown} drain_units=${drain_units:-none}"
-  if [ "$inactive_state" = "active" ] && ! printf '%s' "$drain_units" | grep -Eq ':(active|activating)'; then
-    echo "inactive slot is still active without an active drain-stop unit: $inactive_service" >&2
+  list_drain_units() {
+    pattern="$1"
+    systemctl list-units "$pattern" --all --no-legend --plain 2>/dev/null | awk '{print $1 ":" $3}' | tr '\n' ' ' || true
+  }
+  drain_units=$(list_drain_units 'nongji-drain-stop-*')
+  inactive_drain_units=$(list_drain_units "nongji-drain-stop-${inactive_port}-*")
+  active_drain_units=$(list_drain_units "nongji-drain-stop-${active_port}-*")
+  echo "inactive_slot_service=$inactive_service state=${inactive_state:-unknown} drain_units=${drain_units:-none} inactive_drain_units=${inactive_drain_units:-none}"
+  if printf '%s' "$active_drain_units" | grep -Eq ':(active|activating)'; then
+    echo "active upstream slot has an active drain-stop unit: $active_service $active_drain_units" >&2
+    exit 10
+  fi
+  if [ "$inactive_state" = "active" ] && ! printf '%s' "$inactive_drain_units" | grep -Eq ':(active|activating)'; then
+    echo "inactive slot is still active without a matching active drain-stop unit: $inactive_service" >&2
     exit 10
   fi
 fi

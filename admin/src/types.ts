@@ -470,6 +470,11 @@ export interface AdminSupportMessage {
   read_by_user_at?: number;
 }
 
+export interface AdminSupportMessagesResponse {
+  messages: AdminSupportMessage[];
+  search_matched_messages?: number;
+}
+
 export interface AdminOrderEntry {
   order_id: string;
   user_id: string;

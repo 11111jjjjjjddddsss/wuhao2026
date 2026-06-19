@@ -896,7 +896,11 @@ func (s *Server) handleAdminSupportMessages(w http.ResponseWriter, r *http.Reque
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
 	defer cancel()
-	messages, err := s.store.ListSupportMessages(ctx, userID, adminSupportMessageListLimit)
+	searchQuery := ""
+	if adminCanSearchSupportBody(admin.User.Role) {
+		searchQuery = truncateRunes(strings.TrimSpace(r.URL.Query().Get("query")), 128)
+	}
+	messages, matchedAdded, err := s.store.ListSupportMessagesWithSearchMatches(ctx, userID, adminSupportMessageListLimit, searchQuery)
 	if err != nil {
 		s.logger.Error("admin list support messages failed", "userId", userID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
@@ -907,8 +911,8 @@ func (s *Server) handleAdminSupportMessages(w http.ResponseWriter, r *http.Reque
 	for _, message := range messages {
 		output = append(output, adminSupportMessageFromSupport(message, includeBody))
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.messages", "support_messages", "", userID, true, http.StatusOK, map[string]any{"row_count": len(output), "body_visible": includeBody})
-	s.writeJSON(w, http.StatusOK, map[string]any{"messages": output})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.support.messages", "support_messages", "", userID, true, http.StatusOK, map[string]any{"row_count": len(output), "body_visible": includeBody, "search_matched_messages": matchedAdded})
+	s.writeJSON(w, http.StatusOK, map[string]any{"messages": output, "search_matched_messages": matchedAdded})
 }
 
 func (s *Server) handleAdminCreateSupportMessage(w http.ResponseWriter, r *http.Request) {

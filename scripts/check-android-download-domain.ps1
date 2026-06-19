@@ -131,12 +131,12 @@ function Get-RemoteTlsCertificateNotAfter {
         if (-not $connectTask.Wait([TimeSpan]::FromSeconds(10))) {
             throw "TLS connect timed out"
         }
-        $sslStream = [Net.Security.SslStream]::new(
-            $tcpClient.GetStream(),
-            $false,
-            { param($sender, $certificate, $chain, $sslPolicyErrors) return $true }
-        )
-        $sslStream.AuthenticateAsClient($HostName)
+        $sslStream = [Net.Security.SslStream]::new($tcpClient.GetStream(), $false)
+        $asyncResult = $sslStream.BeginAuthenticateAsClient($HostName, $null, $null)
+        if (-not $asyncResult.AsyncWaitHandle.WaitOne([TimeSpan]::FromSeconds(10))) {
+            throw "TLS handshake timed out"
+        }
+        $sslStream.EndAuthenticateAsClient($asyncResult)
         $cert = [Security.Cryptography.X509Certificates.X509Certificate2]::new($sslStream.RemoteCertificate)
         return $cert.NotAfter
     } finally {

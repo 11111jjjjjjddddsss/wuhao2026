@@ -222,7 +222,8 @@ expectAdminPattern("app update rejects short-lived signed apk url", /短期签�
 expectServerPattern("app update API rejects internal test apk url", /isOfficialAndroidAPKURL/);
 expectAdminPattern("support reply button says production user send", /发送给用户（生产）/);
 expectAdminPattern("support long history has truncation notice", /仅显示最近消息/);
-expectServerPattern("admin support messages use admin list limit", /ListSupportMessages\(ctx,\s*userID,\s*adminSupportMessageListLimit\)/);
+expectServerPattern("admin support messages use admin list limit plus search matches", /ListSupportMessagesWithSearchMatches\(ctx,\s*userID,\s*adminSupportMessageListLimit/);
+expectServerPattern("admin support message search matches stay role-gated", /if adminCanSearchSupportBody\(admin\.User\.Role\)/);
 expectServerPattern("admin support message limit is explicit", /adminSupportMessageListLimit\s*=\s*200/);
 expectServerPattern("admin support images are normalized to same-origin paths", /adminSupportImageURLs/);
 expectServerPattern("support uploads are not publicly cached", /Cache-Control",\s*"private,\s*no-store"/);

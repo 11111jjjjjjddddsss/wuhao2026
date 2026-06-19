@@ -23,6 +23,7 @@ import type {
   AdminRegionMetric,
   AdminSupportConversation,
   AdminSupportMessage,
+  AdminSupportMessagesResponse,
   AdminTopupPackEntry,
   AdminRouteKey,
   AdminRole,
@@ -776,10 +777,13 @@ async function supportPage(): Promise<string> {
   }
   const selected = response.conversations.find((item) => item.user_id === pageState.supportUserID);
   let messages: AdminSupportMessage[] = [];
+  let searchMatchedMessages = 0;
   let messagesError = "";
   if (pageState.supportUserID) {
     try {
-      messages = await fetchSupportMessages(pageState.supportUserID);
+      const messagesResult = await fetchSupportMessages(pageState.supportUserID);
+      messages = messagesResult.messages;
+      searchMatchedMessages = messagesResult.search_matched_messages ?? 0;
     } catch (error) {
       messagesError = errorMessage(error);
     }
@@ -798,7 +802,7 @@ async function supportPage(): Promise<string> {
           <span class="small muted">${escapeHTML(pageState.supportUserID || "未选择")}</span>
         </div>
         <div class="card-body">
-          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected, messagesError) : emptyState("未选择会话", "请先在左侧选择一条反馈会话。")}
+          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected, messagesError, searchMatchedMessages) : emptyState("未选择会话", "请先在左侧选择一条反馈会话。")}
         </div>
       </section>
     </div>
@@ -1758,11 +1762,11 @@ async function userDetailCard(userID: string): Promise<string> {
   }
 }
 
-async function fetchSupportMessages(userID: string): Promise<AdminSupportMessage[]> {
-  const response = await apiFetch<{ messages: AdminSupportMessage[] }>(
-    `/admin-api/v1/support/messages${toQuery({ user_id: userID })}`,
+async function fetchSupportMessages(userID: string): Promise<AdminSupportMessagesResponse> {
+  const response = await apiFetch<AdminSupportMessagesResponse>(
+    `/admin-api/v1/support/messages${toQuery({ user_id: userID, query: pageState.supportQuery })}`,
   );
-  return response.messages;
+  return { messages: response.messages ?? [], search_matched_messages: response.search_matched_messages ?? 0 };
 }
 
 function routeFromHash(): RouteKey {
@@ -2556,13 +2560,13 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
     .join("");
 }
 
-function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], conversation?: AdminSupportConversation, loadError = ""): string {
+function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], conversation?: AdminSupportConversation, loadError = "", searchMatchedMessages = 0): string {
   const canManage = canManageSupport();
   const truncatedMessageNotice =
     conversation && messages.length > 0 && conversation.message_count > messages.length
       ? notice(
           "仅显示最近消息",
-          `当前显示最近 ${messages.length} 条，共 ${conversation.message_count} 条；可用上方搜索查找更早线索。`,
+          `当前显示 ${messages.length} 条，共 ${conversation.message_count} 条${searchMatchedMessages > 0 ? `；已合并 ${searchMatchedMessages} 条搜索命中的较早消息。` : "；可用上方搜索查找更早线索。"}`,
           "info",
         )
       : "";
