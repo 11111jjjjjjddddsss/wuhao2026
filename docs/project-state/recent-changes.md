@@ -5,6 +5,8 @@
 
 ## 2026-06-19
 
+- 多代理交互挑刺后继续补 Android 主聊天收口：`PendingChatSendWorker` 的后台带图兜底在终态失败时会写入本地终态失败标记，`ChatScreen` 的 pending 图片恢复循环先查 `/api/session/snapshot`，有完整远端回答就恢复成功，没有回答且确认终态失败时才把原用户图文气泡标成“发送失败 / 重发”；成功、取消、重试和删除历史会同步清理 pending 与终态失败标记，避免静默挂起或后台成功后前台误报失败。今日农情远端 snapshot 恢复兼容后端保存的用户 `client_msg_id` 锚点，会映射到对应 assistant 回复后方插入，不再因为锚点被后端归一而漂到最新回复后。聊天 renderer 只做启发式小修：紧凑编号小标题不在 active streaming 半行提前生效，表格头 + 分隔线半截流式保留换行，普通 `**重点** 后面还有 **正文**` 不误判成小标题分割线；AI 正文吐字速度按用户要求小幅加快，但小球最短展示、呼吸节奏和尺寸不动。新增单测覆盖这些边界；本轮不改三份保护提示词、不加模型输出过滤、不发布正式 APK。
+
 - 按用户真机截图反馈继续修聊天 Markdown 细节：`ChatStreamingRenderer.kt` 新增“紧凑编号小标题”识别，只对 `1. 三大病害：`、`2. **三大虫害：**` 这类短、以冒号结尾的编号行压低行高和字重，后续紧接列表的上间距从 12dp 收到 6dp；普通长编号句仍按原正文列表渲染。debug-only “AI Markdown”预览样本同步补编号小标题 + 子弹列表，便于以后在调试面板里复核。已补单测覆盖短编号标题和长编号句不误伤。本轮只改 Android 渲染样式，不改三份保护提示词、不加模型输出过滤、不发布正式 APK。
 
 - 继续按“拉满代理、全盘挑刺、联网校准”收口交互和运维边界：后端保存今日农情主界面展示记录前，会把 `assistant_...` 锚点归一成真实用户轮次并确认已存在 `session_round_archive` 归档，缺失时返回 `today_agri_anchor_not_archived`，避免写入后续无法恢复上下文的脏锚点；Android 删除历史后不再把当天重新保存成本地“已展示”，空态仍不显示今日农情，但新对话拿到完整 AI 回复后当天农情可重新出现并保存；表格解析识别行内代码里的 `|`，不再把 `` `N|P|K` `` 拆成假列；`probe-ecs-today-agri.ps1` 解析不到唯一 active slot 时直接失败，不再回退固定 3000；`check-ecs-readiness.ps1` 新增可选 `-ExpectedRevision` 用于核对线上是否为指定提交。同步更新发版 runbook：只说“修 bug”不等于发布 Android 新版本，正式 APK / 检查更新必须等用户明确口令。提交 `fbfc8bee` 已部署到 ECS，Nginx active upstream 和后台 upstream 均为 `3000`，`check-ecs-readiness.ps1 -ExpectedRevision fbfc8bee` 和 `check-public-blackbox.ps1` 均通过。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`，不发布正式 APK。

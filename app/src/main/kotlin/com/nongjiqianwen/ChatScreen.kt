@@ -333,6 +333,9 @@ internal fun buildChatTimelineItems(
             messages.any { message -> message.isCompletedAssistantAnswer(failedAssistantMessageIds) }
     }
     val requestedAfterMessageId = todayAgriAfterMessageId?.takeIf { it.isNotBlank() }
+    val requestedAfterAssistantMessageIds = requestedAfterMessageId
+        ?.let { id -> setOf(id, assistantMessageIdForSourceUser(id)) }
+        .orEmpty()
     var todayAgriCardInserted = false
     var latestAssistantAnswerInsertIndex = -1
     messages.forEach { message ->
@@ -342,8 +345,8 @@ internal fun buildChatTimelineItems(
         }
         if (
             validTodayAgriCard != null &&
-            requestedAfterMessageId != null &&
-            message.id == requestedAfterMessageId &&
+            requestedAfterAssistantMessageIds.isNotEmpty() &&
+            message.id in requestedAfterAssistantMessageIds &&
             message.isCompletedAssistantAnswer(failedAssistantMessageIds)
         ) {
             items += ChatTimelineItem.TodayAgriCard(validTodayAgriCard)
@@ -515,6 +518,33 @@ private fun markLocalImageUploadPendingAsFailed(
     }
     if (nextFailedStates == sanitizedSnapshot.failedUserMessageStates) return sanitizedSnapshot
     return sanitizedSnapshot.copy(failedUserMessageStates = nextFailedStates)
+}
+
+internal fun shouldTrackPendingImageAssistantRecovery(
+    message: ChatMessage,
+    pendingExists: Boolean,
+    terminalFailureExists: Boolean,
+    hasSettledAssistant: Boolean
+): Boolean =
+    message.isLocalImageUploadPendingUserMessage() &&
+        !hasSettledAssistant &&
+        (pendingExists || terminalFailureExists)
+
+internal fun shouldApplyPendingImageTerminalFailure(
+    terminalFailureReason: String?,
+    snapshotAvailable: Boolean,
+    isLastAttempt: Boolean
+): Boolean {
+    val reason = terminalFailureReason?.trim().orEmpty()
+    if (reason.isBlank()) return false
+    if (snapshotAvailable || isLastAttempt) return true
+    return reason in setOf(
+        "auth",
+        "bad_request",
+        "backend_not_configured",
+        "image_read_failed",
+        "quota"
+    )
 }
 
 @Immutable
@@ -4278,6 +4308,7 @@ fun ChatScreen() {
             for (attempt in 0 until REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS) {
                 if (recoveryClearEpoch != chatHistoryClearEpoch) return@launch
                 val snapshot = awaitRemoteSnapshot()
+                val snapshotAvailable = snapshot != null
                 val recoveredRounds = remainingSourceUserMessageIds
                     .mapNotNull { sourceUserMessageId ->
                         snapshot
@@ -4294,6 +4325,42 @@ fun ChatScreen() {
                         expectedClearEpoch = recoveryClearEpoch
                     )
                     remainingSourceUserMessageIds.remove(sourceUserMessageId)
+                }
+                val isLastAttempt = attempt >= REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS - 1
+                val terminalFailedSourceUserMessageIds = remainingSourceUserMessageIds
+                    .mapNotNull { sourceUserMessageId ->
+                        val reason = PendingChatSendStore.terminalFailureReason(
+                            context,
+                            chatScopeId,
+                            sourceUserMessageId
+                        )
+                        if (
+                            !PendingChatSendStore.has(context, chatScopeId, sourceUserMessageId) &&
+                            shouldApplyPendingImageTerminalFailure(
+                                terminalFailureReason = reason,
+                                snapshotAvailable = snapshotAvailable,
+                                isLastAttempt = isLastAttempt
+                            )
+                        ) {
+                            sourceUserMessageId to reason.orEmpty()
+                        } else {
+                            null
+                        }
+                    }
+                terminalFailedSourceUserMessageIds.forEach { (sourceUserMessageId, reason) ->
+                    failedUserMessageStates.putIfAbsent(
+                        sourceUserMessageId,
+                        reason.ifBlank { "network" }
+                    )
+                    retryingUserMessageIds.remove(sourceUserMessageId)
+                    clearFailedAssistantStateForUser(sourceUserMessageId)
+                    PendingChatSendRuntime.markInactive(sourceUserMessageId)
+                    PendingChatSendStore.consumeTerminalFailure(context, chatScopeId, sourceUserMessageId)
+                    remainingSourceUserMessageIds.remove(sourceUserMessageId)
+                }
+                if (terminalFailedSourceUserMessageIds.isNotEmpty()) {
+                    initialBottomSnapDone = false
+                    persistTick++
                 }
                 if (remainingSourceUserMessageIds.isEmpty()) {
                     initialBottomSnapDone = false
@@ -4500,7 +4567,8 @@ fun ChatScreen() {
                 draft = localStreamingDraftForMerge
             )
             val shouldKeepPendingUserMessage: (String) -> Boolean = { messageId ->
-                PendingChatSendStore.has(context, chatScopeId, messageId)
+                PendingChatSendStore.has(context, chatScopeId, messageId) ||
+                    PendingChatSendStore.hasTerminalFailure(context, chatScopeId, messageId)
             }
             val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
             hiddenRemoteRoundCount =
@@ -4680,10 +4748,16 @@ fun ChatScreen() {
         if (!hasRemoteHistorySource || !historyHydrationComplete || isStreaming) return@LaunchedEffect
         val pendingUserMessageIds = messages
             .filter { message ->
-                message.role == ChatRole.USER &&
-                    message.isLocalImageUploadPendingUserMessage() &&
-                    PendingChatSendStore.has(context, chatScopeId, message.id) &&
-                    !hasSettledAssistantMessageForUser(message.id)
+                shouldTrackPendingImageAssistantRecovery(
+                    message = message,
+                    pendingExists = PendingChatSendStore.has(context, chatScopeId, message.id),
+                    terminalFailureExists = PendingChatSendStore.hasTerminalFailure(
+                        context,
+                        chatScopeId,
+                        message.id
+                    ),
+                    hasSettledAssistant = hasSettledAssistantMessageForUser(message.id)
+                )
             }
             .map { it.id }
         if (pendingUserMessageIds.isEmpty()) return@LaunchedEffect

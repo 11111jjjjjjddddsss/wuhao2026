@@ -47,16 +47,14 @@ internal object PendingChatSendWorkScheduler {
 
     fun complete(context: Context, chatScopeId: String, userMessageId: String) {
         PendingChatSendRuntime.markInactive(userMessageId)
-        if (!PendingChatSendStore.has(context, chatScopeId, userMessageId)) return
-        PendingChatSendStore.remove(context, chatScopeId, userMessageId)
+        PendingChatSendStore.clear(context, chatScopeId, userMessageId)
         WorkManager.getInstance(context.applicationContext)
             .cancelUniqueWork(uniqueName(chatScopeId, userMessageId))
     }
 
     fun cancelAndRemove(context: Context, chatScopeId: String, userMessageId: String) {
         PendingChatSendRuntime.markInactive(userMessageId)
-        if (!PendingChatSendStore.has(context, chatScopeId, userMessageId)) return
-        PendingChatSendStore.remove(context, chatScopeId, userMessageId)
+        PendingChatSendStore.clear(context, chatScopeId, userMessageId)
         WorkManager.getInstance(context.applicationContext)
             .cancelUniqueWork(uniqueName(chatScopeId, userMessageId))
     }

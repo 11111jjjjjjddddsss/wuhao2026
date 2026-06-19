@@ -41,6 +41,7 @@ internal object PendingChatSendRuntime {
 internal object PendingChatSendStore {
     private const val PREFS_NAME = "pending_chat_sends"
     private const val KEY_PREFIX = "pending_"
+    private const val TERMINAL_FAILURE_KEY_PREFIX = "terminal_failure_"
     const val REMOTE_STARTED_GRACE_MS = 10 * 60 * 1000L
     private val gson = Gson()
 
@@ -53,6 +54,7 @@ internal object PendingChatSendStore {
         val next = scoped.copy(updatedAtMs = System.currentTimeMillis())
         prefs(context).edit()
             .putString(key(next.chatScopeId, next.userMessageId), gson.toJson(next))
+            .remove(terminalFailureKey(next.chatScopeId, next.userMessageId))
             .commit()
     }
 
@@ -129,6 +131,39 @@ internal object PendingChatSendStore {
             .commit()
     }
 
+    fun clear(context: Context, chatScopeId: String, userMessageId: String) {
+        prefs(context).edit()
+            .remove(key(chatScopeId, userMessageId))
+            .remove(terminalFailureKey(chatScopeId, userMessageId))
+            .commit()
+    }
+
+    fun markTerminalFailure(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String,
+        reason: String
+    ) {
+        val safeReason = reason.trim().take(48).ifBlank { "failed" }
+        prefs(context).edit()
+            .putString(terminalFailureKey(chatScopeId, userMessageId), safeReason)
+            .commit()
+    }
+
+    fun terminalFailureReason(context: Context, chatScopeId: String, userMessageId: String): String? =
+        prefs(context)
+            .getString(terminalFailureKey(chatScopeId, userMessageId), null)
+            ?.takeIf { it.isNotBlank() }
+
+    fun hasTerminalFailure(context: Context, chatScopeId: String, userMessageId: String): Boolean =
+        terminalFailureReason(context, chatScopeId, userMessageId) != null
+
+    fun consumeTerminalFailure(context: Context, chatScopeId: String, userMessageId: String) {
+        prefs(context).edit()
+            .remove(terminalFailureKey(chatScopeId, userMessageId))
+            .commit()
+    }
+
     fun retainedImageUris(context: Context): Set<String> {
         val all = prefs(context).all
         if (all.isEmpty()) return emptySet()
@@ -148,10 +183,17 @@ internal object PendingChatSendStore {
     fun userMessageIdsForScope(context: Context, chatScopeId: String): Set<String> {
         if (chatScopeId.isBlank()) return emptySet()
         val expectedPrefix = key(chatScopeId, "")
+        val expectedTerminalFailurePrefix = terminalFailureKey(chatScopeId, "")
         val all = prefs(context).all
         if (all.isEmpty()) return emptySet()
         return buildSet {
             all.forEach { (storedKey, value) ->
+                if (storedKey.startsWith(expectedTerminalFailurePrefix)) {
+                    storedKey.removePrefix(expectedTerminalFailurePrefix)
+                        .takeIf { it.isNotBlank() }
+                        ?.let(::add)
+                    return@forEach
+                }
                 val raw = value as? String ?: return@forEach
                 val pending = try {
                     gson.fromJson(raw, PendingChatSend::class.java)
@@ -199,4 +241,7 @@ internal object PendingChatSendStore {
 
     private fun key(chatScopeId: String, userMessageId: String): String =
         "$KEY_PREFIX$chatScopeId:$userMessageId"
+
+    private fun terminalFailureKey(chatScopeId: String, userMessageId: String): String =
+        "$TERMINAL_FAILURE_KEY_PREFIX$chatScopeId:$userMessageId"
 }

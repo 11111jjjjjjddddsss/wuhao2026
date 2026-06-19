@@ -71,6 +71,27 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriCardAcceptsServerNormalizedUserAnchorAfterAssistantRound() {
+        val user = userMessage("u1")
+        val assistant = assistantMessage("assistant_u1")
+
+        val items = buildChatTimelineItems(
+            messages = listOf(user, assistant),
+            todayAgriCard = todayAgriCard(),
+            todayAgriAfterMessageId = user.id
+        )
+
+        assertEquals(
+            listOf(
+                ChatTimelineItem.Message(user),
+                ChatTimelineItem.Message(assistant),
+                ChatTimelineItem.TodayAgriCard(todayAgriCard())
+            ),
+            items
+        )
+    }
+
+    @Test
     fun todayAgriCardWithoutAnchorFallsBackAfterLatestCompletedAssistant() {
         val first = userMessage("m1")
         val second = assistantMessage("m2")
@@ -576,6 +597,89 @@ class ChatTimelineItemsTest {
             shouldReplaceHydratedMessages(
                 currentMessages = emptyList(),
                 remoteMessages = emptyList()
+            )
+        )
+    }
+
+    @Test
+    fun pendingImageRecoveryTracksPendingOrTerminalFailureButNotSettledAssistant() {
+        val pendingImageUser = ChatMessage(
+            id = "u1",
+            role = ChatRole.USER,
+            content = "看下这个病害",
+            imageUris = listOf("file:///tmp/local.jpg"),
+            imageUrls = emptyList()
+        )
+
+        assertTrue(
+            shouldTrackPendingImageAssistantRecovery(
+                message = pendingImageUser,
+                pendingExists = true,
+                terminalFailureExists = false,
+                hasSettledAssistant = false
+            )
+        )
+        assertTrue(
+            shouldTrackPendingImageAssistantRecovery(
+                message = pendingImageUser,
+                pendingExists = false,
+                terminalFailureExists = true,
+                hasSettledAssistant = false
+            )
+        )
+        assertFalse(
+            shouldTrackPendingImageAssistantRecovery(
+                message = pendingImageUser,
+                pendingExists = false,
+                terminalFailureExists = true,
+                hasSettledAssistant = true
+            )
+        )
+        assertFalse(
+            shouldTrackPendingImageAssistantRecovery(
+                message = userMessage("u2"),
+                pendingExists = true,
+                terminalFailureExists = true,
+                hasSettledAssistant = false
+            )
+        )
+    }
+
+    @Test
+    fun terminalImageFailureWaitsForSnapshotUnlessFailureCannotRecoverByWaiting() {
+        assertFalse(
+            shouldApplyPendingImageTerminalFailure(
+                terminalFailureReason = null,
+                snapshotAvailable = true,
+                isLastAttempt = false
+            )
+        )
+        assertTrue(
+            shouldApplyPendingImageTerminalFailure(
+                terminalFailureReason = "image_read_failed",
+                snapshotAvailable = false,
+                isLastAttempt = false
+            )
+        )
+        assertFalse(
+            shouldApplyPendingImageTerminalFailure(
+                terminalFailureReason = "retry_exhausted",
+                snapshotAvailable = false,
+                isLastAttempt = false
+            )
+        )
+        assertTrue(
+            shouldApplyPendingImageTerminalFailure(
+                terminalFailureReason = "retry_exhausted",
+                snapshotAvailable = true,
+                isLastAttempt = false
+            )
+        )
+        assertTrue(
+            shouldApplyPendingImageTerminalFailure(
+                terminalFailureReason = "retry_exhausted",
+                snapshotAvailable = false,
+                isLastAttempt = true
             )
         )
     }

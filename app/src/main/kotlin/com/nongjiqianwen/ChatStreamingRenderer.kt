@@ -615,7 +615,7 @@ internal fun splitStreamingBlockState(content: String): StreamingBlockState {
                 flushParagraphBlock()
                 completedBlocks += trimmed
             }
-            else -> paragraph.appendRendererParagraphLine(trimmed)
+            else -> paragraph.appendRendererActiveParagraphLine(trimmed)
         }
     }
 
@@ -796,6 +796,13 @@ private fun plainRendererInlineText(text: String): String =
 internal fun isRendererCompactNumberedSection(model: StreamingLineModel.Numbered): Boolean =
     isRendererCompactNumberedSectionText(model.text)
 
+internal fun shouldUseRendererCompactNumberedSection(
+    model: StreamingLineModel.Numbered,
+    inlineMode: RendererInlineMode
+): Boolean =
+    inlineMode != RendererInlineMode.Streaming &&
+        isRendererCompactNumberedSection(model)
+
 private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     val plain = plainRendererInlineText(text)
         .replace(Regex("\\s+"), "")
@@ -808,11 +815,12 @@ private fun isRendererCompactNumberedSectionText(text: String): Boolean {
 private fun parseRendererStandaloneBoldHeading(line: String): String? {
     val trimmed = line.trim()
     if (!trimmed.startsWith("**")) return null
-    val closing = trimmed.lastIndexOf("**")
+    val closing = trimmed.indexOf("**", startIndex = 2)
     if (closing <= 1) return null
     val suffix = trimmed.drop(closing + 2).trim()
     if (suffix.isNotEmpty() && suffix !in setOf(":", "：")) return null
     val title = trimmed.substring(2, closing).trim()
+    if (title.contains("**")) return null
     if (!isRendererStandaloneBoldHeadingTitle(title)) return null
     return title + suffix
 }
@@ -1078,15 +1086,15 @@ private fun resolveRendererTypewriterDelay(token: String, nextHasStructuralMarkd
     val lastChar = token.lastOrNull() ?: return STREAM_TYPEWRITER_IDLE_POLL_MS
     val lastCodePoint = token.codePointBefore(token.length)
     val baseDelay = when {
-        lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 92L else 72L
-        lastChar.isRendererStrongPausePunctuation() -> 60L
-        lastChar.isRendererWeakPausePunctuation() -> 34L
-        lastCodePoint.isRendererCjkUnifiedIdeographCodePoint() -> 22L
-        token.length >= 7 -> 26L
-        token.length >= 5 -> 24L
-        token.length >= 3 -> 22L
-        token.length == 2 -> 22L
-        else -> 20L
+        lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 86L else 66L
+        lastChar.isRendererStrongPausePunctuation() -> 54L
+        lastChar.isRendererWeakPausePunctuation() -> 30L
+        lastCodePoint.isRendererCjkUnifiedIdeographCodePoint() -> 19L
+        token.length >= 7 -> 23L
+        token.length >= 5 -> 21L
+        token.length >= 3 -> 19L
+        token.length == 2 -> 19L
+        else -> 18L
     }
     return scaleRendererStreamingDelay(baseDelay)
 }
@@ -2024,8 +2032,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 }
             }
             is StreamingLineModel.Numbered -> {
-                val compactNumberedSection = remember(model.text) {
-                    isRendererCompactNumberedSection(model)
+                val compactNumberedSection = remember(model.text, inlineMode) {
+                    shouldUseRendererCompactNumberedSection(model, inlineMode)
                 }
                 val numberStyle = remember(paragraphStyle, compactNumberedSection) {
                     if (compactNumberedSection) {

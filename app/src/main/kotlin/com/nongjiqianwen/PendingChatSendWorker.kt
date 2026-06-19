@@ -44,8 +44,7 @@ class PendingChatSendWorker(
         }
 
         if (!SessionApi.hasBackendConfigured()) {
-            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-            return@withContext Result.failure()
+            return@withContext failTerminal(chatScopeId, userMessageId, "backend_not_configured")
         }
         if (!applicationContext.hasActiveNetworkConnection()) {
             return@withContext Result.retry()
@@ -58,8 +57,7 @@ class PendingChatSendWorker(
             val uploadBytes = readUploadBytes(pending.imageUris)
                 ?: run {
                     if (isStopped) return@withContext Result.retry()
-                    PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-                    return@withContext Result.failure()
+                    return@withContext failTerminal(chatScopeId, userMessageId, "image_read_failed")
                 }
             ImageUploader.uploadImages(uploadBytes)
                 ?: return@withContext retryRecoverableOrFail(chatScopeId, userMessageId)
@@ -109,7 +107,7 @@ class PendingChatSendWorker(
         when (result.status) {
             SessionApi.StreamCompletionStatus.Complete,
             SessionApi.StreamCompletionStatus.Replay -> {
-                PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+                PendingChatSendStore.clear(applicationContext, chatScopeId, userMessageId)
                 Result.success()
             }
             SessionApi.StreamCompletionStatus.RetryableFailure -> {
@@ -122,8 +120,16 @@ class PendingChatSendWorker(
             SessionApi.StreamCompletionStatus.Auth,
             SessionApi.StreamCompletionStatus.BadRequest,
             SessionApi.StreamCompletionStatus.ServerFailure -> {
-                PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-                Result.failure()
+                failTerminal(
+                    chatScopeId = chatScopeId,
+                    userMessageId = userMessageId,
+                    reason = when (result.status) {
+                        SessionApi.StreamCompletionStatus.Quota -> "quota"
+                        SessionApi.StreamCompletionStatus.Auth -> "auth"
+                        SessionApi.StreamCompletionStatus.BadRequest -> "bad_request"
+                        else -> "server_failure"
+                    }
+                )
             }
         }
     }
@@ -135,11 +141,22 @@ class PendingChatSendWorker(
             userMessageId
         ) ?: return Result.success()
         return if (failureCount > MAX_RECOVERABLE_FAILURES) {
-            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-            Result.failure()
+            failTerminal(chatScopeId, userMessageId, "retry_exhausted")
         } else {
             Result.retry()
         }
+    }
+
+    private fun failTerminal(chatScopeId: String, userMessageId: String, reason: String): Result {
+        PendingChatSendStore.markTerminalFailure(
+            context = applicationContext,
+            chatScopeId = chatScopeId,
+            userMessageId = userMessageId,
+            reason = reason
+        )
+        PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
+        PendingChatSendRuntime.markInactive(userMessageId)
+        return Result.failure()
     }
 
     private fun readUploadBytes(imageUris: List<String>): List<ByteArray>? {

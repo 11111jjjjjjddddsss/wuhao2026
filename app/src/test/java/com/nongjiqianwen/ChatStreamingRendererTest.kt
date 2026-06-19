@@ -356,6 +356,18 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun completedMarkdownTableSeparatorKeepsLineBreakWhileWaitingForBodyRow() {
+        val state = splitStreamingBlockState("|项目|建议|\n|---|---|")
+        val model = classifyStreamingLine(state.activeBlock.orEmpty())
+
+        assertTrue(model is StreamingLineModel.Paragraph)
+        assertEquals(
+            "|项目|建议|\n|---|---|",
+            (model as StreamingLineModel.Paragraph).text
+        )
+    }
+
+    @Test
     fun standaloneBoldHeadingDividerSurvivesStreamingToSettled() {
         val streamingState = splitStreamingBlockState("先说清楚。\n\n**处理建议")
         val streamingModels = streamingState.completedBlocks.map(::classifyStreamingLine) +
@@ -549,11 +561,20 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun inlineBoldWithLaterBoldTextStaysParagraph() {
+        val model = classifyStreamingLine("**重点** 后面还有 **正文**")
+
+        assertTrue(model is StreamingLineModel.Paragraph)
+    }
+
+    @Test
     fun shortNumberedColonHeadingUsesCompactSectionStyle() {
         val model = classifyStreamingLine("1. **三大病害：**")
 
         require(model is StreamingLineModel.Numbered)
         assertTrue(isRendererCompactNumberedSection(model))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Settled))
+        assertFalse(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
     }
 
     @Test
@@ -561,6 +582,15 @@ class ChatStreamingRendererTest {
         val model = classifyStreamingLine("1. 先停用高浓度叶面肥，并在三天后观察新叶变化。")
 
         require(model is StreamingLineModel.Numbered)
+        assertFalse(isRendererCompactNumberedSection(model))
+    }
+
+    @Test
+    fun activeNumberedLineThatContinuesAfterColonDoesNotCompactBeforeLineSettles() {
+        val model = classifyActiveStreamingLine("1. 三大病害：疫病、炭疽病")
+
+        require(model is StreamingLineModel.Numbered)
+        assertFalse(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
         assertFalse(isRendererCompactNumberedSection(model))
     }
 
