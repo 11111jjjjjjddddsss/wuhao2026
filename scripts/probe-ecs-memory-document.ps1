@@ -100,10 +100,13 @@ if [ -z "${DAILY_AGRI_JOB_SECRET:-}" ]; then
   exit 12
 fi
 
-active_port=$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' /etc/nginx/sites-available/nongjiqiancha-api 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | head -n 1)
-if [ -z "${active_port:-}" ]; then
-  active_port=3000
+active_ports=$(grep -E '^[[:space:]]*proxy_pass[[:space:]]+http://127\.0\.0\.1:(3000|3001)[[:space:]]*;' /etc/nginx/sites-available/nongjiqiancha-api 2>/dev/null | sed -E 's/.*127\.0\.0\.1:(3000|3001)[[:space:]]*;.*/\1/' | sort -u)
+active_port_count=$(printf '%s\n' "${active_ports}" | sed '/^$/d' | wc -l | tr -d ' ')
+if [ "${active_port_count}" != "1" ]; then
+  echo "{\"error\":\"active_port_not_unique\",\"ports\":\"$(printf '%s' "${active_ports}" | tr '\n' ',')\"}"
+  exit 13
 fi
+active_port=$(printf '%s\n' "${active_ports}" | sed '/^$/d' | head -n 1)
 
 curl --silent --show-error --fail \
   --max-time 120 \

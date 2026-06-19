@@ -80,6 +80,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalContext
@@ -481,6 +482,7 @@ internal fun InputSelectionMenuPopup(
     val verticalSpacingPx = with(density) { 10.dp.roundToPx() }
     val marginPx = with(density) { 8.dp.roundToPx() }
     var cardSize by remember { mutableStateOf(IntSize.Zero) }
+    var viewportSize by remember { mutableStateOf(IntSize.Zero) }
     val boundsLocal = Rect(
         left = inputFieldBoundsInWindow.left - viewportLeftPx,
         top = inputFieldBoundsInWindow.top - viewportTopPx,
@@ -492,9 +494,25 @@ internal fun InputSelectionMenuPopup(
     val resolvedHeight =
         if (cardSize.height > 0) cardSize.height else with(density) { 44.dp.roundToPx() }
     val preferredCenterX = boundsLocal.left + boundsLocal.width * state.anchorXRatio
-    val minX = (boundsLocal.left + marginPx).roundToInt()
-    val maxX = (boundsLocal.right - resolvedWidth - marginPx).roundToInt().coerceAtLeast(minX)
+    val minX = if (viewportSize.width > 0) {
+        marginPx
+    } else {
+        (boundsLocal.left + marginPx).roundToInt()
+    }
+    val maxX = if (viewportSize.width > 0) {
+        (viewportSize.width - resolvedWidth - marginPx).coerceAtLeast(minX)
+    } else {
+        (boundsLocal.right - resolvedWidth - marginPx).roundToInt().coerceAtLeast(minX)
+    }
     val preferredX = (preferredCenterX - resolvedWidth / 2f).roundToInt().coerceIn(minX, maxX)
+    val popupMaxWidth = with(density) {
+        val availablePx = if (viewportSize.width > 0) {
+            viewportSize.width - marginPx * 2
+        } else {
+            resolvedWidth
+        }
+        availablePx.coerceAtLeast(160.dp.roundToPx()).toDp()
+    }
     val protectedTop =
         maxOf(
             marginPx,
@@ -510,6 +528,7 @@ internal fun InputSelectionMenuPopup(
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .onSizeChanged { viewportSize = it }
             .zIndex(47f)
     ) {
         Box(
@@ -531,7 +550,8 @@ internal fun InputSelectionMenuPopup(
                             onDismiss()
                         }
                     )
-                }
+                },
+                modifier = Modifier.widthIn(max = popupMaxWidth)
             )
         }
     }
@@ -1374,6 +1394,10 @@ private fun InputActionMenuButton(
             .semantics {
                 contentDescription = label
                 role = Role.Button
+                onClick(label = label) {
+                    onClick()
+                    true
+                }
             }
             .pointerInput(label) {
                 detectTapGestures(onTap = { onClick() })
@@ -1403,7 +1427,9 @@ private fun InputActionMenuCardContent(
         modifier = modifier
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+            modifier = Modifier
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 6.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             actions.forEachIndexed { index, action ->

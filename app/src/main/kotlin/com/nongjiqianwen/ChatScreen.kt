@@ -150,6 +150,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.painterResource
@@ -7988,6 +7989,10 @@ private fun MessageActionMenuButton(
             .semantics {
                 contentDescription = label
                 role = Role.Button
+                onClick(label = label) {
+                    onClick()
+                    true
+                }
             }
             .pointerInput(label) {
                 detectTapGestures(onTap = { onClick() })

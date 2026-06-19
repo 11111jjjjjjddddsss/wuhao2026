@@ -59,6 +59,27 @@ internal object PendingChatSendWorkScheduler {
             .cancelUniqueWork(uniqueName(chatScopeId, userMessageId))
     }
 
+    fun cancelAndMarkTerminalFailure(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String,
+        reason: String
+    ) {
+        PendingChatSendRuntime.markInactive(userMessageId)
+        val uploadedImageUrls = PendingChatSendStore.get(context, chatScopeId, userMessageId)
+            ?.imageUrls
+            .orEmpty()
+        PendingChatSendStore.markTerminalFailureAndRemovePending(
+            context = context,
+            chatScopeId = chatScopeId,
+            userMessageId = userMessageId,
+            reason = reason,
+            imageUrls = uploadedImageUrls
+        )
+        WorkManager.getInstance(context.applicationContext)
+            .cancelUniqueWork(uniqueName(chatScopeId, userMessageId))
+    }
+
     fun cancelAllForScope(context: Context, chatScopeId: String) {
         PendingChatSendStore.userMessageIdsForScope(context, chatScopeId).forEach { userMessageId ->
             cancelAndRemove(context, chatScopeId, userMessageId)
@@ -67,7 +88,7 @@ internal object PendingChatSendWorkScheduler {
 
     fun cancelAllForAuthUserId(context: Context, authUserId: String) {
         PendingChatSendStore.keysForAuthUserId(context, authUserId).forEach { (chatScopeId, userMessageId) ->
-            cancelAndRemove(context, chatScopeId, userMessageId)
+            cancelAndMarkTerminalFailure(context, chatScopeId, userMessageId, "auth")
         }
     }
 

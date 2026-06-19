@@ -301,6 +301,18 @@ func TestProcessSessionSummariesKeepsPendingOnTimeout(t *testing.T) {
 	}
 }
 
+func TestSummaryRedisLeaseTTLClampsBelowExtractionTimeout(t *testing.T) {
+	previousTimeout := summaryExtractionTimeout
+	summaryExtractionTimeout = 60 * time.Second
+	defer func() { summaryExtractionTimeout = previousTimeout }()
+
+	t.Setenv("SUMMARY_REDIS_LEASE_TTL_SECONDS", "1")
+
+	if got, want := summaryRedisLeaseTTL(), 90*time.Second; got != want {
+		t.Fatalf("summary redis lease ttl = %s, want %s", got, want)
+	}
+}
+
 type summaryFakeStore struct {
 	mu            sync.Mutex
 	writeCalls    int

@@ -86,6 +86,8 @@ try {
     manual_locked  = $response.manual_locked
     manual_by      = $response.manual_by
     manual_at      = $response.manual_at
+    content_present = $response.content_present
+    content_valid   = $response.content_valid
     item_count     = $response.item_count
     should_publish = -not ($response.manual_locked -eq $true -and $response.source_type -eq "manual")
 } | ConvertTo-Json -Depth 6

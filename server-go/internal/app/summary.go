@@ -226,6 +226,10 @@ func summaryRedisLeaseTTL() time.Duration {
 	if ttl <= 0 {
 		return defaultSummaryRedisLeaseTTL
 	}
+	minTTL := summaryExtractionTimeout + 30*time.Second
+	if ttl < minTTL {
+		return minTTL
+	}
 	return ttl
 }
 

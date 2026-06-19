@@ -9,6 +9,7 @@
 - [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：买服务器前按功能逐个深度巡检的记录
 - [infra-readiness.md](D:/wuhao/docs/runbooks/infra-readiness.md)：正式云资源采购前的基础设施准备清单
 - [operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md)：Codex 协助整体 App / 后端 / 管理后台运维的总蓝图
+- [codex-automations.md](D:/wuhao/docs/runbooks/codex-automations.md)：本机 Codex 全局自动化标准配置、边界和核查入口
 - [deploy-ecs.md](D:/wuhao/docs/runbooks/deploy-ecs.md)：ECS 发版入口
 - [deploy-sae.md](D:/wuhao/docs/runbooks/deploy-sae.md)：SAE 历史备选入口
 - [rollback.md](D:/wuhao/docs/runbooks/rollback.md)：回滚入口

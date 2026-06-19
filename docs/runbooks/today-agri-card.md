@@ -16,7 +16,7 @@
 - 内部人工发布接口：`POST /internal/jobs/today-agri-card/manual`，只供本机脚本 / Codex 自动化使用，必须带 `DAILY_AGRI_JOB_SECRET`
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
 - 后台人工发布接口：`POST /admin-api/v1/today-agri/manual`，仅 `owner / content_ops`；该接口仍写同一张 `daily_agri_cards`，不是第二套内容系统
-- 当前生产推荐主链：ECS systemd timer 每天自动触发一次生成，后台补跑只作为异常兜底；人工发布适合晚上准备次日 3 条内容，发布后会标记 `source_type=manual / manual_locked=1 / manual_by / manual_at`，同一天自动生成和补跑只复用缓存，不覆盖人工内容。没人人工发布时，原自动生成继续兜底
+- 当前生产推荐主链：ECS systemd timer 每天约 05:35 主触发一次，并有约 05:50 / 06:10 两次早晨补查；后台补跑只作为异常兜底。人工发布适合晚上准备次日 3 条内容，发布后会标记 `source_type=manual / manual_locked=1 / manual_by / manual_at`，同一天自动生成和补跑只复用缓存，不覆盖人工内容。没人人工发布时，原自动生成继续兜底
 - 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情固定独立走 OpenAI 兼容 `chat/completions + qwen3.5-plus + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true`，两条链路分开，不互相影响。`enable_thinking=false` 必须放在请求顶层。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和更长延迟，今日农情默认不使用；当前不保留 Flash、qwen-turbo、Responses、multimodal 或 DashScope `text-generation/generation` 作为生产候选，也不提供环境变量模型切换入口。用户端已经取消外部链接点击，公开接口只返回标题、摘要和短来源名称；URL、source_index 和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户文本
 
 ## 环境变量
@@ -262,7 +262,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\publish-tod
 
 人工发布后，当天 / 次日清晨自动任务和后台“补跑今天”看到 `manual_locked=1` 会直接跳过，不会覆盖人工内容。若要重新改人工内容，仍从后台“人工发布”再次提交同一天 3 条内容即可覆盖并继续锁定。若完全没人写，ECS 定时任务仍按 05:35 左右自动生成。
 
-本机 Codex 全局自动化 `今日农情人工发布` 当前配置为每天北京时间 22:00 和 23:00 执行，模型 `gpt-5.5`、`reasoning_effort=xhigh`、工作目录 `D:\wuhao`。自动化只负责读本 runbook 的写作口径、核对公开新闻、写 3 条今日农情并通过脚本发布；它不能修改任何仓库文件或本机配置，不能 `apply_patch`，不能 `git add / commit / push`，不能改服务端今日农情提示词、项目文档、业务代码、脚本、模型输出限制或主聊天滚动链。Codex 自动化只是人工新闻发布助手，不是后端今日农情系统替代品；若电脑未开机或 Codex 本机任务没跑，ECS 后端 05:35 自动生成仍是兜底。如果需要“电脑开机后补跑错过的 22:00 / 23:00”，需另做 Windows 启动补偿任务，当前未配置。
+本机 Codex 全局自动化 `今日农情人工发布` 当前配置为每天北京时间 22:00 和 23:00 执行，模型 `gpt-5.5`、`reasoning_effort=xhigh`、工作目录 `D:\wuhao`。自动化只负责读本 runbook 的写作口径、核对公开新闻、写 3 条今日农情并通过脚本发布；它不能修改任何仓库文件或本机配置，不能 `apply_patch`，不能 `git add / commit / push`，不能改服务端今日农情提示词、项目文档、业务代码、脚本、模型输出限制或主聊天滚动链。Codex 自动化只是人工新闻发布助手，不是后端今日农情系统替代品；若电脑未开机或 Codex 本机任务没跑，ECS 后端 05:35 自动生成仍是兜底。如果需要“电脑开机后补跑错过的 22:00 / 23:00”，需另做 Windows 启动补偿任务，当前未配置。完整本机自动化标准配置见 [codex-automations.md](D:/wuhao/docs/runbooks/codex-automations.md)。
 
 ## 定时任务
 

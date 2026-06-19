@@ -48,7 +48,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-andro
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\sync-oss-download-certificate.ps1
 ```
 
-本机 Codex 已创建每周“农技千查续费与证书巡检”自动化，默认检查 ECS / RDS / Redis / OSS 包、域名、免费证书、下载域名 OSS 证书、短信套餐、模型资源包 / 节省计划和异常账单；它只做巡检和必要的 OSS 证书同步，不购买、不续费、不退订、不释放任何付费资源。
+本机 Codex 已创建每周“农技千查续费与证书巡检”自动化，默认检查 ECS / RDS / Redis / OSS 包、域名、免费证书、下载域名 OSS 证书、短信套餐、模型资源包 / 节省计划和异常账单；它只做巡检和必要的 OSS 证书同步，不购买、不续费、不退订、不释放任何付费资源。标准配置见 [codex-automations.md](D:/wuhao/docs/runbooks/codex-automations.md)。
 
 代理测试或疑似卡顿前后，可加跑服务器性能快检：
 

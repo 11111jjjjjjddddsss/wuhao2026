@@ -769,14 +769,14 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must explicitly show that today-agri context is only carried after the remote card is confirmed ready."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\(NETWORK_UNAVAILABLE_HINT_TEXT,\s*"未验证联网 / 门户 Wi-Fi / 无网络",\s*UiCopyPreviewKind\.Network\)' `
         "Debug UI copy preview must show that network unavailable covers unvalidated networks and captive portal Wi-Fi."
-    Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
-        "Message action menu buttons must expose button semantics for accessibility and UI automation."
+    Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button(?s:.*?)onClick\(label\s*=\s*label\)' `
+        "Message action menu buttons must expose clickable button semantics for accessibility and UI automation."
     Require-Match $failures $chatScreen 'if\s*\(\s*canAttemptRemoteAssistantRecovery\(reason\)\s*\)(?s:.*?)upsertAssistantMessagePlaceholder(?s:.*?)failedAssistantMessageStates\[finalId\]\s*=\s*FailedAssistantMessageState(?s:.*?)retryingAssistantMessageIds\[finalId\]\s*=\s*true' `
         "Recoverable stream interruptions must keep the assistant tail visible as a retrying footer while snapshot recovery runs."
     Require-Match $failures $chatScreen 'fun\s+finalizeInterruptedAssistant(?s:.*?)retryingAssistantMessageIds\.remove\(assistantMessageId\)' `
         "Assistant recovery must clear retrying footer state before settling into completed or retryable failed state."
-    Require-Match $failures $chatComposerPanel 'InputActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button' `
-        "Input action menu buttons must expose button semantics for accessibility and UI automation."
+    Require-Match $failures $chatComposerPanel 'InputActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button(?s:.*?)onClick\(label\s*=\s*label\)' `
+        "Input action menu buttons must expose clickable button semantics for accessibility and UI automation."
     Require-Match $failures $chatComposerPanel 'ComposerSendActionButton(?s:.*?)contentDescription\s*=\s*"发送"(?s:.*?)role\s*=\s*Role\.Button' `
         "Composer send button must expose a hidden button label without adding visible text."
     Require-Match $failures $chatComposerPanel 'ComposerInlineAddButton(?s:.*?)contentDescription\s*=\s*"添加图片"(?s:.*?)role\s*=\s*Role\.Button' `

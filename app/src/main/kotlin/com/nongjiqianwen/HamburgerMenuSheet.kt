@@ -136,6 +136,16 @@ private const val APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY = "pending_install
 private const val APP_ICP_RECORD_NUMBER = "京ICP备2026031728号-2A"
 private val supportBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 
+private fun String.supportMessageCharCount(): Int =
+    codePointCount(0, length)
+
+private fun String.takeSupportMessageChars(maxChars: Int): String {
+    if (maxChars <= 0) return ""
+    if (supportMessageCharCount() <= maxChars) return this
+    val endIndex = offsetByCodePoints(0, maxChars)
+    return substring(0, endIndex)
+}
+
 private fun normalizeSupportLinkTarget(raw: String): String {
     val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
     if (trimmed.isBlank()) return raw.trim()
@@ -1725,7 +1735,7 @@ private fun HamburgerRiskNoticeContent(
             body = "未成年人应在监护人指导下使用。请尽量避免上传未成年人照片、身份信息、联系方式或其他无关敏感内容；未满十四周岁提交个人信息应取得监护人同意。"
         )
         HamburgerAgreementSection(
-            title = "七、紧急情况别等 AI",
+            title = "七、紧急情况优先线下处理",
             body = "发生大面积突发病害、药害、灾害、食品安全、人身安全或重大财产风险时，请优先联系当地农业农村部门、植保站、应急或监管机构以及线下专业人员。AI 回复仅作辅助参考，请以现场专业处理为先。"
         )
     }
@@ -3035,7 +3045,7 @@ private fun HamburgerSupportFeedbackPage(
             onPendingAction(SUPPORT_SEND_FAILED_HINT)
             return
         }
-        if (inputValue.text.length > SUPPORT_MESSAGE_MAX_CHARS) {
+        if (inputValue.text.supportMessageCharCount() > SUPPORT_MESSAGE_MAX_CHARS) {
             onPendingAction("最多输入2000字")
             return
         }
@@ -3110,10 +3120,10 @@ private fun HamburgerSupportFeedbackPage(
                 if (!sending && sendingHint != null) {
                     sendingHint = null
                 }
-                if (next.text.length <= SUPPORT_MESSAGE_MAX_CHARS) {
+                if (next.text.supportMessageCharCount() <= SUPPORT_MESSAGE_MAX_CHARS) {
                     inputValue = next
                 } else {
-                    val clipped = next.text.take(SUPPORT_MESSAGE_MAX_CHARS)
+                    val clipped = next.text.takeSupportMessageChars(SUPPORT_MESSAGE_MAX_CHARS)
                     inputValue = next.copy(
                         text = clipped,
                         selection = TextRange(clipped.length)
@@ -3186,7 +3196,7 @@ private fun HamburgerSupportFeedbackContent(
     val addIconSize = if (screenWidth < 360.dp) 26.dp else 28.dp
     val inputText = inputValue.text
     val hasContent = inputText.trim().isNotEmpty() || selectedImages.isNotEmpty()
-    val canSend = hasContent && !sending && inputText.length <= SUPPORT_MESSAGE_MAX_CHARS
+    val canSend = hasContent && !sending && inputText.supportMessageCharCount() <= SUPPORT_MESSAGE_MAX_CHARS
     var inputFocused by remember { mutableStateOf(false) }
     var previousMessageCount by remember { mutableStateOf(messages.size) }
     var didInitialMessageScroll by remember { mutableStateOf(messages.isNotEmpty()) }

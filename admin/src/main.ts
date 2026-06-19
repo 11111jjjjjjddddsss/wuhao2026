@@ -675,7 +675,7 @@ async function giftCardsPage(): Promise<string> {
               </form>
               ${createdGiftCardCodesBlock(lastGiftCardCodes)}
             `
-            : notice("只读追溯", "当前角色只能查看批次、卡码、兑换账号和失败原因，不开放生成或作废操作。", "info")
+            : notice("只读追溯", "当前角色只能查看批次、卡尾号/脱敏码、兑换账号和失败原因，不开放生成或作废操作。", "info")
         }
       </div>
     </section>
