@@ -23,6 +23,11 @@ internal data class PendingChatSend(
     val recoverableFailureCount: Int = 0
 )
 
+internal data class PendingChatSendTerminalFailure(
+    val reason: String,
+    val imageUrls: List<String> = emptyList()
+)
+
 internal object PendingChatSendRuntime {
     private val activeMessageIds = Collections.synchronizedSet(mutableSetOf<String>())
 
@@ -142,18 +147,46 @@ internal object PendingChatSendStore {
         context: Context,
         chatScopeId: String,
         userMessageId: String,
-        reason: String
+        reason: String,
+        imageUrls: List<String> = emptyList()
     ) {
         val safeReason = reason.trim().take(48).ifBlank { "failed" }
+        val failure = PendingChatSendTerminalFailure(
+            reason = safeReason,
+            imageUrls = imageUrls.filter { it.isNotBlank() }.distinct()
+        )
         prefs(context).edit()
-            .putString(terminalFailureKey(chatScopeId, userMessageId), safeReason)
+            .putString(terminalFailureKey(chatScopeId, userMessageId), gson.toJson(failure))
             .commit()
     }
 
-    fun terminalFailureReason(context: Context, chatScopeId: String, userMessageId: String): String? =
-        prefs(context)
+    fun terminalFailure(context: Context, chatScopeId: String, userMessageId: String): PendingChatSendTerminalFailure? {
+        val raw = prefs(context)
             .getString(terminalFailureKey(chatScopeId, userMessageId), null)
             ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return try {
+            val parsed = gson.fromJson(raw, PendingChatSendTerminalFailure::class.java)
+                ?: return null
+            val safeReason = runCatching { parsed.reason.trim() }.getOrDefault("")
+            if (safeReason.isBlank()) {
+                null
+            } else {
+                PendingChatSendTerminalFailure(
+                    reason = safeReason.take(48),
+                    imageUrls = parsed.imageUrls.orEmpty().filter { it.isNotBlank() }.distinct()
+                )
+            }
+        } catch (_: JsonSyntaxException) {
+            PendingChatSendTerminalFailure(reason = raw.trim().take(48).ifBlank { "failed" })
+        }
+    }
+
+    fun terminalFailureReason(context: Context, chatScopeId: String, userMessageId: String): String? =
+        terminalFailure(context, chatScopeId, userMessageId)?.reason
+
+    fun terminalFailureImageUrls(context: Context, chatScopeId: String, userMessageId: String): List<String> =
+        terminalFailure(context, chatScopeId, userMessageId)?.imageUrls.orEmpty()
 
     fun hasTerminalFailure(context: Context, chatScopeId: String, userMessageId: String): Boolean =
         terminalFailureReason(context, chatScopeId, userMessageId) != null
@@ -168,7 +201,8 @@ internal object PendingChatSendStore {
         val all = prefs(context).all
         if (all.isEmpty()) return emptySet()
         return buildSet {
-            all.values.forEach { value ->
+            all.forEach { (storedKey, value) ->
+                if (!storedKey.startsWith(KEY_PREFIX)) return@forEach
                 val raw = value as? String ?: return@forEach
                 val pending = try {
                     gson.fromJson(raw, PendingChatSend::class.java)

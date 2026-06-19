@@ -149,11 +149,17 @@ class PendingChatSendWorker(
     }
 
     private fun failTerminal(chatScopeId: String, userMessageId: String, reason: String): Result {
+        val uploadedImageUrls = PendingChatSendStore.get(
+            applicationContext,
+            chatScopeId,
+            userMessageId
+        )?.imageUrls.orEmpty()
         PendingChatSendStore.markTerminalFailure(
             context = applicationContext,
             chatScopeId = chatScopeId,
             userMessageId = userMessageId,
-            reason = reason
+            reason = reason,
+            imageUrls = uploadedImageUrls
         )
         PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
         PendingChatSendRuntime.markInactive(userMessageId)

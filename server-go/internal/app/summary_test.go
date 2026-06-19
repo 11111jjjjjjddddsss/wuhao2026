@@ -302,11 +302,22 @@ func TestProcessSessionSummariesKeepsPendingOnTimeout(t *testing.T) {
 }
 
 type summaryFakeStore struct {
-	mu           sync.Mutex
-	writeCalls   int
-	writeOK      bool
-	pendingSet   bool
-	pendingValue bool
+	mu            sync.Mutex
+	writeCalls    int
+	writeOK       bool
+	pendingSet    bool
+	pendingValue  bool
+	snapshot      *SessionSnapshot
+	nextUpdatedAt int64
+}
+
+func (s *summaryFakeStore) GetSessionSnapshot(ctx context.Context, userID string) (*SessionSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.snapshot == nil {
+		return nil, nil
+	}
+	return cloneSummaryTestSnapshot(s.snapshot), nil
 }
 
 func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error) {
@@ -315,6 +326,23 @@ func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context,
 	s.writeCalls++
 	if !s.writeOK {
 		return false, nil
+	}
+	if s.snapshot != nil {
+		if s.snapshot.RoundTotal != expectedRoundTotal ||
+			s.snapshot.UpdatedAt != expectedUpdatedAt ||
+			s.snapshot.SessionGeneration != expectedSessionGeneration {
+			return false, nil
+		}
+		s.snapshot.MemoryDocument = memoryDocument
+		if len(s.snapshot.PendingMemoryJobs) > 0 {
+			s.snapshot.PendingMemoryJobs = s.snapshot.PendingMemoryJobs[1:]
+		}
+		s.snapshot.PendingMemory = len(s.snapshot.PendingMemoryJobs) > 0
+		if s.nextUpdatedAt <= s.snapshot.UpdatedAt {
+			s.nextUpdatedAt = s.snapshot.UpdatedAt + 1
+		}
+		s.snapshot.UpdatedAt = s.nextUpdatedAt
+		s.nextUpdatedAt++
 	}
 	return true, nil
 }
@@ -325,6 +353,27 @@ func (s *summaryFakeStore) SetUserMemoryPendingIfCurrent(ctx context.Context, us
 	s.pendingSet = true
 	s.pendingValue = pending
 	return true, nil
+}
+
+func cloneSummaryTestSnapshot(source *SessionSnapshot) *SessionSnapshot {
+	if source == nil {
+		return nil
+	}
+	cloned := *source
+	cloned.ARoundsFull = cloneSessionRounds(source.ARoundsFull)
+	if len(source.PendingMemoryJobs) > 0 {
+		cloned.PendingMemoryJobs = make([]MemoryExtractionJob, len(source.PendingMemoryJobs))
+		for index, job := range source.PendingMemoryJobs {
+			cloned.PendingMemoryJobs[index] = MemoryExtractionJob{
+				RoundTotal: job.RoundTotal,
+				Rounds:     cloneSessionRounds(job.Rounds),
+			}
+		}
+	}
+	if len(source.TodayAgriItems) > 0 {
+		cloned.TodayAgriItems = append([]TodayAgriUserItem(nil), source.TodayAgriItems...)
+	}
+	return &cloned
 }
 
 func TestProcessSessionSummariesKeepsPendingWhenSnapshotStale(t *testing.T) {
@@ -429,6 +478,87 @@ func TestProcessSessionSummariesUsesFrozenPendingJobWindow(t *testing.T) {
 	}
 	if strings.Contains(userContent, "第七轮新问题") {
 		t.Fatalf("summary input should not slide into later A window: %q", userContent)
+	}
+}
+
+func TestProcessSessionSummariesCatchesUpMultiplePendingJobsWithFreshSnapshot(t *testing.T) {
+	requests := 0
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		messages, ok := payload["messages"].([]any)
+		if !ok || len(messages) != 2 {
+			t.Fatalf("messages mismatch: %#v", payload["messages"])
+		}
+		userMessage, _ := messages[1].(map[string]any)
+		userContent, _ := userMessage["content"].(string)
+		switch requests {
+		case 1:
+			if !strings.Contains(userContent, "第六轮") || strings.Contains(userContent, "第十二轮") {
+				t.Fatalf("first extraction should use first frozen job only: %q", userContent)
+			}
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"短期承接：已整理第六轮。\n农业重点事件：第六轮。"}}]}`))
+		case 2:
+			if !strings.Contains(userContent, "已整理第六轮") || !strings.Contains(userContent, "第十二轮") {
+				t.Fatalf("second extraction should use fresh memory and second job: %q", userContent)
+			}
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"短期承接：已整理第六轮和第十二轮。\n农业重点事件：第十二轮。"}}]}`))
+		default:
+			t.Fatalf("unexpected extra extraction request %d", requests)
+		}
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	snapshot := &SessionSnapshot{
+		UserID:            "u1",
+		PendingMemory:     true,
+		MemoryDocument:    "短期承接：旧短期",
+		RoundTotal:        12,
+		UpdatedAt:         1700000000000,
+		SessionGeneration: 2,
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{
+				RoundTotal: 6,
+				Rounds: []SessionRound{
+					{User: "第六轮问题", Assistant: "第六轮回答"},
+				},
+			},
+			{
+				RoundTotal: 12,
+				Rounds: []SessionRound{
+					{User: "第十二轮问题", Assistant: "第十二轮回答"},
+				},
+			},
+		},
+	}
+	store := &summaryFakeStore{
+		writeOK:       true,
+		snapshot:      cloneSummaryTestSnapshot(snapshot),
+		nextUpdatedAt: 1700000000100,
+	}
+	service := &SummaryService{
+		store:   store,
+		prompts: summaryTestPromptLoader(t),
+		bailian: NewBailianClient(),
+		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+
+	service.ProcessSessionSummaries("u1", snapshot)
+
+	if requests != 2 || store.writeCalls != 2 {
+		t.Fatalf("expected two catch-up writes, requests=%d writes=%d", requests, store.writeCalls)
+	}
+	if store.snapshot.PendingMemory || len(store.snapshot.PendingMemoryJobs) != 0 {
+		t.Fatalf("all pending jobs should be popped: %#v", store.snapshot.PendingMemoryJobs)
+	}
+	if snapshot.PendingMemory != true || len(snapshot.PendingMemoryJobs) != 1 {
+		t.Fatalf("original stale snapshot should only reflect the first local pop: %#v", snapshot.PendingMemoryJobs)
 	}
 }
 

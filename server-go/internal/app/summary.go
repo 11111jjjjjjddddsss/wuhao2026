@@ -19,6 +19,7 @@ import (
 )
 
 type summaryStore interface {
+	GetSessionSnapshot(ctx context.Context, userID string) (*SessionSnapshot, error)
 	WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error)
 	SetUserMemoryPendingIfCurrent(ctx context.Context, userID string, pending bool, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error)
 }
@@ -37,6 +38,7 @@ const (
 	summaryRedisLeasePrefix           = "nj:summary:lease:"
 	defaultSummaryRedisLeaseTTL       = 2 * time.Minute
 	defaultSummaryRedisLeaseOpTimeout = time.Second
+	defaultSummaryMaxCatchUpJobs      = 8
 	summaryRedisLeaseReleaseScript    = `
 if redis.call("GET", KEYS[1]) == ARGV[1] then
   return redis.call("DEL", KEYS[1])
@@ -83,31 +85,54 @@ func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *Sessio
 		return
 	}
 	defer s.finish(userID)
-	releaseLease, acquired := s.tryAcquireRemoteLease(context.Background(), userID)
-	if !acquired {
-		s.log().Info("summary extraction skipped: remote lease unavailable", "userId", userID, "roundTotal", snapshot.RoundTotal)
-		return
-	}
-	defer releaseLease()
 	if s.bailian == nil || !s.bailian.HasKeyConfigured() {
 		s.log().Warn("summary extraction skipped: model backend unavailable", "userId", userID)
 		return
 	}
 
+	ctx := context.Background()
+	currentSnapshot := snapshot
+	for processedJobs := 0; currentSnapshot != nil && currentSnapshot.PendingMemory; processedJobs++ {
+		if processedJobs >= summaryMaxCatchUpJobsPerRun() {
+			s.log().Warn("summary extraction paused: catch-up limit reached", "userId", userID, "remaining_jobs", len(currentSnapshot.PendingMemoryJobs))
+			return
+		}
+		releaseLease, acquired := s.tryAcquireRemoteLease(ctx, userID)
+		if !acquired {
+			s.log().Info("summary extraction skipped: remote lease unavailable", "userId", userID, "roundTotal", currentSnapshot.RoundTotal)
+			return
+		}
+		written := s.processOnePendingMemoryJob(ctx, userID, currentSnapshot)
+		releaseLease()
+		if !written || !currentSnapshot.PendingMemory {
+			return
+		}
+		freshSnapshot, err := s.store.GetSessionSnapshot(ctx, userID)
+		if err != nil {
+			s.log().Warn("summary extraction paused: refresh snapshot failed", "userId", userID, "error", err)
+			return
+		}
+		currentSnapshot = freshSnapshot
+	}
+}
+
+func (s *SummaryService) processOnePendingMemoryJob(ctx context.Context, userID string, snapshot *SessionSnapshot) bool {
+	if s == nil || snapshot == nil || !snapshot.PendingMemory {
+		return false
+	}
 	dialogueText := buildDialogueText(memoryExtractionRounds(snapshot))
 	if dialogueText == "" {
 		s.log().Warn("summary extraction skipped: empty dialogue", "userId", userID)
-		return
+		return false
 	}
 
-	ctx := context.Background()
 	extractCtx, cancelExtract := context.WithTimeout(ctx, summaryExtractionTimeout)
 	nextMemory, err := s.extractSummary(extractCtx, snapshot.MemoryDocument, dialogueText)
 	cancelExtract()
 	if err != nil {
 		s.keepPending(ctx, userID, snapshot)
 		s.log().Error("summary extraction failed", "userId", userID, "error", err)
-		return
+		return false
 	}
 
 	written, err := s.store.WriteUserMemoryDocumentIfCurrent(
@@ -121,11 +146,11 @@ func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *Sessio
 	if err != nil {
 		s.keepPending(ctx, userID, snapshot)
 		s.log().Error("write memory document failed", "userId", userID, "error", err)
-		return
+		return false
 	}
 	if !written {
 		s.log().Info("memory document write skipped: snapshot is stale", "userId", userID, "roundTotal", snapshot.RoundTotal)
-		return
+		return false
 	}
 
 	snapshot.MemoryDocument = nextMemory.MemoryDocument
@@ -134,6 +159,7 @@ func (s *SummaryService) ProcessSessionSummaries(userID string, snapshot *Sessio
 	}
 	snapshot.PendingMemory = len(snapshot.PendingMemoryJobs) > 0
 	s.log().Info("memory document extraction success", "userId", userID, "memory_chars", len(nextMemory.MemoryDocument))
+	return true
 }
 
 func memoryExtractionRounds(snapshot *SessionSnapshot) []SessionRound {
@@ -209,6 +235,17 @@ func summaryRedisLeaseOpTimeout() time.Duration {
 		return defaultSummaryRedisLeaseOpTimeout
 	}
 	return timeout
+}
+
+func summaryMaxCatchUpJobsPerRun() int {
+	limit := envIntWithDefault("SUMMARY_MAX_CATCH_UP_JOBS_PER_RUN", defaultSummaryMaxCatchUpJobs)
+	if limit < 1 {
+		return 1
+	}
+	if limit > 20 {
+		return 20
+	}
+	return limit
 }
 
 func (s *SummaryService) keepPending(ctx context.Context, userID string, snapshot *SessionSnapshot) {

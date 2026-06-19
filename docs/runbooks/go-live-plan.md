@@ -132,7 +132,7 @@
 目标：先上最小可用版本，不把完整管理后台和支付做成上架前硬门槛。
 
 - 使用最终图标、最终名称、稳定包名和同一签名证书打 release 包。
-- release 构建必须使用本机 release 签名配置；Android 构建默认使用正式 https 后端地址 `https://api.nongjiqiancha.cn`，只有特殊联调才覆盖 `UPLOAD_BASE_URL`。缺少 `NONGJI_ANDROID_RELEASE_*` 签名配置或最终 `UPLOAD_BASE_URL` 不是 https 时，不允许产出正式 release 包。
+- release 构建必须使用本机 release 签名配置；Android 构建固定使用正式 https 后端地址 `https://api.nongjiqiancha.cn`，当前不支持通过 Gradle 参数或环境变量临时覆盖 `UPLOAD_BASE_URL`。若确需特殊联调，必须先同步更新仓库规则、构建门禁和项目记忆；缺少 `NONGJI_ANDROID_RELEASE_*` 签名配置或最终 `UPLOAD_BASE_URL` 不是 https 生产地址时，不允许产出正式 release 包。
 - 提交备案号、软著 / 电子版权、隐私政策、用户协议、权限说明、测试账号和截图。
 - 若应用市场因图标重复、名称混淆、截图不一致、权限说明或隐私问题打回，优先按打回原因小改，不顺手重构功能。
 - 商标注册可以继续推进，但不作为首版上架的唯一前置；若平台或投诉方要求权利证明，再按实际情况补材料。

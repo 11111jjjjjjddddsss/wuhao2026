@@ -2945,6 +2945,7 @@ fun ChatScreen() {
     var messageViewportMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var composerMeasured by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var measuredComposerHostHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
+    var currentComposerHostHeightPx by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val startupBottomReserveReady by remember {
         derivedStateOf { measuredComposerHostHeightPx > 0 }
     }
@@ -3244,7 +3245,9 @@ fun ChatScreen() {
                 viewportStartOffset = layoutInfo.viewportStartOffset,
                 viewportEndOffset = layoutInfo.viewportEndOffset,
                 minVisiblePx = todayAgriMinVisiblePx,
-                coveredBottomPx = measuredComposerHostHeightPx.coerceAtLeast(stableComposerBottomBarHeightPx)
+                coveredBottomPx = currentComposerHostHeightPx
+                    .coerceAtLeast(measuredComposerHostHeightPx)
+                    .coerceAtLeast(stableComposerBottomBarHeightPx)
             )
         }
             .distinctUntilChanged()
@@ -3897,6 +3900,8 @@ fun ChatScreen() {
 
     DisposableEffect(uiRuntimeResetKey) {
         onDispose {
+            PendingChatSendStore.userMessageIdsForScope(context, chatScopeId)
+                .forEach(PendingChatSendRuntime::markInactive)
             mainHandler.removeCallbacksAndMessages(null)
             streamRevealJob?.cancel()
             remoteRecoveryJob?.cancel()
@@ -4529,8 +4534,24 @@ fun ChatScreen() {
                         } else {
                             null
                         }
-                    }
+                }
                 terminalFailedSourceUserMessageIds.forEach { (sourceUserMessageId, reason) ->
+                    val terminalImageUrls = PendingChatSendStore.terminalFailureImageUrls(
+                        context,
+                        chatScopeId,
+                        sourceUserMessageId
+                    )
+                    if (terminalImageUrls.isNotEmpty()) {
+                        val messageIndex = messages.indexOfFirst { message ->
+                            message.id == sourceUserMessageId && message.role == ChatRole.USER
+                        }
+                        if (messageIndex >= 0) {
+                            val message = messages[messageIndex]
+                            if (message.imageUrls.orEmpty() != terminalImageUrls) {
+                                messages[messageIndex] = message.copy(imageUrls = terminalImageUrls)
+                            }
+                        }
+                    }
                     failedUserMessageStates.putIfAbsent(
                         sourceUserMessageId,
                         reason.ifBlank { "network" }
@@ -5168,6 +5189,56 @@ fun ChatScreen() {
 
     fun userBlocksInitialWorklineAutoSwitch(): Boolean =
         userIsActivelyBrowsingInitialWorkline() || scrollRuntime.userInteracting.value
+
+    var todayAgriAutoAnchorHadCard by remember(uiRuntimeResetKey) { mutableStateOf(hasTodayAgriCard) }
+    var todayAgriAutoAnchorEligibleBeforeInsert by remember(uiRuntimeResetKey) { mutableStateOf(false) }
+
+    fun userBlocksTodayAgriInsertedAnchor(): Boolean =
+        chatListUserDragging ||
+            recyclerScrollInProgress ||
+            scrollRuntime.userInteracting.value ||
+            scrollMode == ScrollMode.UserBrowsing
+
+    LaunchedEffect(
+        hasTodayAgriCard,
+        atBottom,
+        chatListState.canScrollForward,
+        chatListUserDragging,
+        recyclerScrollInProgress,
+        scrollRuntime.userInteracting.value,
+        scrollMode,
+        isStreaming,
+        hasStreamingItem,
+        messages.size,
+        chatListItems.size
+    ) {
+        if (!hasTodayAgriCard) {
+            todayAgriAutoAnchorEligibleBeforeInsert =
+                !isStreaming &&
+                    !hasStreamingItem &&
+                    !userBlocksTodayAgriInsertedAnchor() &&
+                    isForwardListAtExactBottom()
+        }
+    }
+
+    LaunchedEffect(
+        hasTodayAgriCard,
+        shouldShowTodayAgriCard,
+        todayAgriAfterMessageIdForRender,
+        chatListItems.size,
+        currentTodayAgriCardDay
+    ) {
+        val insertedNow = hasTodayAgriCard && !todayAgriAutoAnchorHadCard
+        todayAgriAutoAnchorHadCard = hasTodayAgriCard
+        if (!insertedNow || !shouldShowTodayAgriCard) return@LaunchedEffect
+        if (!todayAgriAutoAnchorEligibleBeforeInsert) return@LaunchedEffect
+        if (isStreaming || hasStreamingItem || userBlocksTodayAgriInsertedAnchor()) return@LaunchedEffect
+        withFrameNanos { }
+        if (hasTodayAgriCard && !userBlocksTodayAgriInsertedAnchor()) {
+            requestProgrammaticForwardListBottomAnchor()
+        }
+        todayAgriAutoAnchorEligibleBeforeInsert = false
+    }
 
     LaunchedEffect(
         initialWorklinePhase,
@@ -6909,6 +6980,7 @@ fun ChatScreen() {
                                                 isPendingStreamingFinalizeAssistant ||
                                                 !isActiveStreamingAssistant,
                                         showDisclaimer = true,
+                                        tableCopyEnabled = failedAssistantState == null,
                                         onStreamingContentBoundsChanged = { bounds ->
                                             if (failedAssistantState == null) {
                                                 if (bounds != null) {
@@ -7294,6 +7366,9 @@ fun ChatScreen() {
                     .imePadding()
                     .zIndex(55f)
                     .onSizeChanged { size ->
+                        if (currentComposerHostHeightPx != size.height) {
+                            currentComposerHostHeightPx = size.height
+                        }
                         val canRecordCollapsedComposerHeight =
                             !sendStartBottomPaddingLockActive &&
                                 !isComposerSettling &&

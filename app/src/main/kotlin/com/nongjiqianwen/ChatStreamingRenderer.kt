@@ -1354,6 +1354,7 @@ internal fun ChatStreamingRenderer(
     showLeadingSectionDivider: Boolean = false,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)?,
     expandToFullWidth: Boolean = true,
+    tableCopyEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     RendererAssistantMessageContentImpl(
@@ -1365,6 +1366,7 @@ internal fun ChatStreamingRenderer(
         showLeadingSectionDivider = showLeadingSectionDivider,
         onStreamingContentBoundsChanged = onStreamingContentBoundsChanged,
         expandToFullWidth = expandToFullWidth,
+        tableCopyEnabled = tableCopyEnabled,
         modifier = modifier
     )
 }
@@ -1379,6 +1381,7 @@ private fun RendererAssistantMessageContentImpl(
     showLeadingSectionDivider: Boolean = false,
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
     expandToFullWidth: Boolean = true,
+    tableCopyEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val shouldRenderDisclaimer = remember(content, showDisclaimer) {
@@ -1426,13 +1429,15 @@ private fun RendererAssistantMessageContentImpl(
                 SelectionContainer {
                     RendererAssistantMarkdownContentImpl(
                         content = content,
-                        showLeadingSectionDivider = showLeadingSectionDivider
+                        showLeadingSectionDivider = showLeadingSectionDivider,
+                        tableCopyEnabled = tableCopyEnabled
                     )
                 }
             } else {
                 RendererAssistantMarkdownContentImpl(
                     content = content,
-                    showLeadingSectionDivider = showLeadingSectionDivider
+                    showLeadingSectionDivider = showLeadingSectionDivider,
+                    tableCopyEnabled = tableCopyEnabled
                 )
             }
             if (shouldRenderDisclaimer) {
@@ -2379,7 +2384,8 @@ private fun rendererMarkdownTableDisplayTitle(
 private fun RendererAssistantMarkdownContentImpl(
     content: String,
     modifier: Modifier = Modifier,
-    showLeadingSectionDivider: Boolean = false
+    showLeadingSectionDivider: Boolean = false,
+    tableCopyEnabled: Boolean = true
 ) {
     val blockState = remember(content) {
         splitStreamingBlockState(
@@ -2412,7 +2418,7 @@ private fun RendererAssistantMarkdownContentImpl(
                     model = model,
                     inlineMode = RendererInlineMode.Settled,
                     linksEnabled = true,
-                    tableCopyEnabled = true,
+                    tableCopyEnabled = tableCopyEnabled,
                     showLeadingSectionDivider = blockLeadingDivider,
                     modifier = blockModifier
                 )

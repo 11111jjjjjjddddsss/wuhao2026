@@ -387,7 +387,7 @@ func (s *Store) SetUserMemoryPendingIfCurrent(ctx context.Context, userID string
 }
 
 func (s *Store) GetSessionSnapshot(ctx context.Context, userID string) (*SessionSnapshot, error) {
-	return s.readSnapshotRow(
+	snapshot, err := s.readSnapshotRow(
 		s.db.QueryRowContext(
 			ctx,
 			"SELECT a_json, b_summary, pending_retry_b, pending_memory_jobs_json, round_total, updated_at FROM session_ab WHERE user_id = ? LIMIT 1",
@@ -395,6 +395,15 @@ func (s *Store) GetSessionSnapshot(ctx context.Context, userID string) (*Session
 		),
 		userID,
 	)
+	if err != nil || snapshot == nil {
+		return snapshot, err
+	}
+	state, err := s.GetSessionGenerationState(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	snapshot.SessionGeneration = state.Generation
+	return snapshot, nil
 }
 
 func (s *Store) GetSessionGenerationState(ctx context.Context, userID string) (SessionGenerationState, error) {

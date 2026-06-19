@@ -60,7 +60,7 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 进入正式发布流程后，Codex 默认按下面流程处理：
 
 1. 先判断问题属于 Android、后端、官网、配置还是云资源；如果只是后端问题，优先只发后端，不打 APK
-2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建默认使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，如需特殊环境才显式覆盖
+2. 如果必须发 Android 新包，Codex 负责把 Android `versionCode` 加 1，并用固定 release 签名构建 `com.nongjiqiancha` APK；Android 构建固定使用正式 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，当前不支持通过 Gradle 参数或环境变量临时覆盖，特殊联调必须先同步更新仓库规则、构建门禁和项目记忆
 3. Codex 负责运行 [check-android-release-artifact.ps1](D:/wuhao/scripts/check-android-release-artifact.ps1)，用最终 `app-release.apk` 本体校验包名、`versionCode`、`versionName`、release 不可调试、权限白名单、签名证书指纹，并输出 APK 文件大小和 SHA-256；更新说明默认留空，展示统一默认文案
 4. Codex 负责把 APK 上传到自有服务器 / OSS，拿到一个公网 `https://download.nongjiqiancha.cn/android/releases/...apk` 下载链接；低成本长期分发优先走 `download.nongjiqiancha.cn` + OSS，发版前先跑 [check-android-download-domain.ps1](D:/wuhao/scripts/check-android-download-domain.ps1)，具体见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。内部测试包的 72 小时签名链接不能直接写入正式检查更新；正式发版当前默认应使用长期稳定 release 地址。后端按需生成正式下载签名是未来可选方案，未另行实现和验收前不能当作现有正式能力。当前后端、Android、后台、官网和 release-match 脚本都会拒绝外部 APK 域名、非 `/android/releases/` 路径，以及带 `Expires / Signature / OSSAccessKeyId / security-token / x-oss-expires / x-oss-signature / x-oss-credential / x-oss-security-token` 等短签名参数的 APK URL
 5. Codex 或运维在管理后台“检查更新”页填写新版本、HTTPS APK、SHA-256 和文件大小；启用更新时页面和服务端都要求输入本次 `versionCode` 作为确认，停更时页面和服务端都要求输入“停更”作为确认；后台每次保存 / 停更都会追加一条 `app_release_events` 发布历史；如必须走环境变量兜底，也要同时配置版本号、HTTPS APK、SHA-256 和文件大小
