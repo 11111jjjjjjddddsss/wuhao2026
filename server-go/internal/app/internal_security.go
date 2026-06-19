@@ -142,6 +142,13 @@ func (s *Server) consumeTodayAgriItemSaveRateLimit(w http.ResponseWriter, r *htt
 	return false
 }
 
+func (s *Server) refundTodayAgriItemSaveRateLimit(r *http.Request, userID string) {
+	if s == nil || s.todayAgriItemLimiter == nil {
+		return
+	}
+	refundRateLimit(s.todayAgriItemLimiter, todayAgriItemSaveRateLimitKey(userID, GetClientIP(r)))
+}
+
 func isInternalRequestClient(r *http.Request) bool {
 	clientIP := normalizeIPLiteral(internalRequestClientIP(r))
 	parsed := net.ParseIP(clientIP)

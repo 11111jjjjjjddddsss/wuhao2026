@@ -403,9 +403,6 @@ func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusBadRequest, "invalid_anchor")
 		return
 	}
-	if !s.consumeTodayAgriItemSaveRateLimit(w, r, auth.UserID) {
-		return
-	}
 	if s.dailyAgri == nil || s.dailyAgri.store == nil {
 		s.writeError(w, http.StatusServiceUnavailable, "today_agri_unavailable")
 		return
@@ -420,8 +417,12 @@ func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusBadRequest, "today_agri_card_not_ready")
 		return
 	}
+	if !s.consumeTodayAgriItemSaveRateLimit(w, r, auth.UserID) {
+		return
+	}
 	saved, err := s.store.UpsertTodayAgriUserItem(r.Context(), auth.UserID, dayCN, anchorID, *card, body.SessionGeneration)
 	if err != nil {
+		s.refundTodayAgriItemSaveRateLimit(r, auth.UserID)
 		if errors.Is(err, ErrTodayAgriAnchorNotArchived) {
 			s.writeError(w, http.StatusConflict, "today_agri_anchor_not_archived")
 			return
@@ -431,6 +432,7 @@ func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if !saved {
+		s.refundTodayAgriItemSaveRateLimit(r, auth.UserID)
 		s.writeError(w, http.StatusConflict, "stale_session_generation")
 		return
 	}

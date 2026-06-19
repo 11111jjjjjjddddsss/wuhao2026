@@ -14,6 +14,10 @@ type rateLimiter interface {
 	Consume(key string, now time.Time) (bool, int)
 }
 
+type refundableRateLimiter interface {
+	Refund(key string)
+}
+
 type rateLimitConfig struct {
 	Window        time.Duration
 	MaxHits       int

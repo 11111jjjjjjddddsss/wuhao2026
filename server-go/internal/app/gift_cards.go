@@ -386,6 +386,10 @@ func (s *Server) handleGiftCardRedeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	normalizedCode := normalizeGiftCardCode(body.Code)
+	if normalizedCode == "" {
+		s.writeError(w, http.StatusBadRequest, "gift_card_invalid_code")
+		return
+	}
 	if s.giftCardRedeemLimiter != nil {
 		if allowed, retryAfterSec := s.giftCardRedeemLimiter.Consume(giftCardRedeemRateLimitKey(auth.UserID, GetClientIP(r)), time.Now()); !allowed {
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfterSec))

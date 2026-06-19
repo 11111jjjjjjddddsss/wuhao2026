@@ -117,7 +117,7 @@ emit_failure() {
 probe() {
   target="$1"
   url="$2"
-  expect_regex="${3:-}"
+  shift 2
   body_file="$(mktemp)"
   err_file="$(mktemp)"
   curl_exit=0
@@ -132,15 +132,35 @@ probe() {
     rm -f "$body_file" "$err_file"
     return 0
   fi
-  if [ -n "$expect_regex" ] && ! grep -Eq "$expect_regex" "$body_file"; then
-    emit_failure "$target" "$http_code" "unexpected_response_body"
+  for expect_regex in "$@"; do
+    if ! grep -Eq "$expect_regex" "$body_file"; then
+      emit_failure "$target" "$http_code" "unexpected_response_body_missing:${expect_regex}"
+      rm -f "$body_file" "$err_file"
+      return 0
+    fi
+  done
+  if [ "$target" = "api_healthz" ]; then
+    for expected_marker in \
+      '"ok"[[:space:]]*:[[:space:]]*true' \
+      '"auth_strict"[[:space:]]*:[[:space:]]*true' \
+      '"bailian"[[:space:]]*:[[:space:]]*"ok"' \
+      '"sms"[[:space:]]*:[[:space:]]*"ok"' \
+      '"dev_order_endpoints"[[:space:]]*:[[:space:]]*false' \
+      '"redis"[[:space:]]*:[[:space:]]*"ok"' \
+      '"upload_storage"[[:space:]]*:[[:space:]]*"oss"'; do
+      if ! grep -Eq "$expected_marker" "$body_file"; then
+        emit_failure "$target" "$http_code" "unexpected_healthz_missing:${expected_marker}"
+        rm -f "$body_file" "$err_file"
+        return 0
+      fi
+    done
   fi
   rm -f "$body_file" "$err_file"
 }
 
-probe "api_healthz" "https://api.nongjiqiancha.cn/healthz" '"ok"[[:space:]]*:[[:space:]]*true'
-probe "website_home" "https://nongjiqiancha.cn/" ''
-probe "admin_home" "https://admin.nongjiqiancha.cn/" ''
+probe "api_healthz" "https://api.nongjiqiancha.cn/healthz"
+probe "website_home" "https://nongjiqiancha.cn/"
+probe "admin_home" "https://admin.nongjiqiancha.cn/"
 EOF
 chmod 0755 /usr/local/bin/nongji-public-blackbox.sh
 

@@ -99,6 +99,23 @@ func (l *chatRateLimiter) Consume(userID string, now time.Time) (bool, int) {
 	return true, 0
 }
 
+func (l *chatRateLimiter) Refund(userID string) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	bucket := l.buckets[userID]
+	if len(bucket) == 0 {
+		return
+	}
+	if len(bucket) == 1 {
+		delete(l.buckets, userID)
+		return
+	}
+	l.buckets[userID] = append([]time.Time(nil), bucket[:len(bucket)-1]...)
+}
+
 func (l *chatRateLimiter) pruneLocked(now time.Time) {
 	for userID, bucket := range l.buckets {
 		valid := bucket[:0]

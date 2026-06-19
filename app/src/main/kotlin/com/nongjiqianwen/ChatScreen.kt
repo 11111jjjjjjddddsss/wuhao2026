@@ -674,6 +674,8 @@ internal fun shouldApplyPendingImageTerminalFailure(
         "backend_not_configured",
         "image_read_failed",
         "quota",
+        "retry_exhausted",
+        "server_failure",
         "stale_session"
     )
 }
@@ -4784,11 +4786,9 @@ fun ChatScreen() {
                     ) && !hasSettledAssistantMessageForUser(sourceUserMessageId)
                 }
             timedOutRemoteCompletionIds.forEach { sourceUserMessageId ->
-                failedUserMessageStates.putIfAbsent(sourceUserMessageId, "network")
                 retryingUserMessageIds.remove(sourceUserMessageId)
                 clearFailedAssistantStateForUser(sourceUserMessageId)
                 PendingChatSendRuntime.markInactive(sourceUserMessageId)
-                PendingChatSendStore.consumeRemoteCompletion(context, chatScopeId, sourceUserMessageId)
                 remainingSourceUserMessageIds.remove(sourceUserMessageId)
             }
             if (timedOutRemoteCompletionIds.isNotEmpty()) {
@@ -6668,6 +6668,32 @@ fun ChatScreen() {
                 ImageUploader.uploadImagesWithResult(compressedImages)
             }
         }
+        fun enqueuePendingImageRetry(
+            userMessage: ChatMessage,
+            previewImageUris: List<String>,
+            uploadedImageUrls: List<String>,
+            sessionGeneration: Int?,
+            todayAgriContextDay: String?
+        ) {
+            if (!hasRemoteHistorySource || uploadedImageUrls.isEmpty()) return
+            val region = currentClientRegionForSend()
+            PendingChatSendRuntime.markActive(userMessage.id)
+            PendingChatSendWorkScheduler.enqueue(
+                context = context,
+                pending = PendingChatSend(
+                    chatScopeId = chatScopeId,
+                    userMessageId = userMessage.id,
+                    text = userMessage.content,
+                    imageUris = previewImageUris,
+                    imageUrls = uploadedImageUrls,
+                    sessionGeneration = sessionGeneration,
+                    region = region?.region,
+                    regionSource = region?.source,
+                    regionReliability = region?.reliability,
+                    todayAgriContextDay = todayAgriContextDay
+                )
+            )
+        }
         fun retryFailedUserMessage(messageId: String) {
             if (retryingUserMessageIds[messageId] == true) return
             if (isStreaming || sendUiSettling || imageSendInProgress) return
@@ -6772,13 +6798,23 @@ fun ChatScreen() {
                 }
                 return
             }
+            val retrySessionGeneration = SessionApi.currentSessionGenerationOrNull()
+            val retryTodayAgriContextDay = resolveTodayAgriContextDayForSend(failedMessage.id)
+            enqueuePendingImageRetry(
+                userMessage = failedMessage,
+                previewImageUris = previewImageUris,
+                uploadedImageUrls = failedMessage.imageUrls.orEmpty(),
+                sessionGeneration = retrySessionGeneration,
+                todayAgriContextDay = retryTodayAgriContextDay
+            )
             commitSendMessage(
                 text = failedMessage.content,
                 uploadedImageUrls = failedMessage.imageUrls.orEmpty(),
                 previewImageUris = previewImageUris,
                 existingUserMessageId = failedMessage.id,
                 collapseComposer = false,
-                todayAgriContextDay = resolveTodayAgriContextDayForSend(failedMessage.id)
+                sessionGeneration = retrySessionGeneration,
+                todayAgriContextDay = retryTodayAgriContextDay
             )
         }
         fun retryFailedAssistantMessage(assistantMessageId: String) {
@@ -6901,25 +6937,13 @@ fun ChatScreen() {
             }
             val retrySessionGeneration = SessionApi.currentSessionGenerationOrNull()
             val retryTodayAgriContextDay = resolveTodayAgriContextDayForSend(sourceUserMessage.id)
-            if (hasRemoteHistorySource && uploadedImageUrls.isNotEmpty()) {
-                val region = currentClientRegionForSend()
-                PendingChatSendRuntime.markActive(sourceUserMessage.id)
-                PendingChatSendWorkScheduler.enqueue(
-                    context = context,
-                    pending = PendingChatSend(
-                        chatScopeId = chatScopeId,
-                        userMessageId = sourceUserMessage.id,
-                        text = sourceUserMessage.content,
-                        imageUris = previewImageUris,
-                        imageUrls = uploadedImageUrls,
-                        sessionGeneration = retrySessionGeneration,
-                        region = region?.region,
-                        regionSource = region?.source,
-                        regionReliability = region?.reliability,
-                        todayAgriContextDay = retryTodayAgriContextDay
-                    )
-                )
-            }
+            enqueuePendingImageRetry(
+                userMessage = sourceUserMessage,
+                previewImageUris = previewImageUris,
+                uploadedImageUrls = uploadedImageUrls,
+                sessionGeneration = retrySessionGeneration,
+                todayAgriContextDay = retryTodayAgriContextDay
+            )
             commitSendMessage(
                 text = sourceUserMessage.content,
                 uploadedImageUrls = uploadedImageUrls,

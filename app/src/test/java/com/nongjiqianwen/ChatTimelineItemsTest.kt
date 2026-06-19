@@ -1281,9 +1281,16 @@ class ChatTimelineItemsTest {
                 isLastAttempt = false
             )
         )
-        assertFalse(
+        assertTrue(
             shouldApplyPendingImageTerminalFailure(
                 terminalFailureReason = "retry_exhausted",
+                snapshotAvailable = false,
+                isLastAttempt = false
+            )
+        )
+        assertTrue(
+            shouldApplyPendingImageTerminalFailure(
+                terminalFailureReason = "server_failure",
                 snapshotAvailable = false,
                 isLastAttempt = false
             )

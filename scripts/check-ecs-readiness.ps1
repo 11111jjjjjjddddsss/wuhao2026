@@ -103,6 +103,47 @@ for svc in nongji-server nongji-server-3000 nongji-server-3001; do
 done
 
 echo
+echo '== public blackbox timer =='
+bb_timer='nongji-public-blackbox.timer'
+bb_service='nongji-public-blackbox.service'
+bb_enabled=$(systemctl is-enabled "$bb_timer" 2>/dev/null || true)
+bb_active=$(systemctl is-active "$bb_timer" 2>/dev/null || true)
+bb_result=$(systemctl show -p Result --value "$bb_service" 2>/dev/null || true)
+bb_exec_status=$(systemctl show -p ExecMainStatus --value "$bb_service" 2>/dev/null || true)
+bb_exit_ts=$(systemctl show -p ExecMainExitTimestamp --value "$bb_service" 2>/dev/null || true)
+bb_age_seconds='unknown'
+if [ -n "$bb_exit_ts" ] && [ "$bb_exit_ts" != "n/a" ]; then
+  bb_exit_epoch=$(date -d "$bb_exit_ts" '+%s' 2>/dev/null || true)
+  now_epoch=$(date '+%s' 2>/dev/null || true)
+  if printf '%s' "$bb_exit_epoch" | grep -Eq '^[0-9]+$' && printf '%s' "$now_epoch" | grep -Eq '^[0-9]+$'; then
+    bb_age_seconds=$(( now_epoch - bb_exit_epoch ))
+  fi
+fi
+echo "timer=${bb_timer} enabled=${bb_enabled:-unknown} active=${bb_active:-unknown}"
+echo "service=${bb_service} result=${bb_result:-unknown} exec_status=${bb_exec_status:-unknown} last_age_seconds=${bb_age_seconds}"
+systemctl list-timers "$bb_timer" --all --no-pager || true
+if [ "$bb_enabled" != "enabled" ]; then
+  echo "${bb_timer} must stay enabled" >&2
+  exit 18
+fi
+if [ "$bb_active" != "active" ]; then
+  echo "${bb_timer} must stay active" >&2
+  exit 18
+fi
+if [ -n "$bb_result" ] && [ "$bb_result" != "success" ]; then
+  echo "${bb_service} last result is not success: $bb_result" >&2
+  exit 18
+fi
+if [ -n "$bb_exec_status" ] && [ "$bb_exec_status" != "0" ]; then
+  echo "${bb_service} last exec status is not 0: $bb_exec_status" >&2
+  exit 18
+fi
+if [ "$bb_age_seconds" = "unknown" ] || [ "$bb_age_seconds" -lt 0 ] || [ "$bb_age_seconds" -gt 1800 ]; then
+  echo "${bb_service} has not completed recently enough: age_seconds=${bb_age_seconds}" >&2
+  exit 18
+fi
+
+echo
 echo '== nginx =='
 if ! nginx -t 2>&1; then
   echo 'nginx configuration test failed' >&2

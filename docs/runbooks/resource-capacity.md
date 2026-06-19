@@ -78,11 +78,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-publi
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-ecs-blackbox-monitor.ps1 -RunOnce
 ```
 
-该脚本通过 Cloud Assistant 安装 `nongji-public-blackbox.timer` / `nongji-public-blackbox.service`，默认每 5 分钟从 ECS 公网出口探测 `https://api.nongjiqiancha.cn/healthz`、官网首页和后台首页；失败时只向 `/var/log/nongjiqiancha/server.log` 写一条脱敏 `blackbox_probe_failed` JSON，不写响应正文、手机号、token 或密钥。SLS 规则 `nongji-public-blackbox-failed` 会捕获该日志并走现有邮件行动策略。
+该脚本通过 Cloud Assistant 安装 `nongji-public-blackbox.timer` / `nongji-public-blackbox.service`，默认每 5 分钟从 ECS 公网出口探测 `https://api.nongjiqiancha.cn/healthz`、官网首页和后台首页；失败时只向 `/var/log/nongjiqiancha/server.log` 写一条脱敏 `blackbox_probe_failed` JSON，不写响应正文、手机号、token 或密钥。SLS 规则 `nongji-public-blackbox-failed` 会捕获该日志并走现有邮件行动策略；ECS readiness 和资源巡检会同步检查 timer 是否 enabled / active、最近一次服务是否成功以及是否长期未运行，避免黑盒自身静默失效。
 
 当前脚本会检查：
 
-- `https://api.nongjiqiancha.cn/healthz` 返回 200，且包含 `auth_strict=true`、`bailian=ok`、DYPNS / 短信 / Redis / OSS 等关键生产标记。
+- `https://api.nongjiqiancha.cn/healthz` 返回 200，且包含 `auth_strict=true`、`bailian=ok`、`sms=ok`、`dev_order_endpoints=false`、`redis=ok`、`upload_storage=oss` 等关键生产标记。
 - `https://nongjiqiancha.cn/`、`https://www.nongjiqiancha.cn/`、`https://admin.nongjiqiancha.cn/` 返回 200。
 - `https://admin.nongjiqiancha.cn/admin-api/v1/auth/me` 未登录返回 401。
 - `http://api.nongjiqiancha.cn/healthz`、根域名、www 和后台 HTTP 入口返回 301 / 302 / 307 / 308 到对应 HTTPS 地址。

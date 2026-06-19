@@ -289,6 +289,42 @@ if ($runtime -match '(?i)out of memory|oom-kill|killed process') {
 }
 
 Write-Host
+Write-Host "== ECS public blackbox timer =="
+$blackboxTimer = Invoke-EcsShell @'
+set -u
+timer='nongji-public-blackbox.timer'
+service='nongji-public-blackbox.service'
+enabled=$(systemctl is-enabled "$timer" 2>/dev/null || true)
+active=$(systemctl is-active "$timer" 2>/dev/null || true)
+result=$(systemctl show -p Result --value "$service" 2>/dev/null || true)
+exec_status=$(systemctl show -p ExecMainStatus --value "$service" 2>/dev/null || true)
+exit_ts=$(systemctl show -p ExecMainExitTimestamp --value "$service" 2>/dev/null || true)
+echo "timer_enabled=$enabled"
+echo "timer_active=$active"
+echo "service_result=$result"
+echo "service_exec_status=$exec_status"
+echo "service_last_exit_timestamp=$exit_ts"
+systemctl list-timers "$timer" --all --no-pager 2>/dev/null || true
+'@
+Write-Host $blackboxTimer
+$blackboxEnabled = ([regex]::Match($blackboxTimer, "(?m)^timer_enabled=(.+)$").Groups[1].Value).Trim()
+$blackboxActive = ([regex]::Match($blackboxTimer, "(?m)^timer_active=(.+)$").Groups[1].Value).Trim()
+$blackboxResult = ([regex]::Match($blackboxTimer, "(?m)^service_result=(.+)$").Groups[1].Value).Trim()
+$blackboxExecStatus = ([regex]::Match($blackboxTimer, "(?m)^service_exec_status=(.+)$").Groups[1].Value).Trim()
+if ($blackboxEnabled -ne "enabled") {
+    Add-ErrorItem "public_blackbox_timer_not_enabled:$blackboxEnabled"
+}
+if ($blackboxActive -ne "active") {
+    Add-ErrorItem "public_blackbox_timer_not_active:$blackboxActive"
+}
+if (-not [string]::IsNullOrWhiteSpace($blackboxResult) -and $blackboxResult -ne "success") {
+    Add-ErrorItem "public_blackbox_last_result_not_success:$blackboxResult"
+}
+if (-not [string]::IsNullOrWhiteSpace($blackboxExecStatus) -and $blackboxExecStatus -ne "0") {
+    Add-ErrorItem "public_blackbox_last_exec_status_not_zero:$blackboxExecStatus"
+}
+
+Write-Host
 Write-Host "== ECS disks =="
 $disks = Invoke-JsonCommand @("aliyun", "ecs", "DescribeDisks", "--RegionId", $RegionId, "--InstanceId", $EcsInstanceId)
 foreach ($disk in @($disks.Disks.Disk)) {

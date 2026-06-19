@@ -215,6 +215,22 @@ func (l *redisRateLimiter) Consume(key string, now time.Time) (bool, int) {
 	return true, 0
 }
 
+func (l *redisRateLimiter) Refund(key string) {
+	if l == nil || l.client == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), envDurationWithDefault("REDIS_RATE_LIMIT_TIMEOUT_SECONDS", time.Second))
+	defer cancel()
+	redisKey := l.prefix + strings.TrimSpace(key)
+	result, err := l.client.Decr(ctx, redisKey).Result()
+	if err != nil {
+		return
+	}
+	if result <= 0 {
+		_ = l.client.Del(ctx, redisKey).Err()
+	}
+}
+
 func (l *redisRateLimiter) onRedisRateLimitFailure() (bool, int) {
 	if l != nil && l.failOpenOnError {
 		return true, 0

@@ -110,12 +110,16 @@ func TestHandleGiftCardRedeemParsesJSONBeforeRateLimit(t *testing.T) {
 	}
 	handlerText := text[handlerIndex:]
 	decodeIndex := strings.Index(handlerText, "decodeJSONBodyLimited")
+	emptyCodeIndex := strings.Index(handlerText, `normalizedCode == ""`)
 	limiterIndex := strings.Index(handlerText, "giftCardRedeemLimiter.Consume")
-	if decodeIndex < 0 || limiterIndex < 0 {
-		t.Fatalf("expected decode and limiter in handleGiftCardRedeem")
+	if decodeIndex < 0 || emptyCodeIndex < 0 || limiterIndex < 0 {
+		t.Fatalf("expected decode, empty code guard and limiter in handleGiftCardRedeem")
 	}
 	if limiterIndex < decodeIndex {
 		t.Fatalf("gift card redeem limiter must run after JSON decode so malformed bodies do not burn redeem attempts")
+	}
+	if limiterIndex < emptyCodeIndex {
+		t.Fatalf("gift card redeem limiter must run after empty normalized code guard so accidental blank input does not burn redeem attempts")
 	}
 }
 

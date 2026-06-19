@@ -48,12 +48,13 @@ func TestSaveTodayAgriItemRateLimitRunsAfterBasicValidation(t *testing.T) {
 	decodeAt := strings.Index(block, "decodeJSONBodyLimited")
 	dayAt := strings.Index(block, "normalizeTodayAgriContextDay")
 	anchorAt := strings.Index(block, `s.writeError(w, http.StatusBadRequest, "invalid_anchor")`)
+	readyAt := strings.Index(block, `"today_agri_card_not_ready"`)
 	consumeAt := strings.Index(block, "consumeTodayAgriItemSaveRateLimit")
-	if decodeAt < 0 || dayAt < 0 || anchorAt < 0 || consumeAt < 0 {
+	if decodeAt < 0 || dayAt < 0 || anchorAt < 0 || readyAt < 0 || consumeAt < 0 {
 		t.Fatalf("save today agri handler missing expected validation or rate-limit call")
 	}
-	if !(decodeAt < consumeAt && dayAt < consumeAt && anchorAt < consumeAt) {
-		t.Fatalf("today agri item save rate limit should run after JSON, day and anchor validation")
+	if !(decodeAt < consumeAt && dayAt < consumeAt && anchorAt < consumeAt && readyAt < consumeAt) {
+		t.Fatalf("today agri item save rate limit should run after JSON, day, anchor and card-ready validation")
 	}
 }
 
@@ -187,6 +188,10 @@ func TestUpsertTodayAgriUserItemRejectsMissingArchivedAnchor(t *testing.T) {
 
 func TestSanitizeTodayAgriMainItemCardDropsURLsAndKeepsPublicSources(t *testing.T) {
 	card := testDailyAgriCard("")
+	card.SourceType = "manual"
+	card.ManualLocked = true
+	card.ManualBy = "owner"
+	card.ManualAt = 1700000001000
 	card.Items[0].Source = "2026年农产品供需形势分析报告"
 	card.Items[0].PublishedDate = "2026-06-17"
 	card.Items[0].URL = "https://example.com/news/1"
@@ -200,6 +205,9 @@ func TestSanitizeTodayAgriMainItemCardDropsURLsAndKeepsPublicSources(t *testing.
 	}
 	if got.Title != "今日农情" {
 		t.Fatalf("Title=%q", got.Title)
+	}
+	if got.SourceType != "" || got.ManualLocked || got.ManualBy != "" || got.ManualAt != 0 {
+		t.Fatalf("internal manual fields should be stripped from main item card: %#v", got)
 	}
 	for idx, item := range got.Items {
 		if item.URL != "" {

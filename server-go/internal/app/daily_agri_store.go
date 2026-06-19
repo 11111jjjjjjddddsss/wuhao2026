@@ -365,6 +365,10 @@ func sanitizeTodayAgriMainItemCard(card DailyAgriCard, dayCN string) DailyAgriCa
 		card.DateCN = dayCN
 	}
 	card.Title = "今日农情"
+	card.SourceType = ""
+	card.ManualLocked = false
+	card.ManualBy = ""
+	card.ManualAt = 0
 	if len(card.Items) > dailyAgriTargetItemCount {
 		card.Items = card.Items[:dailyAgriTargetItemCount]
 	}

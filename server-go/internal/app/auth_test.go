@@ -410,12 +410,40 @@ func TestAuthRateLimitKeyHashesSensitiveInputs(t *testing.T) {
 		t.Fatalf("authRateLimitKey prefix mismatch: %q", key)
 	}
 
+	phoneKey := authPhoneRateLimitKey("sms_send", "13800138000")
+	if phoneKey == "" || strings.Contains(phoneKey, "13800138000") || strings.Contains(phoneKey, "203.0.113.8") {
+		t.Fatalf("authPhoneRateLimitKey leaked sensitive input: %q", phoneKey)
+	}
+	if strings.Count(phoneKey, ":") != 1 {
+		t.Fatalf("authPhoneRateLimitKey should not include IP bucket suffix: %q", phoneKey)
+	}
+	if phoneKey != authPhoneRateLimitKey("sms_send", "13800138000") {
+		t.Fatalf("authPhoneRateLimitKey should be stable for the same phone")
+	}
+
 	ipKey := authIPRateLimitKey("fusion_token", "203.0.113.8")
 	if ipKey == "" || strings.Contains(ipKey, "203.0.113.8") {
 		t.Fatalf("authIPRateLimitKey leaked sensitive input: %q", ipKey)
 	}
 	if !strings.HasPrefix(ipKey, "fusion_token:") {
 		t.Fatalf("authIPRateLimitKey prefix mismatch: %q", ipKey)
+	}
+}
+
+func TestRefundRateLimitRestoresLastLocalHit(t *testing.T) {
+	limiter := newChatRateLimiterWithConfig(rateLimitConfig{
+		Window:        time.Minute,
+		MaxHits:       1,
+		PruneInterval: time.Minute,
+	})
+	key := "sms_send:test-phone"
+	now := time.Now()
+	if allowed, retryAfter := limiter.Consume(key, now); !allowed || retryAfter != 0 {
+		t.Fatalf("first consume allowed=%v retry_after=%d", allowed, retryAfter)
+	}
+	refundRateLimit(limiter, key)
+	if allowed, retryAfter := limiter.Consume(key, now.Add(time.Second)); !allowed || retryAfter != 0 {
+		t.Fatalf("consume after refund allowed=%v retry_after=%d", allowed, retryAfter)
 	}
 }
 
