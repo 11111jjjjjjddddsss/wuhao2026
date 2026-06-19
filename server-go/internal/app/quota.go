@@ -363,6 +363,40 @@ func (s *Store) UpdateQuotaConsumeOutboxAdminStatus(ctx context.Context, id int6
 	return entry, found, nil
 }
 
+func (s *Store) ClaimDueQuotaConsumeOutboxForRepair(ctx context.Context, id int64, nowMs int64, leaseUntilMs int64) (bool, error) {
+	if id <= 0 {
+		return false, nil
+	}
+	if leaseUntilMs <= nowMs {
+		leaseUntilMs = nowMs + int64(defaultQuotaConsumeRepairTimeout/time.Millisecond)
+	}
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE quota_consume_outbox
+		   SET status = 'pending',
+		       next_attempt_at = ?,
+		       updated_at = ?
+		 WHERE id = ?
+		   AND (
+		     (status IN ('pending','failed') AND next_attempt_at <= ?)
+		     OR (status = 'needs_ops' AND next_attempt_at <= ?)
+		   )`,
+		leaseUntilMs,
+		nowMs,
+		id,
+		nowMs,
+		nowMs,
+	)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	return rows > 0, nil
+}
+
 func normalizeQuotaConsumeOutboxAdminStatus(status string) string {
 	switch strings.TrimSpace(strings.ToLower(status)) {
 	case "pending", "waived", "uncollectable":

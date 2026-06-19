@@ -28,7 +28,7 @@
 - 响应头会回写 `X-Request-Id`；App 自动日志、Nginx 和 Go journal 后续可用该 ID 串联排障
 - 健康检查 `/healthz` 和 `/uploads/` 静态图片成功请求默认降噪；但 4xx / 5xx 或慢请求仍会记录
 - 慢请求阈值由 `ACCESS_LOG_SLOW_MS` 控制，默认 `3000` 毫秒；`0` 表示关闭慢请求标记。`/api/chat/stream` 是正常 SSE 长连接，2026-06-12 起正常 200 长流会记录为 `http_sse_stream` 普通信息日志，不再进入 `http_request_slow`，避免真实聊天一多污染慢请求告警；5xx 仍按 `http_request_error` 记录
-- 2026-06-10 已创建最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 非 SSE 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / 认证关键配置错误；2026-06-19 又补充聊天流归档 / 空回复完整性、额度补扣 needs_ops / 自动终结异常和记忆摘要待补偿状态写回失败三类主动提醒规则。普通扣次 pending/backoff 排期、普通记忆摘要模型失败或写文档失败不会直接发邮件，因为它们已经有后台自动补偿；只有聊天流完整性异常、扣次 outbox needs_ops / 自动终结 / 终态写入失败或 `keep memory pending failed` 这类极小概率风险才提醒。2026-06-12 已把模型 / 认证配置告警查询从宽泛 `dypns` 收窄到明确的配置错误关键词，避免普通 DYPNS 日志误触发；同日已绑定邮件行动策略 `nongji-prod-email` 和仪表盘 `nongji-prod-ops`。当前 SLS 应用告警先走邮件，不启用短信、电话或机器人，避免费用和噪音；ECS / RDS / Redis 资源水位另走云监控邮件告警，见 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)
+- 2026-06-10 已创建最小 SLS AlertHub 告警规则，覆盖 Go 5xx、Go 非 SSE 慢请求、Nginx upstream 错误、今日农情生成失败、模型 Key / 认证关键配置错误；2026-06-19 又补充聊天流归档 / 空回复完整性、额度补扣状态写入异常和记忆摘要待补偿状态写回失败三类主动提醒规则。普通扣次 pending/backoff 排期、`needs_ops` 低频自动追账排期、自动终结记录、普通记忆摘要模型失败或写文档失败不会直接发邮件，因为它们已经有后台自动补偿；只有聊天流完整性异常、扣次 outbox claim / 终态状态写入失败或 `keep memory pending failed` 这类极小概率风险才提醒。2026-06-12 已把模型 / 认证配置告警查询从宽泛 `dypns` 收窄到明确的配置错误关键词，避免普通 DYPNS 日志误触发；同日已绑定邮件行动策略 `nongji-prod-email` 和仪表盘 `nongji-prod-ops`。当前 SLS 应用告警先走邮件，不启用短信、电话或机器人，避免费用和噪音；ECS / RDS / Redis 资源水位另走云监控邮件告警，见 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)
 
 ## SLS 告警规则
 
@@ -87,7 +87,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-data-
 | `nongji-nginx-upstream` | `nginx-error` | `upstream \| select count(1) as cnt` | `cnt > 0` | 30 分钟 |
 | `nongji-daily-agri-failed` | `server-go` | `generate today agri card failed \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
 | `nongji-chat-stream-integrity` | `server-go` | `append session round after stream failed OR empty assistant reply after stream done \| select count(1) as cnt` | `cnt > 0` | 30 分钟 |
-| `nongji-quota-outbox-needs-ops` | `server-go` | `quota consume outbox needs ops automatic retry scheduled OR quota consume outbox auto marked uncollectable OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed \| select count(1) as cnt` | `cnt > 0` | 6 小时 |
+| `nongji-quota-outbox-needs-ops` | `server-go` | `quota consume outbox repair claim failed OR quota consume outbox repair mark done failed OR quota consume outbox repair mark failed failed OR quota consume outbox mark done failed OR quota consume outbox mark done after retry failed OR quota consume outbox mark failed failed OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed \| select count(1) as cnt` | `cnt > 0` | 6 小时 |
 | `nongji-summary-failed` | `server-go` | `keep memory pending failed \| select count(1) as cnt` | `cnt > 0` | 6 小时 |
 | `nongji-model-auth-config` | `server-go` | `missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured \| select count(1) as cnt` | `cnt > 0` | 60 分钟 |
 
@@ -102,7 +102,7 @@ aliyun sls get-alert --region cn-beijing --project nongjiqiancha-prod-1159547719
 
 - 这些规则是“最小生产兜底”，不是完整告警中心
 - 当前会进入 AlertHub，并通过行动策略 `nongji-prod-email` 走邮件通知；后台页面不会自动弹窗，App 用户也不会收到系统通知
-- 2026-06-13 只读巡检确认当时 5 条规则均存在、启用且进入 AlertHub；2026-06-19 起仓库期望规则扩展为 8 条，额外覆盖聊天流归档 / 空回复完整性、扣次 outbox needs_ops / 自动终结异常和记忆待补偿状态写回失败。巡检会校验查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 是否符合仓库期望；若发现启用中的 `nongji-*` 告警不在仓库期望清单里，也会输出 warning，避免控制台临时创建的规则长期制造噪音。`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 应返回 `status=ready`
+- 2026-06-13 只读巡检确认当时 5 条规则均存在、启用且进入 AlertHub；2026-06-19 起仓库期望规则扩展为 8 条，额外覆盖聊天流归档 / 空回复完整性、扣次 outbox claim / 状态写入异常和记忆待补偿状态写回失败。巡检会校验查询、触发条件、重复提醒、`actionPolicyId=nongji-prod-email` 和 `dashboard=nongji-prod-ops` 是否符合仓库期望；若发现启用中的 `nongji-*` 告警不在仓库期望清单里，也会输出 warning，避免控制台临时创建的规则长期制造噪音。`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 应返回 `status=ready`
 - 后续仍需在真实或测试告警触发时确认第一封邮件可达，并继续补普通短信发送用量和模型成本告警；ECS / RDS / Redis 资源水位已由云监控联系人组 `NongjiQianchaOps` 邮件告警承接
 - 不要把聊天正文、AI 回复全文、完整手机号、图片 URL、token、模型 Key 或数据库密码加入 SLS 查询、告警消息或通知模板
 

@@ -131,7 +131,8 @@ class PendingChatSendWorker(
                     reason = when (result.status) {
                         SessionApi.StreamCompletionStatus.Quota -> "quota"
                         SessionApi.StreamCompletionStatus.Auth -> "auth"
-                        SessionApi.StreamCompletionStatus.BadRequest -> "bad_request"
+                        SessionApi.StreamCompletionStatus.BadRequest ->
+                            result.reason?.takeIf { it == "stale_session" } ?: "bad_request"
                         else -> "server_failure"
                     }
                 )

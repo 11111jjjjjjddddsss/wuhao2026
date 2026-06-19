@@ -948,6 +948,8 @@ if ($failures.Count -eq 0) {
         "Stale session errors must leave the user's just-sent message visible with a retryable assistant failure instead of deleting it."
     Require-Match $failures $pendingWorker 'isStaleForCurrentSession\(\s*pending\s*\)(?s:.*?)failTerminal\((?s:.*?)"stale_session"' `
         "Pending image sends that become stale must become visible terminal failures, not silently delete pending state."
+    Require-Match $failures ($sessionApi + "`n" + $pendingWorker) 'STALE_SESSION_GENERATION(?s:.*?)StreamCompletionResult\(\s*StreamCompletionStatus\.BadRequest\s*,\s*"stale_session"\s*\)(?s:.*?)StreamCompletionStatus\.BadRequest\s*->(?s:.*?)result\.reason\?\.takeIf\s*\{\s*it\s*==\s*"stale_session"\s*\}\s*\?:\s*"bad_request"' `
+        "Background chat streaming must preserve STALE_SESSION_GENERATION as stale_session instead of collapsing it into generic bad_request."
 }
 
 if ($failures.Count -gt 0) {

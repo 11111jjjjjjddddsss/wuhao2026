@@ -304,10 +304,10 @@ $alerts = @(
     },
     @{
         Name = "nongji-quota-outbox-needs-ops";
-        DisplayName = "Nongji quota outbox needs attention";
-        Description = "server-go Logstore detected quota consume outbox needs_ops or terminal failures. Ordinary pending/backoff retries are not alerted.";
+        DisplayName = "Nongji quota outbox state failures";
+        Description = "server-go Logstore detected quota consume outbox claim or state-write failures. Ordinary automatic retries, needs_ops scheduling, and automatic terminal close records are not alerted.";
         Logstore = "server-go";
-        Query = "quota consume outbox needs ops automatic retry scheduled OR quota consume outbox auto marked uncollectable OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed | select count(1) as cnt";
+        Query = "quota consume outbox repair claim failed OR quota consume outbox repair mark done failed OR quota consume outbox repair mark failed failed OR quota consume outbox mark done failed OR quota consume outbox mark done after retry failed OR quota consume outbox mark failed failed OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed | select count(1) as cnt";
         Severity = 6;
         RepeatInterval = "6h";
         Runbook = "docs/runbooks/management-backend.md";

@@ -9,6 +9,7 @@ import (
 const (
 	defaultQuotaConsumeRepairInterval  = 30 * time.Second
 	defaultQuotaConsumeRepairTimeout   = 10 * time.Second
+	defaultQuotaConsumeRepairLease     = 10 * time.Minute
 	quotaConsumeRepairBatchLimit       = 20
 	quotaConsumeRepairNeedsOpsAttempts = 12
 	defaultQuotaConsumeNeedsOpsRetry   = 6 * time.Hour
@@ -49,6 +50,17 @@ func (s *Server) repairDueQuotaConsumes() {
 	for _, job := range jobs {
 		if ctx.Err() != nil {
 			return
+		}
+		claimNowMs := time.Now().UnixMilli()
+		claimLeaseUntilMs := claimNowMs + int64(defaultQuotaConsumeRepairLease/time.Millisecond)
+		claimed, err := s.store.ClaimDueQuotaConsumeOutboxForRepair(ctx, job.ID, claimNowMs, claimLeaseUntilMs)
+		if err != nil {
+			s.logger.Warn("quota consume outbox repair claim failed", "userId", job.UserID, "clientMsgId", job.ClientMsgID, "error", err)
+			continue
+		}
+		if !claimed {
+			s.logger.Info("quota consume outbox repair skipped stale job", "userId", job.UserID, "clientMsgId", job.ClientMsgID)
+			continue
 		}
 		consume, err := s.store.consumeOnDoneAt(ctx, job.UserID, job.Tier, job.ClientMsgID, job.DayCN, job.CompletionAt)
 		if err == nil {

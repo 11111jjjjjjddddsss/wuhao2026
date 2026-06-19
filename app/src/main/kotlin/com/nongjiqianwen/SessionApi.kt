@@ -2228,9 +2228,11 @@ object SessionApi {
                                 ?.takeIf { it.isJsonPrimitive }
                                 ?.asString
                         }.getOrNull()
+                        if (res.code == 409 && errorCode == "STALE_SESSION_GENERATION") {
+                            return StreamCompletionResult(StreamCompletionStatus.BadRequest, "stale_session")
+                        }
                         val status = when {
                             res.code == 400 -> StreamCompletionStatus.BadRequest
-                            res.code == 409 && errorCode == "STALE_SESSION_GENERATION" -> StreamCompletionStatus.BadRequest
                             res.code == 409 -> StreamCompletionStatus.RetryableFailure
                             res.code == 402 -> StreamCompletionStatus.Quota
                             res.code == 429 -> StreamCompletionStatus.RateLimited

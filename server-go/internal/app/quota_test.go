@@ -310,6 +310,50 @@ func TestListDueQuotaConsumeOutboxIncludesNeedsOpsForAutomaticRetry(t *testing.T
 	}
 }
 
+func TestClaimDueQuotaConsumeOutboxForRepairClaimsActionableDueRow(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_003_500)
+	leaseUntilMs := nowMs + int64(10*time.Minute/time.Millisecond)
+	mock.ExpectExec("UPDATE quota_consume_outbox").
+		WithArgs(leaseUntilMs, nowMs, int64(46), nowMs, nowMs).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	claimed, err := store.ClaimDueQuotaConsumeOutboxForRepair(context.Background(), 46, nowMs, leaseUntilMs)
+	if err != nil {
+		t.Fatalf("ClaimDueQuotaConsumeOutboxForRepair failed: %v", err)
+	}
+	if !claimed {
+		t.Fatal("expected due actionable row to be claimed")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
+func TestClaimDueQuotaConsumeOutboxForRepairSkipsTerminalOrAlreadyClaimedRow(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_003_600)
+	leaseUntilMs := nowMs + int64(10*time.Minute/time.Millisecond)
+	mock.ExpectExec("UPDATE quota_consume_outbox").
+		WithArgs(leaseUntilMs, nowMs, int64(47), nowMs, nowMs).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+
+	claimed, err := store.ClaimDueQuotaConsumeOutboxForRepair(context.Background(), 47, nowMs, leaseUntilMs)
+	if err != nil {
+		t.Fatalf("ClaimDueQuotaConsumeOutboxForRepair failed: %v", err)
+	}
+	if claimed {
+		t.Fatal("terminal or already claimed row must not be claimed")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 func TestQuotaConsumeShouldAutoMarkUncollectableOnlyForQuotaExhausted(t *testing.T) {
 	if !quotaConsumeShouldAutoMarkUncollectable(errors.New("QUOTA_EXHAUSTED")) {
 		t.Fatal("quota exhausted should be terminally closed instead of charging future quota")
