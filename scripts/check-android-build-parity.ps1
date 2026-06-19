@@ -922,6 +922,8 @@ if ($failures.Count -eq 0) {
         "Support feedback with cached messages must initially open at the latest message instead of flashing the top before scrolling down."
     Require-Match $failures $hamburgerMenuSheet 'if\s*\(\s*page\s*==\s*HamburgerMenuPage\.Support\s*&&\s*supportFeedbackSending\s*\)(?s:.*?)showNotice\("正在发送，请稍后"\)' `
         "Support feedback must block back/close while a send is in progress so the page coroutine and selected images are not torn down mid-send."
+    Require-Match $failures $hamburgerMenuSheet 'sending\s*=\s*true\s*\r?\n\s*onSendingChanged\s*\(\s*true\s*\)' `
+        "Support feedback must synchronously notify the parent when sending starts, so immediate back/close taps cannot beat the sending guard."
     Require-Match $failures $pendingChatSendStore 'pending\.sessionGeneration\s*\?:\s*return\s+false' `
         "Pending sends without a stored session generation must not be treated as stale after app restart; unknown generation should be retried/reconciled."
     Require-Match $failures $hamburgerMenuSheet 'DisposableEffect\s*\(\s*lifecycleOwner,\s*pendingInstallPermissionUpdate,\s*pendingInstallAttemptUpdate,\s*updateDownloading\s*\)(?s:.*?)ON_RESUME(?s:.*?)val\s+pendingUpdate\s*=\s*pendingInstallPermissionUpdate(?s:.*?)startAppUpdate\s*\(\s*pendingUpdate\s*\)' `

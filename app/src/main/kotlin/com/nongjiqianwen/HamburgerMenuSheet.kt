@@ -3051,6 +3051,7 @@ private fun HamburgerSupportFeedbackPage(
         }
         attachmentMenuVisible = false
         sending = true
+        onSendingChanged(true)
         sendingHint = if (imageSnapshot.isNotEmpty()) "正在上传图片..." else "正在提交反馈..."
         scope.launch {
             val (imageUrls, uploadError) = uploadSupportImagesForSend(imageSnapshot)
