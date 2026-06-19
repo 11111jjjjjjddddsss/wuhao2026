@@ -71,6 +71,34 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriCardStableKeyNormalizesServerDayFormats() {
+        val dashed = ChatTimelineItem.TodayAgriCard(todayAgriCard().copy(dateCn = "2026-06-15"))
+        val compact = ChatTimelineItem.TodayAgriCard(todayAgriCard().copy(dateCn = "20260615"))
+
+        assertEquals("today-agri-card-20260615", dashed.stableKey)
+        assertEquals(dashed.stableKey, compact.stableKey)
+    }
+
+    @Test
+    fun todayAgriMainItemRestoresOnlyCurrentDaySingleItem() {
+        val current = TodayAgriMainItem(
+            day_cn = "20260615",
+            anchor_client_msg_id = "assistant_1",
+            card = todayAgriCard().copy(dateCn = "2026-06-15")
+        )
+        val previousDay = current.copy(day_cn = "20260614", card = todayAgriCard().copy(dateCn = "20260614"))
+        val mismatchedCardDay = current.copy(card = todayAgriCard().copy(dateCn = "20260616"))
+        val missingAnchor = current.copy(anchor_client_msg_id = "")
+        val missingCardDay = current.copy(card = todayAgriCard().copy(dateCn = ""))
+
+        assertEquals(current, validTodayAgriMainItemForCurrentDay(current, "20260615"))
+        assertEquals(null, validTodayAgriMainItemForCurrentDay(previousDay, "20260615"))
+        assertEquals(null, validTodayAgriMainItemForCurrentDay(mismatchedCardDay, "20260615"))
+        assertEquals(null, validTodayAgriMainItemForCurrentDay(missingAnchor, "20260615"))
+        assertEquals(null, validTodayAgriMainItemForCurrentDay(missingCardDay, "20260615"))
+    }
+
+    @Test
     fun todayAgriCardAcceptsServerNormalizedUserAnchorAfterAssistantRound() {
         val user = userMessage("u1")
         val assistant = assistantMessage("assistant_u1")
@@ -651,6 +679,63 @@ class ChatTimelineItemsTest {
                 shownThisRuntime = false,
                 hasAssistantAnswerTail = true,
                 suppressedThisRuntime = false
+            )
+        )
+    }
+
+    @Test
+    fun todayAgriDayChangeWaitsForNextCompletedAssistantBeforeAutoInsert() {
+        assertTrue(
+            shouldWaitForNextTodayAgriAssistantAfterDayChange(
+                hasStartedConversation = false,
+                latestCompletedAssistantTailId = "assistant_old"
+            )
+        )
+        assertTrue(
+            shouldWaitForNextTodayAgriAssistantAfterDayChange(
+                hasStartedConversation = true,
+                latestCompletedAssistantTailId = null
+            )
+        )
+        assertFalse(
+            shouldWaitForNextTodayAgriAssistantAfterDayChange(
+                hasStartedConversation = false,
+                latestCompletedAssistantTailId = null
+            )
+        )
+        assertFalse(
+            shouldReleaseTodayAgriAutoInsertAfterDayChange(
+                waitingForNextAssistant = true,
+                baselineCompletedAssistantTailId = "assistant_old",
+                latestCompletedAssistantTailId = "assistant_old"
+            )
+        )
+        assertFalse(
+            shouldReleaseTodayAgriAutoInsertAfterDayChange(
+                waitingForNextAssistant = true,
+                baselineCompletedAssistantTailId = "assistant_old",
+                latestCompletedAssistantTailId = null
+            )
+        )
+        assertTrue(
+            shouldReleaseTodayAgriAutoInsertAfterDayChange(
+                waitingForNextAssistant = true,
+                baselineCompletedAssistantTailId = "assistant_old",
+                latestCompletedAssistantTailId = "assistant_new"
+            )
+        )
+        assertTrue(
+            shouldReleaseTodayAgriAutoInsertAfterDayChange(
+                waitingForNextAssistant = true,
+                baselineCompletedAssistantTailId = null,
+                latestCompletedAssistantTailId = "assistant_new"
+            )
+        )
+        assertFalse(
+            shouldReleaseTodayAgriAutoInsertAfterDayChange(
+                waitingForNextAssistant = false,
+                baselineCompletedAssistantTailId = "assistant_old",
+                latestCompletedAssistantTailId = "assistant_new"
             )
         )
     }

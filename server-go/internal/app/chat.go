@@ -21,12 +21,14 @@ import (
 )
 
 const (
-	upstreamMaxAttempts    = 1
-	upstreamRetryBaseWait  = 350 * time.Millisecond
-	chatStreamMaxDuration  = 30 * time.Minute
-	maxClientMsgIDLength   = 128
-	maxChatTextRunes       = 6000
-	maxBailianSSELineBytes = 256 * 1024
+	upstreamMaxAttempts             = 1
+	upstreamRetryBaseWait           = 350 * time.Millisecond
+	chatStreamMaxDuration           = 30 * time.Minute
+	maxClientMsgIDLength            = 128
+	maxChatTextRunes                = 6000
+	maxBailianSSELineBytes          = 256 * 1024
+	appendSessionRoundMaxAttempts   = 3
+	appendSessionRoundRetryBaseWait = 150 * time.Millisecond
 )
 
 type chatRateLimiter struct {
@@ -490,32 +492,56 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				s.logger.Info("drop stale chat stream after session clear", "userId", auth.UserID, "clientMsgId", clientMsgID)
 			} else {
 				completionAtMs := time.Now().UnixMilli()
-				replay, updatedSnapshot, appendErr := s.store.AppendSessionRoundComplete(
-					context.Background(),
-					auth.UserID,
-					clientMsgID,
-					requestHash,
-					SessionRound{
-						ClientMsgID:       clientMsgID,
-						User:              text,
-						UserImages:        images,
-						Assistant:         replyText,
-						CreatedAt:         requestReceivedAtMs,
-						Region:            region.Region,
-						RegionSource:      region.Source,
-						RegionReliability: region.Reliability,
-					},
-					aWindowRounds,
-					memoryEveryRounds,
-					completionAtMs,
-					tier,
-					dayCN,
-					"stream_done",
-				)
+				var replay bool
+				var updatedSnapshot *SessionSnapshot
+				var appendErr error
+				for attempt := 1; attempt <= appendSessionRoundMaxAttempts; attempt++ {
+					replay, updatedSnapshot, appendErr = s.store.AppendSessionRoundComplete(
+						context.Background(),
+						auth.UserID,
+						clientMsgID,
+						requestHash,
+						SessionRound{
+							ClientMsgID:       clientMsgID,
+							User:              text,
+							UserImages:        images,
+							Assistant:         replyText,
+							CreatedAt:         requestReceivedAtMs,
+							Region:            region.Region,
+							RegionSource:      region.Source,
+							RegionReliability: region.Reliability,
+						},
+						aWindowRounds,
+						memoryEveryRounds,
+						completionAtMs,
+						tier,
+						dayCN,
+						"stream_done",
+					)
+					if appendErr == nil || !isRetryableSessionRoundAppendError(appendErr) {
+						break
+					}
+					s.logger.Warn(
+						"append session round after stream retryable failure",
+						"userId", auth.UserID,
+						"clientMsgId", clientMsgID,
+						"attempt", attempt,
+						"error", appendErr,
+					)
+					if attempt < appendSessionRoundMaxAttempts {
+						time.Sleep(time.Duration(attempt) * appendSessionRoundRetryBaseWait)
+					}
+				}
 				if appendErr != nil {
-					if errors.Is(appendErr, ErrSessionRoundRequestConflict) && !clientDisconnected.Load() {
+					appendConflict := errors.Is(appendErr, ErrSessionRoundRequestConflict) ||
+						errors.Is(appendErr, ErrSessionRoundArchiveMissing)
+					if appendConflict && !clientDisconnected.Load() {
 						writeMu.Lock()
 						s.writeSSEData(w, map[string]any{"error": "CLIENT_MSG_ID_CONFLICT", "client_msg_id": clientMsgID})
+						writeMu.Unlock()
+					} else if !clientDisconnected.Load() {
+						writeMu.Lock()
+						s.writeSSEData(w, map[string]any{"error": "STREAM_ARCHIVE_FAILED", "client_msg_id": clientMsgID})
 						writeMu.Unlock()
 					}
 					s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
@@ -611,6 +637,14 @@ func isSessionRoundCompletionStaleForSessionGeneration(completion SessionRoundCo
 
 func isSessionRoundCompletionBeforeClear(completion SessionRoundCompletion, state SessionGenerationState) bool {
 	return completion.Completed && state.ClearedAt > 0 && completion.CreatedAt <= state.ClearedAt
+}
+
+func isRetryableSessionRoundAppendError(err error) bool {
+	if err == nil {
+		return false
+	}
+	return !errors.Is(err, ErrSessionRoundRequestConflict) &&
+		!errors.Is(err, ErrSessionRoundArchiveMissing)
 }
 
 var errSSELineTooLarge = errors.New("sse line too large")

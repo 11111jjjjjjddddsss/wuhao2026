@@ -643,8 +643,20 @@ if ($failures.Count -eq 0) {
         "Today agri async save callback must not visually back-insert a saved item after the user has already sent a new message."
     Require-Match $failures $chatScreen 'LaunchedEffect\((?s:.*?)remoteSnapshotHydrationComplete(?s:.*?)shouldHydrateRemoteHistory(?s:.*?)!shouldRevealMessageList(?s:.*?)shouldPersistTodayAgriShownDay\s*=(?s:.*?)canPersistTodayAgriShownDay(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*true(?s:.*?)todayAgriShownThisRuntime\s*=\s*true(?s:.*?)saveTodayAgriMainShownDaySync' `
         "Today agri should be marked shown only after it is inserted into the visible main-chat timeline, and must persist the shown day after remote snapshot hydration completes."
-    Require-Match $failures $chatScreen 'todayAgriRefreshDayKey\s*!=\s*currentDay(?s:.*?)todayAgriShownThisRuntime\s*=\s*false(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*hasStartedConversation(?s:.*?)todayAgriMainCardLoadedLogged\s*=\s*false(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*false' `
-        "Today agri same-runtime day rollover must reset shown/log gates and avoid surprise insertion if the user is already chatting."
+    Require-Match $failures $chatScreen 'todayAgriRefreshDayKey\s*!=\s*currentDay(?s:.*?)todayAgriShownThisRuntime\s*=\s*false(?s:.*?)shouldWaitForNextTodayAgriAssistantAfterDayChange(?s:.*?)todayAgriDayChangeCompletedAssistantBaselineId\s*=\s*latestCompletedAssistantTailId(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*shouldWaitForNewAssistant(?s:.*?)todayAgriMainCardLoadedLogged\s*=\s*false(?s:.*?)todayAgriMainCardVisibleLogged\s*=\s*false' `
+        "Today agri same-runtime day rollover must reset shown/log gates and wait for a new completed assistant before auto-inserting after old history."
+    Require-Match $failures $chatScreen 'shouldReleaseTodayAgriAutoInsertAfterDayChange(?s:.*?)todayAgriAutoInsertSuppressedThisRuntime\s*=\s*false' `
+        "Today agri same-runtime day rollover suppression must release after a new completed assistant tail appears."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriDayChangeWaitsForNextCompletedAssistantBeforeAutoInsert' `
+        "Today agri day-change suppression must have unit coverage."
+    Require-Match $failures $chatScreen 'TodayAgriCard(?s:.*?)stableKey:\s*String\s*=\s*"today-agri-card-\$\{normalizeTodayAgriCardDayKey\(card\.dateCn\.orEmpty\(\)\)\}"' `
+        "Today agri LazyList keys must normalize compact and dashed server day formats to avoid item identity churn."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriCardStableKeyNormalizesServerDayFormats' `
+        "Today agri stable-key normalization must have unit coverage."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+validTodayAgriMainItemForCurrentDay(?s:.*?)normalizeTodayAgriCardDayKey\(it\.day_cn\)\s*==\s*normalizedCurrentDay(?s:.*?)anchor_client_msg_id\.isNotBlank\(\)(?s:.*?)normalizeTodayAgriCardDayKey\(it\.card\.dateCn\.orEmpty\(\)\)\s*==\s*normalizedCurrentDay' `
+        "Today agri main item restore must only accept the current day, a nonblank anchor, and an explicitly same-day card."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriMainItemRestoresOnlyCurrentDaySingleItem' `
+        "Today agri current-day-only restore behavior must have unit coverage."
     Require-Match $failures $chatScreen 'hasRefreshDayItem\s*=\s*currentTodayAgriMainItem\?\.day_cn\s*==\s*refreshDayKey(?s:.*?)if\s*\(\s*!\s*todayAgriShownThisRuntime\s*&&\s*todayAgriMainShownDay\s*==\s*refreshDayKey\s*&&\s*!hasRefreshDayItem\s*\)' `
         "Today agri fetch for the main chat must not let the shown-day marker block a saved same-day main item from being restored."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime' `
@@ -667,7 +679,7 @@ if ($failures.Count -eq 0) {
         "Today agri main item saving must keep a bounded retry path for transient save failures."
     Require-Match $failures $sessionApi 'fun\s+saveTodayAgriItem(?s:.*?)session_generation' `
         "Today agri main-chat item saves must include session generation."
-    Require-Match $failures $chatScreen 'snapshot(?s:.*?)today_agri_items(?s:.*?)item\.card(?s:.*?)hydratedTodayAgriMainItem(?s:.*?)applyHydratedTodayAgriMainItem\(hydratedTodayAgriMainItem\)' `
+    Require-Match $failures $chatScreen 'snapshot(?s:.*?)today_agri_items(?s:.*?)validTodayAgriMainItemForCurrentDay\(item,\s*hydratedTodayAgriDayKey\)(?s:.*?)hydratedTodayAgriMainItem(?s:.*?)applyHydratedTodayAgriMainItem\(hydratedTodayAgriMainItem\)' `
         "Today agri main-chat item must be restored from session snapshot with its saved card content."
     Require-Match $failures ($sessionApi + "`n" + $chatScreen + "`n" + $chatTimelineItemsTest) 'today_agri_items_unavailable(?s:.*?)shouldClearTodayAgriMainItemAfterSnapshot(?s:.*?)todayAgriSnapshotUnavailableDoesNotClearExistingMainItem' `
         "Today agri main item must not be cleared when the snapshot only failed to read the optional today_agri_user_items table."
@@ -784,6 +796,8 @@ if ($failures.Count -eq 0) {
         "Streaming renderer must not restore the removed fresh-suffix highlight chain."
     Require-NoMatch $failures $chatScreen 'streamingMessageContent\s*\+\s*streamingRevealBuffer' `
         "Interrupted or background recovery paths must not flush unrevealed streaming buffer into visible assistant text; normal DONE drain owns buffer reveal."
+    Require-NoMatch $failures $chatScreen 'flushPendingStreamingRevealBufferForInterrupt|handleAssistantInterrupted(?s:.*?)flushStreamingRevealBuffer' `
+        "Interrupted assistant handling must not flush unrevealed streaming buffer into visible text."
     Require-NoMatch $failures $chatScreen 'safeDraft\.content\s*\+\s*safeDraft\.revealBuffer' `
         "Cold-start interrupted streaming draft recovery must not flush the saved unrevealed buffer into visible assistant text."
     Require-Match $failures $chatScreen 'visibleContentForInterruptedStreamingDraft(?s:.*?)return\s+normalizeAssistantText\(content\)' `
@@ -822,6 +836,10 @@ if ($failures.Count -eq 0) {
         "Active streaming bold heading text must not draw dividers before the line is complete."
     Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererStandaloneBoldHeading' `
         "Active streaming closed bold heading text must not draw dividers before the line is complete."
+    Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
+        "Active streaming Chinese section heading text must not draw dividers before the line is complete."
+    Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingWaitsForLineBoundaryBeforeDivider' `
+        "Assistant text divider tests must cover active Chinese section headings waiting for line completion."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableSeparatorDoesNotCreateSectionDivider' `
         "Assistant text divider tests must prove Markdown table separators do not create section dividers."
     Require-Match $failures $chatStreamingRenderer 'shouldEnableRendererMarkdownTableCopy(?s:.*?)messageSettled\s*&&\s*inlineMode\s*==\s*RendererInlineMode\.Settled' `

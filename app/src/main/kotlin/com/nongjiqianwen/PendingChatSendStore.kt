@@ -174,7 +174,11 @@ internal object PendingChatSendStore {
             } else {
                 PendingChatSendTerminalFailure(
                     reason = safeReason.take(48),
-                    imageUrls = parsed.imageUrls.orEmpty().filter { it.isNotBlank() }.distinct()
+                    imageUrls = runCatching { parsed.imageUrls }
+                        .getOrNull()
+                        .orEmpty()
+                        .filter { it.isNotBlank() }
+                        .distinct()
                 )
             }
         } catch (_: JsonSyntaxException) {

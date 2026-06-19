@@ -763,9 +763,6 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
-    parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(3, headingText)
-    }
     val headingMarker = trimmed.takeWhile { it == '#' }
     if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
         val remainder = trimmed.drop(headingMarker.length)

@@ -549,6 +549,19 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun activeChineseSectionHeadingWaitsForLineBoundaryBeforeDivider() {
+        val previous = classifyStreamingLine("先说清楚。")
+        val active = classifyActiveStreamingLine("一、成品含腐植酸尿素 vs. 自配方案")
+        val completed = classifyStreamingLine("一、成品含腐植酸尿素 vs. 自配方案")
+
+        assertTrue(active is StreamingLineModel.Paragraph)
+        assertFalse(shouldShowStreamingSectionDivider(previous, active))
+        assertTrue(completed is StreamingLineModel.Heading)
+        assertEquals("一、成品含腐植酸尿素 vs. 自配方案", (completed as StreamingLineModel.Heading).text)
+        assertTrue(shouldShowStreamingSectionDivider(previous, completed))
+    }
+
+    @Test
     fun activeBulletCanContainStreamingBoldText() {
         val model = classifyActiveStreamingLine("- **控水")
 

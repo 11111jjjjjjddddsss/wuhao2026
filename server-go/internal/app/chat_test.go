@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http/httptest"
 	"os"
 	"regexp"
@@ -13,6 +14,24 @@ import (
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
+
+func TestSessionRoundAppendRetryPolicy(t *testing.T) {
+	if isRetryableSessionRoundAppendError(nil) {
+		t.Fatalf("nil append error must not be retryable")
+	}
+	if isRetryableSessionRoundAppendError(ErrSessionRoundRequestConflict) {
+		t.Fatalf("client message conflict must not be retried")
+	}
+	if isRetryableSessionRoundAppendError(ErrSessionRoundArchiveMissing) {
+		t.Fatalf("archive-missing conflict must not be retried")
+	}
+	if isRetryableSessionRoundAppendError(errors.Join(context.DeadlineExceeded, ErrSessionRoundRequestConflict)) {
+		t.Fatalf("wrapped conflict must not be retried")
+	}
+	if !isRetryableSessionRoundAppendError(context.DeadlineExceeded) {
+		t.Fatalf("transient database/context append failure should be retried")
+	}
+}
 
 func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *testing.T) {
 	server := &Server{

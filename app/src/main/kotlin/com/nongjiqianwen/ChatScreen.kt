@@ -247,7 +247,7 @@ internal sealed interface ChatTimelineItem {
     data class TodayAgriCard(
         val card: SessionApi.TodayAgriCard
     ) : ChatTimelineItem {
-        override val stableKey: String = "today-agri-card-${card.dateCn.orEmpty()}"
+        override val stableKey: String = "today-agri-card-${normalizeTodayAgriCardDayKey(card.dateCn.orEmpty())}"
     }
 }
 @Immutable
@@ -476,6 +476,21 @@ internal fun shouldShowTodayAgriMainCard(
         (!suppressedThisRuntime || shownThisRuntime || hasSavedItem || insertedThisRuntime) &&
         (shownThisRuntime || hasSavedItem || insertedThisRuntime || shownDayKey != cardDay)
 }
+
+internal fun shouldWaitForNextTodayAgriAssistantAfterDayChange(
+    hasStartedConversation: Boolean,
+    latestCompletedAssistantTailId: String?
+): Boolean =
+    hasStartedConversation || !latestCompletedAssistantTailId.isNullOrBlank()
+
+internal fun shouldReleaseTodayAgriAutoInsertAfterDayChange(
+    waitingForNextAssistant: Boolean,
+    baselineCompletedAssistantTailId: String?,
+    latestCompletedAssistantTailId: String?
+): Boolean =
+    waitingForNextAssistant &&
+        !latestCompletedAssistantTailId.isNullOrBlank() &&
+        latestCompletedAssistantTailId != baselineCompletedAssistantTailId
 
 internal fun shouldRenderTodayAgriMainCardInTimeline(
     shouldShowTodayAgriCard: Boolean,
@@ -780,6 +795,19 @@ private fun normalizeTodayAgriCardDayKey(raw: String): String {
 
 private fun todayAgriCardDayKey(card: SessionApi.TodayAgriCard?): String =
     normalizeTodayAgriCardDayKey(card?.dateCn.orEmpty()).ifBlank { currentChinaDateKey() }
+
+internal fun validTodayAgriMainItemForCurrentDay(
+    item: TodayAgriMainItem?,
+    currentDayKey: String
+): TodayAgriMainItem? {
+    val normalizedCurrentDay = normalizeTodayAgriCardDayKey(currentDayKey)
+    return item
+        ?.takeIf { normalizedCurrentDay.isNotBlank() }
+        ?.takeIf { normalizeTodayAgriCardDayKey(it.day_cn) == normalizedCurrentDay }
+        ?.takeIf { it.anchor_client_msg_id.isNotBlank() }
+        ?.takeIf { it.card.isRenderableTodayAgriCard() }
+        ?.takeIf { normalizeTodayAgriCardDayKey(it.card.dateCn.orEmpty()) == normalizedCurrentDay }
+}
 
 private fun normalizeAssistantText(content: String): String {
     return content
@@ -2267,14 +2295,18 @@ fun ChatScreen() {
     var todayAgriAutoInsertSuppressedThisRuntime by rememberSaveable(uiRuntimeResetKey) {
         mutableStateOf(false)
     }
+    var todayAgriAwaitingNewCompletedAssistantAfterDayChange by rememberSaveable(uiRuntimeResetKey) {
+        mutableStateOf(false)
+    }
+    var todayAgriDayChangeCompletedAssistantBaselineId by rememberSaveable(uiRuntimeResetKey) {
+        mutableStateOf<String?>(null)
+    }
     var todayAgriUserSendEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var hiddenRemoteRoundCount by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     val currentTodayAgriCardDay = todayAgriCardDayKey(todayAgriCard)
     val currentTodayAgriMainItem by remember(todayAgriMainItem) {
         derivedStateOf {
-            todayAgriMainItem
-                ?.takeIf { item -> item.day_cn == currentChinaDateKey() }
-                ?.takeIf { item -> todayAgriCardDayKey(item.card) == item.day_cn }
+            validTodayAgriMainItemForCurrentDay(todayAgriMainItem, currentChinaDateKey())
         }
     }
     val hasCompletedAssistantTail by remember(messages, failedAssistantMessageStates) {
@@ -2282,6 +2314,23 @@ fun ChatScreen() {
     }
     val latestCompletedAssistantTailId by remember(messages, failedAssistantMessageStates) {
         derivedStateOf { latestCompletedAssistantAnswerId(messages, failedAssistantMessageStates.keys) }
+    }
+    LaunchedEffect(
+        latestCompletedAssistantTailId,
+        todayAgriAwaitingNewCompletedAssistantAfterDayChange,
+        todayAgriDayChangeCompletedAssistantBaselineId
+    ) {
+        if (
+            shouldReleaseTodayAgriAutoInsertAfterDayChange(
+                waitingForNextAssistant = todayAgriAwaitingNewCompletedAssistantAfterDayChange,
+                baselineCompletedAssistantTailId = todayAgriDayChangeCompletedAssistantBaselineId,
+                latestCompletedAssistantTailId = latestCompletedAssistantTailId
+            )
+        ) {
+            todayAgriAwaitingNewCompletedAssistantAfterDayChange = false
+            todayAgriDayChangeCompletedAssistantBaselineId = null
+            todayAgriAutoInsertSuppressedThisRuntime = false
+        }
     }
     val currentTodayAgriCardHasSavedItem by remember(currentTodayAgriMainItem) {
         derivedStateOf { currentTodayAgriMainItem != null }
@@ -2524,6 +2573,8 @@ fun ChatScreen() {
         todayAgriShownThisRuntime = false
         todayAgriInsertedThisRuntime = false
         todayAgriAutoInsertSuppressedThisRuntime = false
+        todayAgriAwaitingNewCompletedAssistantAfterDayChange = false
+        todayAgriDayChangeCompletedAssistantBaselineId = null
         todayAgriUserSendEpoch = 0
         todayAgriMainItem = null
         todayAgriLocalAnchorMessageId = null
@@ -3324,7 +3375,13 @@ fun ChatScreen() {
                 todayAgriItemSaveInFlightKey = ""
                 todayAgriShownThisRuntime = false
                 todayAgriInsertedThisRuntime = false
-                todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
+                val shouldWaitForNewAssistant = shouldWaitForNextTodayAgriAssistantAfterDayChange(
+                    hasStartedConversation = hasStartedConversation,
+                    latestCompletedAssistantTailId = latestCompletedAssistantTailId
+                )
+                todayAgriAwaitingNewCompletedAssistantAfterDayChange = shouldWaitForNewAssistant
+                todayAgriDayChangeCompletedAssistantBaselineId = latestCompletedAssistantTailId
+                todayAgriAutoInsertSuppressedThisRuntime = shouldWaitForNewAssistant
                 todayAgriUserSendEpoch = 0
                 todayAgriMainCardLoadedLogged = false
                 todayAgriMainCardVisibleLogged = false
@@ -3344,7 +3401,13 @@ fun ChatScreen() {
             todayAgriItemSaveInFlightKey = ""
             todayAgriShownThisRuntime = false
             todayAgriInsertedThisRuntime = false
-            todayAgriAutoInsertSuppressedThisRuntime = hasStartedConversation
+            val shouldWaitForNewAssistant = shouldWaitForNextTodayAgriAssistantAfterDayChange(
+                hasStartedConversation = hasStartedConversation,
+                latestCompletedAssistantTailId = latestCompletedAssistantTailId
+            )
+            todayAgriAwaitingNewCompletedAssistantAfterDayChange = shouldWaitForNewAssistant
+            todayAgriDayChangeCompletedAssistantBaselineId = latestCompletedAssistantTailId
+            todayAgriAutoInsertSuppressedThisRuntime = shouldWaitForNewAssistant
             todayAgriUserSendEpoch = 0
             todayAgriMainCardLoadedLogged = false
             todayAgriMainCardVisibleLogged = false
@@ -4785,12 +4848,11 @@ fun ChatScreen() {
                 todayAgriRemoteConfirmedDay = null
                 return@LaunchedEffect
             }
+            val hydratedTodayAgriDayKey = currentChinaDateKey()
             val hydratedTodayAgriMainItem = snapshot
                 ?.today_agri_items
-                ?.firstOrNull { item ->
-                    item.day_cn == currentChinaDateKey() &&
-                        item.anchor_client_msg_id.isNotBlank() &&
-                        item.card.isRenderableTodayAgriCard()
+                ?.firstNotNullOfOrNull { item ->
+                    validTodayAgriMainItemForCurrentDay(item, hydratedTodayAgriDayKey)
                 }
             val localStreamingDraftForMerge = localStreamingDraftForMergeDeferred.await()
             val localSnapshotForMerge = recoverStreamingDraftAsInterruptedSnapshot(
@@ -5436,24 +5498,6 @@ fun ChatScreen() {
         finalizeStreamingStop(shouldRestoreBottomAnchor = false)
     }
 
-    fun flushPendingStreamingRevealBufferForInterrupt() {
-        if (streamingRevealBuffer.isBlank()) return
-        streamRevealJob?.cancel()
-        streamRevealJob = null
-        flushStreamingRevealBuffer(
-            currentMessageId = streamingMessageId,
-            currentContent = streamingMessageContent,
-            currentRevealBuffer = streamingRevealBuffer,
-            anchoredUserMessageId = anchoredUserMessageId,
-            assistantIdProvider = ::assistantMessageIdForSourceUser,
-            fallbackIdProvider = { "assistant_${UUID.randomUUID()}" }
-        )?.let { flushed ->
-            streamingMessageId = flushed.messageId
-            streamingMessageContent = flushed.content
-        }
-        streamingRevealBuffer = ""
-    }
-
     fun finishStreaming() {
         val finishClearEpoch = chatHistoryClearEpoch
         mainHandler.post {
@@ -5572,9 +5616,9 @@ fun ChatScreen() {
             if (reason == "quota") {
                 quotaExhaustedDayKey = currentQuotaDayKey()
             }
-            flushPendingStreamingRevealBufferForInterrupt()
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent)
+            streamingRevealBuffer = ""
             clearPendingStreamingFinalize()
             streamRevealJob?.cancel()
             streamRevealJob = null
