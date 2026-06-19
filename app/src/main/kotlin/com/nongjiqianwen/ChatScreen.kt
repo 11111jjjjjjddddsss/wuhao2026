@@ -606,7 +606,13 @@ private fun markLocalImageUploadPendingAsFailed(
                 candidate.role == ChatRole.ASSISTANT &&
                 candidate.content.isNotBlank()
         }
-        if (!hasSettledAssistant) {
+        if (
+            shouldMarkLocalImageUploadPendingAsFailed(
+                message = message,
+                shouldKeepPending = false,
+                hasSettledAssistant = hasSettledAssistant
+            )
+        ) {
             nextFailedStates.putIfAbsent(message.id, "network")
         }
     }
@@ -614,15 +620,25 @@ private fun markLocalImageUploadPendingAsFailed(
     return sanitizedSnapshot.copy(failedUserMessageStates = nextFailedStates)
 }
 
+internal fun shouldMarkLocalImageUploadPendingAsFailed(
+    message: ChatMessage,
+    shouldKeepPending: Boolean,
+    hasSettledAssistant: Boolean
+): Boolean =
+    message.isLocalImageUploadPendingUserMessage() &&
+        !shouldKeepPending &&
+        !hasSettledAssistant
+
 internal fun shouldTrackPendingImageAssistantRecovery(
     message: ChatMessage,
     pendingExists: Boolean,
     terminalFailureExists: Boolean,
+    remoteCompletionExists: Boolean,
     hasSettledAssistant: Boolean
 ): Boolean =
     message.isLocalImageUploadPendingUserMessage() &&
         !hasSettledAssistant &&
-        (pendingExists || terminalFailureExists)
+        (pendingExists || terminalFailureExists || remoteCompletionExists)
 
 internal fun shouldApplyPendingImageTerminalFailure(
     terminalFailureReason: String?,
@@ -1362,7 +1378,12 @@ private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatW
                     messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
                 ),
                 shouldKeepPending = { messageId ->
-                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId) ||
+                        PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                            appContext,
+                            chatScopeId,
+                            messageId
+                        )
                 }
             )
         } else {
@@ -1373,7 +1394,12 @@ private suspend fun Context.loadLocalChatWindow(chatScopeId: String): LocalChatW
             markLocalImageUploadPendingAsFailed(
                 snapshot = normalizeLocalChatWindowSnapshot(payload),
                 shouldKeepPending = { messageId ->
-                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId) ||
+                        PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                            appContext,
+                            chatScopeId,
+                            messageId
+                        )
                 }
             )
         }
@@ -1395,7 +1421,12 @@ private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindo
                     messages = chatCacheGson.fromJson<List<ChatMessage>>(raw, chatCacheListType) ?: emptyList()
                 ),
                 shouldKeepPending = { messageId ->
-                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId) ||
+                        PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                            appContext,
+                            chatScopeId,
+                            messageId
+                        )
                 }
             )
         } else {
@@ -1406,7 +1437,12 @@ private fun Context.loadLocalChatWindowSync(chatScopeId: String): LocalChatWindo
             markLocalImageUploadPendingAsFailed(
                 snapshot = normalizeLocalChatWindowSnapshot(payload),
                 shouldKeepPending = { messageId ->
-                    PendingChatSendStore.has(appContext, chatScopeId, messageId)
+                    PendingChatSendStore.has(appContext, chatScopeId, messageId) ||
+                        PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                            appContext,
+                            chatScopeId,
+                            messageId
+                        )
                 }
             )
         }
@@ -4882,7 +4918,12 @@ fun ChatScreen() {
             )
             val shouldKeepPendingUserMessage: (String) -> Boolean = { messageId ->
                 PendingChatSendStore.has(context, chatScopeId, messageId) ||
-                    PendingChatSendStore.hasTerminalFailure(context, chatScopeId, messageId)
+                    PendingChatSendStore.hasTerminalFailure(context, chatScopeId, messageId) ||
+                    PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                        context,
+                        chatScopeId,
+                        messageId
+                    )
             }
             val remoteMessages = snapshot?.a_rounds_for_ui?.let(::snapshotRoundsToMessages).orEmpty()
             val hydratedHiddenRemoteRoundCount =
@@ -5133,6 +5174,11 @@ fun ChatScreen() {
                     message = message,
                     pendingExists = PendingChatSendStore.has(context, chatScopeId, message.id),
                     terminalFailureExists = PendingChatSendStore.hasTerminalFailure(
+                        context,
+                        chatScopeId,
+                        message.id
+                    ),
+                    remoteCompletionExists = PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
                         context,
                         chatScopeId,
                         message.id

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"regexp"
+	"strings"
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
@@ -133,6 +134,7 @@ func TestHandleInternalTodayAgriCardStatusReturnsManualLock(t *testing.T) {
 			AddRow("ready", content, int64(1800000000000), dailyAgriSourceTypeManual, true, "codex", int64(1800000000000), int64(0), nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/internal/jobs/today-agri-card/status?day_cn=20260618", nil)
+	req.RemoteAddr = "127.0.0.1:53000"
 	req.Header.Set("X-Internal-Job-Secret", "secret")
 	rec := httptest.NewRecorder()
 	server.handleInternalTodayAgriCardStatus(rec, req)
@@ -175,6 +177,7 @@ func TestHandleInternalTodayAgriCardStatusReturnsManualLockForInvalidContent(t *
 			AddRow("ready", "{bad-json", int64(1800000000000), dailyAgriSourceTypeManual, true, "codex", int64(1800000000000), int64(0), nil))
 
 	req := httptest.NewRequest(http.MethodGet, "/internal/jobs/today-agri-card/status?day_cn=20260618", nil)
+	req.RemoteAddr = "127.0.0.1:53000"
 	req.Header.Set("X-Internal-Job-Secret", "secret")
 	rec := httptest.NewRecorder()
 	server.handleInternalTodayAgriCardStatus(rec, req)
@@ -197,5 +200,23 @@ func TestHandleInternalTodayAgriCardStatusReturnsManualLockForInvalidContent(t *
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestHandleInternalTodayAgriCardStatusRejectsPublicClientEvenWithSecret(t *testing.T) {
+	t.Setenv("DAILY_AGRI_JOB_SECRET", "secret")
+	server := &Server{}
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/jobs/today-agri-card/status?day_cn=20260618", nil)
+	req.RemoteAddr = "203.0.113.10:53000"
+	req.Header.Set("X-Internal-Job-Secret", "secret")
+	rec := httptest.NewRecorder()
+	server.handleInternalTodayAgriCardStatus(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body=%s; want 403", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "internal_ip_required") {
+		t.Fatalf("body=%s, want internal_ip_required", rec.Body.String())
 	}
 }

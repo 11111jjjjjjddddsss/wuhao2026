@@ -13,7 +13,8 @@
 - 内部生成接口：`POST /internal/jobs/today-agri-card/generate`
 - 内部状态接口：`GET /internal/jobs/today-agri-card/status?day_cn=YYYYMMDD`，供脚本 / Codex 自动化先查目标日期是否已人工锁定，必须带 `DAILY_AGRI_JOB_SECRET`
 - 内部探针接口：`POST /internal/jobs/today-agri-card/probe?runs=3`，只测模型输出 / 来源 / 解析质量，不写 `daily_agri_cards`
-- 内部人工发布接口：`POST /internal/jobs/today-agri-card/manual`，只供本机脚本 / Codex 自动化使用，必须带 `DAILY_AGRI_JOB_SECRET`
+- 内部人工发布接口：`POST /internal/jobs/today-agri-card/manual`，只供脚本 / Codex 自动化使用，必须带 `DAILY_AGRI_JOB_SECRET`
+- 上述 `/internal/jobs/today-agri-card/*` 共享密钥入口同时要求调用来源是 loopback / 私网地址；公网本机脚本不再直接带 secret 打公网 internal。Codex 自动化和本机命令行默认通过 Cloud Assistant 进 ECS，再在 ECS 本机 `127.0.0.1:<active slot>` 调用内部接口；浏览器后台继续走 `/admin-api/v1/today-agri/*`
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
 - 后台人工发布接口：`POST /admin-api/v1/today-agri/manual`，仅 `owner / content_ops`；该接口仍写同一张 `daily_agri_cards`，不是第二套内容系统
 - 当前生产推荐主链：ECS systemd timer 每天约 05:35 主触发一次，并有约 05:50 / 06:10 两次早晨补查；后台补跑只作为异常兜底。人工发布适合晚上准备次日 3 条内容，发布后会标记 `source_type=manual / manual_locked=1 / manual_by / manual_at`，同一天自动生成和补跑只复用缓存，不覆盖人工内容。没人人工发布时，原自动生成继续兜底
@@ -46,7 +47,7 @@ Android 展示口径：今日农情不是聊天消息，只作为 `ChatTimelineI
 
 ## 生成接口
 
-生成接口只允许定时任务或人工运维调用。该入口必须带 `DAILY_AGRI_JOB_SECRET`，并默认按 scope + IP 做 10 分钟 120 次短期限流，配置 Redis 时跨实例共享：
+生成接口只允许定时任务或人工运维在 ECS 本机 / VPC 内部调用。该入口必须同时满足 loopback / 私网来源和 `DAILY_AGRI_JOB_SECRET`，并默认按 scope + IP 做 10 分钟 120 次短期限流，配置 Redis 时跨实例共享。下面的 curl 示例应在 ECS 内部或 Cloud Assistant 脚本里执行，不是让本机从公网直接访问：
 
 ```powershell
 curl.exe -X POST "$env:BACKEND_BASE_URL/internal/jobs/today-agri-card/generate" `
@@ -136,7 +137,7 @@ curl.exe "$env:BACKEND_BASE_URL/api/today-agri-cards" `
 
 ## 内部探针
 
-探针用于验证当前固定 `qwen3.5-plus + compatible chat/completions + turbo` 的 JSON 执行力、来源名、解析通过率、usage 和新闻质量。探针不会写入 `daily_agri_cards`，也不会改变用户当天看到的卡片。该入口同样必须带 `DAILY_AGRI_JOB_SECRET`，`runs` 默认 1，最多 3。
+探针用于验证当前固定 `qwen3.5-plus + compatible chat/completions + turbo` 的 JSON 执行力、来源名、解析通过率、usage 和新闻质量。探针不会写入 `daily_agri_cards`，也不会改变用户当天看到的卡片。该入口同样必须在 ECS 本机 / VPC 内部调用并带 `DAILY_AGRI_JOB_SECRET`，`runs` 默认 1，最多 3。
 
 2026-06-15 提示词已升到 v77 并部署到生产：不限制具体作物，不单独排斥某个大田作物；选题以种植方面新闻为主，更优先找有生产价值或技术含量的内容，天气、气象、防灾或抢收最多作为其中一个角度并必须写清农事影响。v77 仍坚持“短提示词、三条硬要求、不过度压模型、不恢复后端内容过滤”。生产环境 `qwen3.5-plus + turbo + v77` 探针 `runs=3` 得到 `ok_count=3/3`，每次均为 3 条完整 item，`prompt_version=2026-06-15-v77`，未返回 `reasoning_tokens`；样本包含雨后田管 / 复产、夏收、农垦标准、茶园修复、晚播小麦收官等，摘要长度约 75-101 字。前两轮仍有天气切入，第三轮技术 / 生产内容更明显，后续仍需靠后台抽查继续观察题材分散度、天气占比、技术含量、来源名和摘要厚度，不为个别略短恢复后端字数过滤、模型输出截断或继续追加细碎硬规则。2026-06-14 v76 生产探针曾得到 `ok_count=2/2`，2026-06-13 v74 生产探针曾累计 `runs=5` 得到 `ok_count=5/5`，2026-06-12 v70 生产探针曾得到 `ok_count=3/3`；更早 v67 / v52-v55 的探针记录只作历史排障参考。兼容 Chat 链路返回的结构化 `sources[]` 可能为空，质量判断仍要看 `source_name`、正文事实和后台抽查。
 
@@ -234,7 +235,7 @@ WHERE day_cn = 'YYYYMMDD' AND scope = 'CN';
 - 确认：必须输入 `人工发布 YYYYMMDD`，防止手滑覆盖
 - 写入：`status=ready`、`model/search_strategy/prompt_version=manual`、`source_type=manual`、`manual_locked=1`
 
-Codex 自动化或本机命令行推荐先查状态、再发布。状态脚本默认按北京时间计算目标日期，18:00 后检查次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本带 30 秒默认请求超时，可用 `-TimeoutSec` 调整，避免网络卡住时长期挂起；输出只包含日期、状态、来源类型、人工锁定标记、条目数和 `should_publish`，不打印密钥：
+Codex 自动化或本机命令行推荐先查状态、再发布。状态脚本默认按北京时间计算目标日期，18:00 后检查次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本默认通过 Cloud Assistant 进入 ECS，在本机 active slot 调用内部状态接口；只有显式 `-UsePublicInternalApi` 才尝试旧直连模式，且生产后端仍会要求来源是 loopback / 私网地址，因此日常不要使用该开关。脚本带 30 秒默认请求超时，可用 `-TimeoutSec` 调整，避免网络卡住时长期挂起；输出只包含日期、状态、来源类型、人工锁定标记、条目数和 `should_publish`，不打印密钥：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\get-today-agri-manual-status.ps1 -DayCN 20260619
@@ -242,7 +243,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\get-today-a
 
 如果状态脚本返回 `manual_locked=true` 且 `source_type=manual`，说明这一天已经由人工 / Codex 锁定，自动化应跳过，不再查新闻或覆盖内容。真实发布脚本在发送前也会重新调用同一个内部状态接口；所以本机 Codex 自动化即使 22:00 成功、23:00 再运行，也会安全跳过已发布日期。
 
-发布脚本默认按北京时间计算目标日期，18:00 后发布次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本从环境变量 `DAILY_AGRI_JOB_SECRET` 或本机 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 读取内部密钥，请求带 30 秒默认超时，可用 `-TimeoutSec` 调整；输出只包含日期、状态、标题和来源，不打印密钥：
+发布脚本默认按北京时间计算目标日期，18:00 后发布次日；如果要覆盖当天，显式传 `-DayCN YYYYMMDD`。脚本默认通过 Cloud Assistant 把待发布 JSON 传到 ECS，由 ECS 读取 `/etc/nongjiqiancha/server.env` 中的 `DAILY_AGRI_JOB_SECRET` 并调用本机 active slot；本机不会读取或打印内部密钥。只有显式 `-UsePublicInternalApi` 才尝试旧直连模式，生产日常不要使用。请求带 30 秒默认超时，可用 `-TimeoutSec` 调整；输出只包含日期、状态、标题和来源，不打印密钥：
 
 本地检查参数和确认词时先加 `-DryRun`，dry run 不读密钥、不发送请求；确认内容没问题后再去掉 `-DryRun` 真实发布。
 

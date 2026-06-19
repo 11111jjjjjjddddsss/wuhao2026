@@ -62,6 +62,7 @@
 - 复查 fail2ban：服务 active，`sshd` jail 存在
 - 2026-06-06 坏人视角复查后，已把 `api.nongjiqiancha.cn` 的 HTTP 80 从直接反代改为 ACME challenge + 301 HTTPS 跳转；公网业务入口不再接受明文 API 请求
 - 2026-06-06 后端补内部 secret 入口 Redis / IP 短期限流，覆盖 `SUPPORT_ADMIN_SECRET` 保护的内部查询 / 回复接口和 `DAILY_AGRI_JOB_SECRET` 保护的今日农情生成接口
+- 2026-06-19 后端内部共享密钥入口继续收紧：帮助与反馈、App 自动日志内部查询、内部审计查询、今日农情生成 / 状态 / probe / manual 和记忆文档探针都要求 loopback / 私网来源 + 对应 secret；本机今日农情状态 / 发布脚本默认通过 Cloud Assistant 进入 ECS，再在 ECS 本机 active slot 调用 `/internal/*`，不再把公网直连 internal 作为日常运维路径
 - 2026-06-06 后端补 `client_msg_id` 长度上限 128，对齐 MySQL `VARCHAR(128)`，避免恶意超长幂等 ID 打到数据库层制造错误
 
 2026-06-11 云安全中心告警处置：

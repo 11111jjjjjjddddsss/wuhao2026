@@ -536,8 +536,7 @@ func dailyAgriPublicSourceLooksLikeArticleTitle(source string) bool {
 }
 
 func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Request) {
-	if !validateInternalJobSecret(r) {
-		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+	if !s.requireInternalJobSecret(w, r) {
 		return
 	}
 	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_job") {
@@ -571,8 +570,7 @@ func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleInternalTodayAgriCardStatus(w http.ResponseWriter, r *http.Request) {
-	if !validateInternalJobSecret(r) {
-		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+	if !s.requireInternalJobSecret(w, r) {
 		return
 	}
 	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_status") {
@@ -621,8 +619,7 @@ func (s *Server) handleInternalTodayAgriCardStatus(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) handleProbeTodayAgriCard(w http.ResponseWriter, r *http.Request) {
-	if !validateInternalJobSecret(r) {
-		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+	if !s.requireInternalJobSecret(w, r) {
 		return
 	}
 	if !s.consumeInternalProbeRateLimit(w, r, "daily_agri_probe") {

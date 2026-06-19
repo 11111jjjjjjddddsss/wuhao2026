@@ -963,6 +963,7 @@ class ChatTimelineItemsTest {
                 message = pendingImageUser,
                 pendingExists = true,
                 terminalFailureExists = false,
+                remoteCompletionExists = false,
                 hasSettledAssistant = false
             )
         )
@@ -971,6 +972,16 @@ class ChatTimelineItemsTest {
                 message = pendingImageUser,
                 pendingExists = false,
                 terminalFailureExists = true,
+                remoteCompletionExists = false,
+                hasSettledAssistant = false
+            )
+        )
+        assertTrue(
+            shouldTrackPendingImageAssistantRecovery(
+                message = pendingImageUser,
+                pendingExists = false,
+                terminalFailureExists = false,
+                remoteCompletionExists = true,
                 hasSettledAssistant = false
             )
         )
@@ -979,6 +990,7 @@ class ChatTimelineItemsTest {
                 message = pendingImageUser,
                 pendingExists = false,
                 terminalFailureExists = true,
+                remoteCompletionExists = true,
                 hasSettledAssistant = true
             )
         )
@@ -987,7 +999,41 @@ class ChatTimelineItemsTest {
                 message = userMessage("u2"),
                 pendingExists = true,
                 terminalFailureExists = true,
+                remoteCompletionExists = true,
                 hasSettledAssistant = false
+            )
+        )
+    }
+
+    @Test
+    fun completedBackgroundImageSendDoesNotBecomeLocalFailureWhileAwaitingSnapshot() {
+        val pendingImageUser = ChatMessage(
+            id = "u1",
+            role = ChatRole.USER,
+            content = "看下这个病害",
+            imageUris = listOf("file:///tmp/local.jpg"),
+            imageUrls = emptyList()
+        )
+
+        assertFalse(
+            shouldMarkLocalImageUploadPendingAsFailed(
+                message = pendingImageUser,
+                shouldKeepPending = true,
+                hasSettledAssistant = false
+            )
+        )
+        assertTrue(
+            shouldMarkLocalImageUploadPendingAsFailed(
+                message = pendingImageUser,
+                shouldKeepPending = false,
+                hasSettledAssistant = false
+            )
+        )
+        assertFalse(
+            shouldMarkLocalImageUploadPendingAsFailed(
+                message = pendingImageUser,
+                shouldKeepPending = false,
+                hasSettledAssistant = true
             )
         )
     }

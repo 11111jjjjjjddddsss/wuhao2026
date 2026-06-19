@@ -1,6 +1,6 @@
 # 农技千查安全威胁模型
 
-最后更新：2026-06-10
+最后更新：2026-06-19
 
 ## 审计范围
 
@@ -36,13 +36,13 @@
 ## 本轮修复
 
 - `server-go/internal/app/chat.go`：`client_msg_id` 增加 128 字节长度上限，提前挡住超长幂等 ID
-- `server-go/internal/app/internal_security.go`：新增内部 secret 入口限流，默认同 IP / scope 10 分钟 120 次，Redis 可跨实例共享
-- `server-go/internal/app/support.go` / `daily_agri.go`：内部 support / app logs / audit / 今日农情 job 入口接入上述频控
+- `server-go/internal/app/internal_security.go`：内部 secret 入口同时具备 loopback / 私网来源门槛和限流，默认同 IP / scope 10 分钟 120 次，Redis 可跨实例共享
+- `server-go/internal/app/support.go` / `daily_agri.go` / `client_app_logs.go` / `admin_audit.go` / `summary_probe.go`：内部 support / app logs / audit / 今日农情 job / probe 入口统一接入上述来源门槛和频控
 - ECS Nginx：API HTTP 80 改为 ACME challenge + HTTPS 跳转；脚本改用本机 HTTPS `--resolve` 做生产 healthz
 
 ## 剩余风险
 
-- 第一版管理后台已部署到 `https://admin.nongjiqiancha.cn/`，并完成后台域名、Nginx 静态托管、`/admin-api/` 反代、HTTPS、bootstrap 初始化和 bootstrap 环境变量清理；当前 `/internal/*` 仍保留共享 secret 过渡入口给脚本兼容，不能把 secret 放进浏览器前端
+- 第一版管理后台已部署到 `https://admin.nongjiqiancha.cn/`，并完成后台域名、Nginx 静态托管、`/admin-api/` 反代、HTTPS、bootstrap 初始化和 bootstrap 环境变量清理；当前 `/internal/*` 仍保留给 ECS 本机脚本、Cloud Assistant 或 VPC 内部工具兼容，但必须是 loopback / 私网来源并带共享 secret，不能把 secret 放进浏览器前端，也不能把 `/internal/*` 当公网后台入口
 - Android 长期 auth token 仍保存在普通 SharedPreferences；备份已禁用，但 Root、恶意调试或设备被拿到时仍可能被窃取。后续可评估 EncryptedSharedPreferences、设备管理和远程吊销
 - 没买 WAF / 高防时，普通 Web 扫描和脚本刷接口主要靠 Nginx / Go / Redis 限流；大流量 DDoS 超过基础防护仍可能不可用
 - SLS 已有 AlertHub 最小告警，并已绑定邮件行动策略和最小仪表盘；当前不启用短信 / 电话 / 机器人，仍不能自动处置，第一封邮件送达需要在真实或测试告警触发时确认

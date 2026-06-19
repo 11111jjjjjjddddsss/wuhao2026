@@ -13,7 +13,7 @@
 - Android 现在有最小闪退补报：进程崩溃时只在本机 SharedPreferences 保存异常类型、顶层代码位置、登录阶段和时间戳等安全摘要；下次启动后自动上报。未登录 / 登录页阶段崩溃走 `auth.app_crash` 预登录日志，已登录后的普通运行崩溃走 `app.crash`。待补报记录不会在第一次上传前就删除，最多保留 3 次上报尝试，attrs 会带 `report_attempt`。2026-06-14 起，崩溃补报的 `exception / cause / top_class / top_method / top_line / stack_top / stack_next / stack_third` 作为安全诊断字段保留，Android 和后端都会把它们限制为类名、方法名和行号形态；URL、手机号、token、正文和图片信息仍会被丢弃
 - 接口有 8KiB body 上限、字段长度限制和短期限流：默认每个 `user_id + IP` 10 分钟 60 次，配置 Redis 后跨进程共享，未配置 Redis 时回退单进程内限流；App 自动日志是非关键排障链路，Redis 限流操作异常时 fail open，避免日志系统影响用户主体验
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
-- 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。两个查询入口都支持按精确 `event`、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号和等级过滤，精确事件名优先于前缀筛选
+- 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护，并要求调用来源是 loopback / 私网地址；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。日常浏览器后台和本机公网排障优先走 `/admin-api/` 或 Cloud Assistant 内部脚本，不把 `SUPPORT_ADMIN_SECRET` 放进前端。两个查询入口都支持按精确 `event`、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号和等级过滤，精确事件名优先于前缀筛选
 - `client_app_logs` 已补面向后台监控和排障的 `level + created_at`、`event + level + created_at` 索引，便于最近 24 小时错误、登录整组事件、检查更新整组事件和按版本 / 机型筛选；索引只优化查询，不改变日志脱敏和保留边界
 - SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 AlertHub 最小告警；应用告警已绑定邮件行动策略和最小仪表盘；当前按控成本口径使用：只保留 `server-go` / `nginx-error` 两个 Logstore，TTL 180 天，其中热存储 7 天、低频存储 173 天，不采完整 Nginx access，不启用短信 / 电话告警，App 自动日志有 8KiB body 上限、脱敏和短期限流。`client_app_logs` 当前按 30 天内低成本排障窗口控制：服务端写入 App 自动日志成功后会限频清理 30 天前记录，默认每天最多触发一次、每次最多删除 1000 条，可用 `CLIENT_APP_LOG_RETENTION_SECONDS` 和 `CLIENT_APP_LOG_PRUNE_INTERVAL_SECONDS` 调整；`scripts/check-data-retention-cost.ps1` 继续在最早日志超过窗口或体量异常时提示 attention，作为自动清理的只读核验。后续仍要补更细的版本 / 设备 / 地区聚合趋势，以及每天写入量 / 索引量 / 存储量 / 账单阈值提醒，用户量上来后优先考虑采样、缩短保留期或购买 SLS 资源包
 
@@ -98,12 +98,13 @@ Android 只上报结构化错误信息：
 
 `GET /internal/app/logs`
 
-鉴权：
+鉴权与来源：
 
 - Header `X-Support-Admin-Secret: <SUPPORT_ADMIN_SECRET>`
 - 或 `Authorization: Bearer <SUPPORT_ADMIN_SECRET>`
 - 可选 `X-Admin-Actor: <operator>`，只用于审计日志标记操作人，不替代鉴权
 - 内部 secret 入口默认按 scope + IP 做 10 分钟 120 次短期限流，配置 Redis 时跨实例共享
+- 请求来源必须是 ECS 本机 loopback 或 VPC 私网地址。下面示例应在 ECS 内部 / Cloud Assistant 里执行；本机从公网直接访问生产域名即使带 secret 也会被拒绝。日常人工查看优先用管理后台 App 日志页。
 
 查询参数：
 

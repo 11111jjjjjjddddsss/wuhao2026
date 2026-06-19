@@ -1159,8 +1159,7 @@ func (s *Server) handleAdminPublishManualTodayAgriCard(w http.ResponseWriter, r 
 }
 
 func (s *Server) handleInternalPublishManualTodayAgriCard(w http.ResponseWriter, r *http.Request) {
-	if !validateInternalJobSecret(r) {
-		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+	if !s.requireInternalJobSecret(w, r) {
 		return
 	}
 	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_job") {

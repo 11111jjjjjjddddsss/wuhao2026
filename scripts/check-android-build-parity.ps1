@@ -593,6 +593,10 @@ if ($failures.Count -eq 0) {
         "Pending image-send terminal failure must be written atomically with pending removal to avoid a stuck background-sending state after process death."
     Require-Match $failures $pendingWorker 'PendingChatSendStore\.markTerminalFailureAndRemovePending' `
         "PendingChatSendWorker must use the atomic terminal-failure-plus-remove store API."
+    Require-Match $failures $pendingWorker 'StreamCompletionStatus\.Complete,(?s:.*?)StreamCompletionStatus\.Replay\s*->\s*\{(?s:.*?)PendingChatSendStore\.markRemoteCompletedAndRemovePending' `
+        "PendingChatSendWorker success must leave a short remote-completion marker so foreground restore does not mislabel a completed background image send as failed."
+    Require-Match $failures ($pendingChatSendStore + "`n" + $chatScreen) 'REMOTE_COMPLETION_KEY_PREFIX(?s:.*?)fun\s+hasRemoteCompletionAwaitingSnapshot(?s:.*?)shouldTrackPendingImageAssistantRecovery\((?s:.*?)remoteCompletionExists\s*=\s*PendingChatSendStore\.hasRemoteCompletionAwaitingSnapshot' `
+        "Chat restore must keep tracking completed background image sends until the remote snapshot supplies the assistant reply."
     Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
         "Today agri rendering must stay in TodayAgriCardUi.kt and use the ordinary selectable text style."
     Require-Match $failures $todayAgriCardUi $todayAgriRenderablePattern `

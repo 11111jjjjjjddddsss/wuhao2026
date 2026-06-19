@@ -56,7 +56,7 @@ type AdminAuditLogEntry struct {
 }
 
 func (s *Server) handleInternalAdminAuditLogs(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSupportAdminSecret(w, r) {
+	if !s.requireInternalSupportAdminSecret(w, r) {
 		return
 	}
 	filter, validationError := parseAdminAuditLogQuery(r.URL.Query(), time.Now())

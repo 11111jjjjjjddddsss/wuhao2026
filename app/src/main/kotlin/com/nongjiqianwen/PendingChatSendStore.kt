@@ -28,6 +28,11 @@ internal data class PendingChatSendTerminalFailure(
     val imageUrls: List<String> = emptyList()
 )
 
+internal data class PendingChatSendRemoteCompletion(
+    val completedAtMs: Long = System.currentTimeMillis(),
+    val imageUrls: List<String> = emptyList()
+)
+
 internal object PendingChatSendRuntime {
     private val activeMessageIds = Collections.synchronizedSet(mutableSetOf<String>())
 
@@ -47,7 +52,9 @@ internal object PendingChatSendStore {
     private const val PREFS_NAME = "pending_chat_sends"
     private const val KEY_PREFIX = "pending_"
     private const val TERMINAL_FAILURE_KEY_PREFIX = "terminal_failure_"
+    private const val REMOTE_COMPLETION_KEY_PREFIX = "remote_completion_"
     const val REMOTE_STARTED_GRACE_MS = 10 * 60 * 1000L
+    private const val REMOTE_COMPLETION_GRACE_MS = 24 * 60 * 60 * 1000L
     private val gson = Gson()
 
     fun upsert(context: Context, pending: PendingChatSend) {
@@ -60,6 +67,7 @@ internal object PendingChatSendStore {
         prefs(context).edit()
             .putString(key(next.chatScopeId, next.userMessageId), gson.toJson(next))
             .remove(terminalFailureKey(next.chatScopeId, next.userMessageId))
+            .remove(remoteCompletionKey(next.chatScopeId, next.userMessageId))
             .commit()
     }
 
@@ -133,11 +141,29 @@ internal object PendingChatSendStore {
     fun remove(context: Context, chatScopeId: String, userMessageId: String) {
         prefs(context).edit()
             .remove(key(chatScopeId, userMessageId))
+            .remove(remoteCompletionKey(chatScopeId, userMessageId))
             .commit()
     }
 
     fun clear(context: Context, chatScopeId: String, userMessageId: String) {
         prefs(context).edit()
+            .remove(key(chatScopeId, userMessageId))
+            .remove(terminalFailureKey(chatScopeId, userMessageId))
+            .remove(remoteCompletionKey(chatScopeId, userMessageId))
+            .commit()
+    }
+
+    fun markRemoteCompletedAndRemovePending(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String,
+        imageUrls: List<String> = emptyList()
+    ) {
+        prefs(context).edit()
+            .putString(
+                remoteCompletionKey(chatScopeId, userMessageId),
+                remoteCompletionJson(imageUrls)
+            )
             .remove(key(chatScopeId, userMessageId))
             .remove(terminalFailureKey(chatScopeId, userMessageId))
             .commit()
@@ -209,6 +235,35 @@ internal object PendingChatSendStore {
             .commit()
     }
 
+    fun hasRemoteCompletionAwaitingSnapshot(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String
+    ): Boolean {
+        val raw = prefs(context)
+            .getString(remoteCompletionKey(chatScopeId, userMessageId), null)
+            ?.takeIf { it.isNotBlank() }
+            ?: return false
+        val parsed = try {
+            gson.fromJson(raw, PendingChatSendRemoteCompletion::class.java)
+        } catch (_: JsonSyntaxException) {
+            null
+        } ?: return false
+        val completedAtMs = parsed.completedAtMs
+        val now = System.currentTimeMillis()
+        val isRecent = completedAtMs > 0 && now - completedAtMs <= REMOTE_COMPLETION_GRACE_MS
+        if (!isRecent) {
+            consumeRemoteCompletion(context, chatScopeId, userMessageId)
+        }
+        return isRecent
+    }
+
+    fun consumeRemoteCompletion(context: Context, chatScopeId: String, userMessageId: String) {
+        prefs(context).edit()
+            .remove(remoteCompletionKey(chatScopeId, userMessageId))
+            .commit()
+    }
+
     fun retainedImageUris(context: Context): Set<String> {
         val all = prefs(context).all
         if (all.isEmpty()) return emptySet()
@@ -230,10 +285,17 @@ internal object PendingChatSendStore {
         if (chatScopeId.isBlank()) return emptySet()
         val expectedPrefix = key(chatScopeId, "")
         val expectedTerminalFailurePrefix = terminalFailureKey(chatScopeId, "")
+        val expectedRemoteCompletionPrefix = remoteCompletionKey(chatScopeId, "")
         val all = prefs(context).all
         if (all.isEmpty()) return emptySet()
         return buildSet {
             all.forEach { (storedKey, value) ->
+                if (storedKey.startsWith(expectedRemoteCompletionPrefix)) {
+                    storedKey.removePrefix(expectedRemoteCompletionPrefix)
+                        .takeIf { it.isNotBlank() }
+                        ?.let(::add)
+                    return@forEach
+                }
                 if (storedKey.startsWith(expectedTerminalFailurePrefix)) {
                     storedKey.removePrefix(expectedTerminalFailurePrefix)
                         .takeIf { it.isNotBlank() }
@@ -294,9 +356,20 @@ internal object PendingChatSendStore {
         return gson.toJson(failure)
     }
 
+    private fun remoteCompletionJson(imageUrls: List<String>): String {
+        val completion = PendingChatSendRemoteCompletion(
+            completedAtMs = System.currentTimeMillis(),
+            imageUrls = imageUrls.filter { it.isNotBlank() }.distinct()
+        )
+        return gson.toJson(completion)
+    }
+
     private fun key(chatScopeId: String, userMessageId: String): String =
         "$KEY_PREFIX$chatScopeId:$userMessageId"
 
     private fun terminalFailureKey(chatScopeId: String, userMessageId: String): String =
         "$TERMINAL_FAILURE_KEY_PREFIX$chatScopeId:$userMessageId"
+
+    private fun remoteCompletionKey(chatScopeId: String, userMessageId: String): String =
+        "$REMOTE_COMPLETION_KEY_PREFIX$chatScopeId:$userMessageId"
 }

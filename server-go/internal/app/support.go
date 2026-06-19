@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -350,12 +349,7 @@ func (s *Server) requireInternalSupportAdminSecret(w http.ResponseWriter, r *htt
 }
 
 func isInternalSupportClient(r *http.Request) bool {
-	clientIP := normalizeIPLiteral(GetClientIP(r))
-	parsed := net.ParseIP(clientIP)
-	if parsed == nil {
-		return false
-	}
-	return parsed.IsLoopback() || parsed.IsPrivate()
+	return isInternalRequestClient(r)
 }
 
 func normalizeSupportMessagePayload(raw string, images []string) (string, []string, string) {

@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -139,6 +140,34 @@ func (s *Server) consumeTodayAgriItemSaveRateLimit(w http.ResponseWriter, r *htt
 		"retry_after_sec": retryAfterSec,
 	})
 	return false
+}
+
+func isInternalRequestClient(r *http.Request) bool {
+	clientIP := normalizeIPLiteral(GetClientIP(r))
+	parsed := net.ParseIP(clientIP)
+	if parsed == nil {
+		return false
+	}
+	return parsed.IsLoopback() || parsed.IsPrivate()
+}
+
+func (s *Server) requireInternalRequestClient(w http.ResponseWriter, r *http.Request) bool {
+	if isInternalRequestClient(r) {
+		return true
+	}
+	s.writeError(w, http.StatusForbidden, "internal_ip_required")
+	return false
+}
+
+func (s *Server) requireInternalJobSecret(w http.ResponseWriter, r *http.Request) bool {
+	if !s.requireInternalRequestClient(w, r) {
+		return false
+	}
+	if !validateInternalJobSecret(r) {
+		s.writeError(w, http.StatusUnauthorized, "unauthorized")
+		return false
+	}
+	return true
 }
 
 func internalSecretRateLimitKey(scope string, ip string) string {

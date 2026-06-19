@@ -112,7 +112,13 @@ class PendingChatSendWorker(
         when (result.status) {
             SessionApi.StreamCompletionStatus.Complete,
             SessionApi.StreamCompletionStatus.Replay -> {
-                PendingChatSendStore.clear(applicationContext, chatScopeId, userMessageId)
+                PendingChatSendStore.markRemoteCompletedAndRemovePending(
+                    context = applicationContext,
+                    chatScopeId = chatScopeId,
+                    userMessageId = userMessageId,
+                    imageUrls = imageUrls
+                )
+                PendingChatSendRuntime.markInactive(userMessageId)
                 Result.success()
             }
             SessionApi.StreamCompletionStatus.RetryableFailure -> {

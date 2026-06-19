@@ -207,7 +207,7 @@ func (s *Server) handleCreatePreAuthClientAppLog(w http.ResponseWriter, r *http.
 }
 
 func (s *Server) handleInternalClientAppLogs(w http.ResponseWriter, r *http.Request) {
-	if !s.requireSupportAdminSecret(w, r) {
+	if !s.requireInternalSupportAdminSecret(w, r) {
 		return
 	}
 	filter, validationError := parseClientAppLogQuery(r.URL.Query(), time.Now())
