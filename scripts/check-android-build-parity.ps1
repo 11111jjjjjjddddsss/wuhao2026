@@ -663,8 +663,10 @@ if ($failures.Count -eq 0) {
         "Today agri main item restore must only accept the current day, a nonblank anchor, and an explicitly same-day card."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMainItemRestoresOnlyCurrentDaySingleItem' `
         "Today agri current-day-only restore behavior must have unit coverage."
-    Require-Match $failures $chatScreen 'hasRefreshDayItem\s*=\s*currentTodayAgriMainItem\?\.day_cn\s*==\s*refreshDayKey(?s:.*?)if\s*\(\s*!\s*todayAgriShownThisRuntime\s*&&\s*todayAgriMainShownDay\s*==\s*refreshDayKey\s*&&\s*!hasRefreshDayItem\s*\)' `
-        "Today agri fetch for the main chat must not let the shown-day marker block a saved same-day main item from being restored."
+    Require-Match $failures $chatScreen 'fun\s+shouldSkipTodayAgriCardFetch(?s:.*?)!\s*hasRemoteHistorySource(?s:.*?)shownDayKey\s*==\s*refreshDayKey(?s:.*?)!\s*hasRefreshDayItem' `
+        "Today agri fetch may skip a same-day shown marker only outside remote-history mode; remote mode must recover from a dirty shown-day marker without a saved item."
+    Require-Match $failures $chatTimelineItemsTest 'remoteTodayAgriFetchDoesNotSkipWhenShownDayHasNoSavedItem' `
+        "Today agri tests must lock remote mode so a dirty shown-day marker without a saved item does not block refetch."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime' `
         "Today agri once-per-day main-chat visibility must have unit coverage."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriMainCardShowsOncePerDayButStaysVisibleForCurrentRuntime(?s:.*?)assertFalse\((?s:.*?)hasAssistantAnswerTail\s*=\s*false(?s:.*?)assertTrue\((?s:.*?)shownDayKey\s*=\s*""(?s:.*?)hasAssistantAnswerTail\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*false(?s:.*?)assertFalse\((?s:.*?)shownDayKey\s*=\s*""(?s:.*?)hasAssistantAnswerTail\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*true(?s:.*?)assertFalse\((?s:.*?)shownDayKey\s*=\s*"20260615"(?s:.*?)hasAssistantAnswerTail\s*=\s*true(?s:.*?)suppressedThisRuntime\s*=\s*false' `
@@ -940,6 +942,10 @@ if ($failures.Count -eq 0) {
         "Debug-only preview entry point must remain an explicit click hook."
     Require-NoMatch $failures $chatScreen $localFakeStreamPattern `
         "ChatScreen must not restore local fake streaming/fake assistant copy; remote failure should use snapshot recovery or retry state."
+    Require-NoMatch $failures $chatScreen 'reason\s*==\s*"stale_session"(?s:.*?)removeMessageById\s*\(\s*sourceUserMessageId\s*\)' `
+        "Stale session errors must leave the user's just-sent message visible with a retryable assistant failure instead of deleting it."
+    Require-Match $failures $pendingWorker 'isStaleForCurrentSession\(\s*pending\s*\)(?s:.*?)failTerminal\((?s:.*?)"stale_session"' `
+        "Pending image sends that become stale must become visible terminal failures, not silently delete pending state."
 }
 
 if ($failures.Count -gt 0) {

@@ -31,9 +31,7 @@ class PendingChatSendWorker(
         val pending = PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId)
             ?: return@withContext Result.success()
         if (PendingChatSendStore.isStaleForCurrentSession(pending)) {
-            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-            PendingChatSendRuntime.markInactive(userMessageId)
-            return@withContext Result.success()
+            return@withContext failTerminal(chatScopeId, userMessageId, "stale_session")
         }
         val now = System.currentTimeMillis()
         if (
@@ -67,9 +65,12 @@ class PendingChatSendWorker(
             return@withContext Result.success()
         }
         if (PendingChatSendStore.isStaleForCurrentSession(pending)) {
-            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-            PendingChatSendRuntime.markInactive(userMessageId)
-            return@withContext Result.success()
+            return@withContext failTerminal(
+                chatScopeId = chatScopeId,
+                userMessageId = userMessageId,
+                reason = "stale_session",
+                imageUrls = imageUrls
+            )
         }
 
         PendingChatSendStore.updateImageUrls(
@@ -82,9 +83,12 @@ class PendingChatSendWorker(
             return@withContext Result.success()
         }
         if (PendingChatSendStore.isStaleForCurrentSession(pending)) {
-            PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
-            PendingChatSendRuntime.markInactive(userMessageId)
-            return@withContext Result.success()
+            return@withContext failTerminal(
+                chatScopeId = chatScopeId,
+                userMessageId = userMessageId,
+                reason = "stale_session",
+                imageUrls = imageUrls
+            )
         }
         PendingChatSendStore.markRemoteStarted(applicationContext, chatScopeId, userMessageId)
         if (PendingChatSendStore.get(applicationContext, chatScopeId, userMessageId) == null) {
@@ -148,12 +152,18 @@ class PendingChatSendWorker(
         }
     }
 
-    private fun failTerminal(chatScopeId: String, userMessageId: String, reason: String): Result {
-        val uploadedImageUrls = PendingChatSendStore.get(
-            applicationContext,
-            chatScopeId,
-            userMessageId
-        )?.imageUrls.orEmpty()
+    private fun failTerminal(
+        chatScopeId: String,
+        userMessageId: String,
+        reason: String,
+        imageUrls: List<String>? = null
+    ): Result {
+        val uploadedImageUrls = imageUrls
+            ?: PendingChatSendStore.get(
+                applicationContext,
+                chatScopeId,
+                userMessageId
+            )?.imageUrls.orEmpty()
         PendingChatSendStore.markTerminalFailureAndRemovePending(
             context = applicationContext,
             chatScopeId = chatScopeId,

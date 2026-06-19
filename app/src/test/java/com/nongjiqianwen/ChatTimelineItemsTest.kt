@@ -810,6 +810,28 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun remoteTodayAgriFetchDoesNotSkipWhenShownDayHasNoSavedItem() {
+        assertFalse(
+            shouldSkipTodayAgriCardFetch(
+                hasRemoteHistorySource = true,
+                todayAgriShownThisRuntime = false,
+                shownDayKey = "20260619",
+                refreshDayKey = "20260619",
+                hasRefreshDayItem = false
+            )
+        )
+        assertTrue(
+            shouldSkipTodayAgriCardFetch(
+                hasRemoteHistorySource = false,
+                todayAgriShownThisRuntime = false,
+                shownDayKey = "20260619",
+                refreshDayKey = "20260619",
+                hasRefreshDayItem = false
+            )
+        )
+    }
+
+    @Test
     fun startupRevealWaitsOnlyWhileRemoteHistoryHasNoVisualContent() {
         assertFalse(
             shouldRevealChatMessageList(

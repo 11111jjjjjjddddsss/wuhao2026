@@ -507,6 +507,18 @@ internal fun shouldClearTodayAgriMainItemAfterSnapshot(
     todayAgriItemsUnavailable: Boolean
 ): Boolean = !restoredItemFound && !todayAgriItemsUnavailable
 
+internal fun shouldSkipTodayAgriCardFetch(
+    hasRemoteHistorySource: Boolean,
+    todayAgriShownThisRuntime: Boolean,
+    shownDayKey: String,
+    refreshDayKey: String,
+    hasRefreshDayItem: Boolean
+): Boolean =
+    !hasRemoteHistorySource &&
+        !todayAgriShownThisRuntime &&
+        shownDayKey == refreshDayKey &&
+        !hasRefreshDayItem
+
 internal fun shouldRevealChatMessageList(
     startupHydrationBarrierSatisfied: Boolean,
     historyHydrationComplete: Boolean,
@@ -625,7 +637,8 @@ internal fun shouldApplyPendingImageTerminalFailure(
         "bad_request",
         "backend_not_configured",
         "image_read_failed",
-        "quota"
+        "quota",
+        "stale_session"
     )
 }
 
@@ -754,6 +767,7 @@ private const val RATE_LIMIT_HINT_TEXT = "当前请求较多，请稍后重试"
 private const val SERVICE_UNAVAILABLE_HINT_TEXT = "服务暂不可用，请稍后再试"
 private const val INTERRUPTED_NETWORK_HINT_TEXT = "网络波动，回复未完成"
 private const val ACTIVE_STREAM_HINT_TEXT = "上一条还在处理，请稍后重试"
+private const val STALE_SESSION_HINT_TEXT = "会话已更新，本次回复未完成"
 private const val INTERRUPTED_FALLBACK_HINT_TEXT = "本次回复未完成，请重试"
 internal const val CAMERA_OPEN_FAILED_HINT_TEXT = "相机打开失败，请重试"
 private const val ASSISTANT_RETRY_STATUS_TEXT = "回复未完成"
@@ -3418,7 +3432,15 @@ fun ChatScreen() {
         if (!SessionApi.hasBackendConfigured()) return@LaunchedEffect
         val refreshDayKey = todayAgriRefreshDayKey
         val hasRefreshDayItem = currentTodayAgriMainItem?.day_cn == refreshDayKey
-        if (!todayAgriShownThisRuntime && todayAgriMainShownDay == refreshDayKey && !hasRefreshDayItem) {
+        if (
+            shouldSkipTodayAgriCardFetch(
+                hasRemoteHistorySource = hasRemoteHistorySource,
+                todayAgriShownThisRuntime = todayAgriShownThisRuntime,
+                shownDayKey = todayAgriMainShownDay,
+                refreshDayKey = refreshDayKey,
+                hasRefreshDayItem = hasRefreshDayItem
+            )
+        ) {
             return@LaunchedEffect
         }
         var attempt = 0
@@ -4348,7 +4370,7 @@ fun ChatScreen() {
             "rate_limit" -> RATE_LIMIT_HINT_TEXT
             "backend_not_configured", "model_unavailable" -> SERVICE_UNAVAILABLE_HINT_TEXT
             "stream_in_progress" -> ACTIVE_STREAM_HINT_TEXT
-            "stale_session" -> ""
+            "stale_session" -> STALE_SESSION_HINT_TEXT
             else -> INTERRUPTED_FALLBACK_HINT_TEXT
         }
 
@@ -4364,9 +4386,7 @@ fun ChatScreen() {
             )
 
     fun shouldShowInterruptedAssistantRetry(reason: String): Boolean =
-        reason !in setOf(
-            "stale_session"
-        )
+        reason.isNotBlank()
 
     fun finalizeInterruptedAssistant(
         sourceUserMessageId: String,
@@ -5671,12 +5691,6 @@ fun ChatScreen() {
                 PendingChatSendWorkScheduler.complete(context, chatScopeId, sourceUserMessageId)
             } else {
                 PendingChatSendWorkScheduler.cancelAndRemove(context, chatScopeId, sourceUserMessageId)
-            }
-            if (reason == "stale_session" && finalContent.isBlank()) {
-                removeMessageById(finalId)
-                removeMessageById(sourceUserMessageId)
-                persistTick++
-                return@post
             }
             val showAssistantRetry = shouldShowInterruptedAssistantRetry(reason)
             if (finalContent.isNotBlank()) {
