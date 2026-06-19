@@ -1000,18 +1000,59 @@ func buildPendingMemoryPromptContext(snapshot *SessionSnapshot, activeRounds []S
 	if snapshot == nil || len(snapshot.PendingMemoryJobs) == 0 {
 		return ""
 	}
-	for _, job := range snapshot.PendingMemoryJobs {
-		promptRounds := pendingMemoryPromptRounds(job, activeRounds)
-		if len(promptRounds) == 0 {
-			continue
-		}
-		dialogueText := buildDialogueText(promptRounds)
-		if dialogueText == "" {
-			continue
-		}
-		return "后台背景信息中的待补偿历史片段（只作静默参考；回答仍聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于背景信息的顺带建议）\n" + dialogueText
+	promptRounds := pendingMemoryPromptRoundsForJobs(snapshot.PendingMemoryJobs, activeRounds)
+	if len(promptRounds) == 0 {
+		return ""
 	}
-	return ""
+	dialogueText := buildDialogueText(promptRounds)
+	if dialogueText == "" {
+		return ""
+	}
+	return "后台背景信息中的待补偿历史片段（只作静默参考；回答仍聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于背景信息的顺带建议）\n" + dialogueText
+}
+
+func pendingMemoryPromptRoundsForJobs(jobs []MemoryExtractionJob, activeRounds []SessionRound) []SessionRound {
+	if len(jobs) == 0 {
+		return nil
+	}
+	activeIDs := map[string]struct{}{}
+	for _, round := range activeRounds {
+		if id := strings.TrimSpace(round.ClientMsgID); id != "" {
+			activeIDs[id] = struct{}{}
+		}
+	}
+	seenIDs := map[string]struct{}{}
+	promptRounds := []SessionRound{}
+	for _, job := range jobs {
+		if len(job.Rounds) == 0 {
+			continue
+		}
+		promptRounds = append(
+			promptRounds,
+			pendingMemoryPromptRoundsExcludingIDs(job, activeIDs, seenIDs)...,
+		)
+	}
+	return promptRounds
+}
+
+func pendingMemoryPromptRoundsExcludingIDs(job MemoryExtractionJob, activeIDs map[string]struct{}, seenIDs map[string]struct{}) []SessionRound {
+	promptRounds := make([]SessionRound, 0, len(job.Rounds))
+	for _, round := range job.Rounds {
+		id := strings.TrimSpace(round.ClientMsgID)
+		if id == "" {
+			promptRounds = append(promptRounds, round)
+			continue
+		}
+		if _, ok := activeIDs[id]; ok {
+			continue
+		}
+		if _, ok := seenIDs[id]; ok {
+			continue
+		}
+		seenIDs[id] = struct{}{}
+		promptRounds = append(promptRounds, round)
+	}
+	return promptRounds
 }
 
 func memoryJobNeedsPromptContext(job MemoryExtractionJob, activeRounds []SessionRound) bool {
@@ -1025,18 +1066,7 @@ func pendingMemoryPromptRounds(job MemoryExtractionJob, activeRounds []SessionRo
 			activeIDs[id] = struct{}{}
 		}
 	}
-	promptRounds := make([]SessionRound, 0, len(job.Rounds))
-	for _, round := range job.Rounds {
-		id := strings.TrimSpace(round.ClientMsgID)
-		if id == "" {
-			promptRounds = append(promptRounds, round)
-			continue
-		}
-		if _, ok := activeIDs[id]; !ok {
-			promptRounds = append(promptRounds, round)
-		}
-	}
-	return promptRounds
+	return pendingMemoryPromptRoundsExcludingIDs(job, activeIDs, map[string]struct{}{})
 }
 
 func buildVisionUserContent(text string, images []string) any {

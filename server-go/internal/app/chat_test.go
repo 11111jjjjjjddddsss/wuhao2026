@@ -408,6 +408,101 @@ func TestBuildPromptMessagesOnlyAddsPendingMemoryRoundsMissingFromActiveWindow(t
 	}
 }
 
+func TestBuildPromptMessagesAddsAllPendingMemoryJobsAfterLongOutage(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+	firstPendingRounds := []SessionRound{
+		{ClientMsgID: "r1", User: "第一批第1轮", Assistant: "答1"},
+		{ClientMsgID: "r2", User: "第一批第2轮", Assistant: "答2"},
+	}
+	secondPendingRounds := []SessionRound{
+		{ClientMsgID: "r3", User: "第二批第3轮", Assistant: "答3"},
+		{ClientMsgID: "r4", User: "第二批第4轮", Assistant: "答4"},
+	}
+	activeRounds := []SessionRound{
+		{ClientMsgID: "r5", User: "当前滑窗第5轮", Assistant: "答5"},
+		{ClientMsgID: "r6", User: "当前滑窗第6轮", Assistant: "答6"},
+	}
+	snapshot := &SessionSnapshot{
+		UserID:      "u1",
+		ARoundsFull: activeRounds,
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{RoundTotal: 2, Rounds: firstPendingRounds},
+			{RoundTotal: 4, Rounds: secondPendingRounds},
+		},
+	}
+
+	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
+		snapshot,
+		2,
+		"继续",
+		nil,
+		"context",
+		"",
+	)
+
+	if usedCount != 2 || hasMemoryDocument {
+		t.Fatalf("usedCount=%d hasMemoryDocument=%v", usedCount, hasMemoryDocument)
+	}
+	if len(messages) < 4 || messages[2].Role != "system" {
+		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
+	}
+	content := messages[2].Content.(string)
+	for _, want := range []string{"第一批第1轮", "第一批第2轮", "第二批第3轮", "第二批第4轮"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("missing queued pending round %q in fallback context: %q", want, content)
+		}
+	}
+	if strings.Contains(content, "当前滑窗第5轮") || strings.Contains(content, "当前滑窗第6轮") {
+		t.Fatalf("pending fallback should not duplicate active-window rounds: %q", content)
+	}
+}
+
+func TestBuildPromptMessagesDeduplicatesOverlappingPendingMemoryJobs(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+	snapshot := &SessionSnapshot{
+		UserID:      "u1",
+		ARoundsFull: []SessionRound{{ClientMsgID: "r4", User: "当前轮", Assistant: "答4"}},
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{
+				RoundTotal: 2,
+				Rounds: []SessionRound{
+					{ClientMsgID: "r1", User: "只应出现一次的第1轮", Assistant: "答1"},
+					{ClientMsgID: "r2", User: "只应出现一次的第2轮", Assistant: "答2"},
+				},
+			},
+			{
+				RoundTotal: 3,
+				Rounds: []SessionRound{
+					{ClientMsgID: "r2", User: "只应出现一次的第2轮", Assistant: "答2"},
+					{ClientMsgID: "r3", User: "只应出现一次的第3轮", Assistant: "答3"},
+				},
+			},
+		},
+	}
+
+	messages, _, _ := server.buildPromptMessages(snapshot, 1, "继续", nil, "context", "")
+
+	if len(messages) < 4 || messages[2].Role != "system" {
+		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
+	}
+	content := messages[2].Content.(string)
+	if got := strings.Count(content, "只应出现一次的第2轮"); got != 1 {
+		t.Fatalf("overlapping pending rounds should be deduplicated once, got %d in %q", got, content)
+	}
+	for _, want := range []string{"只应出现一次的第1轮", "只应出现一次的第3轮"} {
+		if !strings.Contains(content, want) {
+			t.Fatalf("missing pending round %q in fallback context: %q", want, content)
+		}
+	}
+	if strings.Contains(content, "当前轮") {
+		t.Fatalf("pending fallback should not duplicate active-window round: %q", content)
+	}
+}
+
 func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 	server := &Server{
 		systemAnchor: "anchor",
