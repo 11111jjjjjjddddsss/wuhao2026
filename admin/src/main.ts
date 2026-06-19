@@ -645,7 +645,7 @@ async function giftCardsPage(): Promise<string> {
       ${kpi("已作废", summary.void_count, "全量")}
       ${kpi("失败尝试", summary.failed_attempts_24h, "最近24小时")}
       ${kpi("批次数", summary.batch_count, "全量批次")}
-      ${kpi("完整卡码", canViewCodes ? "财务可见" : "仅财务可见", lastGiftCardCodes.length ? "本次新生成在下方" : canViewCodes ? "列表可直接复制" : "当前角色只看尾号/脱敏码")}
+      ${kpi("完整卡码", canViewCodes ? "授权角色可见" : "仅授权角色可见", lastGiftCardCodes.length ? "本次新生成在下方" : canViewCodes ? "列表可直接复制" : "当前角色只看尾号/脱敏码")}
     </section>
     <div class="grid two" style="margin-top:12px">
       ${notice("正式权益提醒", "生成后将产生真实可兑换权益。测试时请仅生成 1 张，并在 Android 设置里的“礼品卡”入口兑换后回到本页追溯。", "warn")}
@@ -955,7 +955,7 @@ async function insightsPage(): Promise<string> {
             <tbody>
               ${metricRow("今日农情", dailyAgriStatusText(quality.daily_agri_status || "missing"))}
               ${metricRow("农情更新时间", formatTime(quality.daily_agri_updated_at))}
-              ${metricRow("检查更新", quality.app_update_enabled ? (quality.app_update_ready ? "已启用，物料已齐" : "已启用，物料未齐") : "已停更")}
+              ${metricRow("检查更新", quality.app_update_enabled ? (quality.app_update_ready ? "已启用，物料已齐" : "已启用，物料未齐") : "未下发")}
               ${metricRow("更新版本", quality.app_update_version_code ? `${quality.app_update_version_name || ""} (${quality.app_update_version_code})` : "未配置")}
               ${metricRow("反馈队列", `${quality.support_open ?? 0} 待回复 / ${quality.support_replied ?? 0} 已处理 / ${quality.support_closed ?? 0} 已关闭`)}
               ${metricRow("礼品卡异常", `${quality.gift_card_failed_attempts ?? 0} 次 24h 失败尝试`)}
@@ -1825,7 +1825,7 @@ function phoneDisplay(phoneNumber?: string, phoneMask?: string): string {
   }
   if (fullPhone) {
     const masked = phoneMask ? escapeHTML(phoneMask) : "完整号";
-    return `${masked} <span class="small muted">仅客服/财务可见</span>`;
+    return `${masked} <span class="small muted">仅授权角色可见</span>`;
   }
   if (phoneMask) {
     return `${escapeHTML(phoneMask)} <span class="small muted">完整号待下次登录补齐</span>`;
@@ -2127,7 +2127,7 @@ function createdGiftCardCodesBlock(rows: AdminGiftCardCreatedCode[]): string {
   return `
     <div class="notice warn" style="margin-top:12px">
       <strong>新生成卡码</strong>
-      <div class="muted" style="margin-top:6px">完整卡码已加密保存；当前财务角色可以直接复制，下方“卡与兑换”列表刷新后也能查看。不要写入备注、作废原因或公开文档。</div>
+      <div class="muted" style="margin-top:6px">完整卡码已加密保存；当前授权角色可以直接复制，下方“卡与兑换”列表刷新后也能查看。不要写入备注、作废原因或公开文档。</div>
       <button class="button" type="button" data-action="clear-gift-card-codes" style="margin-top:10px">清除本次卡码</button>
       <div class="table-wrap" style="margin-top:10px">
         <table class="table">
@@ -2171,7 +2171,7 @@ function giftCardTraceFilterForm(): string {
           ${selectOption("failed", "失败", pageState.giftCardAttemptSuccess)}
         </select>
       </label>
-      <label>失败原因<input name="failure_reason" value="${escapeAttr(pageState.giftCardAttemptReason)}" placeholder="invalid_code / not_found / expired / lower_tier / redeemed / void" /></label>
+      <label>失败原因<input name="failure_reason" value="${escapeAttr(pageState.giftCardAttemptReason)}" placeholder="卡码错误 / 不存在 / 过期 / 档位较低 / 已兑换 / 已作废" /></label>
       <button class="button primary" type="submit">查询</button>
       <button class="button" type="button" data-action="clear-gift-card-filter">清空</button>
     </form>
@@ -2444,7 +2444,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
             (row) => `
               <tr>
                 <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
-                <td><div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "仅财务可见"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
+                <td><div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "仅授权角色可见"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
                 <td>${statusPill(row.tier)}</td><td>${statusPill(row.status)}</td>
                 <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
@@ -2463,6 +2463,21 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
   `;
 }
 
+function giftCardFailureReasonLabel(reason?: string): string {
+  const normalized = (reason || "").trim();
+  if (!normalized) return "";
+  const labels: Record<string, string> = {
+    invalid_code: "卡码格式错误",
+    not_found: "卡码不存在",
+    expired: "已过期",
+    lower_tier: "档位较低",
+    redeemed: "已兑换",
+    void: "已作废",
+  };
+  const label = labels[normalized];
+  return label ? `${label}（${normalized}）` : normalized;
+}
+
 function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
   if (!rows.length) return emptyState("没有兑换尝试", "后端未返回兑换尝试记录。");
   return `
@@ -2474,7 +2489,7 @@ function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
             (row) => `
               <tr>
                 <td>${row.id}</td><td class="mono">${escapeHTML(row.code_suffix || "")}</td><td>${row.user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>` : ""}</td>
-                <td>${row.success ? statusPill("success") : statusPill("failed")}</td><td>${escapeHTML(row.failure_reason || "")}</td>
+                <td>${row.success ? statusPill("success") : statusPill("failed")}</td><td>${escapeHTML(giftCardFailureReasonLabel(row.failure_reason))}</td>
                 <td>${escapeHTML(row.region || "")}<div class="small muted">${escapeHTML([row.region_source, row.region_reliability].filter(Boolean).join(" / "))}</div></td>
                 <td>${escapeHTML(row.masked_ip || "")}</td><td>${formatTime(row.created_at)}</td>
               </tr>
@@ -3216,7 +3231,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("账号注销", accountDeletionPending, accountDeletionBody, accountDeletionOverdue ? "bad" : accountDeletionPending ? "warn" : "ok", "account-deletion")}
       ${queueCard("今日农情", dailyAgriStatusText(queues.daily_agri_status), queues.daily_agri_error || "查看最近生成状态", queues.daily_agri_status === "ready" ? "ok" : queues.daily_agri_status === "failed" ? "bad" : "warn")}
-      ${queueCard("安装包下载", !update.enabled ? "已停更" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "warn" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
+      ${queueCard("安装包下载", !update.enabled ? "未发布新版本" : update.download_artifacts_complete ? "物料已齐" : "未齐", updateStatusLine(update), !update.enabled ? "info" : update.config_valid && update.download_artifacts_complete ? "ok" : "warn")}
       ${queueCard("礼品卡兑换", `${queues.gift_card_active} 张可兑换`, giftBody, giftLevel)}
       ${queueCard("记忆补偿", memoryPendingJobs || memoryPendingUsers, memoryPendingJobs || memoryPendingUsers ? `${memoryPendingUsers} 个账号 / ${memoryPendingJobs} 个冻结任务自动补偿中` : "当前无积压", "ok")}
       ${queueCard("后台操作", queues.audit_failures, "最近24小时失败操作", queues.audit_failures ? "bad" : "ok")}
@@ -3481,7 +3496,7 @@ function queueCard(title: string, value: string | number, body: string, level: "
 
 function updateStatusLine(update: AdminMonitoring["queues"]["app_update"]): string {
   const version = update.latest_version_code ? `v${update.latest_version_code}${update.latest_version_name ? ` / ${update.latest_version_name}` : ""}` : "未配置版本";
-  return `${version}；发布 ${update.enabled ? "已启用" : "已停更"}；配置 ${update.config_valid ? "合法" : "异常"}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}`;
+  return `${version}；发布 ${update.enabled ? "已启用" : "未下发"}；配置 ${update.config_valid ? "合法" : "异常"}；APK ${update.has_apk_url ? "已配置" : "未配置"}；SHA ${update.has_sha256 ? "已配" : "缺"}；大小 ${update.has_file_size ? "已配" : "缺"}`;
 }
 
 function dailyAgriStatusText(status: string): string {
@@ -3860,18 +3875,19 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
   const updateReady = appUpdate.enabled && appUpdate.config_valid && appUpdate.download_artifacts_complete;
   const updateStatus =
     updateTrouble > 0 ? "看日志" :
-    !appUpdate.enabled ? "已停更" :
+    !appUpdate.enabled ? "未下发" :
     !appUpdate.config_valid ? "配置异常" :
     !appUpdate.download_artifacts_complete ? "物料未齐" :
     updateLogCount > 0 ? "有检查" :
     "可测";
   const updateLevel: "ok" | "warn" | "bad" | "info" =
     updateTrouble > 0 ? "warn" :
+    !appUpdate.enabled ? "info" :
     updateReady ? "info" :
     "warn";
   const updateBody =
     updateTrouble > 0 ? "已有检查、下载或安装页失败事件，先点 App 日志筛 app_update.*。" :
-    !appUpdate.enabled ? "当前处于停更状态，旧版 App 点“检查更新”不会拿到新包；发版前需要启用并完成真机覆盖安装验证。" :
+    !appUpdate.enabled ? "当前没有对外下发新包，这是未发版时的正常状态；发版前需要启用并完成真机覆盖安装验证。" :
     !appUpdate.config_valid ? "检查更新配置非法；至少需要合法版本号，APK 地址必须是 HTTPS。" :
     !appUpdate.download_artifacts_complete ? "正式下载物料未齐，后端不会下发新包；必须补 HTTPS APK、SHA-256 和文件大小。" :
     updateLogCount > 0 ? "24 小时内已有检查更新日志；继续看是否有下载、校验和安装页阶段信号，覆盖安装未跑完前不算正式验收。" :

@@ -834,14 +834,16 @@ if ($failures.Count -eq 0) {
         "Assistant text divider tests must cover active bold text without a heading boundary, so dividers do not flash and disappear."
     Require-Match $failures $chatStreamingRendererTest 'activeStandaloneBoldHeadingWaitsForLineBoundary' `
         "Assistant text divider tests must prove unclosed active bold heading text waits for a line boundary before drawing a divider."
-    Require-Match $failures $chatStreamingRendererTest 'activeClosedStandaloneBoldHeadingRendersImmediately' `
-        "Assistant text divider tests must prove a closed active bold heading can render immediately."
-    Require-Match $failures $chatStreamingRendererTest 'activeClosedBoldThenBodyDoesNotShowDivider' `
-        "Assistant text divider tests must cover a closed active bold prefix that continues as body text."
+    Require-Match $failures $chatStreamingRendererTest 'activeClosedStandaloneBoldHeadingShowsStableDividerWithoutCommittingHeading' `
+        "Assistant text divider tests must prove a closed active bold heading can show a stable divider without committing the tail line to a heading too early."
+    Require-Match $failures $chatStreamingRendererTest 'activeClosedBoldThenBodyKeepsStableDivider' `
+        "Assistant text divider tests must cover a closed active bold section prefix that continues as body text without making the divider disappear."
     Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererActiveStandaloneBoldHeading' `
         "Active streaming bold heading text must not draw dividers before the line is complete."
-    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererStandaloneBoldHeading' `
-        "Active streaming closed bold heading text should render immediately when the structure is already confirmed."
+    Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererStandaloneBoldHeading' `
+        "Active streaming closed bold heading tails must stay paragraph-shaped until the line is committed, avoiding height jumps."
+    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)parseRendererLeadingBoldSectionTitle' `
+        "Active streaming closed bold section prefixes should still show a stable divider as soon as the section signal is clear."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
         "Active streaming Chinese section heading text should render immediately when it is clearly structural."
     Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural' `
@@ -860,22 +862,24 @@ if ($failures.Count -eq 0) {
         "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*copyEnabled\s*\)\s*\{(?s:.*?)TextButton\((?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)text\s*=\s*"复制表格"(?s:.*?)RendererMarkdownTableCardImpl' `
         "Markdown table UI must keep mobile grouped table cards and render the copy button only after the message is settled."
-    Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
-        "Incomplete Markdown table headers must stay plain text while streaming, instead of rendering a half-empty table."
+    Require-NoMatch $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
+        "Markdown tables must be allowed to render a streaming shell after the header and delimiter are confirmed, before body rows arrive."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
+        "Markdown tables must render a lightweight header shell while body rows are still streaming."
     Require-Match $failures $chatStreamingRenderer 'headerColumnCount\s*=\s*splitRendererMarkdownTableCells\(current\)\.size(?s:.*?)separatorColumnCount\s*=\s*splitRendererMarkdownTableCells\(lines\[index \+ 1\]\)\.size(?s:.*?)headerColumnCount\s*!=\s*separatorColumnCount(?s:.*?)expectedColumnCount\s*=\s*headerColumnCount(?s:.*?)bodyRowsWithoutEdgeMode(?s:.*?)looksLikeRendererMarkdownTableBodyRow\((?s:.*?)expectedColumnCount\s*=\s*expectedColumnCount' `
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
     Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)trimmed\.matches\(Regex\("""\[-\+\*\]\\s\+\.\+"""\)\)' `
         "Markdown table body parsing must stop before obvious new block starts such as indented code, fences, quotes, headings, and lists."
     Require-Match $failures $chatStreamingRenderer 'rawHeaders\.size\s*<\s*2\s*\|\|\s*rawHeaders\.size\s*!=\s*separatorColumnCount(?s:.*?)val\s+columnCount\s*=\s*rawHeaders\.size(?s:.*?)index\s*<\s*columnCount\s*-\s*1(?s:.*?)row\.drop\(index\)\.joinToString\(" \| "\)' `
         "Markdown table parsing must keep GFM-style header/separator column counts fixed and merge extra body cells into the last column instead of dropping text or inventing columns."
-    Require-Match $failures $chatStreamingRenderer 'treatTrailingLineAsComplete(?s:.*?)cursor\s*<\s*lines\.lastIndex' `
-        "Streaming Markdown table parsing must avoid absorbing an unfinished tail line into a table before it is line-complete."
+    Require-Match $failures $chatStreamingRenderer 'isTrailingActiveLine(?s:.*?)splitRendererMarkdownTableCells\(lines\[cursor\]\)\.size\s*<\s*2' `
+        "Streaming Markdown table parsing may absorb an active tail row only after it has enough cells to be useful, avoiding one-cell half rows."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableAcceptsRowsWithoutOuterPipesWhenColumnsMatch' `
         "Markdown table tests must cover standard table body rows without outer pipes."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableWithOuterPipeHeaderAcceptsBodyRowsWithoutOuterPipes' `
         "Markdown table tests must cover common mixed Markdown tables where the header has outer pipes but body rows do not."
-    Require-Match $failures $chatStreamingRendererTest 'streamingMarkdownTableBodyTailWaitsForLineBreakBeforeRenderingTable' `
-        "Markdown table tests must cover unfinished streaming table body rows staying plain until line break."
+    Require-Match $failures $chatStreamingRendererTest 'streamingMarkdownTableBodyTailStreamsIntoTableAfterCellsAppear' `
+        "Markdown table tests must cover streaming table body rows joining the table once enough cells have arrived."
     Require-Match $failures $chatStreamingRendererTest 'settledMarkdownTableBodyTailParsesWithoutTrailingLineBreak' `
         "Markdown table tests must prove settled/history tables still parse without a trailing line break."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableHeaderDelimiterMismatchStaysPlainText' `
@@ -896,7 +900,7 @@ if ($failures.Count -eq 0) {
         "Assistant Markdown table rendering must not revert to the old horizontal-scroll wide table on mobile."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
         "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."
-    Require-Match $failures $chatStreamingRenderer 'previous\s+!is\s+StreamingLineModel\.Heading' `
+    Require-Match $failures $chatStreamingRenderer 'previous\s*==\s*null\s*\|\|\s*previous\s+is\s+StreamingLineModel\.Heading' `
         "Assistant text dividers must not stack between consecutive heading lines."
     Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
         "Assistant Markdown links and bare URLs must keep real URL annotations that open through the system URI handler."

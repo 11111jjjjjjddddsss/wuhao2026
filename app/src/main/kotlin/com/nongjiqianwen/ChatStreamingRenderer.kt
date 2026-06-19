@@ -419,18 +419,19 @@ private fun normalizeRendererMarkdownTables(
                     !hasRendererMarkdownTableRowEdge(lines[index + 1])
             var bodyRowsWithoutEdgeMode = false
             var cursor = index + 2
-            while (
-                cursor < lines.size &&
-                (treatTrailingLineAsComplete || cursor < lines.lastIndex || normalized.endsWith("\n")) &&
-                !isRendererMarkdownTableBodyBlockBoundary(lines[cursor]) &&
-                looksLikeRendererMarkdownTableBodyRow(
-                    line = lines[cursor],
-                    expectedColumnCount = expectedColumnCount,
-                    allowRowsWithoutEdge = headerAndSeparatorAllowRowsWithoutEdge ||
-                        bodyRowsWithoutEdgeMode ||
-                        (rowLines.isEmpty() && !hasRendererMarkdownTableRowEdge(lines[cursor]))
-                )
-            ) {
+            while (cursor < lines.size) {
+                val isTrailingActiveLine =
+                    !treatTrailingLineAsComplete && cursor == lines.lastIndex && !normalized.endsWith("\n")
+                val lineLooksLikeBodyRow = !isRendererMarkdownTableBodyBlockBoundary(lines[cursor]) &&
+                    looksLikeRendererMarkdownTableBodyRow(
+                        line = lines[cursor],
+                        expectedColumnCount = expectedColumnCount,
+                        allowRowsWithoutEdge = headerAndSeparatorAllowRowsWithoutEdge ||
+                            bodyRowsWithoutEdgeMode ||
+                            (rowLines.isEmpty() && !hasRendererMarkdownTableRowEdge(lines[cursor]))
+                    )
+                if (!lineLooksLikeBodyRow) break
+                if (isTrailingActiveLine && splitRendererMarkdownTableCells(lines[cursor]).size < 2) break
                 if (!hasRendererMarkdownTableRowEdge(lines[cursor])) {
                     bodyRowsWithoutEdgeMode = true
                 }
@@ -477,7 +478,6 @@ private fun encodeRendererMarkdownTableBlock(
             .map { cell -> normalizeRendererMarkdownTableCell(cell) }
         cells.takeIf { it.any { cell -> cell.isNotBlank() } }
     }
-    if (rawRows.isEmpty()) return null
     val columnCount = rawHeaders.size
     if (columnCount < 2) return null
     val headers = List(columnCount) { index ->
@@ -763,9 +763,6 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
-    parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(2, headingText)
-    }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(3, headingText)
     }
@@ -811,9 +808,11 @@ internal fun shouldShowStreamingSectionDivider(
     previous: StreamingLineModel?,
     current: StreamingLineModel
 ): Boolean {
-    val heading = current as? StreamingLineModel.Heading ?: return false
-    if (heading.level > 3) return false
-    return previous != null && previous !is StreamingLineModel.Heading
+    if (previous == null || previous is StreamingLineModel.Heading) return false
+    val heading = current as? StreamingLineModel.Heading
+    if (heading != null) return heading.level <= 3
+    val paragraph = current as? StreamingLineModel.Paragraph ?: return false
+    return parseRendererLeadingBoldSectionTitle(paragraph.text) != null
 }
 
 internal fun buildRendererPlainCopyText(content: String): String {
@@ -919,6 +918,18 @@ private fun parseRendererActiveStandaloneBoldHeading(line: String): String? {
     return title
 }
 
+private fun parseRendererLeadingBoldSectionTitle(line: String): String? {
+    val trimmed = line.trim()
+    if (!trimmed.startsWith("**")) return null
+    val closing = trimmed.indexOf("**", startIndex = 2)
+    if (closing <= 1) return null
+    val title = trimmed.substring(2, closing).trim()
+    if (title.contains("**")) return null
+    if (!isRendererStandaloneBoldHeadingTitle(title)) return null
+    if (!isRendererLikelyCompleteActiveBoldHeadingTitle(title)) return null
+    return title
+}
+
 private fun parseRendererChineseSectionHeading(line: String): String? {
     val trimmed = line.trim()
     val match = rendererChineseSectionHeadingRegex.matchEntire(trimmed) ?: return null
@@ -946,6 +957,10 @@ private fun isRendererLikelyCompleteActiveBoldHeadingTitle(title: String): Boole
         "结论",
         "要点",
         "事项",
+        "重点",
+        "提醒",
+        "步骤",
+        "策略",
         "问题",
         "病害",
         "虫害",
@@ -2255,32 +2270,37 @@ private fun RendererMarkdownTableImpl(
                     .padding(bottom = 2.dp),
                 horizontalArrangement = Arrangement.End
             ) {
-            TextButton(
-                enabled = copyEnabled,
-                onClick = {
-                    clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
-                    Toast.makeText(context, "表格已复制，可粘贴到表格软件", Toast.LENGTH_SHORT).show()
-                },
-                modifier = Modifier
-                    .heightIn(min = 36.dp)
-                    .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
-                shape = RoundedCornerShape(999.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                colors = ButtonDefaults.textButtonColors(
-                    contentColor = Color(0xFF5F6368),
-                    containerColor = Color.Transparent,
-                    disabledContentColor = Color(0xFF9AA0A6),
-                    disabledContainerColor = Color.Transparent
-                )
-            ) {
-                Text(
-                    text = "复制表格",
-                    fontSize = 13.sp,
-                    lineHeight = 16.sp
-                )
-            }
+                TextButton(
+                    enabled = copyEnabled,
+                    onClick = {
+                        clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
+                        Toast.makeText(context, "表格已复制，可粘贴到表格软件", Toast.LENGTH_SHORT).show()
+                    },
+                    modifier = Modifier
+                        .heightIn(min = 36.dp)
+                        .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
+                    shape = RoundedCornerShape(999.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = Color(0xFF5F6368),
+                        containerColor = Color.Transparent,
+                        disabledContentColor = Color(0xFF9AA0A6),
+                        disabledContainerColor = Color.Transparent
+                    )
+                ) {
+                    Text(
+                        text = "复制表格",
+                        fontSize = 13.sp,
+                        lineHeight = 16.sp
+                    )
+                }
             }
         }
+        RendererMarkdownTableHeaderImpl(
+            headers = table.headers,
+            inlineMode = inlineMode,
+            linksEnabled = linksEnabled
+        )
         table.rows.forEachIndexed { rowIndex, row ->
             RendererMarkdownTableCardImpl(
                 headers = table.headers,
@@ -2291,6 +2311,35 @@ private fun RendererMarkdownTableImpl(
             )
         }
     }
+}
+
+@Composable
+private fun RendererMarkdownTableHeaderImpl(
+    headers: List<String>,
+    inlineMode: RendererInlineMode,
+    linksEnabled: Boolean
+) {
+    if (headers.isEmpty()) return
+    val headerStyle = remember {
+        TextStyle(
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            color = Color(0xFF6F747C),
+            letterSpacing = 0.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+    RendererStreamingActiveTextImpl(
+        text = headers.joinToString(" / "),
+        style = headerStyle,
+        minLineHeight = 18.dp,
+        inlineMode = inlineMode,
+        linksEnabled = linksEnabled,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF5F7F9), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    )
 }
 
 @Composable

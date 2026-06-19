@@ -423,38 +423,37 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun markdownTableWaitsForFirstBodyRowBeforeRenderingTable() {
+    fun markdownTableHeaderDelimiterRendersStreamingShellBeforeRows() {
         val state = splitStreamingBlockState("|维度|成品|自配|\n|---|---|---|")
         val model = classifyActiveStreamingLine(state.activeBlock.orEmpty())
 
-        assertTrue(model is StreamingLineModel.Paragraph)
-        assertEquals(
-            "|维度|成品|自配|\n|---|---|---|",
-            (model as StreamingLineModel.Paragraph).text
-        )
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(listOf("维度", "成品", "自配"), table.headers)
+        assertEquals(emptyList<List<String>>(), table.rows)
     }
 
     @Test
-    fun completedMarkdownTableSeparatorKeepsLineBreakWhileWaitingForBodyRow() {
+    fun completedMarkdownTableSeparatorRendersStreamingShellBeforeRows() {
         val state = splitStreamingBlockState("|项目|建议|\n|---|---|")
         val model = classifyStreamingLine(state.activeBlock.orEmpty())
 
-        assertTrue(model is StreamingLineModel.Paragraph)
-        assertEquals(
-            "|项目|建议|\n|---|---|",
-            (model as StreamingLineModel.Paragraph).text
-        )
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(emptyList<List<String>>(), table.rows)
     }
 
     @Test
-    fun streamingMarkdownTableBodyTailWaitsForLineBreakBeforeRenderingTable() {
+    fun streamingMarkdownTableBodyTailStreamsIntoTableAfterCellsAppear() {
         val state = splitStreamingBlockState("|项目|建议|\n|---|---|\n|水分|控水")
         val models = state.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(state.activeBlock?.let(::classifyActiveStreamingLine))
 
         assertEquals(1, models.size)
-        assertTrue(models.single() is StreamingLineModel.Paragraph)
-        assertEquals(0, models.filterIsInstance<StreamingLineModel.Table>().size)
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
     }
 
     @Test
@@ -708,22 +707,21 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun activeClosedStandaloneBoldHeadingRendersImmediately() {
+    fun activeClosedStandaloneBoldHeadingShowsStableDividerWithoutCommittingHeading() {
         val previous = classifyStreamingLine("先说清楚。")
         val model = classifyActiveStreamingLine("**处理建议**")
 
-        assertTrue(model is StreamingLineModel.Heading)
-        assertEquals("处理建议", (model as StreamingLineModel.Heading).text)
+        assertTrue(model is StreamingLineModel.Paragraph)
         assertTrue(shouldShowStreamingSectionDivider(previous, model))
     }
 
     @Test
-    fun activeClosedBoldThenBodyDoesNotShowDivider() {
+    fun activeClosedBoldThenBodyKeepsStableDivider() {
         val previous = classifyStreamingLine("先说清楚。")
         val model = classifyActiveStreamingLine("**重点** 后面还有正文")
 
         assertTrue(model is StreamingLineModel.Paragraph)
-        assertFalse(shouldShowStreamingSectionDivider(previous, model))
+        assertTrue(shouldShowStreamingSectionDivider(previous, model))
     }
 
     @Test
@@ -765,7 +763,7 @@ class ChatStreamingRendererTest {
 
         assertEquals(2, settledModels.size)
         assertTrue(settledModels[1] is StreamingLineModel.Paragraph)
-        assertFalse(
+        assertTrue(
             shouldShowStreamingSectionDivider(
                 previous = settledModels[0],
                 current = settledModels[1]
@@ -833,8 +831,13 @@ class ChatStreamingRendererTest {
         val models = state.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
 
-        assertEquals(0, models.filterIsInstance<StreamingLineModel.Table>().size)
-        assertTrue(models.all { it is StreamingLineModel.Paragraph })
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertTrue(table.rows.isEmpty())
+        assertTrue(
+            models.filterIsInstance<StreamingLineModel.Paragraph>()
+                .any { it.text.contains("A | B") }
+        )
     }
 
     @Test
@@ -843,8 +846,13 @@ class ChatStreamingRendererTest {
         val models = state.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
 
-        assertEquals(0, models.filterIsInstance<StreamingLineModel.Table>().size)
-        assertTrue(models.any { it is StreamingLineModel.Bullet })
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertTrue(table.rows.isEmpty())
+        assertTrue(
+            models.filterIsInstance<StreamingLineModel.Bullet>()
+                .any { it.text.contains("A | B") }
+        )
     }
 
     @Test

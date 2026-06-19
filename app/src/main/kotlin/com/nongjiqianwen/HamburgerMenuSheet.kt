@@ -401,7 +401,7 @@ internal fun HamburgerMenuSheet(
                 message = "App update install permission required",
                 attrs = appUpdateLogAttrs(update, true) + mapOf("settings_opened" to opened)
             )
-            showNotice(if (opened) "允许安装未知应用后，返回本页继续更新" else "请先允许安装未知应用")
+            showNotice(if (opened) "允许农技千查安装更新包后，返回本页继续更新" else "请先允许农技千查安装更新包")
             return
         }
         pendingInstallPermissionUpdate = null
@@ -1625,7 +1625,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "六、帮助与反馈",
-            body = "帮助与反馈会处理您提交的文字、图片、客服回复、已读状态、发送时间和必要用户标识，用于站内沟通、问题排查、权益核对和服务处理。请尽量避免在反馈中提交与问题无关的身份证件、银行卡、完整人脸、联系方式、他人隐私或商业秘密。"
+            body = "帮助与反馈会处理您提交的文字、图片、客服回复、已读状态、发送时间和必要用户标识，用于站内沟通、问题排查、权益核对和服务处理。排障需要时，您可以按提示提交手机号、订单号、礼品卡码等必要信息；请尽量避免提交与问题无关的身份证件、银行卡、完整人脸、他人隐私或商业秘密。"
         )
         HamburgerAgreementSection(
             title = "七、当前权限说明",
@@ -3364,7 +3364,7 @@ private fun HamburgerSupportFeedbackContent(
                 ) {
                     if (inputText.isEmpty()) {
                         Text(
-                            text = if (selectedImages.isNotEmpty()) "补充图片说明" else "输入反馈内容",
+                            text = if (selectedImages.isNotEmpty()) "补充图片说明" else "描述问题，可附订单号或礼品卡码",
                             color = Color(0xFFAEAFB4),
                             fontSize = 16.sp,
                             lineHeight = 22.sp
