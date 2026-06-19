@@ -172,6 +172,11 @@ function Test-OfficialAndroidApkUrl {
     if ($parsed.Scheme -ne "https") {
         return $false
     }
+    if (-not [string]::IsNullOrWhiteSpace($parsed.UserInfo) -or
+        -not [string]::IsNullOrWhiteSpace($parsed.Query) -or
+        -not [string]::IsNullOrWhiteSpace($parsed.Fragment)) {
+        return $false
+    }
     if ($parsed.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
         return $false
     }
@@ -192,18 +197,6 @@ function Test-OfficialAndroidApkUrl {
     }
     if ($decodedPath -match "test-apks|debug|internal|staging") {
         return $false
-    }
-    $signedQueryKeys = @("expires", "signature", "ossaccesskeyid", "security-token", "x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token")
-    foreach ($keyValue in $parsed.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
-        $queryKey = ($keyValue -split "=", 2)[0].ToLowerInvariant()
-        try {
-            $queryKey = [System.Uri]::UnescapeDataString($queryKey).ToLowerInvariant()
-        } catch {
-            return $false
-        }
-        if ($signedQueryKeys -contains $queryKey) {
-            return $false
-        }
     }
     return $true
 }
@@ -482,6 +475,24 @@ cert_dir="/etc/letsencrypt/live/`$domain"
 nginx_site_backup='/tmp/nongjiqiancha-site.nginx-site.backup'
 nginx_site_backup_state='/tmp/nongjiqiancha-site.nginx-site.backup-state'
 
+cleanup_deploy_temp() {
+  rm -rf -- "`$chunks" "`$archive" /tmp/nongji-site-deploy.sh "`$nginx_site_backup" "`$nginx_site_backup_state" 2>/dev/null || true
+}
+
+prune_static_releases() {
+  if [ ! -d "`$site_base/releases" ]; then
+    return 0
+  fi
+  find "`$site_base/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null |
+    sort -rn |
+    awk 'NR > 8 {sub(/^[^ ]+ /, ""); print}' |
+    while IFS= read -r old_release; do
+      if [ -n "`$old_release" ] && [ "`$old_release" != "`$release_dir" ] && [ "`$old_release" != "`$previous_current_target" ]; then
+        rm -rf -- "`$old_release" && echo "pruned_site_release=`$(basename "`$old_release")"
+      fi
+    done
+}
+
 backup_nginx_site() {
   if [ -f "`$nginx_site" ]; then
     cp -f "`$nginx_site" "`$nginx_site_backup"
@@ -522,7 +533,7 @@ cleanup_legacy_test_apks_root() {
       echo "site_test_apks_legacy_root=removed"
     else
       echo "site_test_apks_legacy_root=cleanup_warning"
-      return 0
+      return 1
     fi
   else
     echo "site_test_apks_legacy_root=absent"
@@ -539,6 +550,7 @@ restore_site_on_failure() {
       restore_nginx_site
     fi
   fi
+  cleanup_deploy_temp
   exit "`$code"
 }
 trap restore_site_on_failure EXIT
@@ -738,6 +750,7 @@ else
 fi
 site_verified=1
 cleanup_legacy_test_apks_root
+prune_static_releases
 "@
 
 Send-CloudAssistantScriptFile -RegionId $RegionId -InstanceId $InstanceId -RemotePath "/tmp/nongji-site-deploy.sh" -ScriptText $remoteScript -TimeoutSeconds 120 | Out-Null

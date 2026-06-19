@@ -35,12 +35,35 @@ import me.saket.telephoto.zoomable.ZoomSpec
 import me.saket.telephoto.zoomable.coil.ZoomableAsyncImage
 import me.saket.telephoto.zoomable.rememberZoomableImageState
 import me.saket.telephoto.zoomable.rememberZoomableState
+import java.net.URI
+import java.net.URLDecoder
+import java.util.Locale
 
 internal const val IMAGE_EXPIRED_THUMB_TEXT = "图片已过期"
 internal const val IMAGE_EXPIRED_PREVIEW_TEXT = "图片已过期，仅保留文字记录"
 
 internal fun String.isRemoteImageSource(): Boolean =
     startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true)
+
+internal fun String.isTrustedRemoteImageSource(): Boolean {
+    val source = trim()
+    val uri = runCatching { URI(source) }.getOrNull() ?: return false
+    if (!uri.scheme.equals("https", ignoreCase = true)) return false
+    if (uri.userInfo != null || uri.rawQuery != null || uri.rawFragment != null) return false
+    val baseUri = runCatching { URI(BuildConfig.UPLOAD_BASE_URL.trim().trimEnd('/')) }.getOrNull()
+        ?: return false
+    if (!uri.host.equals(baseUri.host, ignoreCase = true)) return false
+    val rawPath = uri.rawPath ?: return false
+    val path = runCatching { URLDecoder.decode(rawPath, "UTF-8") }.getOrDefault(rawPath)
+    val normalized = path.lowercase(Locale.US)
+    val fileName = when {
+        normalized.startsWith("/uploads/support/") -> path.substring("/uploads/support/".length)
+        normalized.startsWith("/uploads/") -> path.substring("/uploads/".length)
+        else -> return false
+    }
+    if (fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) return false
+    return fileName.matches(Regex("[A-Za-z0-9._-]+\\.jpg"))
+}
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)

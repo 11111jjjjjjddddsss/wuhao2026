@@ -128,6 +128,111 @@ function Invoke-AdminAssetProbe {
     }
 }
 
+function Test-OfficialAndroidApkUrl {
+    param([string]$Url)
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $false
+    }
+    $parsed = $null
+    if (-not [System.Uri]::TryCreate($Url.Trim(), [System.UriKind]::Absolute, [ref]$parsed)) {
+        return $false
+    }
+    if ($parsed.Scheme -ne "https" -or
+        $parsed.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn" -or
+        -not [string]::IsNullOrWhiteSpace($parsed.UserInfo) -or
+        -not [string]::IsNullOrWhiteSpace($parsed.Query) -or
+        -not [string]::IsNullOrWhiteSpace($parsed.Fragment)) {
+        return $false
+    }
+    $path = $parsed.AbsolutePath.ToLowerInvariant()
+    try {
+        $decodedPath = [System.Uri]::UnescapeDataString($parsed.AbsolutePath).ToLowerInvariant()
+    } catch {
+        return $false
+    }
+    if (-not $path.StartsWith("/android/releases/") -or -not $decodedPath.StartsWith("/android/releases/")) {
+        return $false
+    }
+    if (-not $path.EndsWith(".apk") -or -not $decodedPath.EndsWith(".apk")) {
+        return $false
+    }
+    if ($path.Contains("..") -or $decodedPath.Contains("..")) {
+        return $false
+    }
+    return $decodedPath -notmatch "test-apks|debug|internal|staging"
+}
+
+function Invoke-AppUpdatePublicProbe {
+    param(
+        [int]$ProbeVersionCode,
+        [int]$ExpectedVersionCode
+    )
+
+    $client = $null
+    $url = "https://api.nongjiqiancha.cn/api/app/update?platform=android&version_code=$ProbeVersionCode&version_name=blackbox"
+    try {
+        $client = New-HttpClient -AllowRedirect:$true
+        $response = $client.GetAsync($url).GetAwaiter().GetResult()
+        $status = [int]$response.StatusCode
+        $body = $response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+        Write-Host "probe=api_app_update_public_probe status=$status"
+        if ($status -ne 200) {
+            Add-ErrorItem "api_app_update_public_probe expected_status=200 actual=$status"
+            return
+        }
+        $json = $body | ConvertFrom-Json
+        if ([string]$json.platform -ne "android") {
+            Add-ErrorItem "api_app_update_public_probe platform_not_android"
+        }
+        if ($ExpectedVersionCode -gt 0) {
+            if ($json.has_update -ne $true) {
+                Add-ErrorItem "api_app_update_public_probe expected_has_update=true"
+            }
+            if ([int]$json.latest_version_code -ne $ExpectedVersionCode) {
+                Add-ErrorItem "api_app_update_public_probe expected_latest_version_code=$ExpectedVersionCode actual=$($json.latest_version_code)"
+            }
+            if (-not (Test-OfficialAndroidApkUrl ([string]$json.apk_url))) {
+                Add-ErrorItem "api_app_update_public_probe invalid_official_apk_url"
+            }
+            if ([string]$json.apk_sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+                Add-ErrorItem "api_app_update_public_probe invalid_apk_sha256"
+            }
+            if ([int64]$json.file_size_bytes -le 0) {
+                Add-ErrorItem "api_app_update_public_probe invalid_file_size_bytes"
+            }
+        } elseif ($ProbeVersionCode -gt 0) {
+            if ($json.has_update -ne $true) {
+                Add-ErrorItem "api_app_update_public_probe expected_has_update=true"
+            }
+        } elseif ($json.has_update -ne $false) {
+            Add-ErrorItem "api_app_update_public_probe expected_has_update=false"
+        }
+    } catch {
+        Add-ErrorItem "api_app_update_public_probe request_failed=$($_.Exception.Message)"
+    } finally {
+        if ($null -ne $client) {
+            $client.Dispose()
+        }
+    }
+}
+
+function Invoke-AndroidDownloadDomainProbe {
+    $scriptPath = Join-Path $PSScriptRoot "check-android-download-domain.ps1"
+    if (-not (Test-Path -LiteralPath $scriptPath -PathType Leaf)) {
+        Add-ErrorItem "android_download_domain_probe script_missing"
+        return
+    }
+    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $scriptPath 2>&1
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -eq 0) {
+        Write-Host "probe=android_download_domain status=ready"
+        return
+    }
+    $safeOutput = (($output | Out-String) -replace '\s+', ' ').Trim()
+    Write-Host "probe=android_download_domain status=failed exit=$exitCode"
+    Add-ErrorItem "android_download_domain_probe failed exit=$exitCode output=$safeOutput"
+}
+
 function Test-HeaderValueContains {
     param(
         [System.Net.Http.Headers.HttpResponseHeaders]$Headers,
@@ -223,22 +328,8 @@ Invoke-HttpProbe `
         '"upload_storage":"oss"'
     )
 $appUpdateProbeVersionCode = [Math]::Max(0, $PreviousAndroidVersionCode)
-$appUpdateRequiredMarkers = @(
-    '"platform":"android"'
-)
-if ($ExpectedAndroidUpdateVersionCode -gt 0) {
-    $appUpdateRequiredMarkers += '"has_update":true'
-    $appUpdateRequiredMarkers += ('"latest_version_code":' + $ExpectedAndroidUpdateVersionCode)
-} elseif ($PreviousAndroidVersionCode -gt 0) {
-    $appUpdateRequiredMarkers += '"has_update":true'
-} else {
-    $appUpdateRequiredMarkers += '"has_update":false'
-}
-Invoke-HttpProbe `
-    -Name "api_app_update_public_probe" `
-    -Url "https://api.nongjiqiancha.cn/api/app/update?platform=android&version_code=$appUpdateProbeVersionCode&version_name=blackbox" `
-    -ExpectedStatus @(200) `
-    -RequiredBodyMarkers $appUpdateRequiredMarkers
+Invoke-AppUpdatePublicProbe -ProbeVersionCode $appUpdateProbeVersionCode -ExpectedVersionCode $ExpectedAndroidUpdateVersionCode
+Invoke-AndroidDownloadDomainProbe
 $internalPublicProbes = @(
     @{ Name = "api_internal_today_agri_generate_public_rejected"; Method = "POST"; Path = "/internal/jobs/today-agri-card/generate"; Body = "{}" },
     @{ Name = "api_internal_today_agri_status_public_rejected"; Method = "GET"; Path = "/internal/jobs/today-agri-card/status?day_cn=20260618"; Body = "" },

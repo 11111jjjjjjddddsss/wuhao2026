@@ -46,7 +46,8 @@ npm run build
 5. 写入 / 刷新 Nginx 静态站配置
 6. 通过 certbot 申请或续用 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 免费 HTTPS 证书
 7. 验证入口状态码和关键内容：证书存在时根域名 HTTP 301、协议页 HTTP 301、根域名 HTTPS 200、`www` HTTPS 200、`/gongan.png` 200，且首页 / 协议页正文包含 ICP、公安备案号、公安查询链接和对应页面标题；证书尚未签发时至少断言 HTTP 首页、协议页和警徽可访问
-8. 若旧版 ECS 上残留 `/var/www/nongjiqiancha-test-apks`，部署脚本会在官网验证通过后移除该旧目录；测试包下载异常时应修 OSS CNAME、证书或签名链，不恢复 ECS `/test-apks/` 回退链
+8. 若旧版 ECS 上残留 `/var/www/nongjiqiancha-test-apks`，部署脚本会在官网验证通过后移除该旧目录；清理失败会让部署失败暴露出来，避免旧测试包目录继续挂在服务器上。测试包下载异常时应修 OSS CNAME、证书或签名链，不恢复 ECS `/test-apks/` 回退链
+9. 发布成功或失败退出时会清理本次 `/tmp` 上传 / 脚本临时文件，成功后只保留最近若干官网静态 release，避免单台 ECS 长期堆积静态包
 
 `site/vite.config.ts` 当前关闭官网 CSS 压缩，避免 Vite / Lightning CSS 把传统 `max-width` 媒体查询压成部分旧安卓浏览器不识别的范围语法，导致手机浏览器文字竖排。不要为了产物更小随手恢复 CSS 压缩；如要恢复，必须先用旧安卓浏览器或对应真机页面截图验证。
 
@@ -71,9 +72,9 @@ $env:VITE_ANDROID_APK_URL="https://download.nongjiqiancha.cn/android/releases/<v
 npm run build
 ```
 
-未设置时下载按钮保持不可点击，不展示“准备中”或备案 / 回归等内部流程。只有 `VITE_ANDROID_APK_URL` 是 `https://download.nongjiqiancha.cn/android/releases/...apk` 这种自有下载域名下的稳定正式 release 地址，且原始或 URL 编码后的地址都不包含 `test-apks`、`debug`、`internal`、`staging` 等测试包标记，也不带 `Expires / Signature / OSSAccessKeyId / security-token / x-oss-*` 等短签名参数时，页面才启用下载按钮；首版不要在 App 公安备案、真机回归和正式发版口令完成前写死不存在或未验证的 APK 链接。
+未设置时下载按钮保持不可点击，不展示“准备中”或备案 / 回归等内部流程。只有 `VITE_ANDROID_APK_URL` 是 `https://download.nongjiqiancha.cn/android/releases/...apk` 这种自有下载域名下的稳定正式 release 裸地址，且不带 userinfo、query string 或 fragment，原始或 URL 编码后的地址也不包含 `test-apks`、`debug`、`internal`、`staging` 等测试包标记时，页面才启用下载按钮；首版不要在 App 公安备案、真机回归和正式发版口令完成前写死不存在或未验证的 APK 链接。
 
-[deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 默认不允许带 `VITE_ANDROID_APK_URL` 部署官网；脚本会同时检查当前环境变量和 `site/.env*` 文件，避免本机残留环境文件把 APK 链接带进正式站。只有用户明确要求发布正式下载入口时，才允许传 `-AllowOfficialDownloadUrl`，且脚本仍会拒绝测试包路径、编码后的测试包标记、短签名 URL、外部下载域名和非 `/android/releases/` 正式路径。代理测试 / 管理层试用的 debug 包只走 [android-test-package.md](D:/wuhao/docs/runbooks/android-test-package.md)，不要放到官网正式下载按钮。
+[deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 默认不允许带 `VITE_ANDROID_APK_URL` 部署官网；脚本会同时检查当前环境变量和 `site/.env*` 文件，避免本机残留环境文件把 APK 链接带进正式站。只有用户明确要求发布正式下载入口时，才允许传 `-AllowOfficialDownloadUrl`，且脚本仍会拒绝测试包路径、编码后的测试包标记、带 userinfo / query / fragment 的 URL、外部下载域名和非 `/android/releases/` 正式路径。代理测试 / 管理层试用的 debug 包只走 [android-test-package.md](D:/wuhao/docs/runbooks/android-test-package.md)，不要放到官网正式下载按钮。
 
 APK 发布仍以 [app-update.md](D:/wuhao/docs/runbooks/app-update.md) 为准：APK 必须是固定 release 签名、包名 `com.nongjiqiancha`、versionCode 递增，并记录文件大小和 SHA-256。
 

@@ -33,7 +33,7 @@
 8. 通过 `download.nongjiqiancha.cn` 生成限时签名下载链接和 HEAD 探针。
 9. 输出自有下载域名测试链接、commit、SHA-256、文件大小、签名指纹和有效期口径。
 
-如果只是本机已构建好的 APK，可传 `-NoBuild -ApkPath <path>`，但脚本仍会读取 APK 本体确认它是 debuggable debug 包，并比对固定 release 证书指纹；release APK 不能通过这个脚本发给用户或代理。如果确实要发布未提交工作区的临时包，必须显式传 `-AllowDirty`，并在对外说明中标注这是未提交测试包。日常不要这样做。
+如果只是本机已构建好的 APK，可传 `-NoBuild -ApkPath <path>`，但脚本仍会读取 APK 本体确认它是 debuggable debug 包，并比对固定 release 证书指纹；同时要求 Android 构建输入没有未提交改动，且 APK 修改时间不早于这些输入的最新 commit，避免把几天前的旧 debug 包误当成当前测试包发出去。release APK 不能通过这个脚本发给用户或代理。如果确实要发布未提交工作区的临时包，必须显式传 `-AllowDirty`，并在对外说明中标注这是未提交测试包。日常不要这样做。
 
 只有内部 staging 或排查云端对象时才可显式传 `-SkipEcsDownloadPublish`。这种情况下脚本只输出 `test_apk_status=staged_only` 和 `test_apk_url=none`，不会给出可发给用户的公网下载链接。`-UseEcsDownloadFallback` 已退役并会被脚本拒绝；若下载域名异常，应先修 OSS CNAME / 证书 / 签名链，不再临时回退 ECS `/test-apks/`。
 

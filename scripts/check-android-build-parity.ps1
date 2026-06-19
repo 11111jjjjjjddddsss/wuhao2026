@@ -296,8 +296,8 @@ if ($failures.Count -eq 0) {
         "Android app update URL validation must reject external APK hosts and encoded/decoded non-release paths."
     Require-Match $failures $sessionApi 'encodedPath\.endsWith\("\.apk"\)(?s:.*?)decodedPath\.endsWith\("\.apk"\)(?s:.*?)encodedPath\.contains\("\.\."\)(?s:.*?)decodedPath\.contains\("\.\."\)(?s:.*?)internalMarkers\s*=\s*listOf\("test-apks",\s*"debug",\s*"internal",\s*"staging"\)(?s:.*?)decodedUrl\.contains\(marker\)(?s:.*?)decodedPath\.contains\(marker\)' `
         "Android app update URL validation must reject non-APK files, path traversal and URL-encoded test/internal markers."
-    Require-Match $failures $sessionApi 'signedQueryNames\s*=\s*setOf\((?s:.*?)"expires"(?s:.*?)"signature"(?s:.*?)"ossaccesskeyid"(?s:.*?)"x-oss-signature"(?s:.*?)parsed\.queryParameterNames\.none' `
-        "Android app update URL validation must reject short signed APK URLs."
+    Require-Match $failures $sessionApi 'raw\.contains\("#"\)(?s:.*?)parsed\.username\.isNotEmpty\(\)(?s:.*?)parsed\.password\.isNotEmpty\(\)(?s:.*?)parsed\.queryParameterNames\.isNotEmpty\(\)' `
+        "Android app update URL validation must reject userinfo, query strings and URL fragments."
     Require-Match $failures $manifest '<uses-permission\s+android:name="android\.permission\.REQUEST_INSTALL_PACKAGES"\s*/>' `
         "Android app update flow must keep REQUEST_INSTALL_PACKAGES so Android O+ can request package installation."
     Require-Match $failures $manifest '<provider\b(?=[^>]*android:authorities="\$\{applicationId\}\.fileprovider")(?=[^>]*android:grantUriPermissions="true")(?=[^>]*android:exported="false")(?s:.*?)android:resource="@xml/file_paths"' `

@@ -798,7 +798,7 @@ async function supportPage(): Promise<string> {
           <span class="small muted">${escapeHTML(pageState.supportUserID || "未选择")}</span>
         </div>
         <div class="card-body">
-          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected, messagesError) : emptyState("没有会话", "当前后端未返回帮助与反馈会话。")}
+          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected, messagesError) : emptyState("未选择会话", "请先在左侧选择一条反馈会话。")}
         </div>
       </section>
     </div>
@@ -1842,7 +1842,7 @@ function phoneDisplayMaskedInline(phoneNumber?: string, phoneMask?: string): str
     return escapeHTML(phoneMask);
   }
   if ((phoneNumber || "").trim()) {
-    return "完整号";
+    return "已绑定手机号";
   }
   return "未返回手机号";
 }
@@ -2530,7 +2530,7 @@ function supportSinceRangeToMs(value: string): number {
 }
 
 function supportConversationList(conversations: AdminSupportConversation[]): string {
-  if (!conversations.length) return emptyState("没有反馈会话", "后端未返回帮助与反馈会话。");
+  if (!conversations.length) return emptyState("暂无反馈会话", "当前没有需要处理的用户反馈。");
   return conversations
     .map(
       (item) => `
@@ -2577,11 +2577,6 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
     ${
       canManage
         ? `
-          <div class="row-actions" style="margin-bottom:12px">
-            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="open" type="button">重开待回复</button>
-            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="replied" type="button">已处理/无需回复</button>
-            <button class="button danger" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="closed" type="button">关闭</button>
-          </div>
           <form id="support-reply-form" class="stack">
             <input type="hidden" name="user_id" value="${escapeAttr(userID)}" />
             <label class="field">
@@ -2590,6 +2585,12 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
             </label>
             <button class="button primary" type="submit">发送给用户（生产）</button>
           </form>
+          <div class="row-actions" style="margin-top:12px">
+            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="open" type="button">重开待回复</button>
+            <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="replied" type="button">已处理/无需回复</button>
+            <button class="button danger" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="closed" type="button">关闭</button>
+          </div>
+          <p class="small muted">无需给用户回复时，再使用“已处理/无需回复”或“关闭”，并填写处理备注。</p>
         `
         : notice("只读会话", "当前角色只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
     }
@@ -3131,6 +3132,10 @@ function isOfficialApkURL(value: string): boolean {
   try {
     const url = new URL(value.trim());
     return url.protocol === "https:" &&
+      url.username === "" &&
+      url.password === "" &&
+      url.search === "" &&
+      url.hash === "" &&
       url.hostname.toLowerCase() === "download.nongjiqiancha.cn" &&
       url.pathname.toLowerCase().startsWith("/android/releases/") &&
       url.pathname.toLowerCase().endsWith(".apk");
@@ -4036,11 +4041,7 @@ function monitoringWorstLevel(report: AdminMonitoring): "ok" | "warn" | "bad" {
   if (
     (report.queues?.app_errors ?? 0) > 0 ||
     (report.queues?.support_needs_reply ?? 0) > 0 ||
-    (report.queues?.gift_card_failed_attempts ?? 0) > 0 ||
-    (report.queues?.gift_card_batch_count ?? 0) === 0 ||
-    (report.queues?.gift_card_active ?? 0) === 0 ||
-    report.queues?.app_update?.config_valid === false ||
-    report.queues?.app_update?.download_artifacts_complete === false
+    (report.queues?.gift_card_failed_attempts ?? 0) > 0
   ) {
     return "warn";
   }
@@ -4060,7 +4061,7 @@ function loginHealthOK(health: AdminOverview["health"]): boolean {
 }
 
 function actionItemList(items: AdminMonitoring["action_items"]): string {
-  if (!items.length) return emptyState("没有待处理事项", "后端未返回 action_items。");
+  if (!items.length) return emptyState("没有待处理事项", "当前没有需要马上处理的事项。");
   return `
     <div class="action-list">
       ${items

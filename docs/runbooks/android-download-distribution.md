@@ -1,6 +1,6 @@
 # Android 下载分发 Runbook
 
-最后更新：2026-06-19
+最后更新：2026-06-20
 
 本 runbook 记录 Android APK 的低成本下载方案。它只解决“安装包从哪里下载、如何校验、如何控制成本”，不等于正式发布口令。
 
@@ -96,7 +96,7 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 - commit
 - 签名证书指纹
 
-注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 地址，或由后端检查更新接口按需生成可用下载链接；后台检查更新和 release-match 脚本会拒绝带 `Expires / Signature / OSSAccessKeyId / x-oss-signature` 等短签名参数的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
+注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
 后台“检查更新”启用前继续跑：
 

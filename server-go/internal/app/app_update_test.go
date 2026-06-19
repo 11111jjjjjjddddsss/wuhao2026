@@ -295,6 +295,39 @@ func TestBuildAndroidUpdateInfoRejectsShortLivedSignedAPKURL(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoRejectsDecoratedReleaseAPKURL(t *testing.T) {
+	urls := []string{
+		"https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk?token=ordinary",
+		"https://user:pass@download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
+		"https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk#fragment",
+	}
+	for _, apkURL := range urls {
+		t.Run(apkURL, func(t *testing.T) {
+			cfg := androidUpdateConfig{
+				Enabled:           true,
+				LatestVersionCode: 4,
+				LatestVersionName: "1.0.4",
+				APKURL:            apkURL,
+				APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+				FileSizeBytes:     12_345,
+			}
+			info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+			if info.HasUpdate {
+				t.Fatalf("expected decorated apk url to disable update, got %#v", info)
+			}
+			if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+				t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+			}
+			if androidUpdateConfigValid(cfg) {
+				t.Fatalf("decorated apk config must be invalid")
+			}
+			if androidUpdateDownloadArtifactsComplete(cfg) {
+				t.Fatalf("decorated apk must not count as complete release artifact")
+			}
+		})
+	}
+}
+
 func TestBuildAndroidUpdateInfoRejectsExternalAPKHost(t *testing.T) {
 	cfg := androidUpdateConfig{
 		Enabled:           true,

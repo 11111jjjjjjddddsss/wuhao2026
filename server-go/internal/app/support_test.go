@@ -266,6 +266,33 @@ func TestSupportUserCreateHandlerUsesAtomicAutoReplyStorePath(t *testing.T) {
 	}
 }
 
+func TestSupportUserCreateHandlerValidatesBeforeRateLimit(t *testing.T) {
+	source, err := os.ReadFile("support.go")
+	if err != nil {
+		t.Fatalf("read support.go: %v", err)
+	}
+	text := string(source)
+	start := strings.Index(text, "func (s *Server) handleCreateSupportMessage")
+	if start < 0 {
+		t.Fatalf("handleCreateSupportMessage not found")
+	}
+	end := strings.Index(text[start:], "func (s *Server) handleMarkSupportRead")
+	if end < 0 {
+		t.Fatalf("handleMarkSupportRead not found")
+	}
+	block := text[start : start+end]
+	decodeAt := strings.Index(block, "decodeJSONBody")
+	normalizeAt := strings.Index(block, "normalizeSupportMessagePayload")
+	validateURLAt := strings.Index(block, "validateSupportImageURLs")
+	consumeAt := strings.Index(block, "supportMessageLimiter.Consume")
+	if decodeAt < 0 || normalizeAt < 0 || validateURLAt < 0 || consumeAt < 0 {
+		t.Fatalf("support handler missing expected validation or rate-limit calls")
+	}
+	if !(decodeAt < consumeAt && normalizeAt < consumeAt && validateURLAt < consumeAt) {
+		t.Fatalf("support message rate limit should be consumed only after JSON, length and image URL validation")
+	}
+}
+
 func TestSupportMessageRateLimiterUsesEnv(t *testing.T) {
 	t.Setenv("SUPPORT_MESSAGE_RATE_LIMIT_WINDOW_SECONDS", "30")
 	t.Setenv("SUPPORT_MESSAGE_RATE_LIMIT_MAX_HITS", "2")

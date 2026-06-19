@@ -25,6 +25,45 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
+private const val APP_UPDATE_OFFICIAL_APK_HOST = "download.nongjiqiancha.cn"
+private const val APP_UPDATE_OFFICIAL_APK_PATH_PREFIX = "/android/releases/"
+
+internal fun isStableAppUpdateApkUrlValue(raw: String): Boolean {
+    if (raw.contains("#")) return false
+    val parsed = raw.toHttpUrlOrNull() ?: return false
+    if (parsed.scheme != "https") return false
+    if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return false
+    if (parsed.queryParameterNames.isNotEmpty()) return false
+    if (!parsed.host.equals(APP_UPDATE_OFFICIAL_APK_HOST, ignoreCase = true)) return false
+    val encodedPath = parsed.encodedPath.lowercase(Locale.US)
+    val decodedPath = decodeAppUpdateUrlGuardValue(parsed.encodedPath).lowercase(Locale.US)
+    if (!encodedPath.startsWith(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX)) return false
+    if (!decodedPath.startsWith(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX)) return false
+    if (!encodedPath.endsWith(".apk")) return false
+    if (!decodedPath.endsWith(".apk")) return false
+    if (encodedPath.contains("..") || decodedPath.contains("..")) return false
+    val lowerUrl = raw.lowercase(Locale.US)
+    val decodedUrl = decodeAppUpdateUrlGuardValue(raw).lowercase(Locale.US)
+    val internalMarkers = listOf("test-apks", "debug", "internal", "staging")
+    if (internalMarkers.any { marker ->
+            lowerUrl.contains(marker) ||
+                decodedUrl.contains(marker) ||
+                encodedPath.contains(marker) ||
+                decodedPath.contains(marker)
+        }
+    ) {
+        return false
+    }
+    return true
+}
+
+private fun decodeAppUpdateUrlGuardValue(value: String): String =
+    try {
+        URLDecoder.decode(value, "UTF-8")
+    } catch (_: IllegalArgumentException) {
+        value
+    }
+
 /**
  * Backend source-of-truth API wrapper.
  */
@@ -36,8 +75,6 @@ object SessionApi {
     private const val STREAM_ACTIVE_RETRY_BASE_DELAY_MS = 550L
     private const val CLIENT_LOG_THROTTLE_MS = 60_000L
     private const val APP_UPDATE_MAX_APK_DOWNLOAD_BYTES = 200L * 1024L * 1024L
-    private const val APP_UPDATE_OFFICIAL_APK_HOST = "download.nongjiqiancha.cn"
-    private const val APP_UPDATE_OFFICIAL_APK_PATH_PREFIX = "/android/releases/"
     private val gson = Gson()
     private val mainHandler = Handler(Looper.getMainLooper())
     private val client = OkHttpClient.Builder()
@@ -264,47 +301,8 @@ object SessionApi {
     }
 
     internal fun isStableAppUpdateApkUrl(raw: String): Boolean {
-        val parsed = raw.toHttpUrlOrNull() ?: return false
-        if (parsed.scheme != "https") return false
-        if (!parsed.host.equals(APP_UPDATE_OFFICIAL_APK_HOST, ignoreCase = true)) return false
-        val encodedPath = parsed.encodedPath.lowercase(Locale.US)
-        val decodedPath = decodeAppUpdateUrlGuardValue(parsed.encodedPath).lowercase(Locale.US)
-        if (!encodedPath.startsWith(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX)) return false
-        if (!decodedPath.startsWith(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX)) return false
-        if (!encodedPath.endsWith(".apk")) return false
-        if (!decodedPath.endsWith(".apk")) return false
-        if (encodedPath.contains("..") || decodedPath.contains("..")) return false
-        val lowerUrl = raw.lowercase(Locale.US)
-        val decodedUrl = decodeAppUpdateUrlGuardValue(raw).lowercase(Locale.US)
-        val internalMarkers = listOf("test-apks", "debug", "internal", "staging")
-        if (internalMarkers.any { marker ->
-                lowerUrl.contains(marker) ||
-                    decodedUrl.contains(marker) ||
-                    encodedPath.contains(marker) ||
-                    decodedPath.contains(marker)
-            }
-        ) {
-            return false
-        }
-        val signedQueryNames = setOf(
-            "expires",
-            "signature",
-            "ossaccesskeyid",
-            "security-token",
-            "x-oss-expires",
-            "x-oss-signature",
-            "x-oss-credential",
-            "x-oss-security-token"
-        )
-        return parsed.queryParameterNames.none { it.lowercase(Locale.US) in signedQueryNames }
+        return isStableAppUpdateApkUrlValue(raw)
     }
-
-    private fun decodeAppUpdateUrlGuardValue(value: String): String =
-        try {
-            URLDecoder.decode(value, "UTF-8")
-        } catch (_: IllegalArgumentException) {
-            value
-        }
 
     fun sendSmsCode(phoneNumber: String, onResult: (Boolean, String?) -> Unit) {
         val base = baseUrl()

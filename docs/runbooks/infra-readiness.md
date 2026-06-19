@@ -1,6 +1,6 @@
 # 上线前基础设施准备清单
 
-最后更新：2026-06-13
+最后更新：2026-06-20
 
 ## 目的
 
@@ -12,7 +12,7 @@
 - 仓库内已有 SAE / 日志 / 回滚 / 数据库只读 runbook 骨架；[operations-blueprint.md](D:/wuhao/docs/runbooks/operations-blueprint.md) 已把后期 Codex 协助整体 App、后端、管理后台、发布、回滚、日志和数据运维的范围先固定下来
 - 下一阶段上线推进顺序已沉淀到 [go-live-plan.md](D:/wuhao/docs/runbooks/go-live-plan.md)：买服务器 / 域名后立刻启动 ICP / App 备案，手机号登录、后端部署、RDS、OSS、SLS 和真实接口联调在备案等待期间并行推进；当前网站 ICP 和 App 备案均已通过，App 备案号为 `京ICP备2026031728号-2A`
 - 买服务器前功能巡检记录已开始沉淀到 [pre-server-feature-audit.md](D:/wuhao/docs/runbooks/pre-server-feature-audit.md)：当前已巡检会员中心 / 额度体系，以及 Go 后端高并发 / 性能边界
-- 正式云资源已落地为首版单 ECS 生产链：Region 选定 `华北2（北京）/ cn-beijing`；ECS `i-2ze5nrem0jrchln4f0eh`、RDS MySQL `rm-2zes3vmj76p85n8g1`、Redis `r-2zet46zvmoo9wu3bic`、OSS Bucket `nongjiqiancha-prod`、域名 / DNS / HTTPS、SLS Project / Logstore、管理后台 `admin.nongjiqiancha.cn` 均已配置。后端以双端口 slot + Nginx 反代运行，`scripts/check-ecs-readiness.ps1` 是线上 readiness 真相入口，当前要求 `auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss / dev_order_endpoints=false`；`dypns_*` 只作旧包兼容状态参考。RDS 自动备份当前保留 7 天，ECS 系统盘已绑定每周二 / 周六普通低频自动快照 7 天保留；资源水位由阿里云云监控邮件告警覆盖，SLS 应用日志按 180 天 TTL、7 天热存储、173 天低频存储留存，并且 AlertHub 最小告警已绑定邮件行动策略和最小仪表盘。公网入口可用 [scripts/check-public-blackbox.ps1](D:/wuhao/scripts/check-public-blackbox.ps1) 从外部用户视角检查 API、官网、www、后台首页、未登录后台 401 和 HTTP->HTTPS 跳转。
+- 正式云资源已落地为首版单 ECS 生产链：Region 选定 `华北2（北京）/ cn-beijing`；ECS `i-2ze5nrem0jrchln4f0eh`、RDS MySQL `rm-2zes3vmj76p85n8g1`、Redis `r-2zet46zvmoo9wu3bic`、OSS Bucket `nongjiqiancha-prod`、域名 / DNS / HTTPS、SLS Project / Logstore、管理后台 `admin.nongjiqiancha.cn` 均已配置。后端以双端口 slot + Nginx 反代运行，`scripts/check-ecs-readiness.ps1` 是线上 readiness 真相入口，当前要求 `auth_strict=true / bailian=ok / sms=ok / redis=ok / upload_storage=oss / dev_order_endpoints=false`；`dypns_*` 只作旧包兼容状态参考。RDS 自动备份当前保留 7 天，ECS 系统盘已绑定每周二 / 周六普通低频自动快照 7 天保留；资源水位由阿里云云监控邮件告警覆盖，SLS 应用日志按 180 天 TTL、7 天热存储、173 天低频存储留存，并且 AlertHub 最小告警已绑定邮件行动策略和最小仪表盘。公网入口可用 [scripts/check-public-blackbox.ps1](D:/wuhao/scripts/check-public-blackbox.ps1) 从外部用户视角检查 API、官网、www、后台首页、未登录后台 401、下载域名 / OSS CNAME 签名链和 HTTP->HTTPS 跳转。
 - 当前尚未购买 / 接入：SLS 节省计划 / 资源包、CDN / OSS 下行流量包。以当前“一个用户都还没有”的阶段，这些不是上线硬前置；后续按 [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md) 和真实用量再提示购买或升级。当前尚未完成：App 公安备案、短信验证码登录 / 主聊天 / 图片问诊真机回归、旧包检查更新覆盖安装回归、首封 SLS 告警邮件送达确认、上线前已暴露 AccessKey 轮换、真实支付渠道申请和回调链路。
 
 ## 最小上线资源清单

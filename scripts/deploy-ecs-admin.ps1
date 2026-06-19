@@ -256,6 +256,24 @@ cert_dir="/etc/letsencrypt/live/`$domain"
 nginx_site_backup='/tmp/nongjiqiancha-admin.nginx-site.backup'
 nginx_site_backup_state='/tmp/nongjiqiancha-admin.nginx-site.backup-state'
 
+cleanup_deploy_temp() {
+  rm -rf -- "`$chunks" "`$archive" /tmp/nongji-admin-deploy.sh /tmp/nongji-admin-root.html "`$nginx_site_backup" "`$nginx_site_backup_state" 2>/dev/null || true
+}
+
+prune_static_releases() {
+  if [ ! -d "`$site_base/releases" ]; then
+    return 0
+  fi
+  find "`$site_base/releases" -mindepth 1 -maxdepth 1 -type d -printf '%T@ %p\n' 2>/dev/null |
+    sort -rn |
+    awk 'NR > 8 {sub(/^[^ ]+ /, ""); print}' |
+    while IFS= read -r old_release; do
+      if [ -n "`$old_release" ] && [ "`$old_release" != "`$release_dir" ] && [ "`$old_release" != "`$previous_current_target" ]; then
+        rm -rf -- "`$old_release" && echo "pruned_admin_release=`$(basename "`$old_release")"
+      fi
+    done
+}
+
 backup_nginx_site() {
   if [ -f "`$nginx_site" ]; then
     cp -f "`$nginx_site" "`$nginx_site_backup"
@@ -293,6 +311,7 @@ on_deploy_exit() {
     restore_current_link
     restore_nginx_site
   fi
+  cleanup_deploy_temp
   exit "`$status"
 }
 trap on_deploy_exit EXIT
@@ -461,6 +480,7 @@ else
   echo 'admin certificate missing after deploy' >&2
   exit 21
 fi
+prune_static_releases
 deploy_completed=1
 "@
 

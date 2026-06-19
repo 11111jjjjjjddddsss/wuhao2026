@@ -85,6 +85,9 @@ internal fun Context.decodeChatImagePreview(
 ): ImageBitmap? {
     cachedChatImagePreview(source)?.let { return it }
     val isRemote = source.isRemoteImageSource()
+    if (isRemote && !source.isTrustedRemoteImageSource()) {
+        return null
+    }
     if (isRemote && isRemotePreviewTemporarilyUnavailable(source)) {
         return null
     }

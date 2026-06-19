@@ -148,16 +148,6 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	if s.supportMessageLimiter != nil {
-		limitKey := supportMessageRateLimitKey(auth.UserID, GetClientIP(r))
-		if allowed, retryAfter := s.supportMessageLimiter.Consume(limitKey, time.Now()); !allowed {
-			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
-				"error":               "rate_limited",
-				"retry_after_seconds": retryAfter,
-			})
-			return
-		}
-	}
 	var body supportMessageRequest
 	if err := decodeJSONBody(r, &body); err != nil {
 		s.writeJSONDecodeError(w, err)
@@ -171,6 +161,16 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
+	}
+	if s.supportMessageLimiter != nil {
+		limitKey := supportMessageRateLimitKey(auth.UserID, GetClientIP(r))
+		if allowed, retryAfter := s.supportMessageLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
 	}
 	if err := s.store.EnsureUser(r.Context(), auth.UserID, TierFree); err != nil {
 		s.logger.Error("ensure user failed", "userId", auth.UserID, "error", err)

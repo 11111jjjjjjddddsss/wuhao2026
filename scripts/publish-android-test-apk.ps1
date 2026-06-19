@@ -49,6 +49,41 @@ function Ensure-CleanGitTree {
     Write-Host "git_tree_status=clean"
 }
 
+function Get-AndroidBuildInputPaths {
+    return @(
+        "app",
+        "gradle",
+        "gradlew",
+        "gradlew.bat",
+        "settings.gradle.kts",
+        "build.gradle.kts",
+        "gradle.properties"
+    )
+}
+
+function Assert-NoBuildApkFreshness {
+    param([System.IO.FileInfo]$ApkItem)
+
+    $inputPaths = Get-AndroidBuildInputPaths
+    $dirty = Get-GitOutput -GitArgs (@("status", "--porcelain", "--") + $inputPaths)
+    if (-not [string]::IsNullOrWhiteSpace($dirty)) {
+        throw "-NoBuild cannot publish while Android build inputs have uncommitted changes; rebuild the APK without -NoBuild or commit the intended state first"
+    }
+
+    $latestCommitUnix = Get-GitOutput -GitArgs (@("log", "-1", "--format=%ct", "--") + $inputPaths)
+    $latestCommitSeconds = 0L
+    if ([string]::IsNullOrWhiteSpace($latestCommitUnix) -or -not [long]::TryParse($latestCommitUnix.Trim(), [ref]$latestCommitSeconds)) {
+        throw "-NoBuild cannot verify debug APK freshness because the latest Android build input commit could not be resolved"
+    }
+    $latestCommitUtc = [DateTimeOffset]::FromUnixTimeSeconds($latestCommitSeconds).UtcDateTime
+    Write-Host ("test_apk_nobuild_apk_last_write_utc={0:o}" -f $ApkItem.LastWriteTimeUtc)
+    Write-Host ("test_apk_nobuild_inputs_latest_commit_utc={0:o}" -f $latestCommitUtc)
+    if ($ApkItem.LastWriteTimeUtc.AddSeconds(2) -lt $latestCommitUtc) {
+        throw "-NoBuild debug APK is older than the latest Android build input commit; rebuild with :app:assembleDebug before publishing"
+    }
+    Write-Host "test_apk_nobuild_freshness=ready"
+}
+
 function Normalize-Hex {
     param([string]$Value)
     if ([string]::IsNullOrWhiteSpace($Value)) {
@@ -415,6 +450,9 @@ if ($apkPathLower -notmatch "[\\/\\\\]debug[\\/\\\\]|debug" -and $apkLeafLower -
 Assert-DebugApk -Path $ApkPath
 
 $apkItem = Get-Item $ApkPath
+if ($NoBuild) {
+    Assert-NoBuildApkFreshness -ApkItem $apkItem
+}
 $sha256 = (Get-FileHash -Path $ApkPath -Algorithm SHA256).Hash.ToLowerInvariant()
 $dateDir = Get-Date -Format "yyyyMMdd"
 $stamp = Get-Date -Format "yyyyMMdd-HHmmss"

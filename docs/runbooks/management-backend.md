@@ -13,10 +13,10 @@
 ## 当前真相
 
 - 管理后台前端目录：`admin`。本地开发：`cd admin && npm install && npm run dev -- --host 127.0.0.1 --port 5174`。生产构建：`npm run build`。
-- 生产部署脚本：[deploy-ecs-admin.ps1](D:/wuhao/scripts/deploy-ecs-admin.ps1)。脚本会构建 `admin/dist`、同步 `admin` A 记录、上传静态包、配置 Nginx、签发 / 复用 Let's Encrypt HTTPS 证书，并验证首页和未登录 API 状态。
+- 生产部署脚本：[deploy-ecs-admin.ps1](D:/wuhao/scripts/deploy-ecs-admin.ps1)。脚本会构建 `admin/dist`、同步 `admin` A 记录、上传静态包、配置 Nginx、签发 / 复用 Let's Encrypt HTTPS 证书，并验证首页和未登录 API 状态；发布成功或失败退出时会清理本次 `/tmp` 上传 / 脚本临时文件，成功后只保留最近若干后台静态 release，避免 ECS 静态包长期堆积。
 - 生产入口：`https://admin.nongjiqiancha.cn/`。HTTP 80 只用于 ACME challenge 和 301 跳转；HTTPS 下 `/admin-api/` 由 Nginx 反代到当前 active Go slot。
 - 登录后只读烟测：[check-admin-authenticated-smoke.ps1](D:/wuhao/scripts/check-admin-authenticated-smoke.ps1)。该脚本不会把后台密码写入仓库或输出到日志；优先使用当前 PowerShell 的 `NONGJI_ADMIN_USERNAME` / `NONGJI_ADMIN_PASSWORD`，兼容 `ADMIN_SMOKE_USERNAME` / `ADMIN_SMOKE_PASSWORD`，也支持读取本机私密 `%USERPROFILE%\.nongjiqiancha\prod-secrets.json` 里的 `admin_smoke_username` / `admin_smoke_password`。本机已创建生产低权限 `ops_readonly` 巡检账号 `codex_ops_monitor` 并把密码只保存到该私密文件，用于自动巡检；需要 owner 全量 smoke 时仍要临时提供 owner 凭据并显式传 `-RequireOwner`。脚本会登录后台、访问总览 / 监控 / 洞察 / 用户 / 会员 / 订单 / 礼品卡 / 帮助反馈 / App 日志 / 审计 / 今日农情 / 检查更新 / 注销申请等只读 API，最后退出；这比只看未登录 `/auth/me=401` 更能证明后台登录后核心页面可用。
-- 公网黑盒只读烟测：[check-public-blackbox.ps1](D:/wuhao/scripts/check-public-blackbox.ps1)。该脚本不登录、不带后台密码、不读密钥，从公网域名请求 API healthz、官网、www、后台首页、后台未登录 `/auth/me=401` 和 HTTP->HTTPS 跳转，验证外部用户视角的入口可达性；它不能替代登录后 owner smoke，也不是自动告警。
+- 公网黑盒只读烟测：[check-public-blackbox.ps1](D:/wuhao/scripts/check-public-blackbox.ps1)。该脚本不登录、不带后台密码，从公网域名请求 API healthz、官网、www、后台首页、后台未登录 `/auth/me=401`、下载域名探针和 HTTP->HTTPS 跳转，验证外部用户视角的入口可达性；下载域名探针会调用本机受控脚本检查 OSS CNAME / 证书 / 签名链。它不能替代登录后 owner smoke，也不是自动告警。
 - 管理后台 API：`/admin-api/v1/*`，由 `server-go` 提供，不单独起第二套后端。
 - 后台登录：`POST /admin-api/v1/auth/login`，成功后写 HttpOnly session cookie 和 CSRF cookie，前端请求带 `X-Admin-CSRF`。登录入口有两层防刷：外层保留 IP 级内部接口保护，内层按“用户名 hash + IP hash”默认 `10/10min` 限制失败 / 尝试请求，可用 `ADMIN_LOGIN_RATE_LIMIT_*` 调整；限流 key 不保存明文用户名或 IP。
 - 后台账号安全：`POST /admin-api/v1/auth/change-password` 支持登录后自助修改当前后台密码；后端验证当前密码、限制新密码最短 8 字符、改密后清 `must_change_password` 并吊销同账号其它后台会话。若账号被标记为必须改密，除 `/auth/me`、`/auth/logout` 和 `/auth/change-password` 外，其它后台 API 会返回 `password_change_required`。

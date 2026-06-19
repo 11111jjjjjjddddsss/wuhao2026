@@ -2547,18 +2547,17 @@ fun ChatScreen() {
     }
     LaunchedEffect(
         messages.size,
-        streamingMessageContent.length,
+        messages.lastOrNull { message -> message.role == ChatRole.ASSISTANT }?.id,
+        messages.lastOrNull { message -> message.role == ChatRole.ASSISTANT }?.content?.length ?: 0,
+        isStreaming,
         hasTodayAgriCard,
         chatListItems.size
     ) {
+        if (isStreaming) return@LaunchedEffect
         val assistantContents = messages
             .filter { message -> message.role == ChatRole.ASSISTANT && message.content.isNotBlank() }
             .map { message -> message.content }
             .takeLast(3)
-            .toMutableList()
-        if (streamingMessageContent.isNotBlank()) {
-            assistantContents += streamingMessageContent
-        }
         if (assistantContents.isEmpty() && !hasTodayAgriCard) return@LaunchedEffect
         val stats = assistantContents
             .map(::buildRendererStructureStats)
@@ -2574,7 +2573,6 @@ fun ChatScreen() {
             }
         val signature = listOf(
             messages.size,
-            streamingMessageContent.length,
             hasTodayAgriCard,
             chatListItems.size,
             stats.blockCount,

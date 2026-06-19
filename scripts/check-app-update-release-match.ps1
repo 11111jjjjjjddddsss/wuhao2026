@@ -98,6 +98,11 @@ function Test-AllowedReleaseApkUri {
     if ($Uri.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
         Add-Failure $failures "$Label URL host must be download.nongjiqiancha.cn"
     }
+    if (-not [string]::IsNullOrWhiteSpace($Uri.UserInfo) -or
+        -not [string]::IsNullOrWhiteSpace($Uri.Query) -or
+        -not [string]::IsNullOrWhiteSpace($Uri.Fragment)) {
+        Add-Failure $failures "$Label URL must not contain userinfo, query strings or fragments"
+    }
     $path = $Uri.AbsolutePath.ToLowerInvariant()
     $decodedPath = $path
     try {
@@ -117,20 +122,6 @@ function Test-AllowedReleaseApkUri {
     }
     if ($decodedPath -match "test-apks|debug|internal|staging") {
         Add-Failure $failures "$Label URL looks like an internal test APK URL; do not configure debug/internal/staging/test-apks links for app update"
-    }
-    $signedQueryKeys = @("expires", "signature", "ossaccesskeyid", "security-token", "x-oss-expires", "x-oss-signature", "x-oss-credential", "x-oss-security-token")
-    foreach ($key in $Uri.Query.TrimStart("?").Split("&", [System.StringSplitOptions]::RemoveEmptyEntries)) {
-        $queryKey = ($key -split "=", 2)[0].ToLowerInvariant()
-        try {
-            $queryKey = [System.Uri]::UnescapeDataString($queryKey).ToLowerInvariant()
-        } catch {
-            Add-Failure $failures "$Label URL query contains invalid percent-encoding"
-            break
-        }
-        if ($signedQueryKeys -contains $queryKey) {
-            Add-Failure $failures "$Label URL looks like a short-lived signed URL; configure a stable release URL or a backend on-demand signing flow"
-            break
-        }
     }
 }
 

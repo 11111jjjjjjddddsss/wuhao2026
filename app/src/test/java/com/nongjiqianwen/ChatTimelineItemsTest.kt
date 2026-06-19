@@ -209,6 +209,57 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriCardProductionVisibilityRequiresEnoughExposedHeight() {
+        val user = userMessage("u1")
+        val assistant = assistantMessage("assistant_u1")
+        val items = buildChatTimelineItems(
+            messages = listOf(user, assistant),
+            todayAgriCard = todayAgriCard(),
+            todayAgriAfterMessageId = assistant.id
+        )
+        val todayAgriIndex = items.indexOfFirst { item ->
+            item is ChatTimelineItem.TodayAgriCard
+        }
+        val productionMinVisiblePx = 96
+
+        assertFalse(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItems = listOf(
+                    VisibleChatListItem(index = todayAgriIndex, offset = 405, size = 200)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 500,
+                minVisiblePx = productionMinVisiblePx
+            )
+        )
+        assertFalse(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItems = listOf(
+                    VisibleChatListItem(index = todayAgriIndex, offset = 330, size = 200)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 500,
+                minVisiblePx = productionMinVisiblePx,
+                coveredBottomPx = 100
+            )
+        )
+        assertTrue(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItems = listOf(
+                    VisibleChatListItem(index = todayAgriIndex, offset = 304, size = 200)
+                ),
+                viewportStartOffset = 0,
+                viewportEndOffset = 500,
+                minVisiblePx = productionMinVisiblePx,
+                coveredBottomPx = 100
+            )
+        )
+    }
+
+    @Test
     fun todayAgriVisualAnchorKeepsLocalAnchorUntilServerSaveReturns() {
         assertEquals(
             "assistant_u1",
