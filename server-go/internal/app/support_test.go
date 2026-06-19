@@ -112,6 +112,22 @@ func TestNormalizeSupportClientMsgID(t *testing.T) {
 	}
 }
 
+func TestSupportMessageMatchesPayloadRejectsClientMsgIDReuseWithDifferentBody(t *testing.T) {
+	message := &SupportMessage{
+		Body:      "原反馈",
+		ImageURLs: []string{"https://api.example.com/uploads/support/a.jpg"},
+	}
+	if !supportMessageMatchesPayload(message, " 原反馈 ", []string{" https://api.example.com/uploads/support/a.jpg "}) {
+		t.Fatalf("expected matching payload")
+	}
+	if supportMessageMatchesPayload(message, "新反馈", []string{"https://api.example.com/uploads/support/a.jpg"}) {
+		t.Fatalf("expected different body to be rejected")
+	}
+	if supportMessageMatchesPayload(message, "原反馈", []string{"https://api.example.com/uploads/support/b.jpg"}) {
+		t.Fatalf("expected different image urls to be rejected")
+	}
+}
+
 func TestNormalizeAdminSupportMessagePayloadAllowsOperationalNumbers(t *testing.T) {
 	tests := []struct {
 		name string

@@ -380,6 +380,12 @@ func (s *Server) handleGiftCardRedeem(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	var body giftCardRedeemRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	normalizedCode := normalizeGiftCardCode(body.Code)
 	if s.giftCardRedeemLimiter != nil {
 		if allowed, retryAfterSec := s.giftCardRedeemLimiter.Consume(giftCardRedeemRateLimitKey(auth.UserID, GetClientIP(r)), time.Now()); !allowed {
 			w.Header().Set("Retry-After", strconv.Itoa(retryAfterSec))
@@ -387,13 +393,8 @@ func (s *Server) handleGiftCardRedeem(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var body giftCardRedeemRequest
-	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
-		s.writeJSONDecodeError(w, err)
-		return
-	}
 	region := giftCardRegionFromRequest(r)
-	result, err := s.store.RedeemGiftCard(r.Context(), body.Code, auth.UserID, region, maskIP(GetClientIP(r)), time.Now().UnixMilli())
+	result, err := s.store.RedeemGiftCard(r.Context(), normalizedCode, auth.UserID, region, maskIP(GetClientIP(r)), time.Now().UnixMilli())
 	if err != nil {
 		code := giftCardErrorCode(err)
 		status := giftCardRedeemHTTPStatus(err)

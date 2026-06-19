@@ -386,6 +386,45 @@ func (s *Store) SetUserMemoryPendingIfCurrent(ctx context.Context, userID string
 	return affected > 0, nil
 }
 
+func (s *Store) ListPendingMemoryUserIDs(ctx context.Context, limit int) ([]string, error) {
+	if limit <= 0 {
+		return nil, nil
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(
+		ctx,
+		`SELECT user_id
+		   FROM session_ab
+		  WHERE pending_retry_b = 1
+		     OR COALESCE(JSON_LENGTH(pending_memory_jobs_json), 0) > 0
+		  ORDER BY updated_at ASC
+		  LIMIT ?`,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	userIDs := make([]string, 0, limit)
+	for rows.Next() {
+		var userID string
+		if err := rows.Scan(&userID); err != nil {
+			return nil, err
+		}
+		userID = strings.TrimSpace(userID)
+		if userID != "" {
+			userIDs = append(userIDs, userID)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return userIDs, nil
+}
+
 func (s *Store) GetSessionSnapshot(ctx context.Context, userID string) (*SessionSnapshot, error) {
 	snapshot, err := s.readSnapshotRow(
 		s.db.QueryRowContext(

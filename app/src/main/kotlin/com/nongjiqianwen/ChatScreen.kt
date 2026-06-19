@@ -817,6 +817,7 @@ private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
 private const val USER_PENDING_IMAGE_SEND_STATUS_TEXT = "后台发送中 · 稍后自动重试"
 private const val USER_PENDING_IMAGE_SEND_PREVIEW_TEXT = "后台发送中 · 稍后自动重试"
 private const val USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT = "已发送 · 正在同步回复"
+private const val USER_REMOTE_COMPLETION_REFRESH_ACTION_TEXT = "刷新"
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -4774,6 +4775,26 @@ fun ChatScreen() {
                 }
             }
             if (recoveryClearEpoch != chatHistoryClearEpoch) return@launch
+            val timedOutRemoteCompletionIds = remainingSourceUserMessageIds
+                .filter { sourceUserMessageId ->
+                    PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                        context,
+                        chatScopeId,
+                        sourceUserMessageId
+                    ) && !hasSettledAssistantMessageForUser(sourceUserMessageId)
+                }
+            timedOutRemoteCompletionIds.forEach { sourceUserMessageId ->
+                failedUserMessageStates.putIfAbsent(sourceUserMessageId, "network")
+                retryingUserMessageIds.remove(sourceUserMessageId)
+                clearFailedAssistantStateForUser(sourceUserMessageId)
+                PendingChatSendRuntime.markInactive(sourceUserMessageId)
+                PendingChatSendStore.consumeRemoteCompletion(context, chatScopeId, sourceUserMessageId)
+                remainingSourceUserMessageIds.remove(sourceUserMessageId)
+            }
+            if (timedOutRemoteCompletionIds.isNotEmpty()) {
+                initialBottomSnapDone = false
+                persistTick++
+            }
             if (remoteRecoverySourceUserMessageId == recoveryKey) {
                 remoteRecoverySourceUserMessageId = null
                 remoteRecoveryJob = null
@@ -7347,10 +7368,13 @@ fun ChatScreen() {
                             } else if (showRemoteCompletionAwaitingFooter) {
                                 MessageStatusFooter(
                                     statusText = USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT,
-                                    actionText = null,
+                                    actionText = USER_REMOTE_COMPLETION_REFRESH_ACTION_TEXT,
                                     alignEnd = true,
-                                    enabled = false,
-                                    onActionClick = {}
+                                    enabled = !isStreaming && !sendUiSettling && !imageSendInProgress,
+                                    onActionClick = {
+                                        performButtonHaptic()
+                                        schedulePendingImageAssistantRecovery(listOf(msg.id))
+                                    }
                                 )
                             }
                         }
@@ -9550,9 +9574,8 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.UserRemoteCompletionAwaiting -> {
                     MessageStatusFooter(
                         statusText = USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT,
-                        actionText = null,
+                        actionText = USER_REMOTE_COMPLETION_REFRESH_ACTION_TEXT,
                         alignEnd = true,
-                        enabled = false,
                         onActionClick = {}
                     )
                 }

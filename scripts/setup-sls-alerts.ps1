@@ -323,6 +323,16 @@ $alerts = @(
         Runbook = "docs/runbooks/management-backend.md";
     },
     @{
+        Name = "nongji-public-blackbox-failed";
+        DisplayName = "Nongji public blackbox failed";
+        Description = "ECS low-cost public blackbox probe detected API, website, or admin HTTPS failure. Probe writes only target/status/error metadata, no response body or secrets.";
+        Logstore = "server-go";
+        Query = "blackbox_probe_failed | select count(1) as cnt";
+        Severity = 8;
+        RepeatInterval = "30m";
+        Runbook = "docs/runbooks/resource-capacity.md";
+    },
+    @{
         Name = "nongji-model-auth-config";
         DisplayName = "Nongji model or auth config";
         Description = "server-go Logstore detected model key or SMS critical config errors in 5 minutes.";

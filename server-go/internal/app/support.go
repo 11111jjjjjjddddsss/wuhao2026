@@ -45,6 +45,8 @@ var errSupportStatusNoteRequired = errors.New("support status note required")
 
 var errSupportMessageBusy = errors.New("support message busy")
 
+var errSupportMessageClientMismatch = errors.New("support message client id payload mismatch")
+
 type SupportMessage struct {
 	ID           int64    `json:"id"`
 	UserID       string   `json:"user_id,omitempty"`
@@ -180,6 +182,11 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 			return
 		}
 		if existing != nil {
+			if !supportMessageMatchesPayload(existing, normalized, imageURLs) {
+				s.logger.Warn("support client message id reuse mismatch", "userId", auth.UserID, "clientMsgID", clientMsgID)
+				s.writeError(w, http.StatusConflict, "support_message_id_conflict")
+				return
+			}
 			s.writeJSON(w, http.StatusOK, map[string]any{
 				"message":    existing,
 				"auto_reply": autoReply,
@@ -207,6 +214,11 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		if errors.Is(err, errSupportMessageBusy) {
 			s.writeError(w, http.StatusConflict, "support_message_in_progress")
+			return
+		}
+		if errors.Is(err, errSupportMessageClientMismatch) {
+			s.logger.Warn("support client message id reuse mismatch", "userId", auth.UserID, "clientMsgID", clientMsgID)
+			s.writeError(w, http.StatusConflict, "support_message_id_conflict")
 			return
 		}
 		s.logger.Error("create support message failed", "userId", auth.UserID, "error", err)
@@ -400,6 +412,26 @@ func normalizeSupportClientMsgID(raw string) (string, string) {
 		return "", "client_msg_id_too_long"
 	}
 	return clientMsgID, ""
+}
+
+func supportMessageMatchesPayload(message *SupportMessage, body string, imageURLs []string) bool {
+	if message == nil {
+		return false
+	}
+	if strings.TrimSpace(message.Body) != strings.TrimSpace(body) {
+		return false
+	}
+	existingImages := normalizeImages(message.ImageURLs)
+	nextImages := normalizeImages(imageURLs)
+	if len(existingImages) != len(nextImages) {
+		return false
+	}
+	for i := range existingImages {
+		if existingImages[i] != nextImages[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeAdminSupportMessagePayload(raw string, images []string) (string, []string, string) {
@@ -910,6 +942,9 @@ func (s *Store) CreateUserSupportMessageWithAutoReply(ctx context.Context, userI
 			return nil, nil, err
 		}
 		if existing != nil {
+			if !supportMessageMatchesPayload(existing, body, imageURLs) {
+				return nil, nil, errSupportMessageClientMismatch
+			}
 			if err := tx.Commit(); err != nil {
 				return nil, nil, err
 			}

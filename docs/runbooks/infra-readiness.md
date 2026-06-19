@@ -19,7 +19,7 @@
 
 ### 必需
 
-- 阿里云 ECS：当前首版优先的 `server-go` 运行载体。实例 `i-2ze5nrem0jrchln4f0eh` 已购买并运行；系统用户、部署目录、systemd、反向代理、`api` HTTPS、日志、最小告警、检查更新发布历史、黑盒只读巡检和回滚入口已部分固化，后续继续补公网黑盒自动定时通知、检查更新 APK 上传 / 完整回滚入口和后台运维细项
+- 阿里云 ECS：当前首版优先的 `server-go` 运行载体。实例 `i-2ze5nrem0jrchln4f0eh` 已购买并运行；系统用户、部署目录、systemd、反向代理、`api` HTTPS、日志、最小告警、检查更新发布历史、黑盒只读巡检、低成本公网黑盒 timer 告警和回滚入口已固化，后续继续补检查更新 APK 上传 / 完整回滚入口和后台运维细项
 - 阿里云 RDS MySQL：首版主业务数据。PolarDB 暂作为后续高并发 / 更高规格升级选项，不再作为个人创业首版默认采购项。当前实例 `rm-2zes3vmj76p85n8g1` 已创建并运行，配置为 MySQL 8.0、基础版、1 核 2GB、50GB、北京可用区 L、生产 VPC `vpc-2zeax2zowza2398b9dzot`、生产交换机 `vsw-2zemsq82lj2kp8za90aky`，内网地址 `rm-2zes3vmj76p85n8g1.mysql.rds.aliyuncs.com:3306`，自动备份保留 7 天
 - 域名与 HTTPS 证书：对外 API、官网和后台入口。当前 `nongjiqiancha.cn` 已购买且用户口头确认实名认证 / 模板审核已通过，`api.nongjiqiancha.cn` A 记录、Nginx 443、Let’s Encrypt 证书和后端反代已完成；`nongjiqiancha.cn` / `www.nongjiqiancha.cn` A 记录、Nginx 静态官网和 Let’s Encrypt 证书也已完成；`admin.nongjiqiancha.cn` 后台 HTTPS 和 `/admin-api/` 反代已完成；下载域名后续若启用需单独配置入口和证书
 - 基础密钥与环境变量托管：模型 Key、数据库连接、JWT / Session 密钥等
@@ -35,7 +35,7 @@
 1. 已完成：Region 选定 `cn-beijing`，旧 SAE demo 应用已删除，域名 `nongjiqiancha.cn` 已购买并口头确认过审，ECS / RDS MySQL / OSS 100GB 存储包已购买
 2. 已完成：ECS 基础系统环境、Nginx、systemd、RDS 数据库 / 账号 / 白名单和 `server-go` 首版部署
 3. 已完成：购买 Redis 开源版 256MB 最小实例，放入生产 VPC，并把普通短信验证码发送 / 登录校验、App 自动日志接收、帮助与反馈用户发消息、上传短期限流接到 Redis；生产 ECS 已部署验证 `redis=ok`
-4. 下一步：跟进 App 公安备案、真机登录 / 主聊天 / 图片问诊回归、上线前 AccessKey 轮换、第一封 SLS 告警邮件送达确认、旧包检查更新覆盖安装回归和公网黑盒自动定时通知；App 备案和网站公安备案号已补到对应展示位置，SLS 最小日志集、AlertHub 最小告警、公网黑盒只读巡检脚本和上线总门禁脚本已先接入用于排障
+4. 下一步：跟进 App 公安备案、真机登录 / 主聊天 / 图片问诊回归、上线前 AccessKey 轮换、第一封 SLS 告警邮件送达确认和旧包检查更新覆盖安装回归；App 备案和网站公安备案号已补到对应展示位置，SLS 最小日志集、AlertHub 最小告警、公网黑盒只读巡检脚本、低成本公网黑盒 timer 告警和上线总门禁脚本已先接入用于排障
 
 ## 采购前必须拍板的问题
 

@@ -281,3 +281,30 @@ func TestTouchSessionContextDoesNotAdvanceMemorySnapshotVersion(t *testing.T) {
 		t.Fatalf("unmet sql expectations: %v", err)
 	}
 }
+
+func TestListPendingMemoryUserIDsReturnsTrimmedUsers(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT user_id
+		   FROM session_ab
+		  WHERE pending_retry_b = 1
+		     OR COALESCE(JSON_LENGTH(pending_memory_jobs_json), 0) > 0
+		  ORDER BY updated_at ASC
+		  LIMIT ?`)).
+		WithArgs(3).
+		WillReturnRows(sqlmock.NewRows([]string{"user_id"}).
+			AddRow(" acct_pending_1 ").
+			AddRow(""))
+
+	userIDs, err := store.ListPendingMemoryUserIDs(context.Background(), 3)
+	if err != nil {
+		t.Fatalf("ListPendingMemoryUserIDs returned error: %v", err)
+	}
+	if len(userIDs) != 1 || userIDs[0] != "acct_pending_1" {
+		t.Fatalf("userIDs = %#v, want trimmed pending user", userIDs)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}

@@ -2658,7 +2658,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 		Owner:       "运维",
 		Manual:      true,
 	})
-	supportStatus := "partial"
+	supportStatus := "attention"
 	supportBody := "站内客服基础链路已支持待回复 / 已处理 / 已关闭队列、搜索、回复、关闭和重开；完整客服运营规则仍需补坐席分配、标签、站外通知和保存 / 删除规则。"
 	if queues.SupportNeedsReply > 0 {
 		supportStatus = "attention"
@@ -2717,7 +2717,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
-		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、今日农情失败、扣次补偿异常、记忆待补偿状态异常和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
+		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、公网黑盒探测、今日农情失败、扣次补偿异常、记忆待补偿状态异常和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
 }

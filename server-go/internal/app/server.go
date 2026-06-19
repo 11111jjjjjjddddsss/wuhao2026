@@ -181,6 +181,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	server.registerRoutes()
 	server.startQuotaConsumeRepairWorker()
 	server.startDataMaintenanceWorker()
+	server.startMemorySummaryDrainWorker()
 	return server, nil
 }
 

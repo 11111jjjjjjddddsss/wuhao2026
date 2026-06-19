@@ -18,6 +18,7 @@ $expectedAlerts = @(
     @{ Name = "nongji-chat-stream-integrity"; Logstore = "server-go"; Severity = 8; Query = "append session round after stream failed OR empty assistant reply after stream done | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "30m" },
     @{ Name = "nongji-quota-outbox-needs-ops"; Logstore = "server-go"; Severity = 6; Query = "quota consume outbox repair claim failed OR quota consume outbox repair mark done failed OR quota consume outbox repair mark failed failed OR quota consume outbox mark done failed OR quota consume outbox mark done after retry failed OR quota consume outbox mark failed failed OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "6h" },
     @{ Name = "nongji-summary-failed"; Logstore = "server-go"; Severity = 6; Query = "keep memory pending failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "6h" },
+    @{ Name = "nongji-public-blackbox-failed"; Logstore = "server-go"; Severity = 8; Query = "blackbox_probe_failed | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "30m" },
     @{ Name = "nongji-model-auth-config"; Logstore = "server-go"; Severity = 8; Query = "missing_key OR MODEL_BACKEND_NOT_CONFIGURED OR sms_auth_not_configured OR sms_send_not_configured OR sms_provider_config_invalid OR sms_cache_not_configured | select count(1) as cnt"; Condition = "cnt > 0"; RepeatInterval = "60m" }
 )
 

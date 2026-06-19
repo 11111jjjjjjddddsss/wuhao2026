@@ -6,7 +6,7 @@
 
 把后期“农技千查”整体 App 和后端怎么运维先存进仓库，避免以后买服务器、发版本、查问题、做管理后台时再从聊天记录里翻。
 
-第一版网页后台代码已落地并部署到 `https://admin.nongjiqiancha.cn/`；`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、管理后台 HTTPS、`download.nongjiqiancha.cn` OSS 低成本下载域名、SLS 最小日志集和 8 条 SLS AlertHub 最小告警已落地。本文记录当前真实环境和后续生产运维里 Codex 应该协助你的范围、入口和安全边界。
+第一版网页后台代码已落地并部署到 `https://admin.nongjiqiancha.cn/`；`api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、管理后台 HTTPS、`download.nongjiqiancha.cn` OSS 低成本下载域名、SLS 最小日志集、9 条 SLS AlertHub 最小告警和 ECS 低成本公网黑盒 timer 已落地。本文记录当前真实环境和后续生产运维里 Codex 应该协助你的范围、入口和安全边界。
 
 ## 总原则
 
@@ -65,7 +65,7 @@
 
 - 已落第一版代码并上线：Vite `admin` 前端 + `server-go` `/admin-api/v1/*`，覆盖登录、总览、监控面板、用户、会员额度、订单、礼品卡、帮助反馈、App 日志、今日农情、检查更新、审计和服务健康。
 - 当前监控面板已接真实业务表、App 自动日志、后台审计、健康检查、地区聚合和客服反馈状态队列；红黄绿状态用于早期排障，不伪造未接入能力。礼品卡“可用”按当前可兑换口径统计，完整卡码可在后台页面内查看 / 复制，App 错误 Top 尊重 Top10 limit，检查更新把配置合法性和正式下载物料齐全度分开展示，监控入口会按后台角色裁剪，避免无权限账号点进 403。
-- 继续补齐：数据库只读脚本、公网黑盒自动定时通知、第一封 SLS 告警邮件送达确认、客服正式坐席分配 / 标签、检查更新 APK 上传 / 完整回滚入口、礼品卡批量发放 / 发放对象管理、高风险操作二次确认和支付正式订单链路。
+- 继续补齐：数据库只读脚本、第一封 SLS / 黑盒告警邮件送达确认、客服正式坐席分配 / 标签、检查更新 APK 上传 / 完整回滚入口、礼品卡批量发放 / 发放对象管理、高风险操作二次确认和支付正式订单链路。
 
 ### P2：接支付和礼品卡后
 
@@ -94,7 +94,7 @@
 ## 服务器落地后已回填 / 仍需回填
 
 - 已回填：阿里云 Region、ECS 实例、RDS MySQL、Redis、OSS bucket、DNS `api/@/www/admin/download` 记录、`api.nongjiqiancha.cn` HTTPS / Nginx 443、根域名官网 HTTPS / 静态站、管理后台 HTTPS / 静态站 / `/admin-api/` 反代、`download.nongjiqiancha.cn` OSS 低成本下载域名和 HTTPS 证书绑定、ECS 后端双端口部署 / 回滚脚本、官网部署脚本、管理后台部署脚本、生产 readiness 检查、公网黑盒只读巡检脚本、Go 后端请求级日志、ECS 日志只读查询脚本、农技千查专用 SLS Project / Logstore、SLS 只读查询脚本、帮助与反馈内部会话列表 / 详情 / 回复接口、App 自动日志内部查询、今日农情内部生成入口、第一版网页后台代码、监控面板、检查更新发布配置 / 发布历史和后台账号 / session / CSRF / 角色 / 审计骨架。
-- 仍需回填：App 公安备案后的正式公网入口、数据库只读排查脚本、公网黑盒自动定时通知、第一封 SLS 告警邮件送达确认、登录后后台 smoke 实跑；下载域名已启用，后续证书续期后要通过 `scripts/sync-oss-download-certificate.ps1` 同步 OSS CNAME 证书。网站 ICP 备案已于 2026-06-05 通过，App 备案已通过并取得 `京ICP备2026031728号-2A`，网站公安备案号已下发并已补官网 footer，公安备案数据码不写入仓库或聊天交接。
+- 仍需回填：App 公安备案后的正式公网入口、数据库只读排查脚本、第一封 SLS / 黑盒告警邮件送达确认、登录后后台 smoke 实跑；下载域名已启用，后续证书续期后要通过 `scripts/sync-oss-download-certificate.ps1` 同步 OSS CNAME 证书。网站 ICP 备案已于 2026-06-05 通过，App 备案已通过并取得 `京ICP备2026031728号-2A`，网站公安备案号已下发并已补官网 footer，公安备案数据码不写入仓库或聊天交接。
 - 若后续重新启用 SAE，再补新的 SAE 应用名 / 应用 ID 和镜像部署 / 回滚入口。
 - 管理后台权限细化、二次确认、高风险动作和审计验收
 

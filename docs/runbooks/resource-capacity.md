@@ -10,7 +10,7 @@
 
 ## 2026-06-18 巡检结论
 
-结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 应用日志告警为 `ready`。巡检脚本会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿；2026-06-20 起，云监控规则处于 `ALARM` 时普通巡检输出 attention，`-Strict` 直接失败，避免资源已经报警但脚本假绿。2026-06-15 已按阿里云官方文档复核释放保护口径：ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 均为包年包月，脚本会显示 `deletion_protection=not_applicable_prepaid`，不要把旧输出里的 `False` 误读成缺少保护。2026-06-17 资源巡检已收紧 OSS 生命周期校验，会按 XML 逐条确认 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天和未完成分片 1 天在同一条启用规则里成立，避免前缀和天数分属不同规则时假绿。2026-06-18 起严格资源巡检会同时调用下载域名检查，验证 `download.nongjiqiancha.cn` 的 DNS、OSS CNAME、证书绑定和签名 HEAD 探针，避免正式包下载链路漂移但资源门禁仍假绿。2026-06-19 起，资源巡检父脚本会解析短信巡检输出的 `sms_package_status`，只有 `confirmed` 才不提醒；因此费用中心 API 看不到普通短信套餐包时，`check-resource-capacity.ps1` 不再汇总成纯 `status=ready`。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；剩余更该补的是把黑盒探测接成自动定时通知、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
+结论：当前 ECS / RDS / Redis / OSS 容量都很宽裕，不需要立刻升配；2026-06-12 已补云监控邮件联系人组、9 条资源水位告警、ECS 系统盘自动快照、SLS 应用日志邮件行动策略和最小仪表盘。2026-06-14 已按阿里云官方推荐给 ECS 补装 CloudMonitor C++ 插件，用于操作系统层内存等指标；本轮资源巡检显示 9 条云监控资源规则均为 `OK`，SLS 应用日志告警为 `ready`。巡检脚本会把云监控规则 `INSUFFICIENT_DATA` 暴露成 warning / attention，不再把“规则存在但无数据”当成全绿；2026-06-20 起，云监控规则处于 `ALARM` 时普通巡检输出 attention，`-Strict` 直接失败，避免资源已经报警但脚本假绿。2026-06-15 已按阿里云官方文档复核释放保护口径：ECS 释放保护只适用于按量付费实例，RDS MySQL 释放保护只适用于按量付费或 Serverless；当前 ECS / RDS 均为包年包月，脚本会显示 `deletion_protection=not_applicable_prepaid`，不要把旧输出里的 `False` 误读成缺少保护。2026-06-17 资源巡检已收紧 OSS 生命周期校验，会按 XML 逐条确认 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天和未完成分片 1 天在同一条启用规则里成立，避免前缀和天数分属不同规则时假绿。2026-06-18 起严格资源巡检会同时调用下载域名检查，验证 `download.nongjiqiancha.cn` 的 DNS、OSS CNAME、证书绑定和签名 HEAD 探针，避免正式包下载链路漂移但资源门禁仍假绿。2026-06-19 起，资源巡检父脚本会解析短信巡检输出的 `sms_package_status`，只有 `confirmed` 才不提醒；因此费用中心 API 看不到普通短信套餐包时，`check-resource-capacity.ps1` 不再汇总成纯 `status=ready`。公网黑盒脚本已加官网备案号、公安备案号、协议页和警徽图标探测；2026-06-20 起公网黑盒接入 ECS 低成本 systemd timer 和 SLS `nongji-public-blackbox-failed` 告警。剩余更该补的是首封告警邮件送达确认、登录 / 模型用量趋势和帮助反馈图片生命周期取舍。
 
 - ECS：`ecs.u1-c1m2.large`，2 vCPU / 4 GiB，固定公网出带宽 5 Mbps；实例 Running，到期 `2027-06-01T16:00Z`。ECS 实时负载约 0，内存可用约 2.9 GiB，系统盘 79 GiB 已用约 12 GiB（16%），近 7 天未见 OOM
 - 安全组：公网入站只有 `80/443` 和 ICMP，未放行 `22/3389`；ECS 本机 ssh 服务仍按前序加固口径停用
@@ -71,6 +71,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-aliyu
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-public-blackbox.ps1
 ```
+
+生产 ECS 上的低成本自动黑盒由 [configure-ecs-blackbox-monitor.ps1](D:/wuhao/scripts/configure-ecs-blackbox-monitor.ps1) 配置：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\configure-ecs-blackbox-monitor.ps1 -RunOnce
+```
+
+该脚本通过 Cloud Assistant 安装 `nongji-public-blackbox.timer` / `nongji-public-blackbox.service`，默认每 5 分钟从 ECS 公网出口探测 `https://api.nongjiqiancha.cn/healthz`、官网首页和后台首页；失败时只向 `/var/log/nongjiqiancha/server.log` 写一条脱敏 `blackbox_probe_failed` JSON，不写响应正文、手机号、token 或密钥。SLS 规则 `nongji-public-blackbox-failed` 会捕获该日志并走现有邮件行动策略。
 
 当前脚本会检查：
 
@@ -208,8 +216,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-sms-u
 
 ## 后续动作
 
-- 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；ECS 系统盘已开启普通低频自动快照；SLS 应用日志已绑定邮件行动策略和最小仪表盘；继续补 API healthz / Go 服务 inactive 这类应用可用性告警
-- 当前已有独立公网黑盒只读脚本；`check-ecs-readiness.ps1` 能人工 / CI 巡检服务器内部和反代状态，`check-public-blackbox.ps1` 能从公网视角确认 API / 官网 / 后台可达。后续仍应把黑盒探测接成自动定时通知，而不是只靠人工跑脚本
+- 云监控资源水位邮件告警已覆盖 ECS / RDS / Redis 高水位；ECS 系统盘已开启普通低频自动快照；SLS 应用日志已绑定邮件行动策略和最小仪表盘；API / 官网 / 后台公网可用性先由 ECS 低成本黑盒 timer + SLS `nongji-public-blackbox-failed` 承接
+- 当前已有独立公网黑盒只读脚本；`check-ecs-readiness.ps1` 能人工 / CI 巡检服务器内部和反代状态，`check-public-blackbox.ps1` 能从公网视角确认 API / 官网 / 后台可达，ECS `nongji-public-blackbox.timer` 负责低成本定时探测。后续只在需要更强 SLA、地域探测或短信 / 电话通知时，再评估阿里云云拨测 / 站点监控等可能产生额外费用的产品
 - 登录链路监控至少覆盖普通短信发送量 / 成功率 / 失败率 / 套餐包余量 / 账单、后端 `/api/auth/sms/*` 入口错误率和历史 `/api/auth/fusion/*` 是否仍被旧包误打
 - 若继续使用单 ECS 双端口发布，部署 / 回滚前必须清理旧 `nongji-drain-stop-*` transient systemd 任务，避免多个排空任务叠加
 - 管理后台上线后，容量快照、到期时间、5xx 和 App 自动日志应做成只读运维面板

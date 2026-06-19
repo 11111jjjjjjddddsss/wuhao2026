@@ -480,8 +480,8 @@ func TestAdminMonitoringLaunchReadinessStatusContract(t *testing.T) {
 	if support == nil {
 		t.Fatalf("missing support launch item: %#v", items)
 	}
-	if support.Status != "partial" || !support.Manual {
-		t.Fatalf("support launch item should stay partial/manual until full support ops is closed, got %#v", support)
+	if support.Status != "attention" || !support.Manual {
+		t.Fatalf("support launch item should stay attention/manual until full support ops is closed, got %#v", support)
 	}
 	assertContainsAll(t, support.Body, "站内客服基础链路", "完整客服运营规则")
 	accountDeletion := findAdminMonitoringLaunchItem(items, "注销申请")

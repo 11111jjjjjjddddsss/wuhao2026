@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -94,6 +95,27 @@ func TestGiftCardRedeemHTTPStatusSeparatesBusinessAndSystemFailures(t *testing.T
 				t.Fatalf("giftCardRedeemHTTPStatus(%v) = %d, want %d", tt.err, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHandleGiftCardRedeemParsesJSONBeforeRateLimit(t *testing.T) {
+	source, err := os.ReadFile("gift_cards.go")
+	if err != nil {
+		t.Fatalf("read source: %v", err)
+	}
+	text := string(source)
+	handlerIndex := strings.Index(text, "func (s *Server) handleGiftCardRedeem")
+	if handlerIndex < 0 {
+		t.Fatalf("handleGiftCardRedeem not found")
+	}
+	handlerText := text[handlerIndex:]
+	decodeIndex := strings.Index(handlerText, "decodeJSONBodyLimited")
+	limiterIndex := strings.Index(handlerText, "giftCardRedeemLimiter.Consume")
+	if decodeIndex < 0 || limiterIndex < 0 {
+		t.Fatalf("expected decode and limiter in handleGiftCardRedeem")
+	}
+	if limiterIndex < decodeIndex {
+		t.Fatalf("gift card redeem limiter must run after JSON decode so malformed bodies do not burn redeem attempts")
 	}
 }
 
