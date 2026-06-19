@@ -1083,6 +1083,42 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun remoteCompletionAwaitingSnapshotFooterShowsUntilAssistantSettles() {
+        val uploadedImageUser = ChatMessage(
+            id = "u1",
+            role = ChatRole.USER,
+            content = "看下这个病害",
+            imageUris = listOf("file:///tmp/local.jpg"),
+            imageUrls = listOf("/uploads/u1.jpg")
+        )
+
+        assertTrue(
+            shouldShowRemoteCompletionAwaitingSnapshotFooter(
+                message = uploadedImageUser,
+                remoteCompletionExists = true,
+                failedUserStateExists = false,
+                hasSettledAssistant = false
+            )
+        )
+        assertFalse(
+            shouldShowRemoteCompletionAwaitingSnapshotFooter(
+                message = uploadedImageUser,
+                remoteCompletionExists = true,
+                failedUserStateExists = true,
+                hasSettledAssistant = false
+            )
+        )
+        assertFalse(
+            shouldShowRemoteCompletionAwaitingSnapshotFooter(
+                message = uploadedImageUser,
+                remoteCompletionExists = true,
+                failedUserStateExists = false,
+                hasSettledAssistant = true
+            )
+        )
+    }
+
+    @Test
     fun terminalImageFailureWaitsForSnapshotUnlessFailureCannotRecoverByWaiting() {
         assertFalse(
             shouldApplyPendingImageTerminalFailure(

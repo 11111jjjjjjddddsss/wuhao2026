@@ -235,28 +235,46 @@ internal object PendingChatSendStore {
             .commit()
     }
 
-    fun hasRemoteCompletionAwaitingSnapshot(
+    fun remoteCompletionAwaitingSnapshot(
         context: Context,
         chatScopeId: String,
         userMessageId: String
-    ): Boolean {
+    ): PendingChatSendRemoteCompletion? {
         val raw = prefs(context)
             .getString(remoteCompletionKey(chatScopeId, userMessageId), null)
             ?.takeIf { it.isNotBlank() }
-            ?: return false
+            ?: return null
         val parsed = try {
             gson.fromJson(raw, PendingChatSendRemoteCompletion::class.java)
         } catch (_: JsonSyntaxException) {
             null
-        } ?: return false
+        } ?: return null
         val completedAtMs = parsed.completedAtMs
         val now = System.currentTimeMillis()
         val isRecent = completedAtMs > 0 && now - completedAtMs <= REMOTE_COMPLETION_GRACE_MS
         if (!isRecent) {
             consumeRemoteCompletion(context, chatScopeId, userMessageId)
+            return null
         }
-        return isRecent
+        return PendingChatSendRemoteCompletion(
+            completedAtMs = completedAtMs,
+            imageUrls = runCatching { parsed.imageUrls }
+                .getOrNull()
+                .orEmpty()
+                .filter { it.isNotBlank() }
+                .distinct()
+        )
     }
+
+    fun hasRemoteCompletionAwaitingSnapshot(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String
+    ): Boolean =
+        remoteCompletionAwaitingSnapshot(context, chatScopeId, userMessageId) != null
+
+    fun remoteCompletionImageUrls(context: Context, chatScopeId: String, userMessageId: String): List<String> =
+        remoteCompletionAwaitingSnapshot(context, chatScopeId, userMessageId)?.imageUrls.orEmpty()
 
     fun consumeRemoteCompletion(context: Context, chatScopeId: String, userMessageId: String) {
         prefs(context).edit()

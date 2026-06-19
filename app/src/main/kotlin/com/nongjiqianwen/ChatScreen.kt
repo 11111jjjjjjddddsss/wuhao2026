@@ -323,6 +323,17 @@ internal fun shouldShowPendingImageSendFooter(
         pendingExists &&
         !failedUserStateExists
 
+internal fun shouldShowRemoteCompletionAwaitingSnapshotFooter(
+    message: ChatMessage,
+    remoteCompletionExists: Boolean,
+    failedUserStateExists: Boolean,
+    hasSettledAssistant: Boolean
+): Boolean =
+    message.role == ChatRole.USER &&
+        remoteCompletionExists &&
+        !failedUserStateExists &&
+        !hasSettledAssistant
+
 private fun ChatMessage.isCompletedAssistantAnswer(failedAssistantMessageIds: Set<String> = emptySet()): Boolean =
     role == ChatRole.ASSISTANT && content.isNotBlank() && id !in failedAssistantMessageIds
 
@@ -796,6 +807,7 @@ private const val USER_RETRYING_STATUS_TEXT = "正在重发..."
 private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
 private const val USER_PENDING_IMAGE_SEND_STATUS_TEXT = "后台发送中 · 稍后自动重试"
 private const val USER_PENDING_IMAGE_SEND_PREVIEW_TEXT = "后台发送中 · 稍后自动重试"
+private const val USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT = "已发送 · 正在同步回复"
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -4634,6 +4646,27 @@ fun ChatScreen() {
                     )
                     remainingSourceUserMessageIds.remove(sourceUserMessageId)
                 }
+                var patchedRemoteCompletionImages = false
+                remainingSourceUserMessageIds.forEach { sourceUserMessageId ->
+                    val remoteImageUrls = PendingChatSendStore.remoteCompletionImageUrls(
+                        context,
+                        chatScopeId,
+                        sourceUserMessageId
+                    )
+                    if (remoteImageUrls.isEmpty()) return@forEach
+                    val messageIndex = messages.indexOfFirst { message ->
+                        message.id == sourceUserMessageId && message.role == ChatRole.USER
+                    }
+                    if (messageIndex < 0) return@forEach
+                    val message = messages[messageIndex]
+                    if (message.imageUrls.orEmpty() != remoteImageUrls) {
+                        messages[messageIndex] = message.copy(imageUrls = remoteImageUrls)
+                        patchedRemoteCompletionImages = true
+                    }
+                }
+                if (patchedRemoteCompletionImages) {
+                    persistTick++
+                }
                 val isLastAttempt = attempt >= REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS - 1
                 val terminalFailedSourceUserMessageIds = remainingSourceUserMessageIds
                     .mapNotNull { sourceUserMessageId ->
@@ -7136,11 +7169,23 @@ fun ChatScreen() {
                         val userImageUrls = msg.imageUrls.orEmpty()
                         val userMessageHasImages = userImageUris.isNotEmpty() || userImageUrls.isNotEmpty()
                         val isLocalPendingImageMessage = msg.isLocalImageUploadPendingUserMessage()
+                        val userHasSettledAssistant = hasSettledAssistantMessageForUser(msg.id)
+                        val remoteCompletionExists = PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                            context,
+                            chatScopeId,
+                            msg.id
+                        )
                         val showPendingImageSendFooter = shouldShowPendingImageSendFooter(
                             message = msg,
                             pendingExists = isLocalPendingImageMessage &&
                                 PendingChatSendStore.has(context, chatScopeId, msg.id),
                             failedUserStateExists = failedUserState != null
+                        )
+                        val showRemoteCompletionAwaitingFooter = shouldShowRemoteCompletionAwaitingSnapshotFooter(
+                            message = msg,
+                            remoteCompletionExists = remoteCompletionExists,
+                            failedUserStateExists = failedUserState != null,
+                            hasSettledAssistant = userHasSettledAssistant
                         )
                         Column(
                             modifier = Modifier
@@ -7219,6 +7264,14 @@ fun ChatScreen() {
                             } else if (showPendingImageSendFooter) {
                                 MessageStatusFooter(
                                     statusText = USER_PENDING_IMAGE_SEND_STATUS_TEXT,
+                                    actionText = null,
+                                    alignEnd = true,
+                                    enabled = false,
+                                    onActionClick = {}
+                                )
+                            } else if (showRemoteCompletionAwaitingFooter) {
+                                MessageStatusFooter(
+                                    statusText = USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT,
                                     actionText = null,
                                     alignEnd = true,
                                     enabled = false,

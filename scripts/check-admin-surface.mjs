@@ -174,7 +174,7 @@ expectAdminPattern("readiness keeps launch blockers visible", /上架阻塞/);
 expectServerPattern("launch readiness includes cost confirmation", /费用 \/ 套餐成本/);
 expectServerPattern("launch readiness cost item points to cost script", /check-aliyun-costs\.ps1/);
 expectAdminPattern("support handled action is not phrased as already replied", /已处理\/无需回复/);
-expectAdminPattern("support handled action requires note", /status === "replied" && !note/);
+expectAdminPattern("support handled and closed actions require note", /\(status === "replied" \|\| status === "closed"\) && !note/);
 rejectAdminPattern("support action must not say 标已回复", /标已回复/);
 expectServerPattern("support handled status has note-required API guard", /support_status_note_required/);
 expectServerPattern("readonly support message details are redacted by role", /adminCanViewSupportMessageBody/);

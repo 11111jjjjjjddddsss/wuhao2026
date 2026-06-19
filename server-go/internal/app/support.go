@@ -905,7 +905,7 @@ func (s *Store) UpdateSupportConversationStatus(ctx context.Context, userID stri
 	if !latestID.Valid || messageCount.Int64 == 0 {
 		return sql.ErrNoRows
 	}
-	if status == "replied" &&
+	if (status == "replied" || status == "closed") &&
 		strings.TrimSpace(note) == "" &&
 		latestUserAt.Valid &&
 		(!latestAdminAt.Valid || latestUserAt.Int64 > latestAdminAt.Int64) {

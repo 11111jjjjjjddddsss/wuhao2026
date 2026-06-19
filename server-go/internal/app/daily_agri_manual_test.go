@@ -8,9 +8,16 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
+
+type discardLogger struct{}
+
+func (discardLogger) Info(string, ...any)  {}
+func (discardLogger) Warn(string, ...any)  {}
+func (discardLogger) Error(string, ...any) {}
 
 func TestPublishManualDailyAgriCardWritesReadyLockedCard(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
@@ -110,6 +117,63 @@ func TestTryAcquireDailyAgriCardGenerationSkipsManualLockedCard(t *testing.T) {
 	}
 	if acquired {
 		t.Fatalf("manual locked card must not be acquired for auto generation")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestGenerateTodayReturnsManualLockedInvalidForBadManualContent(t *testing.T) {
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+	loc := time.FixedZone("Asia/Shanghai", 8*60*60)
+	dayCN := GetTodayKeyCN(loc, time.Now())
+	service := NewDailyAgriCardService(store, NewBailianClient(), discardLogger{}, loc)
+
+	badContent := "{bad-json"
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT status, content_json, generated_at, source_type, manual_locked, manual_by, manual_at
+		 FROM daily_agri_cards
+		 WHERE day_cn = ? AND scope = ?
+		 LIMIT 1`)).
+		WithArgs(dayCN, dailyAgriDefaultScope).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "content_json", "generated_at", "source_type", "manual_locked", "manual_by", "manual_at"}).
+			AddRow("ready", badContent, int64(1800000000000), dailyAgriSourceTypeManual, true, "codex", int64(1800000000000)))
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO daily_agri_cards(day_cn, scope, status, model, search_strategy, prompt_version, source_type, manual_locked, lease_token, lease_until, created_at, updated_at)
+		 VALUES (?, ?, 'pending', ?, ?, ?, ?, 0, '', 0, ?, ?)
+		 ON DUPLICATE KEY UPDATE updated_at = updated_at`)).
+		WithArgs(dayCN, dailyAgriDefaultScope, dailyAgriCardModel(), dailyAgriSearchStrategy, dailyAgriPromptVersion, dailyAgriSourceTypeAuto, sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT status, lease_until, content_json, manual_locked
+		 FROM daily_agri_cards
+		 WHERE day_cn = ? AND scope = ?
+		 LIMIT 1 FOR UPDATE`)).
+		WithArgs(dayCN, dailyAgriDefaultScope).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "lease_until", "content_json", "manual_locked"}).
+			AddRow("ready", int64(0), badContent, true))
+	mock.ExpectCommit()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT status, content_json, generated_at, source_type, manual_locked, manual_by, manual_at
+		 FROM daily_agri_cards
+		 WHERE day_cn = ? AND scope = ?
+		 LIMIT 1`)).
+		WithArgs(dayCN, dailyAgriDefaultScope).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "content_json", "generated_at", "source_type", "manual_locked", "manual_by", "manual_at"}).
+			AddRow("ready", badContent, int64(1800000000000), dailyAgriSourceTypeManual, true, "codex", int64(1800000000000)))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT status, content_json, generated_at, source_type, manual_locked, manual_by, manual_at, lease_until, error
+		 FROM daily_agri_cards
+		 WHERE day_cn = ? AND scope = ?
+		 LIMIT 1`)).
+		WithArgs(dayCN, dailyAgriDefaultScope).
+		WillReturnRows(sqlmock.NewRows([]string{"status", "content_json", "generated_at", "source_type", "manual_locked", "manual_by", "manual_at", "lease_until", "error"}).
+			AddRow("ready", badContent, int64(1800000000000), dailyAgriSourceTypeManual, true, "codex", int64(1800000000000), int64(0), nil))
+
+	card, status, err := service.GenerateToday(context.Background())
+	if err == nil {
+		t.Fatalf("GenerateToday should fail for manual locked invalid content")
+	}
+	if card != nil || status != "manual_locked_invalid" {
+		t.Fatalf("card=%#v status=%q, want nil manual_locked_invalid", card, status)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

@@ -239,12 +239,26 @@ Invoke-HttpProbe `
     -Url "https://api.nongjiqiancha.cn/api/app/update?platform=android&version_code=$appUpdateProbeVersionCode&version_name=blackbox" `
     -ExpectedStatus @(200) `
     -RequiredBodyMarkers $appUpdateRequiredMarkers
-Invoke-HttpProbe `
-    -Name "api_internal_today_agri_manual_public_rejected" `
-    -Url "https://api.nongjiqiancha.cn/internal/jobs/today-agri-card/manual" `
-    -ExpectedStatus @(403) `
-    -Method "POST" `
-    -Body "{}"
+$internalPublicProbes = @(
+    @{ Name = "api_internal_today_agri_generate_public_rejected"; Method = "POST"; Path = "/internal/jobs/today-agri-card/generate"; Body = "{}" },
+    @{ Name = "api_internal_today_agri_status_public_rejected"; Method = "GET"; Path = "/internal/jobs/today-agri-card/status?day_cn=20260618"; Body = "" },
+    @{ Name = "api_internal_today_agri_probe_public_rejected"; Method = "POST"; Path = "/internal/jobs/today-agri-card/probe"; Body = "{}" },
+    @{ Name = "api_internal_today_agri_manual_public_rejected"; Method = "POST"; Path = "/internal/jobs/today-agri-card/manual"; Body = "{}" },
+    @{ Name = "api_internal_memory_probe_public_rejected"; Method = "POST"; Path = "/internal/jobs/memory-document/probe"; Body = "{}" },
+    @{ Name = "api_internal_app_logs_public_rejected"; Method = "GET"; Path = "/internal/app/logs"; Body = "" },
+    @{ Name = "api_internal_admin_audit_logs_public_rejected"; Method = "GET"; Path = "/internal/admin/audit-logs"; Body = "" },
+    @{ Name = "api_internal_support_conversations_public_rejected"; Method = "GET"; Path = "/internal/support/conversations"; Body = "" },
+    @{ Name = "api_internal_support_messages_public_rejected"; Method = "GET"; Path = "/internal/support/messages?user_id=acct_blackbox"; Body = "" },
+    @{ Name = "api_internal_support_create_message_public_rejected"; Method = "POST"; Path = "/internal/support/messages"; Body = '{"user_id":"acct_blackbox","body":"blackbox"}' }
+)
+foreach ($probe in $internalPublicProbes) {
+    Invoke-HttpProbe `
+        -Name $probe.Name `
+        -Url "https://api.nongjiqiancha.cn$($probe.Path)" `
+        -ExpectedStatus @(401, 403) `
+        -Method $probe.Method `
+        -Body $probe.Body
+}
 Invoke-HttpProbe `
     -Name "api_upload_missing_file_probe" `
     -Url "https://api.nongjiqiancha.cn/uploads/blackbox-missing-file.jpg" `

@@ -115,6 +115,15 @@ func (s *DailyAgriCardService) GenerateToday(ctx context.Context) (*DailyAgriCar
 	}
 	if !acquired {
 		card, status, err := s.store.GetDailyAgriCard(ctx, dayCN, dailyAgriDefaultScope)
+		if err == nil && card == nil && status == "invalid_content" {
+			rawStatus, statusErr := s.store.GetDailyAgriCardRawStatus(ctx, dayCN, dailyAgriDefaultScope)
+			if statusErr != nil {
+				return nil, "", statusErr
+			}
+			if rawStatus.ManualLocked {
+				return nil, "manual_locked_invalid", fmt.Errorf("manual locked daily agri card has invalid content")
+			}
+		}
 		return card, status, err
 	}
 
@@ -536,10 +545,7 @@ func dailyAgriPublicSourceLooksLikeArticleTitle(source string) bool {
 }
 
 func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Request) {
-	if !s.requireInternalJobSecret(w, r) {
-		return
-	}
-	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_job") {
+	if !s.requireInternalJobSecret(w, r, "daily_agri_job") {
 		return
 	}
 	card, status, err := s.dailyAgri.GenerateToday(r.Context())
@@ -570,10 +576,7 @@ func (s *Server) handleGenerateTodayAgriCard(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleInternalTodayAgriCardStatus(w http.ResponseWriter, r *http.Request) {
-	if !s.requireInternalJobSecret(w, r) {
-		return
-	}
-	if !s.consumeInternalSecretRateLimit(w, r, "daily_agri_status") {
+	if !s.requireInternalJobSecret(w, r, "daily_agri_status") {
 		return
 	}
 	dayCN := normalizeTodayAgriContextDay(r.URL.Query().Get("day_cn"))
@@ -619,7 +622,7 @@ func (s *Server) handleInternalTodayAgriCardStatus(w http.ResponseWriter, r *htt
 }
 
 func (s *Server) handleProbeTodayAgriCard(w http.ResponseWriter, r *http.Request) {
-	if !s.requireInternalJobSecret(w, r) {
+	if !s.requireInternalJobSecret(w, r, "daily_agri_probe") {
 		return
 	}
 	if !s.consumeInternalProbeRateLimit(w, r, "daily_agri_probe") {

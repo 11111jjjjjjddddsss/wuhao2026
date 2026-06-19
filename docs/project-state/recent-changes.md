@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-20
+
+- 继续按“拉满代理、全盘挑刺、联网校准、收口收尾”落地不碰保护提示词的实锤收口：Android 带图后台发送成功后，remote-completion marker 现在可读回已上传远端图片 URL，前台恢复轮询会把 URL 回填到用户图文气泡；远端 snapshot 还没恢复完整 AI 回复时，尾部显示“已发送 · 正在同步回复”，避免成功发送后变成无状态或误报失败。Go 后端 internal job 入口改成内部来源校验通过后先消耗内部 secret 限流，再校验密钥；内部来源只信任本机 loopback Nginx 注入的转发头，不信任普通私网直连伪造的 `X-Real-IP / X-Forwarded-For`。公网黑盒脚本从单个 `/internal` 探针扩到今日农情 generate/status/probe/manual、记忆探针、App 日志、审计日志和内部客服接口，本轮实测全部 403。今日农情自动生成遇到人工锁定但内容无效时返回 `manual_locked_invalid`，不再静默 200 跳过；客服关闭未回复会话也必须写备注；后台注销申请文案改为“线下处理完成 / 标记线下完成”，隐私政策拆清“完整问答归档约 30 天”和“连续问诊短期窗口 / 长期记忆”的保留口径。`AGENTS.md` SLS 告警口径改为近期 8 条且以脚本 / current-status 为准，续费证书自动化 runbook 补 OSS CNAME 证书同步条件动作。验证通过 `go test ./...`、Android `ChatTimelineItemsTest`、后台 `npm run build`、Android parity 和公网黑盒；本轮不修改主对话锚点、今日农情提示词、记忆文档提示词、官网首页文案，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`，不发布正式 Android 包。
+
 ## 2026-06-19
 
 - 继续收口 P1 用户体验和后端运维口：Android 带图 WorkManager 后台完整发送成功后会写入短期 remote-completion 标记并移除 pending，前台在远端 snapshot 暂时没恢复完整 AI 回复前不会把这条已完成图文误标为本地失败；恢复到完整 assistant 后再正常清理标记。后端今日农情生成 / 状态 / probe / manual、App 自动日志内部查询和内部审计查询统一改成 loopback / 私网来源 + 共享密钥双门槛；`get-today-agri-manual-status.ps1` 和 `publish-today-agri-manual.ps1` 默认通过 Cloud Assistant 进入 ECS，在本机 active slot 调用 `/internal/*`，DryRun 输出明确 `cloud_assistant_local`，避免后续窗口误以为还在公网直连 internal。公网黑盒脚本同步把 `/internal` 探针改为期望 403 来源拒绝；状态脚本已只读确认 20260620 为 `manual_locked=true / source_type=manual / item_count=3`。该轮不修改三份保护提示词、不新增模型输出过滤、不发布正式 Android 包。

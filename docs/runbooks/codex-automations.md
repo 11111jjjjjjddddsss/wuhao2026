@@ -99,10 +99,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-aliyun-costs.ps1
 ```
 
+条件动作：
+
+- 如果 `check-resource-capacity.ps1 -Strict` 或 `scripts/check-android-download-domain.ps1` 明确提示 `download.nongjiqiancha.cn` 的 ECS / Let’s Encrypt 证书已续期但 OSS CNAME 证书仍是旧证书，才运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\sync-oss-download-certificate.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-android-download-domain.ps1
+```
+
 边界：
 
 - 能查就查，能提醒就提醒；不能自动续费、自动购买资源包、自动关闭云服务或自动删除告警。
-- 下载域名证书续期后，是否同步 OSS CNAME 证书按 `docs/runbooks/android-download-distribution.md` 和 `scripts/sync-oss-download-certificate.ps1` 执行；执行前仍需确认不会打印私钥。
+- 下载域名证书同步只做“证书已续期但 OSS 仍未同步”的修复闭环，不作为每天常规动作；脚本不得打印私钥、AccessKey 或证书私密内容。
 
 ## 核查方式
 

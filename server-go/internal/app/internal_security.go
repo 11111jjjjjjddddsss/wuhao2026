@@ -98,7 +98,7 @@ func (s *Server) consumeInternalProbeRateLimit(w http.ResponseWriter, r *http.Re
 	if s == nil || s.internalProbeLimiter == nil {
 		return true
 	}
-	allowed, retryAfterSec := s.internalProbeLimiter.Consume(internalSecretRateLimitKey("probe:"+scope, GetClientIP(r)), time.Now())
+	allowed, retryAfterSec := s.internalProbeLimiter.Consume(internalSecretRateLimitKey("probe:"+scope, internalRequestClientIP(r)), time.Now())
 	if allowed {
 		return true
 	}
@@ -114,7 +114,7 @@ func (s *Server) consumeInternalSecretRateLimit(w http.ResponseWriter, r *http.R
 	if s == nil || s.internalSecretLimiter == nil {
 		return true
 	}
-	allowed, retryAfterSec := s.internalSecretLimiter.Consume(internalSecretRateLimitKey(scope, GetClientIP(r)), time.Now())
+	allowed, retryAfterSec := s.internalSecretLimiter.Consume(internalSecretRateLimitKey(scope, internalRequestClientIP(r)), time.Now())
 	if allowed {
 		return true
 	}
@@ -143,12 +143,26 @@ func (s *Server) consumeTodayAgriItemSaveRateLimit(w http.ResponseWriter, r *htt
 }
 
 func isInternalRequestClient(r *http.Request) bool {
-	clientIP := normalizeIPLiteral(GetClientIP(r))
+	clientIP := normalizeIPLiteral(internalRequestClientIP(r))
 	parsed := net.ParseIP(clientIP)
 	if parsed == nil {
 		return false
 	}
 	return parsed.IsLoopback() || parsed.IsPrivate()
+}
+
+func internalRequestClientIP(r *http.Request) string {
+	remoteIP := normalizeIPFromAddress(r.RemoteAddr)
+	parsed := net.ParseIP(remoteIP)
+	if parsed != nil && parsed.IsLoopback() {
+		if realIP := normalizeIPLiteral(r.Header.Get("X-Real-IP")); realIP != "" {
+			return realIP
+		}
+		if forwardedIP := forwardedForClientIP(r.Header.Get("X-Forwarded-For")); forwardedIP != "" {
+			return forwardedIP
+		}
+	}
+	return remoteIP
 }
 
 func (s *Server) requireInternalRequestClient(w http.ResponseWriter, r *http.Request) bool {
@@ -159,8 +173,11 @@ func (s *Server) requireInternalRequestClient(w http.ResponseWriter, r *http.Req
 	return false
 }
 
-func (s *Server) requireInternalJobSecret(w http.ResponseWriter, r *http.Request) bool {
+func (s *Server) requireInternalJobSecret(w http.ResponseWriter, r *http.Request, scope string) bool {
 	if !s.requireInternalRequestClient(w, r) {
+		return false
+	}
+	if !s.consumeInternalSecretRateLimit(w, r, scope) {
 		return false
 	}
 	if !validateInternalJobSecret(r) {

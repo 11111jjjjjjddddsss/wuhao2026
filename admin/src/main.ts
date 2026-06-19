@@ -742,7 +742,7 @@ async function accountDeletionPage(): Promise<string> {
       ${kpi("筛选状态", accountDeletionStatusLabel(pageState.accountDeletionStatus), pageState.accountDeletionUserID ? `账号 ${pageState.accountDeletionUserID}` : "全部账号")}
     </section>
     <div class="grid two" style="margin-top:12px">
-      ${notice("处理口径", "App 端提交的是注销申请，并立即退出当前设备；后台处理前先核验会员、订单、礼品卡、反馈和合规留存要求。这里的“流程已收口”表示线下处理流程已完成，不代表系统已自动物理删除全部数据。", "warn")}
+      ${notice("处理口径", "App 端提交的是注销申请，并立即退出当前设备；后台处理前先核验会员、订单、礼品卡、反馈和合规留存要求。这里的“线下处理完成”表示人工核验和线下处理流程已完成，不代表系统已自动物理删除全部数据。", "warn")}
       ${notice("不要做什么", "处理备注按长度保存，不要主动写入密钥、礼品卡完整码或不必要的内部排障细节。正式物理删除 / 匿名化规则后续按合规方案细化。", "info")}
     </div>
     <section class="card">
@@ -1572,7 +1572,7 @@ async function updateAccountDeletionStatus(requestID: string, status: string, bu
   if (!requestID || !status) return;
   const labels: Record<string, string> = {
     processing: "标记为处理中",
-    completed: "标记为流程已收口",
+    completed: "标记为线下处理完成",
     rejected: "驳回申请",
     cancelled: "取消申请",
   };
@@ -1641,12 +1641,12 @@ async function updateSupportConversationStatus(userID: string, status: string, b
     const input = window.prompt(
       status === "replied"
         ? "处理备注必填。可以写手机号、订单号、礼品卡码等排障信息；不要写后台密钥、token 或内部排障细节。"
-        : "关闭原因，可留空。可以写手机号、订单号、礼品卡码等排障信息；不要写后台密钥、token 或内部排障细节。",
+        : "关闭备注必填。请写清无需继续回复或线下处理原因；可以写手机号、订单号、礼品卡码等排障信息，不要写后台密钥、token 或内部排障细节。",
     );
     if (input === null) return;
     note = input.trim();
-    if (status === "replied" && !note) {
-      window.alert("标记为已处理/无需回复时，处理备注不能为空。");
+    if ((status === "replied" || status === "closed") && !note) {
+      window.alert(status === "closed" ? "关闭会话时，关闭备注不能为空。" : "标记为已处理/无需回复时，处理备注不能为空。");
       return;
     }
   }
@@ -2186,7 +2186,7 @@ function accountDeletionFilterForm(): string {
           ${selectOption("", "全部", pageState.accountDeletionStatus)}
           ${selectOption("pending", "待处理", pageState.accountDeletionStatus)}
           ${selectOption("processing", "处理中", pageState.accountDeletionStatus)}
-          ${selectOption("completed", "流程已收口", pageState.accountDeletionStatus)}
+          ${selectOption("completed", "线下处理完成", pageState.accountDeletionStatus)}
           ${selectOption("rejected", "已驳回", pageState.accountDeletionStatus)}
           ${selectOption("cancelled", "已取消", pageState.accountDeletionStatus)}
         </select>
@@ -2244,7 +2244,7 @@ function accountDeletionActions(row: AccountDeletionRequest): string {
   return `
     <div class="row-actions">
       ${row.status !== "processing" ? `<button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="processing">处理中</button>` : ""}
-      <button class="button primary" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="completed">流程已收口</button>
+      <button class="button primary" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="completed">标记线下完成</button>
       <button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="rejected">驳回</button>
       <button class="button" data-action="account-deletion-status" data-request-id="${escapeAttr(row.request_id)}" data-status="cancelled">取消</button>
     </div>
@@ -2258,7 +2258,7 @@ function accountDeletionStatusLabel(status: string): string {
     case "processing":
       return "处理中";
     case "completed":
-      return "流程已收口";
+      return "线下处理完成";
     case "rejected":
       return "已驳回";
     case "cancelled":

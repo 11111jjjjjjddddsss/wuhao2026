@@ -1,6 +1,8 @@
 package app
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -72,5 +74,54 @@ func TestTodayAgriItemSaveRateLimitKeyHashesUserAndIP(t *testing.T) {
 	}
 	if strings.Contains(key, "acct_123") || strings.Contains(key, "203.0.113.9") {
 		t.Fatalf("today agri item key leaked raw user or ip: %q", key)
+	}
+}
+
+func TestInternalRequestClientUsesLoopbackProxyHeadersButNotPrivateSpoofedHeaders(t *testing.T) {
+	throughNginx := httptest.NewRequest(http.MethodPost, "/internal/jobs/today-agri-card/status", nil)
+	throughNginx.RemoteAddr = "127.0.0.1:53000"
+	throughNginx.Header.Set("X-Real-IP", "203.0.113.9")
+	if isInternalRequestClient(throughNginx) {
+		t.Fatalf("public client proxied through loopback must not be treated as internal")
+	}
+
+	directPrivate := httptest.NewRequest(http.MethodPost, "/internal/jobs/today-agri-card/status", nil)
+	directPrivate.RemoteAddr = "192.168.1.237:53000"
+	directPrivate.Header.Set("X-Real-IP", "203.0.113.9")
+	if !isInternalRequestClient(directPrivate) {
+		t.Fatalf("direct private client should remain internal even if it sends spoofed proxy headers")
+	}
+}
+
+func TestRequireInternalJobSecretRateLimitsWrongSecretBeforeValidation(t *testing.T) {
+	t.Setenv("DAILY_AGRI_JOB_SECRET", "secret")
+	server := &Server{
+		internalSecretLimiter: newChatRateLimiterWithConfig(rateLimitConfig{
+			Window:        time.Minute,
+			MaxHits:       1,
+			PruneInterval: time.Minute,
+		}),
+	}
+
+	wrong := httptest.NewRequest(http.MethodPost, "/internal/jobs/today-agri-card/generate", nil)
+	wrong.RemoteAddr = "127.0.0.1:53000"
+	wrong.Header.Set("X-Internal-Job-Secret", "wrong")
+	wrongRec := httptest.NewRecorder()
+	if server.requireInternalJobSecret(wrongRec, wrong, "daily_agri_job") {
+		t.Fatalf("wrong secret should be rejected")
+	}
+	if wrongRec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong secret status = %d, want 401", wrongRec.Code)
+	}
+
+	valid := httptest.NewRequest(http.MethodPost, "/internal/jobs/today-agri-card/generate", nil)
+	valid.RemoteAddr = "127.0.0.1:53000"
+	valid.Header.Set("X-Internal-Job-Secret", "secret")
+	validRec := httptest.NewRecorder()
+	if server.requireInternalJobSecret(validRec, valid, "daily_agri_job") {
+		t.Fatalf("second attempt from same internal source should be rate limited")
+	}
+	if validRec.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want 429", validRec.Code)
 	}
 }

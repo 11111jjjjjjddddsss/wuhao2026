@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-06-19
+最后更新：2026-06-20
 
 ## 项目概况
 
@@ -10,6 +10,7 @@
 
 ## 当前代码真相
 
+- 2026-06-20 本轮按“拉满代理、全盘挑刺、联网校准、收口收尾”继续只修不碰保护提示词的上线前实锤问题：Android 带图 WorkManager 后台完整发送成功后，remote-completion marker 不再只保存布尔态，前台恢复轮询会读取并回填已上传远端图片 URL；在远端 snapshot 暂未恢复完整 AI 回复时，用户图文尾部显示“已发送 · 正在同步回复”，避免成功发送后气泡变成无状态或误报失败。Go 后端 `/internal/jobs/*` 入口统一改为“先确认内部来源、再按内部来源限流、再校验密钥”，并且只信任本机 loopback Nginx 写入的 `X-Real-IP / X-Forwarded-For`，不信任普通私网直连自带的转发头；公网黑盒已从单个 internal 探针扩展到今日农情 generate/status/probe/manual、记忆探针、App 日志、审计日志和内部客服接口，均要求公网返回 401 / 403，本轮实测全部 403。今日农情自动生成遇到“人工锁定但内容无效”时会返回 `manual_locked_invalid`，不再把坏手工锁当成成功跳过；客服会话在最新用户消息尚未有客服回复时，关闭会话也必须写备注，不能无说明关闭；后台注销申请文案从“流程已收口”改为“线下处理完成 / 标记线下完成”，避免误读为系统已自动物理删除或匿名化全量数据。App 内和官网隐私政策把“完整问答归档约 30 天”和“连续问诊短期窗口 / 长期记忆保留至删除历史、注销处理、达到业务目的或依法处理”拆开表述；`AGENTS.md` 的 SLS 告警口径改为近期 8 条且以脚本 / current-status 为准；`codex-automations.md` 补 OSS CNAME 证书同步的条件闭环。已验证 `go test ./...`、`go test ./internal/app -run ...`、`./gradlew.bat :app:testDebugUnitTest --tests com.nongjiqianwen.ChatTimelineItemsTest`、`npm run build`、`check-android-build-parity.ps1`、`check-public-blackbox.ps1` 通过。该轮不修改主对话锚点、今日农情提示词、记忆文档提示词、官网首页定稿文案，不新增模型输出过滤、关键词拦截、相似度硬拦截、字数硬卡或 `max_tokens`，不发布正式 Android 包。
 - 2026-06-19 本轮继续收口两处 P1：一是 Android 带图 WorkManager 后台完整发送成功后，不再立刻清掉所有本地痕迹导致远端 snapshot 短暂不可用时被前台误标“发送失败”；现在会留下 24 小时“远端已完成、等待快照恢复”的短标记，前台恢复完整 AI 回复后再消费标记。二是后端 `/internal/*` 共享密钥运维口继续收紧：今日农情生成 / 状态 / probe / manual、App 自动日志内部查询和内部审计查询都要求 loopback / 私网来源 + 对应 secret；今日农情状态 / 发布脚本默认通过 Cloud Assistant 进入 ECS，在本机 active slot 调用内部接口，不再让本机 Codex 从公网直连 internal；公网黑盒脚本也已把 `/internal` 探针期望同步为 403 来源拒绝。该轮不修改主对话锚点、今日农情提示词、记忆文档提示词、官网首页文案，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`，不发布正式 Android 包。
 - 2026-06-19 按用户“把清理脚本删除，需要清理时再叫 Codex”的最新口径，仓库删除 `scripts/clean-local-android-apks.ps1` 和 `scripts/clean-oss-test-apks.ps1`，`scripts/publish-android-test-apk.ps1` 也不再发布后主动清理 OSS 旧测试包或 ECS `/test-apks/` 旧镜像，不再写入 ECS 测试包清理 cron；输出改为 `test_apk_cleanup=manual_only`。已通过 Cloud Assistant 删除 ECS 上旧的 `/etc/cron.d/nongjiqiancha-test-apks-clean`，返回 `ecs_test_apk_cleanup_cron=removed`。测试包发布仍只生成 debug/internal 包、上传私有 OSS `test-apks/debug/...`、生成 `download.nongjiqiancha.cn` 限时签名链接并校验 SHA-256 / 文件大小 / 签名；需要清理云端测试包、本机 APK 构建产物或 ECS 旧镜像时，由用户明确提出后再按当时状态单次人工处理。该轮不生成正式 release APK、不配置检查更新、不改官网正式下载、不改提示词、不新增模型输出过滤。
 - 2026-06-19 本轮继续按“收口收尾 / 交互类重点”处理代理抓到的实际用户体验风险：Android 前台主聊天收到 `STALE_SESSION_GENERATION` 时不再把刚发出的用户消息和 assistant 占位直接删掉，而是保留用户消息，并显示统一的“回复未完成 · 点击重试”失败入口；提示文案为“会话已更新，本次回复未完成”。带图 WorkManager 后台兜底遇到登录态 / session generation 变更时，也不再静默删除 pending，而是写入 `stale_session` 终态失败并保留已上传远端图片 URL，前台可恢复为失败 / 重发；后台完整 SSE 收到后端 `409 STALE_SESSION_GENERATION` 时也会保留 `stale_session` 原因，不再糊成 generic `bad_request`。今日农情生产远端模式下，如果本地残留“今天已显示”但没有当天 `today_agri_user_items` 保存副本，不再直接跳过 `/api/today-agri-card` 拉取，避免脏缓存导致当天主界面农情不出现；本地非远端模式仍保留同日 shown-day 跳过。帮助反馈带图 / 文字发送开始时会同步通知父层进入发送中，避免用户极快返回或关闭菜单抢在 `LaunchedEffect` 前面导致图片清理和上传中断。`check-android-build-parity.ps1` 和 `ChatTimelineItemsTest` 已同步锁住这些边界。该轮不修改主对话锚点、今日农情提示词、记忆文档提示词、官网首页文案，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`，不发布正式 Android 包。
