@@ -392,6 +392,16 @@ internal fun resolveTodayAgriContextDayForTimeline(
     return day.takeIf { userMessagesAfterAnchor < 3 }
 }
 
+internal fun isTodayAgriCardVisibleInViewport(
+    chatListItems: List<ChatTimelineItem>,
+    visibleItemIndexes: Set<Int>
+): Boolean {
+    val todayAgriVisualIndex = chatListItems.indexOfFirst { item ->
+        item is ChatTimelineItem.TodayAgriCard
+    }
+    return todayAgriVisualIndex >= 0 && todayAgriVisualIndex in visibleItemIndexes
+}
+
 internal fun shouldShowTodayAgriMainCard(
     card: SessionApi.TodayAgriCard?,
     currentDayKey: String,
@@ -2345,6 +2355,9 @@ fun ChatScreen() {
     }
     fun todayAgriContextDayForNextSend(existingUserMessageId: String? = null): String? {
         if (!hasTodayAgriCard || !shouldRenderTodayAgriCardInTimeline) return null
+        if (!todayAgriShownThisRuntime && todayAgriMainShownDay != currentTodayAgriCardDay) {
+            return null
+        }
         return resolveTodayAgriContextDayForTimeline(
             chatListItems = chatListItems,
             currentTodayAgriCardDay = currentTodayAgriCardDay,
@@ -2870,10 +2883,6 @@ fun ChatScreen() {
                         card = cardToSave,
                         updated_at = System.currentTimeMillis()
                     )
-                    if (todayAgriMainShownDay != currentTodayAgriCardDay) {
-                        todayAgriMainShownDay = currentTodayAgriCardDay
-                        context.saveTodayAgriMainShownDaySync(chatScopeId, currentTodayAgriCardDay)
-                    }
                 } else if (!saved &&
                     saveClearEpoch == chatHistoryClearEpoch &&
                     saveUserSendEpoch == todayAgriUserSendEpoch &&
@@ -3066,13 +3075,25 @@ fun ChatScreen() {
         remoteSnapshotHydrationComplete,
         shouldHydrateRemoteHistory,
         chatListItems.size,
-        messages.size
+        messages.size,
+        chatListState.firstVisibleItemIndex,
+        chatListState.firstVisibleItemScrollOffset,
+        chatListState.canScrollForward
     ) {
         if (
             !hasTodayAgriCard ||
             !shouldShowTodayAgriCard ||
             !shouldRevealMessageList
         ) {
+            return@LaunchedEffect
+        }
+        val todayAgriActuallyVisible = isTodayAgriCardVisibleInViewport(
+            chatListItems = chatListItems,
+            visibleItemIndexes = chatListState.layoutInfo.visibleItemsInfo
+                .map { item -> item.index }
+                .toSet()
+        )
+        if (!todayAgriActuallyVisible) {
             return@LaunchedEffect
         }
         val canPersistTodayAgriShownDay =

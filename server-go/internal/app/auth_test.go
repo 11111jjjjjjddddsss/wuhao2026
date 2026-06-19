@@ -213,6 +213,7 @@ func TestLegacyMergeCoversLongLivedIdentityTables(t *testing.T) {
 		"gift_card_redemption_attempts",
 		"daily_usage",
 		"quota_ledger",
+		"quota_consume_outbox",
 		"session_round_ledger",
 		"session_round_archive",
 		"upgrade_credits",

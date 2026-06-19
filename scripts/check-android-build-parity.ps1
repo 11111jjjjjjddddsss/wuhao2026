@@ -780,6 +780,10 @@ if ($failures.Count -eq 0) {
         "Chat timeline must keep the top-only arrangement only for clean-state/top-flow cases and otherwise use the bottom workline layout."
     Require-Match $failures $chatScreen 'ChatTimelineItem\.TodayAgriCard(?s:.*?)TodayAgriNewsText' `
         "Today agri must keep rendering as a normal ChatTimelineItem in the main chat list."
+    Require-Match $failures $chatScreen 'isTodayAgriCardVisibleInViewport(?s:.*?)visibleItemIndexes' `
+        "Today agri shown/context state must depend on actual visible list items, not only timeline insertion."
+    Require-Match $failures $chatTimelineItemsTest 'todayAgriCardVisibilityRequiresViewportIndex' `
+        "Today agri visibility must have a unit test proving timeline insertion is not enough to count as seen."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*selectionEnabled\s*\)\s*\{\s*SelectionContainer\s*\{(?s:.*?)RendererAssistantMarkdownContentImpl' `
         "Assistant settled text must keep the message selection container even when content contains links, so copy/full-copy remains available."
     Require-Match $failures $chatStreamingRenderer 'parseRendererStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)(?s:.*?)parseRendererStandaloneBoldHeading\(trimmed\)\s*!=\s*null' `
@@ -810,6 +814,12 @@ if ($failures.Count -eq 0) {
         "Markdown table UI must keep the mobile grouped table cards and the TSV copy-table button."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
         "Incomplete Markdown table headers must stay plain text while streaming, instead of rendering a half-empty table."
+    Require-Match $failures $chatStreamingRenderer 'while\s*\(\s*cursor\s*<\s*lines\.size\s*&&\s*looksLikeRendererMarkdownTableBodyRow\(lines\[cursor\]\)\s*\)' `
+        "Markdown table body continuation must not swallow ordinary paragraphs that merely contain pipe characters."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableStopsBeforeOrdinaryPipeParagraphAfterBodyRow' `
+        "Markdown table tests must cover ordinary pipe paragraphs immediately after a table body row."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableKeepsPipesInsideDoubleBacktickInlineCodeCell' `
+        "Markdown table tests must cover pipe characters inside double-backtick inline code cells."
     Require-NoMatch $failures $chatStreamingRenderer 'horizontalScroll\s*\(' `
         "Assistant Markdown table rendering must not revert to the old horizontal-scroll wide table on mobile."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `

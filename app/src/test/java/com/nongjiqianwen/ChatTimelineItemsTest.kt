@@ -92,6 +92,34 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriCardVisibilityRequiresViewportIndex() {
+        val user = userMessage("u1")
+        val assistant = assistantMessage("assistant_u1")
+        val items = buildChatTimelineItems(
+            messages = listOf(user, assistant),
+            todayAgriCard = todayAgriCard(),
+            todayAgriAfterMessageId = assistant.id
+        )
+        val todayAgriIndex = items.indexOfFirst { item ->
+            item is ChatTimelineItem.TodayAgriCard
+        }
+
+        assertTrue(todayAgriIndex >= 0)
+        assertFalse(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItemIndexes = setOf(0, 1)
+            )
+        )
+        assertTrue(
+            isTodayAgriCardVisibleInViewport(
+                chatListItems = items,
+                visibleItemIndexes = setOf(todayAgriIndex)
+            )
+        )
+    }
+
+    @Test
     fun todayAgriCardWithoutAnchorFallsBackAfterLatestCompletedAssistant() {
         val first = userMessage("m1")
         val second = assistantMessage("m2")

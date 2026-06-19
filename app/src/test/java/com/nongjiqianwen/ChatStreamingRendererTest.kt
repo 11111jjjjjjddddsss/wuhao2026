@@ -186,6 +186,23 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun markdownTableStopsBeforeOrdinaryPipeParagraphAfterBodyRow() {
+        val state = splitStreamingBlockState(
+            "|项目|建议|\n" +
+                "|---|---|\n" +
+                "|水分|控水|\n" +
+                "注意：N|P|K 是养分比例，不是表格。"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+        val paragraph = models.filterIsInstance<StreamingLineModel.Paragraph>().single()
+
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+        assertEquals("注意：N|P|K 是养分比例，不是表格。", paragraph.text)
+    }
+
+    @Test
     fun shortSeparatorDoesNotRenderAsTable() {
         val stats = buildRendererStructureStats(
             "成品含腐植酸尿素 | 普通尿素 + 矿源黄腐酸钾\n" +
@@ -630,6 +647,21 @@ class ChatStreamingRendererTest {
 
         assertEquals(listOf("项目", "内容"), table.headers)
         assertEquals(listOf(listOf("配比", "`N|P|K`")), table.rows)
+    }
+
+    @Test
+    fun markdownTableKeepsPipesInsideDoubleBacktickInlineCodeCell() {
+        val state = splitStreamingBlockState(
+            "|项目|内容|\n" +
+                "|---|---|\n" +
+                "|配比|``N|P|K``|\n"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+
+        assertEquals(listOf("项目", "内容"), table.headers)
+        assertEquals(listOf(listOf("配比", "``N|P|K``")), table.rows)
     }
 
     @Test

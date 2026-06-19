@@ -276,8 +276,10 @@ private fun splitRendererMarkdownTableCells(line: String): List<String> {
     val cells = mutableListOf<String>()
     val current = StringBuilder()
     var escaped = false
-    var inInlineCode = false
-    trimmed.forEach { ch ->
+    var inlineCodeTickCount = 0
+    var index = 0
+    while (index < trimmed.length) {
+        val ch = trimmed[index]
         when {
             escaped -> {
                 if (ch != '|') current.append('\\')
@@ -286,16 +288,27 @@ private fun splitRendererMarkdownTableCells(line: String): List<String> {
             }
             ch == '\\' -> escaped = true
             ch == '`' -> {
-                inInlineCode = !inInlineCode
-                current.append(ch)
+                val start = index
+                while (index < trimmed.length && trimmed[index] == '`') {
+                    index++
+                }
+                val tickCount = index - start
+                if (inlineCodeTickCount == 0) {
+                    inlineCodeTickCount = tickCount
+                } else if (tickCount == inlineCodeTickCount) {
+                    inlineCodeTickCount = 0
+                }
+                repeat(tickCount) { current.append('`') }
+                continue
             }
-            ch == '|' && inInlineCode -> current.append(ch)
+            ch == '|' && inlineCodeTickCount > 0 -> current.append(ch)
             ch == '|' -> {
                 cells += current.toString().trim()
                 current.clear()
             }
             else -> current.append(ch)
         }
+        index++
     }
     if (escaped) current.append('\\')
     cells += current.toString().trim()
@@ -314,6 +327,14 @@ private fun looksLikeRendererMarkdownTableRow(line: String): Boolean {
     if (isRendererMarkdownTableSeparatorLine(trimmed)) return false
     return splitRendererMarkdownTableCells(trimmed).size >= 2
 }
+
+private fun hasRendererMarkdownTableRowEdge(line: String): Boolean {
+    val trimmed = line.trim()
+    return trimmed.startsWith("|") || trimmed.endsWith("|")
+}
+
+private fun looksLikeRendererMarkdownTableBodyRow(line: String): Boolean =
+    hasRendererMarkdownTableRowEdge(line) && looksLikeRendererMarkdownTableRow(line)
 
 private fun rendererMarkdownCodeFenceMarker(line: String): String? {
     val trimmed = line.trimStart()
@@ -364,7 +385,7 @@ private fun normalizeRendererMarkdownTables(content: String): String {
         ) {
             val rowLines = mutableListOf<String>()
             var cursor = index + 2
-            while (cursor < lines.size && looksLikeRendererMarkdownTableRow(lines[cursor])) {
+            while (cursor < lines.size && looksLikeRendererMarkdownTableBodyRow(lines[cursor])) {
                 rowLines += lines[cursor]
                 cursor++
             }

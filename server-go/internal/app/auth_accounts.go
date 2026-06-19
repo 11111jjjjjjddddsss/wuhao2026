@@ -405,12 +405,17 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return "", err
 	}
 
-	copyConflicts := make([]copyRowsToNewUserIDResult, 0, 3)
+	copyConflicts := make([]copyRowsToNewUserIDResult, 0, 4)
 	quotaCopy, err := copyRowsToNewUserID(ctx, tx, "quota_ledger", oldUserID, newUserID, "id")
 	if err != nil {
 		return "", err
 	}
 	copyConflicts = append(copyConflicts, quotaCopy)
+	quotaOutboxCopy, err := copyRowsToNewUserID(ctx, tx, "quota_consume_outbox", oldUserID, newUserID, "id")
+	if err != nil {
+		return "", err
+	}
+	copyConflicts = append(copyConflicts, quotaOutboxCopy)
 	roundLedgerCopy, err := copyRowsToNewUserID(ctx, tx, "session_round_ledger", oldUserID, newUserID, "id")
 	if err != nil {
 		return "", err
