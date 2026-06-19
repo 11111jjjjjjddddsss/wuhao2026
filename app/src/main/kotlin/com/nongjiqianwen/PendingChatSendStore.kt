@@ -150,13 +150,21 @@ internal object PendingChatSendStore {
         reason: String,
         imageUrls: List<String> = emptyList()
     ) {
-        val safeReason = reason.trim().take(48).ifBlank { "failed" }
-        val failure = PendingChatSendTerminalFailure(
-            reason = safeReason,
-            imageUrls = imageUrls.filter { it.isNotBlank() }.distinct()
-        )
         prefs(context).edit()
-            .putString(terminalFailureKey(chatScopeId, userMessageId), gson.toJson(failure))
+            .putString(terminalFailureKey(chatScopeId, userMessageId), terminalFailureJson(reason, imageUrls))
+            .commit()
+    }
+
+    fun markTerminalFailureAndRemovePending(
+        context: Context,
+        chatScopeId: String,
+        userMessageId: String,
+        reason: String,
+        imageUrls: List<String> = emptyList()
+    ) {
+        prefs(context).edit()
+            .putString(terminalFailureKey(chatScopeId, userMessageId), terminalFailureJson(reason, imageUrls))
+            .remove(key(chatScopeId, userMessageId))
             .commit()
     }
 
@@ -276,6 +284,15 @@ internal object PendingChatSendStore {
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    private fun terminalFailureJson(reason: String, imageUrls: List<String>): String {
+        val safeReason = reason.trim().take(48).ifBlank { "failed" }
+        val failure = PendingChatSendTerminalFailure(
+            reason = safeReason,
+            imageUrls = imageUrls.filter { it.isNotBlank() }.distinct()
+        )
+        return gson.toJson(failure)
+    }
 
     private fun key(chatScopeId: String, userMessageId: String): String =
         "$KEY_PREFIX$chatScopeId:$userMessageId"

@@ -2014,8 +2014,8 @@ object SessionApi {
                                             activeStreamRetry = activeStreamRetry
                                         )
                                     } else {
-                                        notifyAuthInvalid()
                                         deliverInterrupted("auth")
+                                        notifyAuthInvalid()
                                     }
                                     return
                                 }

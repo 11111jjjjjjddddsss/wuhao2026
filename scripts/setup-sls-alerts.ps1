@@ -293,11 +293,21 @@ $alerts = @(
         Runbook = "docs/runbooks/today-agri-card.md";
     },
     @{
+        Name = "nongji-chat-stream-integrity";
+        DisplayName = "Nongji chat stream integrity";
+        Description = "server-go Logstore detected chat stream archive failures or empty upstream completions. This is an alert-only guard and does not block user-visible model output.";
+        Logstore = "server-go";
+        Query = "append session round after stream failed OR empty assistant reply after stream done | select count(1) as cnt";
+        Severity = 8;
+        RepeatInterval = "30m";
+        Runbook = "docs/runbooks/logs-sls.md";
+    },
+    @{
         Name = "nongji-quota-outbox-needs-ops";
         DisplayName = "Nongji quota outbox needs attention";
-        Description = "server-go Logstore detected quota consume outbox terminal failures or automatic uncollectable close events. Ordinary slow automatic retry scheduling is not alerted.";
+        Description = "server-go Logstore detected quota consume outbox needs_ops or terminal failures. Ordinary pending/backoff retries are not alerted.";
         Logstore = "server-go";
-        Query = "quota consume outbox auto marked uncollectable OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed | select count(1) as cnt";
+        Query = "quota consume outbox needs ops automatic retry scheduled OR quota consume outbox auto marked uncollectable OR quota consume outbox mark needs ops failed OR quota consume outbox mark uncollectable failed | select count(1) as cnt";
         Severity = 6;
         RepeatInterval = "6h";
         Runbook = "docs/runbooks/management-backend.md";

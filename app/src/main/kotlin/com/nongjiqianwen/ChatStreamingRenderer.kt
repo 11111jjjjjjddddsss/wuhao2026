@@ -763,6 +763,12 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
+    parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(2, headingText)
+    }
+    parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(3, headingText)
+    }
     val headingMarker = trimmed.takeWhile { it == '#' }
     if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
         val remainder = trimmed.drop(headingMarker.length)
@@ -876,8 +882,7 @@ internal fun shouldUseRendererCompactNumberedSection(
     model: StreamingLineModel.Numbered,
     inlineMode: RendererInlineMode
 ): Boolean =
-    inlineMode != RendererInlineMode.Streaming &&
-        isRendererCompactNumberedSection(model)
+    isRendererCompactNumberedSection(model)
 
 private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     val plain = plainRendererInlineText(text)

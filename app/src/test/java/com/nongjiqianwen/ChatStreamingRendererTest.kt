@@ -549,13 +549,14 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun activeChineseSectionHeadingWaitsForLineBoundaryBeforeDivider() {
+    fun activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural() {
         val previous = classifyStreamingLine("先说清楚。")
         val active = classifyActiveStreamingLine("一、成品含腐植酸尿素 vs. 自配方案")
         val completed = classifyStreamingLine("一、成品含腐植酸尿素 vs. 自配方案")
 
-        assertTrue(active is StreamingLineModel.Paragraph)
-        assertFalse(shouldShowStreamingSectionDivider(previous, active))
+        assertTrue(active is StreamingLineModel.Heading)
+        assertEquals("一、成品含腐植酸尿素 vs. 自配方案", (active as StreamingLineModel.Heading).text)
+        assertTrue(shouldShowStreamingSectionDivider(previous, active))
         assertTrue(completed is StreamingLineModel.Heading)
         assertEquals("一、成品含腐植酸尿素 vs. 自配方案", (completed as StreamingLineModel.Heading).text)
         assertTrue(shouldShowStreamingSectionDivider(previous, completed))
@@ -707,12 +708,13 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun activeClosedStandaloneBoldHeadingWaitsForLineBoundary() {
+    fun activeClosedStandaloneBoldHeadingRendersImmediately() {
         val previous = classifyStreamingLine("先说清楚。")
         val model = classifyActiveStreamingLine("**处理建议**")
 
-        assertTrue(model is StreamingLineModel.Paragraph)
-        assertFalse(shouldShowStreamingSectionDivider(previous, model))
+        assertTrue(model is StreamingLineModel.Heading)
+        assertEquals("处理建议", (model as StreamingLineModel.Heading).text)
+        assertTrue(shouldShowStreamingSectionDivider(previous, model))
     }
 
     @Test
@@ -852,7 +854,16 @@ class ChatStreamingRendererTest {
         require(model is StreamingLineModel.Numbered)
         assertTrue(isRendererCompactNumberedSection(model))
         assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Settled))
-        assertFalse(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
+    }
+
+    @Test
+    fun activeShortNumberedColonHeadingUsesCompactSectionStyle() {
+        val model = classifyActiveStreamingLine("1. 三大病害：")
+
+        require(model is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(model))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
     }
 
     @Test

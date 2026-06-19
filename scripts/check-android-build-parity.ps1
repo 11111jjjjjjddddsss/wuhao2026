@@ -444,6 +444,8 @@ if ($failures.Count -eq 0) {
         "SessionApi.notifyAuthInvalid must notify the login gate with an expired-auth reason."
     Require-Match $failures $imageUploader 'if\s*\(\s*code\s*==\s*401\s*\)\s*\{\s*SessionApi\.notifyAuthInvalid\s*\(\s*\)\s*\}' `
         "Image upload 401 must clear auth state and notify the login gate instead of only showing a local upload error."
+    Require-Match $failures $sessionApi 'res\.code\s*==\s*401(?s:.*?)deliverInterrupted\("auth"\)(?s:.*?)notifyAuthInvalid\(\)' `
+        "Foreground chat 401 after retry must deliver the interrupted auth state before clearing runtime generation."
     Require-Match $failures $loginScreen 'SessionApi\.addAuthInvalidListener\s*\{\s*reason\s*->(?s:.*?)AuthSessionClearReason\.Invalid\s*->\s*"登录已失效，请重新登录后继续使用"(?s:.*?)AuthSessionClearReason\.LocalLogout\s*->\s*null' `
         "LoginGate must explain expired auth without showing an expired-login warning after user-initiated logout."
     Require-Match $failures $sessionApi 'fun\s+logoutCurrentSession\b(?s:.*?)override\s+fun\s+onFailure(?s:.*?)clearLocalAuthRuntimeSession\s*\((?s:.*?)reason\s*=\s*AuthSessionClearReason\.LocalLogout(?s:.*?)mainHandler\.post\s*\{\s*onResult\(true\)\s*\}' `
@@ -587,6 +589,10 @@ if ($failures.Count -eq 0) {
         "Login brand title must not be forced into one-line ellipsis on narrow screens or large font settings."
     Require-Match $failures $pendingWorker $pendingWorkerPrivacyGatePattern `
         "Pending background chat sends must not initialize identity or call backend before first-launch privacy consent is accepted."
+    Require-Match $failures $pendingChatSendStore 'fun\s+markTerminalFailureAndRemovePending(?s:.*?)\.putString\(terminalFailureKey\(chatScopeId,\s*userMessageId\),\s*terminalFailureJson\(reason,\s*imageUrls\)\)(?s:.*?)\.remove\(key\(chatScopeId,\s*userMessageId\)\)(?s:.*?)\.commit\(\)' `
+        "Pending image-send terminal failure must be written atomically with pending removal to avoid a stuck background-sending state after process death."
+    Require-Match $failures $pendingWorker 'PendingChatSendStore\.markTerminalFailureAndRemovePending' `
+        "PendingChatSendWorker must use the atomic terminal-failure-plus-remove store API."
     Require-Match $failures $todayAgriCardUi $todayAgriCardPattern `
         "Today agri rendering must stay in TodayAgriCardUi.kt and use the ordinary selectable text style."
     Require-Match $failures $todayAgriCardUi $todayAgriRenderablePattern `
@@ -828,18 +834,18 @@ if ($failures.Count -eq 0) {
         "Assistant text divider tests must cover active bold text without a heading boundary, so dividers do not flash and disappear."
     Require-Match $failures $chatStreamingRendererTest 'activeStandaloneBoldHeadingWaitsForLineBoundary' `
         "Assistant text divider tests must prove unclosed active bold heading text waits for a line boundary before drawing a divider."
-    Require-Match $failures $chatStreamingRendererTest 'activeClosedStandaloneBoldHeadingWaitsForLineBoundary' `
-        "Assistant text divider tests must prove closed active bold heading text also waits for a line boundary before drawing a divider."
+    Require-Match $failures $chatStreamingRendererTest 'activeClosedStandaloneBoldHeadingRendersImmediately' `
+        "Assistant text divider tests must prove a closed active bold heading can render immediately."
     Require-Match $failures $chatStreamingRendererTest 'activeClosedBoldThenBodyDoesNotShowDivider' `
         "Assistant text divider tests must cover a closed active bold prefix that continues as body text."
     Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererActiveStandaloneBoldHeading' `
         "Active streaming bold heading text must not draw dividers before the line is complete."
-    Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererStandaloneBoldHeading' `
-        "Active streaming closed bold heading text must not draw dividers before the line is complete."
-    Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
-        "Active streaming Chinese section heading text must not draw dividers before the line is complete."
-    Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingWaitsForLineBoundaryBeforeDivider' `
-        "Assistant text divider tests must cover active Chinese section headings waiting for line completion."
+    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererStandaloneBoldHeading' `
+        "Active streaming closed bold heading text should render immediately when the structure is already confirmed."
+    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
+        "Active streaming Chinese section heading text should render immediately when it is clearly structural."
+    Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural' `
+        "Assistant text divider tests must cover active Chinese section headings rendering immediately when clearly structural."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableSeparatorDoesNotCreateSectionDivider' `
         "Assistant text divider tests must prove Markdown table separators do not create section dividers."
     Require-Match $failures $chatStreamingRenderer 'shouldEnableRendererMarkdownTableCopy(?s:.*?)messageSettled\s*&&\s*inlineMode\s*==\s*RendererInlineMode\.Settled' `

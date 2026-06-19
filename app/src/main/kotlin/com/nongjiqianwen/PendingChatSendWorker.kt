@@ -154,14 +154,13 @@ class PendingChatSendWorker(
             chatScopeId,
             userMessageId
         )?.imageUrls.orEmpty()
-        PendingChatSendStore.markTerminalFailure(
+        PendingChatSendStore.markTerminalFailureAndRemovePending(
             context = applicationContext,
             chatScopeId = chatScopeId,
             userMessageId = userMessageId,
             reason = reason,
             imageUrls = uploadedImageUrls
         )
-        PendingChatSendStore.remove(applicationContext, chatScopeId, userMessageId)
         PendingChatSendRuntime.markInactive(userMessageId)
         return Result.failure()
     }

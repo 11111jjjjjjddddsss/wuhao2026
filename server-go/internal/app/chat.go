@@ -563,6 +563,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
+		} else {
+			if !clientDisconnected.Load() {
+				writeMu.Lock()
+				s.writeSSEData(w, map[string]any{"error": "EMPTY_ASSISTANT_REPLY", "client_msg_id": clientMsgID})
+				writeMu.Unlock()
+			}
+			s.logger.Error("empty assistant reply after stream done", "userId", auth.UserID, "clientMsgId", clientMsgID)
 		}
 	}
 	if sendDoneAfterArchive && !clientDisconnected.Load() {
