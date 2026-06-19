@@ -791,6 +791,11 @@ func TestValidateChatStreamImageURLsRequiresUploadedJPEG(t *testing.T) {
 			images: []string{"https://api.example.com/uploads/abc123.jpg?x=1"},
 			want:   "invalid image url",
 		},
+		{
+			name:   "userinfo rejected",
+			images: []string{"https://user@api.example.com/uploads/abc123.jpg"},
+			want:   "invalid image url",
+		},
 	}
 
 	for _, tc := range cases {

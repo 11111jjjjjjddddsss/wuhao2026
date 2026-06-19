@@ -35,6 +35,7 @@ const (
 	defaultSupportAutoReplyCooldown             = 24 * time.Hour
 	defaultSupportAutoReplyRepeatCooldown       = 5 * time.Minute
 	defaultSupportFAQAutoReplyCooldown          = time.Minute
+	supportAutoReplyLookupWindowMs              = int64(5_000)
 	supportAutoReplyBody                        = "已收到您的反馈。为便于客服核实，请补充发生时间、页面提示或相关截图；后续回复会在本页显示。农业技术咨询可返回主聊天页继续提问。"
 	supportImageOnlyAutoReplyBody               = "已收到您上传的图片。请补充具体问题、发生时间或页面提示；后续回复会在本页显示。"
 	supportGreetingAutoReplyBody                = "您好，请说明您遇到的问题或反馈内容，客服会在本页跟进回复。"
@@ -87,8 +88,9 @@ type SupportConversationEntry struct {
 }
 
 type supportMessageRequest struct {
-	Body   string   `json:"body"`
-	Images []string `json:"images"`
+	Body        string   `json:"body"`
+	Images      []string `json:"images"`
+	ClientMsgID string   `json:"client_msg_id"`
 }
 
 type supportReadRequest struct {
@@ -160,9 +162,30 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
+	clientMsgID, validationError := normalizeSupportClientMsgID(body.ClientMsgID)
+	if validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
 	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
+	}
+	replyBody := supportAutoReplyBodyFor(normalized, imageURLs)
+	if clientMsgID != "" {
+		existing, autoReply, err := s.store.GetUserSupportMessageByClientMsgID(r.Context(), auth.UserID, clientMsgID, replyBody)
+		if err != nil {
+			s.logger.Error("get idempotent support message failed", "userId", auth.UserID, "error", err)
+			s.writeError(w, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		if existing != nil {
+			s.writeJSON(w, http.StatusOK, map[string]any{
+				"message":    existing,
+				"auto_reply": autoReply,
+			})
+			return
+		}
 	}
 	if s.supportMessageLimiter != nil {
 		limitKey := supportMessageRateLimitKey(auth.UserID, GetClientIP(r))
@@ -180,8 +203,7 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	nowMs := time.Now().UnixMilli()
-	replyBody := supportAutoReplyBodyFor(normalized, imageURLs)
-	message, autoReply, err := s.store.CreateUserSupportMessageWithAutoReply(r.Context(), auth.UserID, normalized, imageURLs, nowMs, replyBody)
+	message, autoReply, err := s.store.CreateUserSupportMessageWithAutoReply(r.Context(), auth.UserID, normalized, imageURLs, nowMs, replyBody, clientMsgID)
 	if err != nil {
 		if errors.Is(err, errSupportMessageBusy) {
 			s.writeError(w, http.StatusConflict, "support_message_in_progress")
@@ -367,6 +389,17 @@ func normalizeSupportMessagePayload(raw string, images []string) (string, []stri
 		return "", nil, "body_or_images_required"
 	}
 	return body, imageURLs, ""
+}
+
+func normalizeSupportClientMsgID(raw string) (string, string) {
+	clientMsgID := strings.TrimSpace(raw)
+	if clientMsgID == "" {
+		return "", ""
+	}
+	if len(clientMsgID) > maxClientMsgIDLength {
+		return "", "client_msg_id_too_long"
+	}
+	return clientMsgID, ""
 }
 
 func normalizeAdminSupportMessagePayload(raw string, images []string) (string, []string, string) {
@@ -615,6 +648,22 @@ func (s *Store) ListSupportMessagesWithSearchMatches(ctx context.Context, userID
 	return messages, matchedAdded, nil
 }
 
+func (s *Store) GetUserSupportMessageByClientMsgID(ctx context.Context, userID string, clientMsgID string, replyBody string) (*SupportMessage, *SupportMessage, error) {
+	clientMsgID = strings.TrimSpace(clientMsgID)
+	if clientMsgID == "" {
+		return nil, nil, nil
+	}
+	message, err := getUserSupportMessageByClientMsgID(ctx, s.db, userID, clientMsgID)
+	if err != nil || message == nil {
+		return message, nil, err
+	}
+	autoReply, err := getSupportAutoReplyForUserMessage(ctx, s.db, userID, message.ID, message.CreatedAt, replyBody)
+	if err != nil {
+		return nil, nil, err
+	}
+	return message, autoReply, nil
+}
+
 func (s *Store) ListSupportConversations(ctx context.Context, filter SupportConversationQuery) ([]SupportConversationEntry, error) {
 	if filter.Limit <= 0 || filter.Limit > maxSupportConversationListLimit {
 		filter.Limit = defaultSupportConversationListLimit
@@ -820,7 +869,7 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 		return nil, err
 	}
 	defer rollbackQuietly(tx)
-	message, err := createSupportMessageTx(ctx, tx, userID, senderType, body, imageURLs, createdAt)
+	message, err := createSupportMessageTx(ctx, tx, userID, senderType, body, imageURLs, createdAt, "")
 	if err != nil {
 		return nil, err
 	}
@@ -830,7 +879,7 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 	return message, nil
 }
 
-func (s *Store) CreateUserSupportMessageWithAutoReply(ctx context.Context, userID string, body string, imageURLs []string, createdAt int64, replyBody string) (*SupportMessage, *SupportMessage, error) {
+func (s *Store) CreateUserSupportMessageWithAutoReply(ctx context.Context, userID string, body string, imageURLs []string, createdAt int64, replyBody string, clientMsgID string) (*SupportMessage, *SupportMessage, error) {
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -855,17 +904,29 @@ func (s *Store) CreateUserSupportMessageWithAutoReply(ctx context.Context, userI
 	}
 	defer rollbackQuietly(tx)
 
+	if clientMsgID != "" {
+		existing, autoReply, err := getUserSupportMessageByClientMsgIDTx(ctx, tx, userID, clientMsgID, replyBody)
+		if err != nil {
+			return nil, nil, err
+		}
+		if existing != nil {
+			if err := tx.Commit(); err != nil {
+				return nil, nil, err
+			}
+			return existing, autoReply, nil
+		}
+	}
 	latest, err := getLatestSupportMessageTx(ctx, tx, userID)
 	if err != nil {
 		return nil, nil, err
 	}
-	message, err := createSupportMessageTx(ctx, tx, userID, "user", body, imageURLs, createdAt)
+	message, err := createSupportMessageTx(ctx, tx, userID, "user", body, imageURLs, createdAt, clientMsgID)
 	if err != nil {
 		return nil, nil, err
 	}
 	var autoReply *SupportMessage
 	if shouldCreateSupportAutoReply(latest, createdAt, replyBody) {
-		autoReply, err = createSupportMessageTx(ctx, tx, userID, "system", replyBody, nil, createdAt+1)
+		autoReply, err = createSupportMessageTx(ctx, tx, userID, "system", replyBody, nil, createdAt+1, "")
 		if err != nil {
 			return nil, nil, err
 		}
@@ -876,16 +937,17 @@ func (s *Store) CreateUserSupportMessageWithAutoReply(ctx context.Context, userI
 	return message, autoReply, nil
 }
 
-func createSupportMessageTx(ctx context.Context, tx *sql.Tx, userID string, senderType string, body string, imageURLs []string, createdAt int64) (*SupportMessage, error) {
+func createSupportMessageTx(ctx context.Context, tx *sql.Tx, userID string, senderType string, body string, imageURLs []string, createdAt int64, clientMsgID string) (*SupportMessage, error) {
 	imagesJSON, err := supportImageURLsJSON(imageURLs)
 	if err != nil {
 		return nil, err
 	}
 	result, err := tx.ExecContext(
 		ctx,
-		`INSERT INTO support_messages(user_id, sender_type, body, image_urls_json, created_at)
-		 VALUES (?, ?, ?, ?, ?)`,
+		`INSERT INTO support_messages(user_id, client_msg_id, sender_type, body, image_urls_json, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?)`,
 		userID,
+		nullableSupportClientMsgID(clientMsgID),
 		senderType,
 		body,
 		imagesJSON,
@@ -909,6 +971,14 @@ func createSupportMessageTx(ctx context.Context, tx *sql.Tx, userID string, send
 		ImageURLs:  imageURLs,
 		CreatedAt:  createdAt,
 	}, nil
+}
+
+func nullableSupportClientMsgID(clientMsgID string) any {
+	clientMsgID = strings.TrimSpace(clientMsgID)
+	if clientMsgID == "" {
+		return nil
+	}
+	return clientMsgID
 }
 
 func supportMessageLockName(userID string) string {
@@ -1278,6 +1348,82 @@ func getLatestSupportMessageTx(ctx context.Context, tx *sql.Tx, userID string) (
 	return &message, nil
 }
 
+func getUserSupportMessageByClientMsgIDTx(ctx context.Context, tx *sql.Tx, userID string, clientMsgID string, replyBody string) (*SupportMessage, *SupportMessage, error) {
+	message, err := getUserSupportMessageByClientMsgID(ctx, tx, userID, clientMsgID)
+	if err != nil || message == nil {
+		return message, nil, err
+	}
+	autoReply, err := getSupportAutoReplyForUserMessage(ctx, tx, userID, message.ID, message.CreatedAt, replyBody)
+	if err != nil {
+		return nil, nil, err
+	}
+	return message, autoReply, nil
+}
+
+func getUserSupportMessageByClientMsgID(ctx context.Context, db supportMessageQueryer, userID string, clientMsgID string) (*SupportMessage, error) {
+	clientMsgID = strings.TrimSpace(clientMsgID)
+	if clientMsgID == "" {
+		return nil, nil
+	}
+	row := db.QueryRowContext(
+		ctx,
+		`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
+		   FROM support_messages
+		  WHERE user_id = ?
+		    AND client_msg_id = ?
+		    AND sender_type = 'user'
+		  ORDER BY id DESC
+		  LIMIT 1`,
+		userID,
+		clientMsgID,
+	)
+	message, err := scanSupportMessage(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &message, nil
+}
+
+func getSupportAutoReplyForUserMessage(ctx context.Context, db supportMessageQueryer, userID string, userMessageID int64, userMessageCreatedAt int64, replyBody string) (*SupportMessage, error) {
+	replyBody = strings.TrimSpace(replyBody)
+	if replyBody == "" {
+		return nil, nil
+	}
+	row := db.QueryRowContext(
+		ctx,
+		`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
+		   FROM support_messages
+		  WHERE user_id = ?
+		    AND sender_type = 'system'
+		    AND id > ?
+		    AND created_at >= ?
+		    AND created_at <= ?
+		    AND body = ?
+		  ORDER BY created_at ASC, id ASC
+		  LIMIT 1`,
+		userID,
+		userMessageID,
+		userMessageCreatedAt,
+		userMessageCreatedAt+supportAutoReplyLookupWindowMs,
+		replyBody,
+	)
+	message, err := scanSupportMessage(row)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &message, nil
+}
+
+type supportMessageQueryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 type supportMessageScanner interface {
 	Scan(dest ...any) error
 }
@@ -1336,6 +1482,7 @@ func (s *Server) validateSupportImageURLs(r *http.Request, images []string) stri
 		parsed, err := url.Parse(image)
 		if err != nil ||
 			parsed.Scheme != "https" ||
+			parsed.User != nil ||
 			!strings.EqualFold(parsed.Host, baseURL.Host) ||
 			parsed.RawQuery != "" ||
 			parsed.Fragment != "" {

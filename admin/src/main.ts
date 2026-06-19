@@ -1747,6 +1747,19 @@ async function userDetailCard(userID: string): Promise<string> {
           ${userKV(detail.user)}
           <div class="divider"></div>
           <div>
+            <div class="card-title" style="margin-bottom:8px">权益、礼品卡和反馈</div>
+            ${userOpsSummary(detail)}
+          </div>
+          <div>
+            <div class="card-title" style="margin-bottom:8px">最近反馈</div>
+            ${supportMessagesMiniList(detail.support_messages)}
+          </div>
+          <div>
+            <div class="card-title" style="margin-bottom:8px">订单 / 礼品卡兑换</div>
+            ${userTradeSnapshot(detail)}
+          </div>
+          <div class="divider"></div>
+          <div>
             <div class="card-title" style="margin-bottom:8px">最近问诊</div>
             ${roundExcerptList(detail.recent_rounds)}
           </div>
@@ -1865,6 +1878,62 @@ function userKV(user: AdminUserListEntry): string {
       <dt>升级补偿</dt><dd>${user.upgrade_remaining || 0}</dd>
       <dt>地区</dt><dd>${escapeHTML(user.last_region || "未知")}</dd>
     </dl>
+  `;
+}
+
+function userOpsSummary(detail: AdminUserDetail): string {
+  const user = detail.user;
+  const redeemedCards = detail.gift_cards.filter((row) => row.status === "redeemed").length;
+  const failedAttempts = detail.gift_card_attempts.filter((row) => !row.success).length;
+  const latestSupport = detail.support_messages[detail.support_messages.length - 1];
+  return `
+    <dl class="kv">
+      <dt>会员</dt><dd>${statusPill(user.tier || "free")} ${formatTime(user.tier_expire_at)}</dd>
+      <dt>订单</dt><dd>${detail.orders.length} 条</dd>
+      <dt>礼品卡兑换</dt><dd>已兑换 ${redeemedCards} 张，明细 ${detail.gift_cards.length} 条</dd>
+      <dt>兑换尝试</dt><dd>${detail.gift_card_attempts.length} 次，失败 ${failedAttempts}</dd>
+      <dt>最近反馈明细</dt><dd>${detail.support_messages.length} 条${latestSupport ? `，最新 ${formatTime(latestSupport.created_at)}` : ""}</dd>
+      <dt>App日志</dt><dd>${detail.recent_app_logs.length} 条最近记录</dd>
+    </dl>
+  `;
+}
+
+function userTradeSnapshot(detail: AdminUserDetail): string {
+  const parts: string[] = [];
+  if (detail.orders.length) {
+    parts.push(`<div class="table-wrap">${ordersTable(detail.orders.slice(0, 5))}</div>`);
+  }
+  if (detail.gift_cards.length) {
+    parts.push(`<div class="table-wrap">${giftCardTable(detail.gift_cards.slice(0, 5))}</div>`);
+  }
+  if (detail.gift_card_attempts.length) {
+    parts.push(`<div class="table-wrap">${giftCardAttemptsTable(detail.gift_card_attempts.slice(0, 5))}</div>`);
+  }
+  return parts.length
+    ? parts.join(`<div style="height:10px"></div>`)
+    : emptyState("没有交易记录", "当前没有订单、礼品卡兑换或兑换尝试。");
+}
+
+function supportMessagesMiniList(rows: AdminSupportMessage[]): string {
+  if (!rows.length) return emptyState("没有反馈记录", "该用户当前暂无帮助与反馈消息。");
+  return `
+    <div class="message-list compact">
+      ${rows
+        .slice(-5)
+        .map(
+          (message) => `
+            <article class="message ${escapeAttr(message.sender_type || "")}">
+              <div class="message-head">
+                <strong>${escapeHTML(supportSenderLabel(message.sender_type))}</strong>
+                <span>${formatTime(message.created_at)}</span>
+              </div>
+              <div>${escapeHTML(supportMessageText(message))}</div>
+              ${supportMessageImages(message)}
+            </article>
+          `,
+        )
+        .join("")}
+    </div>
   `;
 }
 
@@ -2582,7 +2651,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
                 (message) => `
                   <article class="message ${escapeAttr(message.sender_type)}">
                     <div class="message-head">
-                      <strong>${escapeHTML(message.sender_type)}</strong>
+                      <strong>${escapeHTML(supportSenderLabel(message.sender_type))}</strong>
                       <span>${formatTime(message.created_at)}</span>
                     </div>
                     <div>${escapeHTML(supportMessageText(message))}</div>
@@ -2624,6 +2693,13 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
 function supportMessageText(message: AdminSupportMessage): string {
   if (message.body_redacted) return "正文已隐藏";
   return message.body || message.body_excerpt || (message.has_images ? "仅图片" : "无正文");
+}
+
+function supportSenderLabel(senderType?: string): string {
+  if (senderType === "user") return "用户";
+  if (senderType === "admin") return "客服";
+  if (senderType === "system") return "系统";
+  return senderType || "消息";
 }
 
 function supportMessageImages(message: AdminSupportMessage): string {
@@ -4145,7 +4221,7 @@ function launchReadinessGrid(rows: AdminMonitoring["launch_readiness"]): string 
                 <strong>${escapeHTML(row.title)}</strong>
                 <div class="launch-badges">
                   ${statusPill(launchStatusText(row.status), level)}
-                  <span class="launch-kind ${row.manual ? "manual" : "program"}">${row.manual ? "人工确认" : "程序处理"}</span>
+                  <span class="launch-kind ${row.launch_only ? "info" : row.manual ? "manual" : "program"}">${row.launch_only ? "上线准备" : row.manual ? "人工确认" : "程序处理"}</span>
                 </div>
               </div>
               <p>${escapeHTML(row.body)}</p>

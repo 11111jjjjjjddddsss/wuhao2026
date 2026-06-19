@@ -1216,6 +1216,7 @@ func (s *Server) validateChatStreamImageURLs(r *http.Request, images []string) s
 		parsed, err := url.Parse(image)
 		if err != nil ||
 			parsed.Scheme != "https" ||
+			parsed.User != nil ||
 			!strings.EqualFold(parsed.Host, baseURL.Host) ||
 			parsed.RawQuery != "" ||
 			parsed.Fragment != "" ||

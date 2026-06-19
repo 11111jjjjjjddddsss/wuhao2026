@@ -1460,6 +1460,7 @@ object SessionApi {
     fun sendSupportMessage(
         body: String,
         images: List<String> = emptyList(),
+        clientMsgId: String? = null,
         onResult: (SupportSendResult?) -> Unit
     ) {
         val base = baseUrl()
@@ -1467,12 +1468,12 @@ object SessionApi {
             postToMain { onResult(null) }
             return
         }
-        val requestBody = gson.toJson(
-            mapOf(
-                "body" to body,
-                "images" to images
-            )
-        ).toRequestBody("application/json".toMediaType())
+        val payload = mutableMapOf<String, Any>(
+            "body" to body,
+            "images" to images
+        )
+        clientMsgId?.trim()?.takeIf { it.isNotEmpty() }?.let { payload["client_msg_id"] = it }
+        val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
         enqueueWithRetry401(
             requestFactory = { token ->
                 val builder = applyIdentityHeaders(

@@ -1203,6 +1203,12 @@ button {
   background: #f4f8fd;
 }
 
+.launch-kind.info {
+  border-color: #c9d8f2;
+  color: #335880;
+  background: #f3f7ff;
+}
+
 .launch-card p {
   margin: 0;
   color: #4a5562;

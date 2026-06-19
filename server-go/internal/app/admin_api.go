@@ -2509,8 +2509,9 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 			"短信配置、Redis 和严格鉴权正常；正式上架前仍必须用真机确认短信收码和验证码登录。",
 			"短信 / Redis / 严格鉴权任一异常都会挡住正式登录。",
 		),
-		Route: "health",
-		Owner: "Android / 后端",
+		Route:  "health",
+		Owner:  "Android / 后端",
+		Manual: loginDepsOK,
 	})
 	modelOK := strings.EqualFold(health.API, "ok") && strings.EqualFold(health.Bailian, "ok")
 	modelStatus := "blocked"

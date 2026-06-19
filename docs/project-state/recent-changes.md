@@ -5,6 +5,8 @@
 
 ## 2026-06-20
 
+- 继续按“全盘挑刺、收口收尾、用户体验优先”落地低风险修复：帮助与反馈用户发送新增客户端 `client_msg_id` 幂等，Android 同一条反馈弱网失败后重试会沿用同一发送 ID，带图重试会复用已上传的 support 图片 URL，后端在同用户命名锁事务内按 `user_id + sender_type + client_msg_id` 唯一键返回原用户消息和原自动回复，不按正文相似度或手机号 / 订单号 / 礼品卡码做内容拦截；无网时帮助与反馈发送前直接提示“当前网络不可用”，不再卡在上传中。主聊天图片 URL 和 support 图片 URL 统一拒绝带 userinfo 的 HTTPS URL；今日农情主界面展示记录保存频控挪到 JSON、日期和锚点基础校验之后，坏请求不再白白消耗保存频控。后台用户详情抽屉补权益、订单、礼品卡兑换和最近反馈明细摘要，按手机号查到用户后不用再复制账号 ID 去多个页面追溯；正式上架检查把依赖正常但等待真机确认的手机号登录归为“人工确认”，`launch_only` 明细标签显示“上线准备”，不再误写成程序处理。资源容量巡检在云监控规则处于 `ALARM` 时普通模式输出 attention、`-Strict` 直接失败，避免资源已经报警但脚本假绿；资源严格门禁文档改成 `-SkipAuthUsage -Strict -RequireSlsExternalNotification -RequireSlsDashboard`，短信套餐包另跑短信脚本或人工确认。本轮不修改主对话锚点、今日农情提示词、记忆文档提示词、官网首页文案，不新增模型输出过滤、关键词拦截、相似度硬拦截、字数硬卡或 `max_tokens`，不发布正式 Android 包。
+
 - 后置复核继续收口上线门禁和后台客服细节：ECS readiness 现在要求 inactive slot active 时必须有同端口 drain-stop 单元，并且当前 active upstream slot 不能挂 active drain-stop，避免旧排空任务残留造成假绿或误停当前线上服务；下载域名 TLS 检查加握手超时，避免巡检卡死。后台帮助反馈详情在 support 角色可搜 / 可看正文时，会把搜索命中的较早非系统消息合并进最近 200 条详情并提示数量，长会话排障不再“搜到会话但看不到命中正文”；无正文权限角色仍只看脱敏摘要。本轮不改三份保护提示词、不新增模型输出过滤、不发布正式 Android 包。
 
 - 继续按产品负责人视角收口现有功能：后台监控把 `launch_only` 上线准备项和日常程序告警拆开，未发正式更新、暂无礼品卡库存和支付未接入不再让日常巡检变黄；今日农情 `disabled` 不再进日常待办。后台帮助反馈详情改为最近 200 条并提示截断，客服图片在后台 API 归一为同源 `/uploads/support/*.jpg`，后台 Nginx 代理该路径，support 图片响应改为 `private, no-store`；礼品卡备注占位提示不写手机号 / 完整卡码 / 密钥，状态和兑换结果中文化。Android 表格“复制表格”按钮退出文本选择范围，退出设备会区分“服务端已吊销”和“本机已退出但远端未确认”，崩溃补报只有 2xx 后才删 pending，弱网失败继续补报。严格生产鉴权下普通业务接口拒绝无 `session_id` 的旧 bearer token；下载域名巡检新增公网 TLS 到期检查，ECS readiness 会发现旧 slot 长期 active 且无排空单元。验证通过 `go test ./...`、后台 `npm run build`、Android `:app:compileDebugKotlin`、`check-admin-surface.mjs`、`check-android-download-domain.ps1` 和后台日常行动项巡检；本轮不改三份保护提示词、不新增模型输出过滤、不发布正式 Android 包。

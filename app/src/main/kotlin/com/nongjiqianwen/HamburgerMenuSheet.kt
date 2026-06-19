@@ -124,11 +124,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.UUID
 
 private const val HAMBURGER_PAGE_ENTER_MS = 180
 private const val HAMBURGER_PAGE_EXIT_MS = 150
 private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
 internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后重试"
+private const val SUPPORT_NETWORK_UNAVAILABLE_HINT = "当前网络不可用"
 private val HamburgerBackButtonTopPadding = 4.dp
 private const val APP_UPDATE_PROMPT_PREFS = "app_update_prompt"
 private const val APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY = "last_prompted_version_code"
@@ -156,6 +158,18 @@ private fun normalizeSupportLinkTarget(raw: String): String {
         trimmed
     } else {
         "https://$trimmed"
+    }
+}
+
+private fun supportFeedbackPayloadFingerprint(
+    body: String,
+    images: List<ComposerImageAttachment>
+): String = buildString {
+    append(body)
+    append('\n')
+    images.forEach { image ->
+        append(image.uri)
+        append('\n')
     }
 }
 
@@ -2699,6 +2713,10 @@ private fun HamburgerSupportFeedbackPage(
     var loadTick by remember { mutableStateOf(0) }
     var attachmentMenuVisible by remember { mutableStateOf(false) }
     val selectedImages = remember { mutableStateListOf<ComposerImageAttachment>() }
+    var pendingSupportClientMsgId by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingSupportPayloadFingerprint by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingSupportUploadedImageFingerprint by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingSupportUploadedImageUrls by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCameraImageUriString by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingCameraImageGalleryBacked by rememberSaveable { mutableStateOf(false) }
     var pendingCameraImageTemporaryFilePath by rememberSaveable { mutableStateOf<String?>(null) }
@@ -3025,12 +3043,45 @@ private fun HamburgerSupportFeedbackPage(
             onPendingAction("最多输入2000字")
             return
         }
+        if (!context.hasActiveNetworkConnection()) {
+            sendingHint = SUPPORT_NETWORK_UNAVAILABLE_HINT
+            onPendingAction(SUPPORT_NETWORK_UNAVAILABLE_HINT)
+            return
+        }
+        val payloadFingerprint = supportFeedbackPayloadFingerprint(body, imageSnapshot)
+        val shouldStartNewPendingSupportMessage =
+            pendingSupportClientMsgId.isNullOrBlank() ||
+            pendingSupportPayloadFingerprint != payloadFingerprint
+        val clientMsgId = if (shouldStartNewPendingSupportMessage) {
+            "support-${UUID.randomUUID()}".also {
+                pendingSupportClientMsgId = it
+                pendingSupportPayloadFingerprint = payloadFingerprint
+                pendingSupportUploadedImageFingerprint = null
+                pendingSupportUploadedImageUrls = null
+            }
+        } else {
+            pendingSupportClientMsgId.orEmpty()
+        }
         attachmentMenuVisible = false
         sending = true
         onSendingChanged(true)
         sendingHint = if (imageSnapshot.isNotEmpty()) "正在上传图片..." else "正在提交反馈..."
         scope.launch {
-            val (imageUrls, uploadError) = uploadSupportImagesForSend(imageSnapshot)
+            val cachedImageUrls = pendingSupportUploadedImageUrls
+                ?.takeIf { pendingSupportUploadedImageFingerprint == payloadFingerprint }
+                ?.lines()
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+            val (imageUrls, uploadError) = if (cachedImageUrls != null) {
+                cachedImageUrls to null
+            } else {
+                uploadSupportImagesForSend(imageSnapshot).also { (uploadedUrls, _) ->
+                    if (uploadedUrls != null && imageSnapshot.isNotEmpty()) {
+                        pendingSupportUploadedImageFingerprint = payloadFingerprint
+                        pendingSupportUploadedImageUrls = uploadedUrls.joinToString("\n")
+                    }
+                }
+            }
             if (imageUrls == null) {
                 sending = false
                 val errorText = uploadError ?: "图片上传失败，请稍后再试"
@@ -3039,7 +3090,7 @@ private fun HamburgerSupportFeedbackPage(
                 return@launch
             }
             sendingHint = "正在提交反馈..."
-            SessionApi.sendSupportMessage(body = body, images = imageUrls) { nullableResult ->
+            SessionApi.sendSupportMessage(body = body, images = imageUrls, clientMsgId = clientMsgId) { nullableResult ->
                 sending = false
                 val result = nullableResult ?: run {
                     sendingHint = SUPPORT_SEND_FAILED_HINT
@@ -3057,6 +3108,10 @@ private fun HamburgerSupportFeedbackPage(
                     return@sendSupportMessage
                 }
                 sendingHint = null
+                pendingSupportClientMsgId = null
+                pendingSupportPayloadFingerprint = null
+                pendingSupportUploadedImageFingerprint = null
+                pendingSupportUploadedImageUrls = null
                 if (inputValue.text == submittedText) {
                     inputValue = TextFieldValue("")
                 }

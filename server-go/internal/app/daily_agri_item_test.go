@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"testing"
@@ -26,6 +27,33 @@ func testDailyAgriCard(dayCN string) DailyAgriCard {
 			{Title: "栽培管理", Summary: "雨后注意排水和控旺。", Source: "农业农村部"},
 			{Title: "产地流通", Summary: "部分蔬菜产区供应恢复。", Source: "人民资讯"},
 		},
+	}
+}
+
+func TestSaveTodayAgriItemRateLimitRunsAfterBasicValidation(t *testing.T) {
+	source, err := os.ReadFile("daily_agri.go")
+	if err != nil {
+		t.Fatalf("read daily_agri.go: %v", err)
+	}
+	text := string(source)
+	start := strings.Index(text, "func (s *Server) handleSaveTodayAgriItem")
+	if start < 0 {
+		t.Fatalf("handleSaveTodayAgriItem not found")
+	}
+	end := strings.Index(text[start:], "type dailyAgriPublicCard")
+	if end < 0 {
+		t.Fatalf("dailyAgriPublicCard marker not found")
+	}
+	block := text[start : start+end]
+	decodeAt := strings.Index(block, "decodeJSONBodyLimited")
+	dayAt := strings.Index(block, "normalizeTodayAgriContextDay")
+	anchorAt := strings.Index(block, `s.writeError(w, http.StatusBadRequest, "invalid_anchor")`)
+	consumeAt := strings.Index(block, "consumeTodayAgriItemSaveRateLimit")
+	if decodeAt < 0 || dayAt < 0 || anchorAt < 0 || consumeAt < 0 {
+		t.Fatalf("save today agri handler missing expected validation or rate-limit call")
+	}
+	if !(decodeAt < consumeAt && dayAt < consumeAt && anchorAt < consumeAt) {
+		t.Fatalf("today agri item save rate limit should run after JSON, day and anchor validation")
 	}
 }
 

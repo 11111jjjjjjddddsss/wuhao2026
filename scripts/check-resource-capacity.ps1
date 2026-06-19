@@ -614,6 +614,13 @@ foreach ($rule in $expectedMetricRules) {
         if ([string]$foundRule.AlertState -eq "INSUFFICIENT_DATA") {
             Add-WarningItem "cloudmonitor_metric_rule_insufficient_data:$($rule.RuleId)"
         }
+        if ([string]$foundRule.AlertState -eq "ALARM") {
+            if ($Strict) {
+                Add-ErrorItem "cloudmonitor_metric_rule_alarm:$($rule.RuleId)"
+            } else {
+                Add-WarningItem "cloudmonitor_metric_rule_alarm:$($rule.RuleId)"
+            }
+        }
         if ($foundRule.Namespace -ne $rule.Namespace -or $foundRule.MetricName -ne $rule.MetricName) {
             Add-WarningItem "cloudmonitor_metric_rule_unexpected_target:$($rule.RuleId)"
         }

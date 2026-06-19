@@ -383,9 +383,6 @@ func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request)
 		s.writeError(w, http.StatusMethodNotAllowed, "method_not_allowed")
 		return
 	}
-	if !s.consumeTodayAgriItemSaveRateLimit(w, r, auth.UserID) {
-		return
-	}
 	var body saveTodayAgriItemRequest
 	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
 		s.writeJSONDecodeError(w, err)
@@ -404,6 +401,9 @@ func (s *Server) handleSaveTodayAgriItem(w http.ResponseWriter, r *http.Request)
 	}
 	if anchorID == "" || len(anchorID) > 128 {
 		s.writeError(w, http.StatusBadRequest, "invalid_anchor")
+		return
+	}
+	if !s.consumeTodayAgriItemSaveRateLimit(w, r, auth.UserID) {
 		return
 	}
 	if s.dailyAgri == nil || s.dailyAgri.store == nil {

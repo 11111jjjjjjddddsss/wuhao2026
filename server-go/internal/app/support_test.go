@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log/slog"
@@ -8,10 +9,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
+	sqlmock "github.com/DATA-DOG/go-sqlmock"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -95,6 +98,20 @@ func TestNormalizeSupportMessagePayloadAllowsOperationalNumbers(t *testing.T) {
 	}
 }
 
+func TestNormalizeSupportClientMsgID(t *testing.T) {
+	clientMsgID, validationError := normalizeSupportClientMsgID("  support-abc  ")
+	if validationError != "" {
+		t.Fatalf("unexpected validationError = %q", validationError)
+	}
+	if clientMsgID != "support-abc" {
+		t.Fatalf("clientMsgID = %q, want trimmed value", clientMsgID)
+	}
+	_, validationError = normalizeSupportClientMsgID(strings.Repeat("x", maxClientMsgIDLength+1))
+	if validationError != "client_msg_id_too_long" {
+		t.Fatalf("validationError = %q, want client_msg_id_too_long", validationError)
+	}
+}
+
 func TestNormalizeAdminSupportMessagePayloadAllowsOperationalNumbers(t *testing.T) {
 	tests := []struct {
 		name string
@@ -114,6 +131,62 @@ func TestNormalizeAdminSupportMessagePayloadAllowsOperationalNumbers(t *testing.
 				t.Fatalf("body = %q, want %q", body, tt.body)
 			}
 		})
+	}
+}
+
+func TestCreateUserSupportMessageWithAutoReplyReturnsExistingClientMessage(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	userID := "acct_support_idempotent"
+	clientMsgID := "support-duplicate"
+	createdAt := int64(1800000000000)
+	lockName := supportMessageLockName(userID)
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT GET_LOCK(?, 5)")).
+		WithArgs(lockName).
+		WillReturnRows(sqlmock.NewRows([]string{"locked"}).AddRow(int64(1)))
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
+		   FROM support_messages
+		  WHERE user_id = ?
+		    AND client_msg_id = ?
+		    AND sender_type = 'user'
+		  ORDER BY id DESC
+		  LIMIT 1`)).
+		WithArgs(userID, clientMsgID).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "sender_type", "body", "image_urls_json", "created_at", "read_by_user_at"}).
+			AddRow(int64(11), userID, "user", "反馈内容", nil, createdAt, nil))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, user_id, sender_type, body, image_urls_json, created_at, read_by_user_at
+		   FROM support_messages
+		  WHERE user_id = ?
+		    AND sender_type = 'system'
+		    AND id > ?
+		    AND created_at >= ?
+		    AND created_at <= ?
+		    AND body = ?
+		  ORDER BY created_at ASC, id ASC
+		  LIMIT 1`)).
+		WithArgs(userID, int64(11), createdAt, createdAt+supportAutoReplyLookupWindowMs, supportAutoReplyBody).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "user_id", "sender_type", "body", "image_urls_json", "created_at", "read_by_user_at"}).
+			AddRow(int64(12), userID, "system", supportAutoReplyBody, nil, createdAt+1, nil))
+	mock.ExpectCommit()
+	mock.ExpectExec(regexp.QuoteMeta("SELECT RELEASE_LOCK(?)")).
+		WithArgs(lockName).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	message, autoReply, err := store.CreateUserSupportMessageWithAutoReply(context.Background(), userID, "反馈内容", nil, createdAt+100, supportAutoReplyBody, clientMsgID)
+	if err != nil {
+		t.Fatalf("CreateUserSupportMessageWithAutoReply returned error: %v", err)
+	}
+	if message == nil || message.ID != 11 {
+		t.Fatalf("message = %#v, want existing user message", message)
+	}
+	if autoReply == nil || autoReply.ID != 12 {
+		t.Fatalf("autoReply = %#v, want existing auto reply", autoReply)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
 	}
 }
 
@@ -187,6 +260,7 @@ func TestValidateSupportImageURLsRejectsUnsafeURLs(t *testing.T) {
 		"query":         "https://api.example.com/uploads/support/a.jpg?x=1",
 		"nested":        "https://api.example.com/uploads/support/nested/a.jpg",
 		"non jpg":       "https://api.example.com/uploads/support/a.png",
+		"userinfo":      "https://user@api.example.com/uploads/support/a.jpg",
 	}
 	for name, image := range cases {
 		t.Run(name, func(t *testing.T) {
