@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -26,10 +25,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -42,8 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -52,6 +54,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.LinkInteractionListener
@@ -2413,8 +2416,11 @@ private fun RendererMarkdownTableImpl(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
+            .border(width = 0.8.dp, color = Color(0xFFDDE2E8), shape = RoundedCornerShape(8.dp))
     ) {
         RendererMarkdownTableHeaderImpl(
             headers = table.headers,
@@ -2427,7 +2433,14 @@ private fun RendererMarkdownTableImpl(
             }
         )
         table.rows.forEachIndexed { rowIndex, row ->
-            RendererMarkdownTableCardImpl(
+            if (rowIndex > 0) {
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth(),
+                    thickness = 0.8.dp,
+                    color = Color(0xFFE2E6EA)
+                )
+            }
+            RendererMarkdownTableRowImpl(
                 headers = table.headers,
                 cells = row,
                 rowIndex = rowIndex,
@@ -2449,64 +2462,37 @@ private fun RendererMarkdownTableHeaderImpl(
     if (headers.isEmpty()) return
     val headerStyle = remember {
         TextStyle(
-            fontSize = 14.sp,
-            lineHeight = 20.sp,
-            color = Color.White,
+            fontSize = 13.5.sp,
+            lineHeight = 19.sp,
+            color = Color(0xFF4B5560),
             letterSpacing = 0.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.Medium
         )
     }
-    Column(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFF151515), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 9.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .background(Color(0xFFF5F7F9))
+            .padding(start = 12.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
         RendererStreamingActiveTextImpl(
             text = headers.joinToString(" / "),
             style = headerStyle,
-            minLineHeight = 20.dp,
+            minLineHeight = 19.dp,
             inlineMode = inlineMode,
             linksEnabled = linksEnabled,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.weight(1f)
         )
         if (copyEnabled) {
-            DisableSelection {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        enabled = true,
-                        onClick = onCopy,
-                        modifier = Modifier
-                            .heightIn(min = 32.dp)
-                            .background(Color.White, RoundedCornerShape(999.dp)),
-                        shape = RoundedCornerShape(999.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 5.dp),
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = Color(0xFF151515),
-                            containerColor = Color.Transparent,
-                            disabledContentColor = Color(0xFF9AA0A6),
-                            disabledContainerColor = Color.Transparent
-                        )
-                    ) {
-                        Text(
-                            text = "复制表格",
-                            fontSize = 13.sp,
-                            lineHeight = 16.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                }
-            }
+            RendererCopyTableIconButton(onClick = onCopy)
         }
     }
 }
 
 @Composable
-private fun RendererMarkdownTableCardImpl(
+private fun RendererMarkdownTableRowImpl(
     headers: List<String>,
     cells: List<String>,
     rowIndex: Int,
@@ -2550,15 +2536,12 @@ private fun RendererMarkdownTableCardImpl(
         }
     }
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(width = 0.8.dp, color = Color(0xFFDDE2E8), shape = RoundedCornerShape(8.dp))
-            .background(Color.White, shape = RoundedCornerShape(8.dp))
+        modifier = Modifier.fillMaxWidth()
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFF6F8FA), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                .background(Color(0xFFFAFBFC))
                 .padding(horizontal = 12.dp, vertical = 9.dp)
         ) {
             RendererStreamingActiveTextImpl(
@@ -2574,7 +2557,7 @@ private fun RendererMarkdownTableCardImpl(
             HorizontalDivider(
                 modifier = Modifier.fillMaxWidth(),
                 thickness = 0.8.dp,
-                color = Color(0xFFE4E7EB)
+                color = Color(0xFFE7EAEE)
             )
             Column(
                 modifier = Modifier
@@ -2593,6 +2576,44 @@ private fun RendererMarkdownTableCardImpl(
                     inlineMode = inlineMode,
                     linksEnabled = linksEnabled,
                     modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RendererCopyTableIconButton(
+    onClick: () -> Unit
+) {
+    DisableSelection {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(999.dp))
+                .background(Color.White)
+                .border(width = 0.8.dp, color = Color(0xFFD8DEE6), shape = RoundedCornerShape(999.dp))
+                .clickable(onClick = onClick)
+                .clearAndSetSemantics { contentDescription = "复制表格" },
+            contentAlignment = Alignment.Center
+        ) {
+            Canvas(modifier = Modifier.size(16.dp)) {
+                val iconColor = Color(0xFF343A40)
+                val stroke = Stroke(width = 1.6.dp.toPx())
+                val radius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                drawRoundRect(
+                    color = iconColor,
+                    topLeft = Offset(x = size.width * 0.34f, y = size.height * 0.16f),
+                    size = Size(width = size.width * 0.45f, height = size.height * 0.58f),
+                    cornerRadius = radius,
+                    style = stroke
+                )
+                drawRoundRect(
+                    color = iconColor,
+                    topLeft = Offset(x = size.width * 0.20f, y = size.height * 0.30f),
+                    size = Size(width = size.width * 0.45f, height = size.height * 0.58f),
+                    cornerRadius = radius,
+                    style = stroke
                 )
             }
         }
