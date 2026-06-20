@@ -2295,7 +2295,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
             is StreamingLineModel.Bullet -> {
                 val bulletStyle = remember(paragraphStyle) { paragraphStyle.copy(fontSize = 17.5.sp) }
                 val bodyStyle = paragraphStyle
-                val listIndent = (model.indentLevel * 18).dp
+                val listIndent = rendererListIndentDp(model.indentLevel)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2341,7 +2341,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     }
                 }
                 val bodyLineHeight = with(density) { bodyStyle.lineHeight.toDp() }
-                val listIndent = (model.indentLevel * 18).dp
+                val listIndent = rendererListIndentDp(model.indentLevel)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -2562,19 +2562,29 @@ private fun RendererCopyTableIconButton(
         ) {
             Canvas(modifier = Modifier.size(28.dp)) {
                 val iconColor = Color(0xFF111111)
+                val coverColor = Color(0xFFFAFBFC)
                 val stroke = Stroke(width = 2.35.dp.toPx())
-                val radius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
+                val radius = CornerRadius(3.5.dp.toPx(), 3.5.dp.toPx())
+                val squareSize = size.width * 0.48f
+                val backTopLeft = Offset(x = size.width * 0.38f, y = size.height * 0.15f)
+                val frontTopLeft = Offset(x = size.width * 0.14f, y = size.height * 0.37f)
                 drawRoundRect(
                     color = iconColor,
-                    topLeft = Offset(x = size.width * 0.38f, y = size.height * 0.12f),
-                    size = Size(width = size.width * 0.46f, height = size.height * 0.55f),
+                    topLeft = backTopLeft,
+                    size = Size(width = squareSize, height = squareSize),
                     cornerRadius = radius,
                     style = stroke
                 )
                 drawRoundRect(
+                    color = coverColor,
+                    topLeft = frontTopLeft,
+                    size = Size(width = squareSize, height = squareSize),
+                    cornerRadius = radius
+                )
+                drawRoundRect(
                     color = iconColor,
-                    topLeft = Offset(x = size.width * 0.16f, y = size.height * 0.33f),
-                    size = Size(width = size.width * 0.46f, height = size.height * 0.55f),
+                    topLeft = frontTopLeft,
+                    size = Size(width = squareSize, height = squareSize),
                     cornerRadius = radius,
                     style = stroke
                 )
@@ -2582,6 +2592,9 @@ private fun RendererCopyTableIconButton(
         }
     }
 }
+
+private fun rendererListIndentDp(indentLevel: Int): Dp =
+    (indentLevel.coerceAtLeast(0) * 10).dp
 
 private fun rendererMarkdownTableDisplayTitle(
     headers: List<String>,

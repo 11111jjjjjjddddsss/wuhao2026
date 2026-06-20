@@ -640,12 +640,12 @@ if ($failures.Count -eq 0) {
         "Assistant headings must keep the balanced half-step scale instead of returning to the heavier 20/18sp layout."
     Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)paragraphStyle\.copy\(fontSize\s*=\s*17\.5\.sp\)' `
         "Assistant bullet markers must scale with the softened main-chat text."
-    Require-Match $failures $chatStreamingRenderer 'data\s+class\s+Bullet\(val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)data\s+class\s+Numbered\(val\s+number:\s*String,\s*val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)rendererMarkdownIndentLevel(?s:.*?)padding\(start\s*=\s*listIndent\)' `
-        "Assistant markdown lists must keep nested list indentation instead of flattening child bullets after parent colon labels."
+    Require-Match $failures $chatStreamingRenderer 'data\s+class\s+Bullet\(val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)data\s+class\s+Numbered\(val\s+number:\s*String,\s*val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)rendererMarkdownIndentLevel(?s:.*?)rendererListIndentDp\(model\.indentLevel\)(?s:.*?)padding\(start\s*=\s*listIndent\)(?s:.*?)rendererListIndentDp\(model\.indentLevel\)(?s:.*?)padding\(start\s*=\s*listIndent\)(?s:.*?)rendererListIndentDp\(indentLevel:\s*Int\):\s*Dp\s*=\s*\(indentLevel\.coerceAtLeast\(0\)\s*\*\s*10\)\.dp' `
+        "Assistant markdown lists must keep nested list indentation, but keep child bullets close enough to the left edge for Chinese long text."
     Require-Match $failures $chatStreamingRenderer 'rendererMarkdownImageRegex(?s:.*?)normalizeRendererTaskListText(?s:.*?)hasRendererUnclosedStrikeDelimiter(?s:.*?)TextDecoration\.LineThrough(?s:.*?)isRendererStrikeDelimiter' `
         "Assistant Markdown fallback rendering must keep image syntax visible as text, task-list markers readable, and strikethrough styled without dropping content."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"嵌套列表、任务项、删除线、公式和图片语法",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
-        "Debug preview panel must include a Markdown fallback sample for nested lists, task items, strikethrough, formulas, and image syntax."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"嵌套列表收窄、任务项、删除线和公式",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
+        "Debug preview panel must include the latest Markdown fallback sample for compact nested lists, task items, strikethrough, and formulas."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
@@ -913,11 +913,11 @@ if ($failures.Count -eq 0) {
         "Markdown table UI must not reintroduce the redundant header-summary strip above the first row."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)heightIn\(min\s*=\s*44\.dp\)' `
         "Markdown table UI must stay in one complete lightweight frame with first-row title strip and clear mobile field labels."
-    Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(44\.dp\)(?s:.*?)clip\(RoundedCornerShape\(12\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(28\.dp\)\)(?s:.*?)Color\(0xFF111111\)(?s:.*?)Stroke\(width\s*=\s*2\.35\.dp\.toPx\(\)\)' `
-        "Markdown table copy action must stay as a GPT-style borderless overlapping-page icon, not a small circled text button."
+    Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(44\.dp\)(?s:.*?)clip\(RoundedCornerShape\(12\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(28\.dp\)\)(?s:.*?)Color\(0xFF111111\)(?s:.*?)coverColor\s*=\s*Color\(0xFFFAFBFC\)(?s:.*?)squareSize\s*=\s*size\.width\s*\*\s*0\.48f(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*coverColor(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*iconColor' `
+        "Markdown table copy action must stay as a GPT-style covered overlapping-square icon, not transparent overlapping rounded rectangles or a small circled text button."
     Require-NoMatch $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary' `
         "Markdown table UI must not show a redundant raw column summary above rows."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、首行内置GPT式复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、首行GPT式方块复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
         "Debug preview panel must mention the latest table header/card/copy-button visual contract."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)copyEnabled(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
         "Markdown table rows must stay inside the shared table frame with row headers and internal dividers."
