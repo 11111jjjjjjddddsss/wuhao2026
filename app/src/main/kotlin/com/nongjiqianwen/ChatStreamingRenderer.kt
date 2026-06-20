@@ -2331,9 +2331,9 @@ private fun RendererMarkdownTableHeaderImpl(
     if (headers.isEmpty()) return
     val headerStyle = remember {
         TextStyle(
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            color = Color(0xFF6F747C),
+            fontSize = 14.sp,
+            lineHeight = 20.sp,
+            color = Color(0xFF4F5661),
             letterSpacing = 0.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -2341,13 +2341,13 @@ private fun RendererMarkdownTableHeaderImpl(
     RendererStreamingActiveTextImpl(
         text = headers.joinToString(" / "),
         style = headerStyle,
-        minLineHeight = 18.dp,
+        minLineHeight = 20.dp,
         inlineMode = inlineMode,
         linksEnabled = linksEnabled,
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFF5F7F9), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .background(Color(0xFFF3F5F7), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
     )
 }
 
@@ -2370,11 +2370,11 @@ private fun RendererMarkdownTableCardImpl(
     }
     val labelStyle = remember {
         TextStyle(
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            color = Color(0xFF7B8088),
+            fontSize = 13.5.sp,
+            lineHeight = 19.sp,
+            color = Color(0xFF666D76),
             letterSpacing = 0.sp,
-            fontWeight = FontWeight.Normal
+            fontWeight = FontWeight.Medium
         )
     }
     val valueStyle = remember {
@@ -2398,28 +2398,36 @@ private fun RendererMarkdownTableCardImpl(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .border(width = 0.7.dp, color = Color(0xFFE1E4E8), shape = RoundedCornerShape(8.dp))
-            .background(Color(0xFFFAFBFC), shape = RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .border(width = 0.8.dp, color = Color(0xFFDDE2E8), shape = RoundedCornerShape(8.dp))
+            .background(Color.White, shape = RoundedCornerShape(8.dp))
     ) {
-        RendererStreamingActiveTextImpl(
-            text = title,
-            style = titleStyle,
-            minLineHeight = 24.dp,
-            inlineMode = inlineMode,
-            linksEnabled = linksEnabled,
-            modifier = Modifier.fillMaxWidth()
-        )
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color(0xFFF6F8FA), RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                .padding(horizontal = 12.dp, vertical = 9.dp)
+        ) {
+            RendererStreamingActiveTextImpl(
+                text = title,
+                style = titleStyle,
+                minLineHeight = 24.dp,
+                inlineMode = inlineMode,
+                linksEnabled = linksEnabled,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
         visibleEntries.forEachIndexed { index, (header, value) ->
-            if (index > 0) {
-                HorizontalDivider(
-                    modifier = Modifier.fillMaxWidth(),
-                    thickness = 0.7.dp,
-                    color = Color(0xFFE8EAED)
-                )
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            HorizontalDivider(
+                modifier = Modifier.fillMaxWidth(),
+                thickness = 0.8.dp,
+                color = Color(0xFFE4E7EB)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
                 Text(
                     text = plainRendererInlineText(header),
                     style = labelStyle

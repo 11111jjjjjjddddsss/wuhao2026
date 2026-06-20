@@ -903,6 +903,10 @@ if ($failures.Count -eq 0) {
         "Markdown tables must be allowed to render a streaming shell after the header and delimiter are confirmed, before body rows arrive."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
         "Markdown tables must render a lightweight header shell while body rows are still streaming."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl(?s:.*?)fontSize\s*=\s*14\.sp(?s:.*?)lineHeight\s*=\s*20\.sp(?s:.*?)Color\(0xFF4F5661\)(?s:.*?)fontWeight\s*=\s*FontWeight\.SemiBold(?s:.*?)RendererMarkdownTableCardImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium' `
+        "Markdown table headers and field labels must stay visually clear enough on mobile, not revert to overly light gray text."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableCardImpl(?s:.*?)Color\(0xFFF6F8FA\)(?s:.*?)RoundedCornerShape\(topStart\s*=\s*8\.dp,\s*topEnd\s*=\s*8\.dp\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE4E7EB\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
+        "Markdown table cards must feel like formal mobile table rows with an internal header band and row dividers."
     Require-Match $failures $chatStreamingRenderer 'headerColumnCount\s*=\s*splitRendererMarkdownTableCells\(current\)\.size(?s:.*?)separatorColumnCount\s*=\s*splitRendererMarkdownTableCells\(lines\[index \+ 1\]\)\.size(?s:.*?)headerColumnCount\s*!=\s*separatorColumnCount(?s:.*?)expectedColumnCount\s*=\s*headerColumnCount(?s:.*?)bodyRowsWithoutEdgeMode(?s:.*?)looksLikeRendererMarkdownTableBodyRow\((?s:.*?)expectedColumnCount\s*=\s*expectedColumnCount' `
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
     Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)trimmed\.matches\(Regex\("""\[-\+\*\]\\s\+\.\+"""\)\)' `
@@ -935,8 +939,8 @@ if ($failures.Count -eq 0) {
         "Markdown table tests must cover pipe characters inside double-backtick inline code cells."
     Require-NoMatch $failures $chatStreamingRenderer 'horizontalScroll\s*\(' `
         "Assistant Markdown table rendering must not revert to the old horizontal-scroll wide table on mobile."
-    Require-Match $failures $chatStreamingRenderer 'visibleEntries\.forEachIndexed(?s:.*?)if\s*\(\s*index\s*>\s*0\s*\)(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE8EAED\)' `
-        "Assistant Markdown table cards must keep subtle dividers between visible field groups so mobile comparison text does not collapse into one block."
+    Require-Match $failures $chatStreamingRenderer 'visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE4E7EB\)' `
+        "Assistant Markdown table cards must keep row dividers between visible field groups so mobile comparison text does not collapse into one block."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
         "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."
     Require-Match $failures $chatStreamingRenderer 'previous\s*==\s*null\s*\|\|\s*previous\s+is\s+StreamingLineModel\.Heading' `
