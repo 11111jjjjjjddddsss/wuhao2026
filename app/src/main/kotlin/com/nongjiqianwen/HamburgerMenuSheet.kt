@@ -1331,7 +1331,7 @@ private fun HamburgerMenuMainPage(
             HamburgerMenuDivider()
             HamburgerMenuRow(
                 icon = HamburgerMenuIcon.Document,
-                title = "协议与隐私",
+                title = "隐私与协议",
                 onClick = onOpenLegalHub
             )
         }
@@ -1410,7 +1410,7 @@ private fun HamburgerLegalHubContent(
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier) {
-        HamburgerLegalPageTitle("协议与隐私")
+        HamburgerLegalPageTitle("隐私与协议")
         HamburgerAccountGroup(
             modifier = Modifier.padding(top = 22.dp)
         ) {
@@ -2117,7 +2117,7 @@ private fun HamburgerMenuPreviewGroups() {
         HamburgerMenuDivider()
         HamburgerMenuRow(
             icon = HamburgerMenuIcon.Document,
-            title = "协议与隐私",
+            title = "隐私与协议",
             onClick = {}
         )
     }

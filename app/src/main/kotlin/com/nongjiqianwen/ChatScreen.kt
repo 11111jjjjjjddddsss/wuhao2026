@@ -8627,7 +8627,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "汉堡菜单",
                 items = listOf(
-                    UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和协议与隐私入口", UiCopyPreviewKind.HamburgerMenu),
+                    UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和隐私与协议入口", UiCopyPreviewKind.HamburgerMenu),
                     UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
                     UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
                     UiCopyPreviewItem("账号管理", "手机号 / 清理临时缓存 / 历史 / 退出 / 申请注销", UiCopyPreviewKind.HamburgerAccountPage),
@@ -8644,7 +8644,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("账号管理大字体", "1.6x 字体下账号和危险操作", UiCopyPreviewKind.HamburgerAccountLargeFont),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
                     UiCopyPreviewItem("礼品卡失败提示", "失败原因停留在兑换页内", UiCopyPreviewKind.HamburgerGiftCardFailure),
-                    UiCopyPreviewItem("协议与隐私目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
+                    UiCopyPreviewItem("隐私与协议目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
                     UiCopyPreviewItem("服务协议", "本地内置服务协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
                     UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),

@@ -34,7 +34,7 @@
 - 当前 `ChatStreamingRenderer.kt` 是移动聊天轻量 Markdown 子集渲染器，不是 Markwon / CommonMark / GFM 全量引擎。支持段落、标题、列表、引用、加粗、斜体、行内代码、Markdown 链接、裸 URL、emoji / 普通 Unicode 和标准 Markdown 表格；正文必须一边生成一边渲染，不允许为了等待完整 Markdown 而卡住用户。标准表格在表头 + 分隔行确认后先显示稳定表格壳，后续行按流式内容继续加入，手机端渲染成纵向分组对比块并带“复制表格”按钮；复制按钮只在整条 AI 消息 settled 后出现。加粗章节前缀在 streaming 中可以先出稳定轻分割线，但不能一会儿出现一会儿消失。代码块内的 `|` 不做表格。复杂嵌套列表、全量 GFM 表格能力、代码高亮、数学公式、Mermaid、图片 Markdown 和任意 HTML 不作为当前主聊天承诺能力
 - 清除 App 数据 / 缓存属于常规用户路径，不再按极端场景处理。清数据后本地登录态、DataStore、私有数据库和缓存可以消失，但固定 UI 默认样式、设置页入口、账号管理条目、登录页和主聊天基础布局必须全部来自当前 APK 代码；手机号账号、会员、额度、礼品卡、反馈、聊天历史和今日农情等业务数据应在重新登录后从后端恢复。本地缓存只用于加速首屏和减少闪烁，不能成为新 UI 是否存在、默认菜单是否出现、启动是否贴底的唯一来源。
 - 启动显示门只允许在“远端历史还没返回且本地没有任何真实消息 / streaming 视觉内容”时短暂隐藏列表；只要远端 hydrate 已经把消息放入 `messages`，或 streaming item 已存在，列表必须显示出来，贴底和工作线锚定继续作为后续校准运行。今日农情不能单独解锁空列表；空态先显示欢迎语。不要再用 `initialBottomSnapDone` / `waitingForStaticTimelineBottomSnap` 把已有静态内容整屏透明隐藏，否则用户会看到白屏，只有拖动后才因手势把 bottom snap 标记放开。
-- `scripts/check-android-build-parity.ps1` 需要同时挡住 clean-state 相关回退：启动贴底不能把本地消息存在误判为已完成；设置页默认入口必须包含会员中心、账号管理、帮助与反馈、今日农情、检查更新、礼品卡、协议与隐私和退出登录；账号管理默认条目必须包含手机号、清理临时缓存、删除历史对话、退出登录和注销账号。
+- `scripts/check-android-build-parity.ps1` 需要同时挡住 clean-state 相关回退：启动贴底不能把本地消息存在误判为已完成；设置页默认入口必须包含会员中心、账号管理、帮助与反馈、今日农情、检查更新、礼品卡、隐私与协议和退出登录；账号管理默认条目必须包含手机号、清理临时缓存、删除历史对话、退出登录和注销账号。
 - App 自动日志会记录清数据 / 登录后可查的安全诊断事件：`ui.chat_startup_state`、`ui.chat_startup_bottom_snap_done`、`ui.chat_startup_bottom_snap_pending`、`today_agri.main_card_loaded`、`today_agri.main_card_visible`、`ui.settings_main_opened`、`ui.account_management_opened`。这些事件只允许带布尔状态、数量、日期键和阶段，不允许带聊天正文、今日农情标题 / 摘要、完整手机号、图片 URL、token、密钥或用户输入内容；排查 UI 回退或主聊天今日农情不显示时先查这些事件，再对照截图和真机 logcat。
 
 ## 禁止回归的旧链

@@ -477,7 +477,7 @@ if ($failures.Count -eq 0) {
     $settingsLabelTodayAgri = [regex]::Escape("$([char]0x4eca)$([char]0x65e5)$([char]0x519c)$([char]0x60c5)")
     $settingsLabelUpdate = [regex]::Escape("$([char]0x68c0)$([char]0x67e5)$([char]0x66f4)$([char]0x65b0)")
     $settingsLabelGiftCard = [regex]::Escape("$([char]0x793c)$([char]0x54c1)$([char]0x5361)")
-    $settingsLabelLegal = [regex]::Escape("$([char]0x534f)$([char]0x8bae)$([char]0x4e0e)$([char]0x9690)$([char]0x79c1)")
+    $settingsLabelLegal = [regex]::Escape("$([char]0x9690)$([char]0x79c1)$([char]0x4e0e)$([char]0x534f)$([char]0x8bae)")
     $settingsLabelLogout = [regex]::Escape("$([char]0x9000)$([char]0x51fa)$([char]0x767b)$([char]0x5f55)")
     $accountLabelPhone = [regex]::Escape("$([char]0x624b)$([char]0x673a)$([char]0x53f7)")
     $accountLabelClearing = [regex]::Escape("$([char]0x6e05)$([char]0x7406)$([char]0x4e2d)")
@@ -557,7 +557,7 @@ if ($failures.Count -eq 0) {
         "Membership action buttons must allow two-line text and avoid fixed-height clipping on large font settings."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
         "Settings main page defaults must include every production row after app data is cleared."
-    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalHubContent(?s:.*?)HamburgerLegalPageTitle\("协议与隐私"\)' `
+    Require-Match $failures $hamburgerMenuSheet 'private\s+fun\s+HamburgerLegalHubContent(?s:.*?)HamburgerLegalPageTitle\("隐私与协议"\)' `
         "Legal hub page title must match the settings entry because it also contains privacy, permissions and risk pages."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerAccountManagementContent(?s:.*?)title\s*=\s*if\s*\(\s*logoutSubmitting\s*\)\s*"' + $accountLabelLoggingOut + '"\s*else\s*"' + $settingsLabelLogout + '"') `
         "Account management page must keep its logout row in the default code path."
