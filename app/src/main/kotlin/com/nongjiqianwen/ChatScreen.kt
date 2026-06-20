@@ -8816,7 +8816,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
                     UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
-                    UiCopyPreviewItem("等待思考态", "超过等待阈值后切动态省略号", UiCopyPreviewKind.ImageDiagnosisThinking),
+                    UiCopyPreviewItem("等待思考态", "先小球，超过等待阈值后切高光扫动", UiCopyPreviewKind.ImageDiagnosisThinking),
                     UiCopyPreviewItem(IMAGE_EXPIRED_THUMB_TEXT, "远端历史图过期后的占位", UiCopyPreviewKind.ImageExpiredPlaceholder)
                 )
             ),

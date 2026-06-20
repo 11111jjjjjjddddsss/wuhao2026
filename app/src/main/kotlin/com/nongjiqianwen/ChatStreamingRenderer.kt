@@ -4,6 +4,7 @@ import android.os.Handler
 import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -48,6 +49,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.FirstBaseline
@@ -202,7 +204,8 @@ private const val RENDERER_INLINE_MARKDOWN_CACHE_LIMIT = 160
 private const val RENDERER_MAX_INLINE_WORD_TOKEN_CHARS = 8
 private const val GPT_THINKING_LABEL_DELAY_MS = 2600L
 private const val GPT_THINKING_TRANSITION_MS = 180
-private const val GPT_THINKING_DOTS_MS = 1500
+private const val GPT_THINKING_SHIMMER_MS = 1600
+private const val GPT_THINKING_SHIMMER_BAND_FRACTION = 0.68f
 
 private val rendererSettledInlineMarkdownCache =
     object : LinkedHashMap<String, AnnotatedString>(RENDERER_INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
@@ -1698,25 +1701,42 @@ private fun RendererAssistantThinkingIndicatorImpl(
 			letterSpacing = 0.sp
 		)
 	}
-	val transition = rememberInfiniteTransition(label = "assistantThinkingDots")
-	val dotsProgress by transition.animateFloat(
-		initialValue = 0f,
+	var textWidthPx by remember { mutableStateOf(0) }
+	val transition = rememberInfiniteTransition(label = "assistantThinkingShimmer")
+	val shimmerProgress by transition.animateFloat(
+		initialValue = -1f,
 		targetValue = 1f,
 		animationSpec = infiniteRepeatable(
 			animation = tween(
-				durationMillis = GPT_THINKING_DOTS_MS,
-				easing = FastOutSlowInEasing
+				durationMillis = GPT_THINKING_SHIMMER_MS,
+				easing = LinearEasing
 			),
 			repeatMode = RepeatMode.Restart
 		),
-		label = "assistantThinkingDotsProgress"
+		label = "assistantThinkingShimmerProgress"
 	)
 	val lineHeight = with(density) { textStyle.lineHeight.toDp() }
-	val dots = when {
-		dotsProgress < 0.25f -> ""
-		dotsProgress < 0.5f -> "."
-		dotsProgress < 0.75f -> ".."
-		else -> "..."
+	val measuredWidthPx = textWidthPx.takeIf { it > 0 }?.toFloat()
+		?: with(density) { 92.dp.toPx() }
+	val bandWidthPx = measuredWidthPx * GPT_THINKING_SHIMMER_BAND_FRACTION
+	val shimmerStartPx = shimmerProgress * (measuredWidthPx + bandWidthPx)
+	val shimmerBrush = Brush.linearGradient(
+		colors = listOf(
+			Color(0xFF181A1D),
+			Color(0xFF9EA4AA),
+			Color(0xFFF7F8FA),
+			Color(0xFF9EA4AA),
+			Color(0xFF181A1D)
+		),
+		start = Offset(shimmerStartPx, 0f),
+		end = Offset(shimmerStartPx + bandWidthPx, 0f)
+	)
+	val shimmerText = remember(shimmerBrush) {
+		buildAnnotatedString {
+			withStyle(SpanStyle(brush = shimmerBrush)) {
+				append("正在思考")
+			}
+		}
 	}
 	Box(
 		modifier = modifier
@@ -1725,7 +1745,10 @@ private fun RendererAssistantThinkingIndicatorImpl(
 		contentAlignment = Alignment.BottomStart
 	) {
 		Text(
-			text = "正在思考$dots",
+			text = shimmerText,
+			onTextLayout = { result ->
+				textWidthPx = result.size.width
+			},
 			style = textStyle,
 			textAlign = TextAlign.Start
 		)

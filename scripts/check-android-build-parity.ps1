@@ -539,16 +539,16 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must label retrying footers as retry/resend in progress."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("清数据首次发送",\s*"用户短文本 \+ waiting 小球",\s*UiCopyPreviewKind\.CleanStateFirstSend\)' `
         "Debug UI copy preview must keep ordinary first-send text waiting as the plain ball state."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("等待思考态",\s*"超过等待阈值后切动态省略号",\s*UiCopyPreviewKind\.ImageDiagnosisThinking\)(?s:.*?)UiCopyPreviewKind\.ImageDiagnosisThinking\s*->(?s:.*?)showThinkingLabel\s*=\s*true' `
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("等待思考态",\s*"先小球，超过等待阈值后切高光扫动",\s*UiCopyPreviewKind\.ImageDiagnosisThinking\)(?s:.*?)UiCopyPreviewKind\.ImageDiagnosisThinking\s*->(?s:.*?)showThinkingLabel\s*=\s*true' `
         "Debug UI copy preview must expose the delayed thinking waiting animation separately from ordinary first-send ball state."
     Require-Match $failures $chatScreen 'val\s+showThinkingLabel\s*=\s*renderMode\s*==\s*StreamingRenderMode\.Waiting\s*&&\s*isActiveStreamingAssistant(?s:.*?)showThinkingLabel\s*=\s*showThinkingLabel' `
         "Main chat must request the thinking label only for the active assistant waiting state."
-    Require-Match $failures $chatStreamingRenderer 'GPT_THINKING_LABEL_DELAY_MS\s*=\s*2600L(?s:.*?)GPT_THINKING_DOTS_MS\s*=\s*1500' `
+    Require-Match $failures $chatStreamingRenderer 'GPT_THINKING_LABEL_DELAY_MS\s*=\s*2600L(?s:.*?)GPT_THINKING_SHIMMER_MS\s*=\s*1600(?s:.*?)GPT_THINKING_SHIMMER_BAND_FRACTION\s*=\s*0\.68f' `
         "Assistant thinking animation timing must stay bounded and predictable."
     Require-Match $failures $chatStreamingRenderer 'showThinkingLabel:\s*Boolean\s*=\s*false(?s:.*?)RendererAssistantStreamingWaitingIndicatorImpl(?s:.*?)LaunchedEffect\(showThinkingLabel\)(?s:.*?)targetState\s*=\s*showThinkingLabel\s*&&\s*showThinkingText(?s:.*?)RendererAssistantThinkingIndicatorImpl' `
         "Assistant waiting indicator must keep the ball-first thinking transition opt-in from screen state."
-    Require-Match $failures $chatStreamingRenderer 'RendererAssistantThinkingIndicatorImpl(?s:.*?)rememberInfiniteTransition\(label\s*=\s*"assistantThinkingDots"\)(?s:.*?)dotsProgress(?s:.*?)text\s*=\s*"正在思考\$dots"' `
-        "Assistant thinking label must keep the animated ellipsis instead of becoming static text."
+    Require-Match $failures $chatStreamingRenderer 'RendererAssistantThinkingIndicatorImpl(?s:.*?)rememberInfiniteTransition\(label\s*=\s*"assistantThinkingShimmer"\)(?s:.*?)shimmerProgress(?s:.*?)Brush\.linearGradient(?s:.*?)SpanStyle\(brush\s*=\s*shimmerBrush\)(?s:.*?)append\("正在思考"\)' `
+        "Assistant thinking label must keep the animated shimmer instead of becoming static text or ellipsis."
     Require-Match $failures $chatScreen 'private\s+fun\s+UiCopyPreviewLargeFont(?s:.*?)LocalDensity\s+provides\s+Density\((?s:.*?)fontScale\s*=\s*1\.6f' `
         "Debug UI copy preview must include a reusable large-font wrapper for regression checks."
     Require-NoMatch $failures $hamburgerMenuSheet 'fun\s+startAppUpdate\s*\([^{]+\)\s*\{(?s:.*?)val\s+appContext\s*=\s*context\.applicationContext(?s:.*?)update\.latestVersionCode(?s:.*?)saveLastPromptedUpdateVersionCode(?s:.*?)if\s*\(\s*!AppUpdateInstaller\.canRequestInstallPackages' `
