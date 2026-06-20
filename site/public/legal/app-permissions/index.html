@@ -1,0 +1,106 @@
+<!doctype html>
+<!-- nongji-page-app-permissions -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="nongji-page" content="app-permissions" />
+    <meta name="nongji-legal-version" content="20260620" />
+    <meta name="theme-color" content="#071009" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>应用权限 - 农技千查</title>
+    <style>
+      :root { color: #1b211b; background: #f6f8f3; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; line-height: 1.7; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-width: 320px; background: #f6f8f3; }
+      main { width: min(900px, calc(100vw - 40px)); margin: 0 auto; padding: 48px 0 36px; }
+      a { color: inherit; text-decoration: none; }
+      .brand { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 34px; color: #244b2d; font-weight: 820; }
+      .brand img { width: 34px; height: 34px; }
+      h1 { margin: 0 0 10px; color: #101510; font-size: 34px; line-height: 1.18; letter-spacing: 0; }
+      .meta { margin: 0 0 30px; color: #667065; font-size: 14px; }
+      section { padding: 20px 0; border-top: 1px solid #dfe6d8; }
+      h2 { margin: 0 0 10px; color: #172017; font-size: 19px; line-height: 1.35; letter-spacing: 0; }
+      p { margin: 0; color: #303830; font-size: 15px; white-space: pre-line; }
+      footer { width: min(900px, calc(100vw - 40px)); margin: 0 auto; padding: 24px 0 34px; border-top: 1px solid #dfe6d8; color: #6d756d; font-size: 13px; }
+      .footer-links { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: center; margin-top: 8px; }
+      .police-record { display: inline-flex; align-items: center; gap: 5px; }
+      .police-record img { width: 16px; height: 16px; }
+      @media (max-width: 520px) {
+        main { width: min(100%, calc(100vw - 32px)); padding-top: 32px; }
+        h1 { font-size: 28px; }
+        footer { width: min(100%, calc(100vw - 32px)); }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <a class="brand" href="/" aria-label="返回农技千查首页">
+        <img src="/brand-mark.png" alt="" />
+        <span>农技千查</span>
+      </a>
+      <h1>应用权限</h1>
+      <p class="meta">更新日期：2026年6月20日<br />服务提供者：北京农技千问科技有限公司<br />联系邮箱：nongjiqiancha@foxmail.com</p>
+
+      <section>
+        <h2>一、网络访问</h2>
+        <p>权限 / 能力：INTERNET。
+调用场景：连接平台服务、短信验证码登录、上传图片、流式回答、会员权益、帮助与反馈、今日农情和检查更新。
+调用时机：您使用在线功能或 App 需要同步服务状态时。
+拒绝 / 关闭影响：没有网络访问时，在线问诊、登录、反馈和更新等功能无法正常使用。</p>
+      </section>
+      <section>
+        <h2>二、网络状态</h2>
+        <p>权限 / 能力：ACCESS_NETWORK_STATE。
+调用场景：判断网络是否可用，在登录、上传、问诊、反馈和检查更新失败时给出提示。
+调用时机：发起联网功能前或网络请求失败后。
+拒绝 / 关闭影响：可能无法准确提示网络状态，但不影响您在系统层面管理网络连接。
+边界：当前不申请 Wi-Fi 状态权限，不读取 Wi-Fi 列表。</p>
+      </section>
+      <section>
+        <h2>三、安装更新包</h2>
+        <p>权限 / 能力：REQUEST_INSTALL_PACKAGES。
+调用场景：仅在您主动点击“立即更新”后，下载官方安装包并调起系统安装确认页。
+调用时机：您主动检查更新并确认安装时。
+拒绝 / 关闭影响：您可以继续使用当前版本，但无法通过 App 内自有更新入口安装新版本。
+边界：App 不做静默安装，不后台自动安装，也不从非官方地址安装更新包。</p>
+      </section>
+      <section>
+        <h2>四、后台待发送任务</h2>
+        <p>权限 / 能力：WAKE_LOCK、RECEIVE_BOOT_COMPLETED、FOREGROUND_SERVICE 和应用私有广播保护权限。
+调用场景：带图消息在您离开 App、进程被系统回收或设备重启后，对同一条待发送任务进行有限重试。
+调用时机：仅存在您已主动发送但尚未完成的带图待发送任务时。
+拒绝 / 关闭影响：系统可能延后或终止待发送任务，您需要重新打开 App 后重试。
+边界：该能力不用于 App 外推送、广告通知、定位跟踪、读取通讯录或读取短信。</p>
+      </section>
+      <section>
+        <h2>五、相机和照片</h2>
+        <p>权限 / 能力：系统照片选择器、外部相机和 FileProvider 临时文件授权。
+调用场景：您主动选择图片或拍照后用于问诊、帮助反馈和预览。
+调用时机：您点击相机或照片入口时。
+拒绝 / 关闭影响：无法使用图片问诊或图片反馈，但仍可文字问诊。
+边界：当前不申请 App 相机权限，不申请相册 / 存储读写权限；照片入口只访问您本次主动选择的图片。拍照成功后，系统可能在相册 Pictures/农技千查 另存一份照片。</p>
+      </section>
+      <section>
+        <h2>六、定位和未申请权限</h2>
+        <p>权限 / 能力：ACCESS_COARSE_LOCATION。
+调用场景：仅在问诊需要时申请粗略定位，用于生成省、市、区县等地区文本，辅助判断农时和地区背景。
+调用时机：首次发送问诊或后续发送问诊前需要刷新地区文本时；不会在 App 首屏无场景弹出权限框。
+拒绝 / 关闭影响：仍可文字或图片问诊，但回答会缺少您所在地区的农时背景，可能不够贴合当地情况。
+边界：不向农技千查服务器上传经纬度，不保存轨迹，系统定位和地理编码能力按设备系统规则处理；不用于地图、广告、统计或推送。当前不申请相册 / 存储读写、录音、通讯录、短信、电话状态、Wi-Fi 状态或通知权限，也不做 App 外推送通知。</p>
+      </section>
+    </main>
+    <footer>
+      <div>北京农技千问科技有限公司</div>
+      <div class="footer-links">
+        <a href="/legal/user-agreement/">用户协议</a>
+        <a href="/legal/privacy-policy/">隐私政策</a>
+        <a href="/legal/third-party-sharing/">第三方共享清单</a>
+        <a href="/legal/personal-info-list/">个人信息收集清单</a>
+        <a href="/legal/risk-notice/">风险提示</a>
+        <a href="https://beian.miit.gov.cn/" rel="noreferrer" target="_blank">京ICP备2026031728号-1</a>
+        <a class="police-record" href="https://beian.mps.gov.cn/#/query/webSearch?code=11010602202723" rel="noreferrer" target="_blank"><img src="/gongan.png" alt="" /><span>京公网安备11010602202723号</span></a>
+      </div>
+    </footer>
+  </body>
+</html>

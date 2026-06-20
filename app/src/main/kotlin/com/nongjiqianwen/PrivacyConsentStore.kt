@@ -6,7 +6,7 @@ object PrivacyConsentStore {
     private const val PREFS_NAME = "privacy_consent"
     private const val KEY_ACCEPTED_VERSION = "accepted_version"
     private const val KEY_ACCEPTED_AT_MS = "accepted_at_ms"
-    private const val CURRENT_VERSION = 1
+    private const val CURRENT_VERSION = 2
 
     fun isAccepted(context: Context): Boolean =
         context.applicationContext

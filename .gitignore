@@ -3,6 +3,8 @@
 **/build/
 .gradle/
 **/.gradle/
+.kotlin/
+**/.kotlin/
 !gradle/wrapper/gradle-wrapper.jar
 gradle/gradle-daemon-jvm.properties
 

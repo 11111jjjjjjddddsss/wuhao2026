@@ -205,8 +205,8 @@
 - 设置页只有一个“协议与隐私”入口，进入本地内置目录页。
 - 目录页包含 6 个二级页面：服务协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限、风险提示。
 - 6 个二级页面都走设置页右进左出的页面栈；左上角返回和系统返回键会先回到协议与隐私目录，再回到设置菜单。
-- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / ACCESS_COARSE_LOCATION / REQUEST_INSTALL_PACKAGES`，不再声明 `ACCESS_FINE_LOCATION / READ_PHONE_STATE / ACCESS_WIFI_STATE / CHANGE_NETWORK_STATE`；粗略定位权限用于问诊地区上下文校准，只上传系统反查出的省 / 市 / 区县等地区文本，不上传经纬度、不保存轨迹。AndroidX WorkManager 仍会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
-- App 当前已申请定位权限用于问诊地区上下文校准，但只上传系统反查出的省 / 市 / 区县等地区文本，不上传经纬度、不保存轨迹；当前仍不申请 App 相机、相册 / 存储读写、录音、通讯录、短信、电话状态、Wi-Fi 状态或通知权限。新包只走普通短信验证码登录；网络状态只用于联网可用性判断。
+- Android 主 Manifest 自身声明 `INTERNET / ACCESS_NETWORK_STATE / ACCESS_COARSE_LOCATION / REQUEST_INSTALL_PACKAGES`，不再声明 `ACCESS_FINE_LOCATION / READ_PHONE_STATE / ACCESS_WIFI_STATE / CHANGE_NETWORK_STATE`；粗略定位权限用于问诊地区上下文校准，只上传系统反查出的省 / 市 / 区县等地区文本，不向农技千查服务器上传经纬度、不保存轨迹，系统定位和地理编码能力按设备系统规则处理。AndroidX WorkManager 仍会合并 `WAKE_LOCK / RECEIVE_BOOT_COMPLETED / FOREGROUND_SERVICE` 等后台任务权限，当前应用权限页和隐私政策已按“带图待发送任务在后台 / 进程恢复 / 重启后有限重试”口径说明。
+- App 当前已申请粗略定位权限用于问诊地区上下文校准，但只上传系统反查出的省 / 市 / 区县等地区文本，不向农技千查服务器上传经纬度、不保存轨迹，系统定位和地理编码能力按设备系统规则处理；当前仍不申请 App 相机、相册 / 存储读写、录音、通讯录、短信、电话状态、Wi-Fi 状态或通知权限。新包只走普通短信验证码登录；网络状态只用于联网可用性判断。
 - Android Q+ 拍照成功后会把原始照片另存到系统相册 `Pictures/农技千查`，便于用户找回现场照片；本轮已把该口径补进隐私政策、个人信息收集清单和应用权限页。
 - 用户可见正文没有暴露具体模型品牌、模型平台名或供应商账号信息，只使用“第三方大模型和云服务”这类必要委托处理口径。
 

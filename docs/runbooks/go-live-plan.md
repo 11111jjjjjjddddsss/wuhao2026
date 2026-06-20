@@ -1,6 +1,6 @@
 # 下一阶段上线推进计划
 
-最后更新：2026-06-15
+最后更新：2026-06-20
 
 ## 目的
 
@@ -24,7 +24,7 @@
 - App 图标：当前备案使用 APK 内真实黑底绿色旋叶图标，与 `app/src/main/res/mipmap-xxxhdpi/ic_launcher.png` 和桌面备案资料中的 `农技千查-App图标-512.png` 保持一致；不要把临时生成或对比预览图误当正式图标上传。
 - 包名、签名证书、公钥、指纹：Android 对外包名已定为 `com.nongjiqiancha`；本机已生成 release 签名，备案用指纹和 RSA 公钥信息保存在 `%USERPROFILE%\\.nongjiqiancha\\android-release-public-info.txt`，签名配置保存在 `%USERPROFILE%\\.nongjiqiancha\\android-release-signing.properties`，这些私钥和密码不进仓库。
 - 包名切换策略：如果此前只有内测 / 本机安装过旧 `com.nongjiqianwen` 包，则新包按全新 App 身份安装，测试机需要卸旧包重装；不能指望旧包通过“检查更新”覆盖安装成新包。如果已经有公开用户装过旧包，必须另做迁移 / 告知方案。
-- 协议材料：App 内 6 个服务协议页面已按当前真实功能重写为成品口径；正式公开推广、上架或接真实支付前，仍需按真实服务商、权限、支付、备案号和法务意见复核。
+- 协议材料：App 内 6 个服务协议 / 隐私页面和官网协议、隐私、第三方信息共享清单、个人信息收集清单、应用权限、风险提示页已按当前真实功能整理为上架候选口径；公开文案不展示具体模型名称、模型平台名、云资源 ID、Key 名称或供应商账号。正式公开推广、上架或接真实支付前，仍需按真实服务商、权限、支付、备案号和法务意见复核。
 - 软著 / 电子版权：尽早准备；它比商标更常用于国内应用商店上架材料。
 - 阿里云账号与账单：确认生产资源归属到可长期控制的账号；朋友的百炼 Key 可以短期兜底，但生产账单、权限和密钥轮换最终应收回到自己可控体系。
 
@@ -63,7 +63,7 @@
 
 目标：让 App、后端和材料进入可公开测试状态。
 
-- 官网首版代码已在 `site` 目录准备好并通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，包含 App 介绍、安卓下载入口和备案 footer；网站 ICP 备案号已展示在公开页脚并链接工信部备案系统。App 内设置页、服务协议和隐私政策已补 App 备案号 `京ICP备2026031728号-2A`。
+- 官网首版代码已在 `site` 目录准备好并通过 [deploy-ecs-site.ps1](D:/wuhao/scripts/deploy-ecs-site.ps1) 部署到 `https://nongjiqiancha.cn/` 和 `https://www.nongjiqiancha.cn/`，包含 App 介绍、安卓下载入口和备案 footer；网站 ICP 备案号已展示在公开页脚并链接工信部备案系统。App 内设置页、服务协议和隐私政策已补 App 备案号 `京ICP备2026031728号-2A`。官网协议区现有用户协议、隐私政策、第三方信息共享清单、个人信息收集清单、应用权限和风险提示页面；应用市场使用线上 URL 前需确认官网已部署到最新静态包。
 - App 备案已通过，后续重点改为 App 公安备案、软著 / 电子版权和应用商店物料一致性。
 - `api.nongjiqiancha.cn` HTTPS、根域名官网 HTTPS、后端公开 API 基地址、图片公开基地址、`admin.nongjiqiancha.cn` 后台 HTTPS 和 `download.nongjiqiancha.cn` OSS 下载域名 HTTPS 已完成；下载域名证书使用免费 Let’s Encrypt，ECS 自动续期后需同步到 OSS CNAME 配置。
 - 通过后台“检查更新”发布配置确认 `app_release_configs` 已写入正确 APK、版本号、文件大小、SHA-256 和更新说明，并保留发布历史；`APP_ANDROID_*` 环境变量只作为无数据库记录时的兜底，不作为日常发版主入口。
@@ -133,7 +133,7 @@
 
 - 使用最终图标、最终名称、稳定包名和同一签名证书打 release 包。
 - release 构建必须使用本机 release 签名配置；Android 构建固定使用正式 https 后端地址 `https://api.nongjiqiancha.cn`，当前不支持通过 Gradle 参数或环境变量临时覆盖 `UPLOAD_BASE_URL`。若确需特殊联调，必须先同步更新仓库规则、构建门禁和项目记忆；缺少 `NONGJI_ANDROID_RELEASE_*` 签名配置或最终 `UPLOAD_BASE_URL` 不是 https 生产地址时，不允许产出正式 release 包。
-- 提交备案号、软著 / 电子版权、隐私政策、用户协议、权限说明、测试账号和截图。
+- 提交备案号、软著 / 电子版权、隐私政策、用户协议、第三方信息共享清单、个人信息收集清单、应用权限说明、风险提示、测试账号和截图。
 - 若应用市场因图标重复、名称混淆、截图不一致、权限说明或隐私问题打回，优先按打回原因小改，不顺手重构功能。
 - 商标注册可以继续推进，但不作为首版上架的唯一前置；若平台或投诉方要求权利证明，再按实际情况补材料。
 
