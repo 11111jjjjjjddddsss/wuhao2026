@@ -361,7 +361,11 @@ $requiredDistFiles = @(
     "index.html",
     "gongan.png",
     "legal/user-agreement/index.html",
-    "legal/privacy-policy/index.html"
+    "legal/privacy-policy/index.html",
+    "legal/third-party-sharing/index.html",
+    "legal/personal-info-list/index.html",
+    "legal/app-permissions/index.html",
+    "legal/risk-notice/index.html"
 )
 foreach ($relativePath in $requiredDistFiles) {
     $distFile = Join-Path $distDir $relativePath
@@ -388,6 +392,32 @@ foreach ($marker in @(
 )) {
     if ($privacyPolicyDist -notlike "*$marker*") {
         throw "site privacy policy dist missing marker: $marker"
+    }
+}
+$additionalLegalPageMarkers = @(
+    @{
+        Path = "legal/third-party-sharing/index.html"
+        Markers = @("nongji-page-third-party-sharing", 'name="nongji-legal-version" content="20260620"')
+    },
+    @{
+        Path = "legal/personal-info-list/index.html"
+        Markers = @("nongji-page-personal-info-list", 'name="nongji-legal-version" content="20260620"')
+    },
+    @{
+        Path = "legal/app-permissions/index.html"
+        Markers = @("nongji-page-app-permissions", 'name="nongji-legal-version" content="20260620"')
+    },
+    @{
+        Path = "legal/risk-notice/index.html"
+        Markers = @("nongji-page-risk-notice", 'name="nongji-legal-version" content="20260620"')
+    }
+)
+foreach ($spec in $additionalLegalPageMarkers) {
+    $legalDist = Get-Content -LiteralPath (Join-Path $distDir $spec.Path) -Raw -Encoding UTF8
+    foreach ($marker in $spec.Markers) {
+        if ($legalDist -notlike "*$marker*") {
+            throw "site $($spec.Path) dist missing marker: $marker"
+        }
     }
 }
 
@@ -737,6 +767,10 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_contains "site-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-privacy-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-legal-third-party-marker" "nongji-page-third-party-sharing" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/third-party-sharing/"
+  expect_contains "site-legal-personal-info-marker" "nongji-page-personal-info-list" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/personal-info-list/"
+  expect_contains "site-legal-permissions-marker" "nongji-page-app-permissions" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/app-permissions/"
+  expect_contains "site-legal-risk-marker" "nongji-page-risk-notice" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/risk-notice/"
   expect_contains "site-www-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-user-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-user-norms" "name=\"nongji-legal-section\" content=\"user-agreement-usage-norms\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
@@ -744,6 +778,10 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_contains "site-www-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
   expect_contains "site-www-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
   expect_contains "site-www-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
+  expect_contains "site-www-legal-third-party-marker" "nongji-page-third-party-sharing" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/third-party-sharing/"
+  expect_contains "site-www-legal-personal-info-marker" "nongji-page-personal-info-list" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/personal-info-list/"
+  expect_contains "site-www-legal-permissions-marker" "nongji-page-app-permissions" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/app-permissions/"
+  expect_contains "site-www-legal-risk-marker" "nongji-page-risk-notice" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/risk-notice/"
 else
   echo 'site certificate missing after deploy' >&2
   exit 23
