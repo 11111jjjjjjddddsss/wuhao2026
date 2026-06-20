@@ -905,6 +905,8 @@ if ($failures.Count -eq 0) {
         "Markdown table tests must cover pipe characters inside double-backtick inline code cells."
     Require-NoMatch $failures $chatStreamingRenderer 'horizontalScroll\s*\(' `
         "Assistant Markdown table rendering must not revert to the old horizontal-scroll wide table on mobile."
+    Require-Match $failures $chatStreamingRenderer 'visibleEntries\.forEachIndexed(?s:.*?)if\s*\(\s*index\s*>\s*0\s*\)(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE8EAED\)' `
+        "Assistant Markdown table cards must keep subtle dividers between visible field groups so mobile comparison text does not collapse into one block."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
         "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."
     Require-Match $failures $chatStreamingRenderer 'previous\s*==\s*null\s*\|\|\s*previous\s+is\s+StreamingLineModel\.Heading' `

@@ -2381,6 +2381,14 @@ private fun RendererMarkdownTableCardImpl(
         )
     }
     val title = rendererMarkdownTableDisplayTitle(headers, cells, rowIndex)
+    val visibleEntries = headers.drop(1).mapIndexedNotNull { index, header ->
+        val value = cells.getOrNull(index + 1).orEmpty().trim()
+        if (value.isBlank()) {
+            null
+        } else {
+            header to value
+        }
+    }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2397,23 +2405,27 @@ private fun RendererMarkdownTableCardImpl(
             linksEnabled = linksEnabled,
             modifier = Modifier.fillMaxWidth()
         )
-        headers.drop(1).forEachIndexed { index, header ->
-            val value = cells.getOrNull(index + 1).orEmpty().trim()
-            if (value.isNotBlank()) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = plainRendererInlineText(header),
-                        style = labelStyle
-                    )
-                    RendererStreamingActiveTextImpl(
-                        text = value,
-                        style = valueStyle,
-                        minLineHeight = 23.dp,
-                        inlineMode = inlineMode,
-                        linksEnabled = linksEnabled,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
+        visibleEntries.forEachIndexed { index, (header, value) ->
+            if (index > 0) {
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth(),
+                    thickness = 0.7.dp,
+                    color = Color(0xFFE8EAED)
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = plainRendererInlineText(header),
+                    style = labelStyle
+                )
+                RendererStreamingActiveTextImpl(
+                    text = value,
+                    style = valueStyle,
+                    minLineHeight = 23.dp,
+                    inlineMode = inlineMode,
+                    linksEnabled = linksEnabled,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
