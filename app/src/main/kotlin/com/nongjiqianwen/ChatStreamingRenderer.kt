@@ -2473,8 +2473,8 @@ private fun RendererMarkdownTableRowImpl(
     }
     val labelStyle = remember {
         TextStyle(
-            fontSize = 13.5.sp,
-            lineHeight = 19.sp,
+            fontSize = 15.sp,
+            lineHeight = 23.sp,
             color = Color(0xFF666D76),
             letterSpacing = 0.sp,
             fontWeight = FontWeight.Normal

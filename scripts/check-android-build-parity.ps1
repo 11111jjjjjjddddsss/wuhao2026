@@ -913,8 +913,8 @@ if ($failures.Count -eq 0) {
         "Markdown table UI must avoid showing a redundant raw header-summary strip before any body row arrives."
     Require-NoMatch $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
         "Markdown table UI must not reintroduce the redundant header-summary strip above the first row."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Normal(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)heightIn\(min\s*=\s*44\.dp\)' `
-        "Markdown table UI must stay in one complete lightweight frame with first-row title strip and normal-weight mobile field labels."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*15\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Normal(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)heightIn\(min\s*=\s*44\.dp\)' `
+        "Markdown table UI must stay in one complete lightweight frame with first-row title strip and normal-weight body-sized field labels."
     Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(44\.dp\)(?s:.*?)clip\(RoundedCornerShape\(12\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(28\.dp\)\)(?s:.*?)Color\(0xFF111111\)(?s:.*?)coverColor\s*=\s*Color\(0xFFFAFBFC\)(?s:.*?)squareSize\s*=\s*size\.width\s*\*\s*0\.48f(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*coverColor(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*iconColor' `
         "Markdown table copy action must stay as a GPT-style covered overlapping-square icon, not transparent overlapping rounded rectangles or a small circled text button."
     Require-NoMatch $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary' `
@@ -983,6 +983,10 @@ if ($failures.Count -eq 0) {
         "Chat offline precheck must reject no-network and captive-portal states without hard-blocking unvalidated internet."
     Require-NoMatch $failures $chatScreen 'hasValidatedConnection\s*&&' `
         "Chat offline precheck must not use NET_CAPABILITY_VALIDATED as a hard gate because some reachable networks are underreported by devices or carriers."
+    Require-NoMatch $failures $chatScreen 'retryFailedUserMessage(?s:.*?)hasActiveNetworkConnection\(\)|retryFailedAssistantMessage(?s:.*?)hasActiveNetworkConnection\(\)|performSendMessage(?s:.*?)hasActiveNetworkConnection\(\)' `
+        "Main chat user-initiated send/resend/retry must try the real upload/stream instead of being locally blocked by network precheck."
+    Require-NoMatch $failures $hamburgerMenuSheet 'hasActiveNetworkConnection\(\)' `
+        "Support feedback user-initiated sends must try the real upload/request instead of being locally blocked by network precheck."
     Require-Match $failures $pendingWorker 'hasActiveNetworkConnection\(\)(?s:.*?)Result\.retry\(\)' `
         "Pending chat send worker must wait for usable internet before uploading or streaming a background retry."
     Require-Match $failures $hamburgerMenuSheet 'BackHandler\s*\(\s*enabled\s*=\s*visible\s*\)(?s:.*?)handleBackClick\s*\(\s*\)' `

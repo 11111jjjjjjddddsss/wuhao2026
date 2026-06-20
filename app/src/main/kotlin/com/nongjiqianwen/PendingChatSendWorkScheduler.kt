@@ -16,7 +16,12 @@ internal object PendingChatSendWorkScheduler {
     private const val UNIQUE_PREFIX = "pending_chat_send_"
     private const val BACKUP_INITIAL_DELAY_MS = 45_000L
 
-    fun enqueue(context: Context, pending: PendingChatSend) {
+    fun enqueue(
+        context: Context,
+        pending: PendingChatSend,
+        replaceExisting: Boolean = false,
+        initialDelayMs: Long = BACKUP_INITIAL_DELAY_MS
+    ) {
         PendingChatSendStore.upsert(context, pending)
         val request = OneTimeWorkRequestBuilder<PendingChatSendWorker>()
             .setInputData(
@@ -31,12 +36,12 @@ internal object PendingChatSendWorkScheduler {
                     .setRequiresStorageNotLow(true)
                     .build()
             )
-            .setInitialDelay(BACKUP_INITIAL_DELAY_MS, TimeUnit.MILLISECONDS)
+            .setInitialDelay(initialDelayMs.coerceAtLeast(0L), TimeUnit.MILLISECONDS)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
         WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
             uniqueName(pending.chatScopeId, pending.userMessageId),
-            ExistingWorkPolicy.KEEP,
+            if (replaceExisting) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
             request
         )
     }

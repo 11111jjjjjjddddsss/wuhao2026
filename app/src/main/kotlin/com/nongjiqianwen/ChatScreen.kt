@@ -672,6 +672,20 @@ internal fun shouldTimeoutRemoteCompletionAwaitingSnapshot(
 ): Boolean =
     remoteCompletionExists && !hasSettledAssistant
 
+internal fun shouldFailStalePendingImageRecovery(
+    remoteStartedAtMs: Long,
+    recoverableFailureCount: Int,
+    hasSettledAssistant: Boolean,
+    nowMs: Long
+): Boolean =
+    !hasSettledAssistant &&
+        remoteStartedAtMs > 0L &&
+        nowMs - remoteStartedAtMs >= if (recoverableFailureCount > 0) {
+            STALE_PENDING_IMAGE_FAILED_RETRY_GRACE_MS
+        } else {
+            PendingChatSendStore.REMOTE_STARTED_GRACE_MS
+        }
+
 @Immutable
 internal data class LocalStreamingDraft(
     val messageId: String,
@@ -768,6 +782,7 @@ private const val REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS = 10
 private const val REMOTE_STREAM_RECOVERY_DELAY_MS = 700L
 private const val REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS = 240
 private const val REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS = 2500L
+internal const val STALE_PENDING_IMAGE_FAILED_RETRY_GRACE_MS = 60_000L
 private const val STREAMING_FINALIZE_BOUNDS_TIMEOUT_MS = 1500L
 private val MESSAGE_ACTION_MENU_MARGIN = 8.dp
 private val MESSAGE_ACTION_MENU_VERTICAL_SPACING = 16.dp
@@ -4804,6 +4819,47 @@ fun ChatScreen() {
                     initialBottomSnapDone = false
                     persistTick++
                 }
+                val nowMs = System.currentTimeMillis()
+                val stalePendingSourceUserMessageIds = remainingSourceUserMessageIds
+                    .mapNotNull { sourceUserMessageId ->
+                        val pending = PendingChatSendStore.get(context, chatScopeId, sourceUserMessageId)
+                            ?: return@mapNotNull null
+                        if (
+                            shouldFailStalePendingImageRecovery(
+                                remoteStartedAtMs = pending.remoteStartedAtMs,
+                                recoverableFailureCount = pending.recoverableFailureCount,
+                                hasSettledAssistant = hasSettledAssistantMessageForUser(sourceUserMessageId),
+                                nowMs = nowMs
+                            )
+                        ) {
+                            sourceUserMessageId to pending
+                        } else {
+                            null
+                        }
+                    }
+                stalePendingSourceUserMessageIds.forEach { (sourceUserMessageId, pending) ->
+                    if (pending.imageUrls.isNotEmpty()) {
+                        val messageIndex = messages.indexOfFirst { message ->
+                            message.id == sourceUserMessageId && message.role == ChatRole.USER
+                        }
+                        if (messageIndex >= 0) {
+                            val message = messages[messageIndex]
+                            if (message.imageUrls.orEmpty() != pending.imageUrls) {
+                                messages[messageIndex] = message.copy(imageUrls = pending.imageUrls)
+                            }
+                        }
+                    }
+                    failedUserMessageStates.putIfAbsent(sourceUserMessageId, "network")
+                    retryingUserMessageIds.remove(sourceUserMessageId)
+                    clearFailedAssistantStateForUser(sourceUserMessageId)
+                    PendingChatSendRuntime.markInactive(sourceUserMessageId)
+                    PendingChatSendWorkScheduler.cancelAndRemove(context, chatScopeId, sourceUserMessageId)
+                    remainingSourceUserMessageIds.remove(sourceUserMessageId)
+                }
+                if (stalePendingSourceUserMessageIds.isNotEmpty()) {
+                    initialBottomSnapDone = false
+                    persistTick++
+                }
                 if (remainingSourceUserMessageIds.isEmpty()) {
                     initialBottomSnapDone = false
                     return@launch
@@ -5905,8 +5961,9 @@ fun ChatScreen() {
             streamRevealJob = null
             finalizeStreamingStop(shouldRestoreBottomAnchor = false)
             context.clearLocalStreamingDraftSync(chatScopeId)
+            PendingChatSendRuntime.markInactive(sourceUserMessageId)
             if (canAttemptRemoteAssistantRecovery(reason)) {
-                PendingChatSendRuntime.markInactive(sourceUserMessageId)
+                PendingChatSendStore.resetRemoteStarted(context, chatScopeId, sourceUserMessageId)
                 if (finalContent.isNotBlank()) {
                     applyCompletedAssistantMessageInPlace(
                         target = messages,
@@ -6150,7 +6207,9 @@ fun ChatScreen() {
                     regionSource = region?.source,
                     regionReliability = region?.reliability,
                     todayAgriContextDay = todayAgriContextDay
-                )
+                ),
+                replaceExisting = true,
+                initialDelayMs = 0L
             )
         }
         return userId
@@ -6786,7 +6845,9 @@ fun ChatScreen() {
                     regionSource = region?.source,
                     regionReliability = region?.reliability,
                     todayAgriContextDay = todayAgriContextDay
-                )
+                ),
+                replaceExisting = true,
+                initialDelayMs = 0L
             )
         }
         fun retryFailedUserMessage(messageId: String) {
@@ -6797,16 +6858,8 @@ fun ChatScreen() {
                 showQuotaExhaustedHint()
                 return
             }
-            if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-                showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
-                return
-            }
             val previewImageUris = failedMessage.imageUris.orEmpty()
             if (previewImageUris.isNotEmpty() && failedMessage.imageUrls.orEmpty().isEmpty()) {
-                if (!context.hasActiveNetworkConnection()) {
-                    showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
-                    return
-                }
                 val retrySessionGeneration = SessionApi.currentSessionGenerationOrNull()
                 val retryTodayAgriContextDay = resolveTodayAgriContextDayForSend(failedMessage.id)
                 if (hasRemoteHistorySource) {
@@ -6824,7 +6877,9 @@ fun ChatScreen() {
                             regionSource = region?.source,
                             regionReliability = region?.reliability,
                             todayAgriContextDay = retryTodayAgriContextDay
-                        )
+                        ),
+                        replaceExisting = true,
+                        initialDelayMs = 0L
                     )
                 }
                 retryingUserMessageIds[failedMessage.id] = true
@@ -6921,17 +6976,9 @@ fun ChatScreen() {
                 showQuotaExhaustedHint()
                 return
             }
-            if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-                showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
-                return
-            }
             val previewImageUris = sourceUserMessage.imageUris.orEmpty()
             val uploadedImageUrls = sourceUserMessage.imageUrls.orEmpty()
             if (previewImageUris.isNotEmpty() && uploadedImageUrls.isEmpty()) {
-                if (!context.hasActiveNetworkConnection()) {
-                    showComposerStatusHint(NETWORK_UNAVAILABLE_HINT_TEXT)
-                    return
-                }
                 val retrySessionGeneration = SessionApi.currentSessionGenerationOrNull()
                 val retryTodayAgriContextDay = resolveTodayAgriContextDayForSend(sourceUserMessage.id)
                 if (hasRemoteHistorySource) {
@@ -6949,7 +6996,9 @@ fun ChatScreen() {
                             regionSource = region?.source,
                             regionReliability = region?.reliability,
                             todayAgriContextDay = retryTodayAgriContextDay
-                        )
+                        ),
+                        replaceExisting = true,
+                        initialDelayMs = 0L
                     )
                 }
                 retryingAssistantMessageIds[assistantMessageId] = true
@@ -7066,17 +7115,6 @@ fun ChatScreen() {
                 return
             }
             if (!sendGate.canSubmit) return
-            if (hasRemoteHistorySource && !context.hasActiveNetworkConnection()) {
-                if (imageSnapshot.isEmpty()) {
-                    markUserMessageSendFailed(trimmedText)
-                } else {
-                    markUserMessageSendFailed(
-                        text = trimmedText,
-                        imageUris = imageSnapshot.map { it.uri }
-                    )
-                }
-                return
-            }
             if (imageSnapshot.isEmpty()) {
                 val existingUserMessageId = findFailedUserMessageIdByText(trimmedText)
                 commitSendMessage(

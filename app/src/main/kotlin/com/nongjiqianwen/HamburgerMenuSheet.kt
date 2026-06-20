@@ -130,7 +130,6 @@ private const val HAMBURGER_PAGE_ENTER_MS = 180
 private const val HAMBURGER_PAGE_EXIT_MS = 150
 private const val SUPPORT_MESSAGE_MAX_CHARS = 2000
 internal const val SUPPORT_SEND_FAILED_HINT = "发送失败，请检查网络后重试"
-private const val SUPPORT_NETWORK_UNAVAILABLE_HINT = "当前网络不可用"
 private val HamburgerBackButtonTopPadding = 4.dp
 private const val APP_UPDATE_PROMPT_PREFS = "app_update_prompt"
 private const val APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY = "last_prompted_version_code"
@@ -3053,11 +3052,6 @@ private fun HamburgerSupportFeedbackPage(
         }
         if (inputValue.text.supportMessageCharCount() > SUPPORT_MESSAGE_MAX_CHARS) {
             onPendingAction("最多输入2000字")
-            return
-        }
-        if (!context.hasActiveNetworkConnection()) {
-            sendingHint = SUPPORT_NETWORK_UNAVAILABLE_HINT
-            onPendingAction(SUPPORT_NETWORK_UNAVAILABLE_HINT)
             return
         }
         val payloadFingerprint = supportFeedbackPayloadFingerprint(body, imageSnapshot)

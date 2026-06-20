@@ -127,6 +127,11 @@ internal object PendingChatSendStore {
         upsert(context, pending.copy(remoteStartedAtMs = System.currentTimeMillis()))
     }
 
+    fun resetRemoteStarted(context: Context, chatScopeId: String, userMessageId: String) {
+        val pending = get(context, chatScopeId, userMessageId) ?: return
+        upsert(context, pending.copy(remoteStartedAtMs = 0L))
+    }
+
     fun incrementRecoverableFailureCount(
         context: Context,
         chatScopeId: String,

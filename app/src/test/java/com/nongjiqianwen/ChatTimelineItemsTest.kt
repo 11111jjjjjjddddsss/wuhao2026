@@ -1260,6 +1260,61 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun stalePendingImageRecoveryFailsOnlyAfterRemoteStartedGrace() {
+        val grace = PendingChatSendStore.REMOTE_STARTED_GRACE_MS
+        val failedRetryGrace = STALE_PENDING_IMAGE_FAILED_RETRY_GRACE_MS
+
+        assertTrue(
+            shouldFailStalePendingImageRecovery(
+                remoteStartedAtMs = 1_000L,
+                recoverableFailureCount = 0,
+                hasSettledAssistant = false,
+                nowMs = 1_000L + grace
+            )
+        )
+        assertFalse(
+            shouldFailStalePendingImageRecovery(
+                remoteStartedAtMs = 1_000L,
+                recoverableFailureCount = 0,
+                hasSettledAssistant = false,
+                nowMs = 1_000L + grace - 1
+            )
+        )
+        assertTrue(
+            shouldFailStalePendingImageRecovery(
+                remoteStartedAtMs = 1_000L,
+                recoverableFailureCount = 1,
+                hasSettledAssistant = false,
+                nowMs = 1_000L + failedRetryGrace
+            )
+        )
+        assertFalse(
+            shouldFailStalePendingImageRecovery(
+                remoteStartedAtMs = 1_000L,
+                recoverableFailureCount = 1,
+                hasSettledAssistant = false,
+                nowMs = 1_000L + failedRetryGrace - 1
+            )
+        )
+        assertFalse(
+            shouldFailStalePendingImageRecovery(
+                remoteStartedAtMs = 0L,
+                recoverableFailureCount = 1,
+                hasSettledAssistant = false,
+                nowMs = 1_000L + grace
+            )
+        )
+        assertFalse(
+            shouldFailStalePendingImageRecovery(
+                remoteStartedAtMs = 1_000L,
+                recoverableFailureCount = 1,
+                hasSettledAssistant = true,
+                nowMs = 1_000L + grace
+            )
+        )
+    }
+
+    @Test
     fun terminalImageFailureWaitsForSnapshotUnlessFailureCannotRecoverByWaiting() {
         assertFalse(
             shouldApplyPendingImageTerminalFailure(

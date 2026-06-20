@@ -36,6 +36,7 @@ class PendingChatSendWorker(
         val now = System.currentTimeMillis()
         if (
             pending.remoteStartedAtMs > 0 &&
+            pending.recoverableFailureCount <= 0 &&
             now - pending.remoteStartedAtMs < PendingChatSendStore.REMOTE_STARTED_GRACE_MS
         ) {
             return@withContext Result.retry()
