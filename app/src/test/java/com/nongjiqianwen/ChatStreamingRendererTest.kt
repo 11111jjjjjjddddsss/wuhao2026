@@ -460,6 +460,29 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun markdownTableButtonCopyExcludesSurroundingMessageText() {
+        val content = "先说明一句。\n\n" +
+            "|项目|建议|\n" +
+            "|---|---|\n" +
+            "|水分|控水|\n\n" +
+            "后面还有一句。"
+        val state = splitStreamingBlockState(content)
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+        val tableCopyText = buildRendererMarkdownTableCopyText(table)
+
+        assertEquals(
+            "项目\t建议\n水分\t控水",
+            tableCopyText
+        )
+        assertFalse(tableCopyText.contains("先说明一句"))
+        assertFalse(tableCopyText.contains("后面还有一句"))
+        assertTrue(buildRendererPlainCopyText(content).contains("先说明一句"))
+        assertTrue(buildRendererPlainCopyText(content).contains("后面还有一句"))
+    }
+
+    @Test
     fun tildeCodeFenceDoesNotRenderPipeTextAsTable() {
         val stats = buildRendererStructureStats(
             "~~~\n" +

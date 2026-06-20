@@ -905,8 +905,10 @@ if ($failures.Count -eq 0) {
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `
         "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)val\s+copyTable\s*=\s*\{(?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)Toast\.makeText\(context,\s*"已复制"(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)copyEnabled\s*=\s*copyEnabled\s*&&\s*rowIndex\s*==\s*0(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)' `
-        "Markdown table UI must keep the copy action inside the first row title strip and enable it only after the message is settled."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)val\s+copyTable\s*=\s*\{(?s:.*?)buildRendererMarkdownTableCopyText\(table\)(?s:.*?)Toast\.makeText\(context,\s*"已复制"(?s:.*?)DisableSelection\s*\{(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)copyEnabled\s*=\s*copyEnabled\s*&&\s*rowIndex\s*==\s*0(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)' `
+        "Markdown table UI must copy only the current table, keep the action inside the first row title strip, disable table text selection bleed, and enable it only after the message is settled."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableButtonCopyExcludesSurroundingMessageText' `
+        "Markdown table copy must have a unit test proving the table button does not include surrounding assistant text."
     Require-NoMatch $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
         "Markdown tables must be allowed to render a streaming shell after the header and delimiter are confirmed, before body rows arrive."
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*table\.rows\.isEmpty\(\)\s*\)\s*return' `
@@ -921,7 +923,7 @@ if ($failures.Count -eq 0) {
         "Markdown table UI must not show a redundant raw column summary above rows."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*value(?s:.*?)emphasisEnabled\s*=\s*false' `
         "Markdown table cell values must suppress inline bold emphasis so table bodies do not become visually noisy."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、正文不加粗、GPT式复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、正文不加粗、单表复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
         "Debug preview panel must mention the latest table header/card/copy-button visual contract."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)copyEnabled(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
         "Markdown table rows must stay inside the shared table frame with row headers and internal dividers."
