@@ -90,12 +90,14 @@ $membershipCenterSheetFile = Join-Path $RepoRoot "app/src/main/kotlin/com/nongji
 $serverGoServerFile = Join-Path $RepoRoot "server-go/internal/app/server.go"
 $chatTimelineItemsTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatTimelineItemsTest.kt"
 $chatStreamingRendererTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatStreamingRendererTest.kt"
+$chatScrollCoordinatorTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/ChatScrollCoordinatorTest.kt"
+$securityBoundaryTestFile = Join-Path $RepoRoot "app/src/test/java/com/nongjiqianwen/SecurityBoundaryTest.kt"
 $debugManifestFile = Join-Path $RepoRoot "app/src/debug/AndroidManifest.xml"
 $debugNetworkSecurityFile = Join-Path $RepoRoot "app/src/debug/res/xml/network_security_config.xml"
 $debugBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/debug/com/nongjiqianwen/BuildConfig.java"
 $releaseBuildConfigFile = Join-Path $RepoRoot "app/build/generated/source/buildConfig/release/com/nongjiqianwen/BuildConfig.java"
 
-foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $pendingChatSendStoreFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile, $serverGoServerFile, $chatTimelineItemsTestFile, $chatStreamingRendererTestFile)) {
+foreach ($path in @($buildFile, $manifestFile, $networkSecurityFile, $filePathsFile, $backupRulesFile, $dataExtractionRulesFile, $idManagerFile, $sessionApiFile, $appUpdateInstallerFile, $mainActivityFile, $privacyConsentFile, $pendingWorkerFile, $pendingChatSendStoreFile, $todayAgriCardUiFile, $userMessageImageUiFile, $chatImagePreviewFile, $chatRecyclerViewHostFile, $chatScrollCoordinatorFile, $chatStreamingRendererFile, $chatComposerCoordinatorFile, $chatComposerPanelFile, $imageUploaderFile, $loginScreenFile, $chatScreenFile, $hamburgerMenuSheetFile, $membershipCenterSheetFile, $serverGoServerFile, $chatTimelineItemsTestFile, $chatStreamingRendererTestFile, $chatScrollCoordinatorTestFile, $securityBoundaryTestFile)) {
     if (!(Test-Path -LiteralPath $path -PathType Leaf)) {
         Add-Failure $failures "Missing required file: $path"
     }
@@ -131,6 +133,8 @@ if ($failures.Count -eq 0) {
     $serverGoServer = Read-SourceFile $serverGoServerFile
     $chatTimelineItemsTest = Read-SourceFile $chatTimelineItemsTestFile
     $chatStreamingRendererTest = Read-SourceFile $chatStreamingRendererTestFile
+    $chatScrollCoordinatorTest = Read-SourceFile $chatScrollCoordinatorTestFile
+    $securityBoundaryTest = Read-SourceFile $securityBoundaryTestFile
 
     Require-Match $failures $build 'val\s+defaultUploadBaseUrl\s*=\s*"https://api\.nongjiqiancha\.cn"' `
         "Android default UPLOAD_BASE_URL must remain https://api.nongjiqiancha.cn."
@@ -679,7 +683,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT' `
         "Today agri context must be scoped to the next two user sends after its visual timeline anchor."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)failedUserMessageIds' `
-        "Today agri context counting must ignore local failed user sends so a failed send does not prematurely end the three-send window."
+        "Today agri context counting must ignore local failed user sends so a failed send does not prematurely end the two-send window."
     Require-Match $failures $chatScreen 'requestedAfterMessageId\s*!=\s*null\s*&&\s*hiddenRoundCount\s*>\s*0(?s:.*?)ChatTimelineItem\.HistoryNotice' `
         "If today agri's saved anchor is outside the visible trimmed window, it must fall back after the history notice instead of being reattached to the latest assistant answer."
     Require-Match $failures $chatScreen 'todayAgriContextDayForNextSend(?s:.*?)remoteConfirmedDay\s*=\s*todayAgriRemoteConfirmedDay' `
@@ -694,6 +698,14 @@ if ($failures.Count -eq 0) {
         "Today agri completed-tail detection must exclude failed assistant tails in the live chat state."
     Require-Match $failures $chatTimelineItemsTest 'todayAgriCardDoesNotTreatFailedAssistantAsCompletedTail(?s:.*?)failedAssistantMessageIds\s*=\s*setOf' `
         "Today agri must have unit coverage proving failed assistant tails do not count as completed answers."
+    Require-Match $failures $chatScrollCoordinatorTest 'class\s+ChatScrollCoordinatorTest' `
+        "Chat scroll coordinator test class must remain present."
+    Require-Match $failures $chatScrollCoordinatorTest 'streamingUserDragStillEntersUserBrowsing' `
+        "Chat scroll coordinator tests must keep coverage for user dragging entering UserBrowsing."
+    Require-Match $failures $chatScrollCoordinatorTest 'streamingProgrammaticScrollKeepsAutoFollowWhileInProgress' `
+        "Chat scroll coordinator tests must keep coverage for streaming programmatic auto-follow."
+    Require-Match $failures $securityBoundaryTest 'class\s+SecurityBoundaryTest(?s:.*?)stableAppUpdateApkUrlRejectsDecoratedReleaseUrls(?s:.*?)remoteImagePreviewOnlyTrustsBackendUploadUrls' `
+        "Security boundary tests must remain present for update URL and remote image trust guards."
     Require-Match $failures $chatScreen 'fun\s+userBlocksHydratedVisualMutation\(\)(?s:.*?)chatListUserDragging(?s:.*?)recyclerScrollInProgress(?s:.*?)scrollRuntime\.userInteracting\.value(?s:.*?)scrollMode\s*==\s*ScrollMode\.UserBrowsing' `
         "Remote hydrate and startup bottom snap must share a user-browsing guard before mutating the visible chat list."
     Require-Match $failures $chatScreen 'hydratedTodayAgriMainItem(?s:.*?)canApplyHydratedVisuals(?s:.*?)applyHydratedTodayAgriMainItem\(hydratedTodayAgriMainItem\)(?s:.*?)shouldHoldHydratedVisuals(?s:.*?)pendingHydratedTodayAgriMainItem\s*=\s*hydratedTodayAgriMainItem' `
