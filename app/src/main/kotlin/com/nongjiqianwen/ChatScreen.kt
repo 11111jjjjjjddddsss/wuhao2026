@@ -960,9 +960,9 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
 }
 
 internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
-    fontSize = 16.sp,
-    lineHeight = 26.5.sp,
-    letterSpacing = 0.05.sp,
+    fontSize = 16.5.sp,
+    lineHeight = 27.5.sp,
+    letterSpacing = 0.sp,
     color = Color(0xFF171717),
     textMotion = TextMotion.Static,
     lineBreak = LineBreak.Paragraph
@@ -970,7 +970,7 @@ internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
 
 internal fun assistantStreamingParagraphTextStyle(): TextStyle =
     assistantParagraphTextStyle().copy(
-        lineHeight = 28.sp,
+        lineHeight = 29.sp,
         lineBreak = LineBreak.Simple
     )
 
@@ -1045,8 +1045,8 @@ internal fun shouldShowAiDisclaimerRefined(content: String): Boolean {
 }
 
 internal fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
-    fontSize = if (level <= 2) 19.sp else 17.sp,
-    lineHeight = if (level <= 2) 29.sp else 26.sp,
+    fontSize = if (level <= 2) 19.5.sp else 17.5.sp,
+    lineHeight = if (level <= 2) 30.sp else 27.sp,
     fontWeight = FontWeight.Bold,
     color = Color(0xFF111111),
     textMotion = TextMotion.Static,
