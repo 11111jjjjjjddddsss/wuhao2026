@@ -7360,14 +7360,7 @@ fun ChatScreen() {
                                         else -> StreamingRenderMode.Settled
                                     }
                                     val showThinkingLabel = renderMode == StreamingRenderMode.Waiting &&
-                                        isActiveStreamingAssistant &&
-                                        anchoredUserMessageId
-                                            ?.let { sourceUserMessageId ->
-                                                messages.firstOrNull { candidate ->
-                                                    candidate.id == sourceUserMessageId &&
-                                                        candidate.role == ChatRole.USER
-                                                }?.hasUserImageAttachment()
-                                            } == true
+                                        isActiveStreamingAssistant
                                     ChatStreamingRenderer(
                                         content = assistantDisplayContent,
                                         renderMode = renderMode,
@@ -8717,7 +8710,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
                     UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
-                    UiCopyPreviewItem("图片问诊思考", "小球后切动态省略号", UiCopyPreviewKind.ImageDiagnosisThinking),
+                    UiCopyPreviewItem("等待思考态", "超过等待阈值后切动态省略号", UiCopyPreviewKind.ImageDiagnosisThinking),
                     UiCopyPreviewItem(IMAGE_EXPIRED_THUMB_TEXT, "远端历史图过期后的占位", UiCopyPreviewKind.ImageExpiredPlaceholder)
                 )
             ),

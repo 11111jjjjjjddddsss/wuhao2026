@@ -50,12 +50,11 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 	}
 }
 
-func TestResolveChatThinkingOptionsDefaultsToImagesOnly(t *testing.T) {
+func TestResolveChatThinkingOptionsDefaultsToAllTurns(t *testing.T) {
 	t.Setenv("CHAT_THINKING_MODE", "")
-	t.Setenv("CHAT_THINKING_BUDGET", "")
 
-	if got := resolveChatThinkingOptions("普通文字问题", nil); got.EnableThinking || got.ThinkingBudget != 0 {
-		t.Fatalf("text-only thinking options = %#v, want disabled", got)
+	if got := resolveChatThinkingOptions("普通文字问题", nil); !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("text-only thinking options = %#v, want enabled with default budget", got)
 	}
 
 	got := resolveChatThinkingOptions("这张叶片咋了", []string{"https://img/current.jpg"})
@@ -66,7 +65,6 @@ func TestResolveChatThinkingOptionsDefaultsToImagesOnly(t *testing.T) {
 
 func TestResolveChatThinkingOptionsEnablesHistoricalImageContext(t *testing.T) {
 	t.Setenv("CHAT_THINKING_MODE", "")
-	t.Setenv("CHAT_THINKING_BUDGET", "")
 
 	got := resolveChatThinkingOptionsForImageContext(true)
 	if !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
@@ -79,39 +77,50 @@ func TestResolveChatThinkingOptionsEnablesHistoricalImageContext(t *testing.T) {
 	}
 }
 
-func TestResolveChatThinkingOptionsDoesNotEnableTextOnlyWhenConfiguredOn(t *testing.T) {
-	t.Setenv("CHAT_THINKING_MODE", "on")
-	t.Setenv("CHAT_THINKING_BUDGET", "1200")
+func TestResolveChatThinkingOptionsCanLimitToImageContext(t *testing.T) {
+	t.Setenv("CHAT_THINKING_MODE", "image")
 
-	got := resolveChatThinkingOptions("葡萄叶片这是什么病，怎么治", nil)
+	got := resolveChatThinkingOptions("普通文字问题", nil)
 	if got.EnableThinking || got.ThinkingBudget != 0 {
-		t.Fatalf("text-only diagnosis should not enable thinking: %#v", got)
+		t.Fatalf("image mode should not enable text-only thinking: %#v", got)
 	}
 
 	got = resolveChatThinkingOptions("这张叶片咋了", []string{"https://img/current.jpg"})
-	if !got.EnableThinking || got.ThinkingBudget != 1200 {
-		t.Fatalf("image thinking options = %#v, want enabled with configured budget", got)
+	if !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("image thinking options = %#v, want enabled with fixed budget", got)
 	}
 }
 
-func TestResolveChatThinkingOptionsCanDisableAndClampBudget(t *testing.T) {
+func TestResolveChatThinkingOptionsEnablesTextOnlyWhenConfiguredOn(t *testing.T) {
+	t.Setenv("CHAT_THINKING_MODE", "on")
+
+	got := resolveChatThinkingOptions("葡萄叶片这是什么病，怎么治", nil)
+	if !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("on mode should enable text-only thinking: %#v", got)
+	}
+
+	got = resolveChatThinkingOptions("这张叶片咋了", []string{"https://img/current.jpg"})
+	if !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("image thinking options = %#v, want enabled with fixed budget", got)
+	}
+}
+
+func TestResolveChatThinkingOptionsCanDisableAndKeepsFixedBudget(t *testing.T) {
 	t.Setenv("CHAT_THINKING_MODE", "off")
-	t.Setenv("CHAT_THINKING_BUDGET", "1200")
 
 	if got := resolveChatThinkingOptions("这张图是什么病", []string{"https://img/current.jpg"}); got.EnableThinking {
 		t.Fatalf("off mode should disable thinking even for images: %#v", got)
 	}
 
 	t.Setenv("CHAT_THINKING_MODE", "enabled")
-	t.Setenv("CHAT_THINKING_BUDGET", "99999")
 
-	if got := resolveChatThinkingOptions("普通文字问题", nil); got.EnableThinking {
-		t.Fatalf("text-only should not enable thinking even when mode is on: %#v", got)
+	if got := resolveChatThinkingOptions("普通文字问题", nil); !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("enabled mode should enable fixed-budget text-only thinking: %#v", got)
 	}
 
 	got := resolveChatThinkingOptions("带图问题", []string{"https://img/current.jpg"})
-	if !got.EnableThinking || got.ThinkingBudget != maxChatThinkingBudget {
-		t.Fatalf("image thinking options = %#v, want clamped budget", got)
+	if !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("image thinking options = %#v, want fixed budget", got)
 	}
 }
 

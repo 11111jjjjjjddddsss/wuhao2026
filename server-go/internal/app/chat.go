@@ -12,7 +12,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -30,9 +29,8 @@ const (
 	maxBailianSSELineBytes          = 256 * 1024
 	appendSessionRoundMaxAttempts   = 3
 	appendSessionRoundRetryBaseWait = 150 * time.Millisecond
-	defaultChatThinkingMode         = "image"
+	defaultChatThinkingMode         = "always"
 	defaultChatThinkingBudget       = 1024
-	maxChatThinkingBudget           = 8192
 	todayAgriContextRoundLimit      = 2
 )
 
@@ -923,14 +921,14 @@ func resolveChatThinkingOptionsForImageContext(hasImageContext bool) BailianStre
 	switch mode {
 	case "off", "false", "0", "no", "disabled":
 		return BailianStreamOptions{}
-	case "image", "images", "vision", "auto", "on", "true", "1", "enabled":
+	case "image", "images", "vision":
 		if hasImageContext {
 			return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
 		}
+	case "always", "all", "auto", "on", "true", "1", "enabled":
+		return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
 	default:
-		if hasImageContext {
-			return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
-		}
+		return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
 	}
 	return BailianStreamOptions{}
 }
@@ -953,18 +951,7 @@ func promptIncludesImageContext(snapshot *SessionSnapshot, aWindowRounds int, cu
 }
 
 func resolveChatThinkingBudget() int {
-	raw := strings.TrimSpace(os.Getenv("CHAT_THINKING_BUDGET"))
-	if raw == "" {
-		return defaultChatThinkingBudget
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return defaultChatThinkingBudget
-	}
-	if value > maxChatThinkingBudget {
-		return maxChatThinkingBudget
-	}
-	return value
+	return defaultChatThinkingBudget
 }
 
 func sanitizeUpstreamErrorPreview(raw string) string {
