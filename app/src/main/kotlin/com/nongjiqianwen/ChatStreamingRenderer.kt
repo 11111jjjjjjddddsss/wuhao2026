@@ -2413,8 +2413,13 @@ private fun RendererMarkdownTableImpl(
     copyEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
+    if (table.rows.isEmpty()) return
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val copyTable = {
+        clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
+        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -2422,16 +2427,6 @@ private fun RendererMarkdownTableImpl(
             .background(Color.White)
             .border(width = 0.8.dp, color = Color(0xFFDDE2E8), shape = RoundedCornerShape(8.dp))
     ) {
-        RendererMarkdownTableHeaderImpl(
-            headers = table.headers,
-            inlineMode = inlineMode,
-            linksEnabled = linksEnabled,
-            copyEnabled = copyEnabled,
-            onCopy = {
-                clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
-                Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
-            }
-        )
         table.rows.forEachIndexed { rowIndex, row ->
             if (rowIndex > 0) {
                 HorizontalDivider(
@@ -2445,49 +2440,10 @@ private fun RendererMarkdownTableImpl(
                 cells = row,
                 rowIndex = rowIndex,
                 inlineMode = inlineMode,
-                linksEnabled = linksEnabled
+                linksEnabled = linksEnabled,
+                copyEnabled = copyEnabled && rowIndex == 0,
+                onCopy = copyTable
             )
-        }
-    }
-}
-
-@Composable
-private fun RendererMarkdownTableHeaderImpl(
-    headers: List<String>,
-    inlineMode: RendererInlineMode,
-    linksEnabled: Boolean,
-    copyEnabled: Boolean,
-    onCopy: () -> Unit
-) {
-    if (headers.isEmpty()) return
-    val headerText = rendererMarkdownTableHeaderSummary(headers)
-    val headerStyle = remember {
-        TextStyle(
-            fontSize = 13.5.sp,
-            lineHeight = 19.sp,
-            color = Color(0xFF4B5560),
-            letterSpacing = 0.sp,
-            fontWeight = FontWeight.Medium
-        )
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(Color(0xFFF5F7F9))
-            .padding(start = 12.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        RendererStreamingActiveTextImpl(
-            text = headerText,
-            style = headerStyle,
-            minLineHeight = 19.dp,
-            inlineMode = inlineMode,
-            linksEnabled = linksEnabled,
-            modifier = Modifier.weight(1f)
-        )
-        if (copyEnabled) {
-            RendererCopyTableIconButton(onClick = onCopy)
         }
     }
 }
@@ -2498,7 +2454,9 @@ private fun RendererMarkdownTableRowImpl(
     cells: List<String>,
     rowIndex: Int,
     inlineMode: RendererInlineMode,
-    linksEnabled: Boolean
+    linksEnabled: Boolean,
+    copyEnabled: Boolean,
+    onCopy: () -> Unit
 ) {
     val titleStyle = remember {
         assistantStreamingParagraphTextStyle().copy(
@@ -2539,11 +2497,14 @@ private fun RendererMarkdownTableRowImpl(
     Column(
         modifier = Modifier.fillMaxWidth()
     ) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color(0xFFFAFBFC))
-                .padding(horizontal = 12.dp, vertical = 9.dp)
+                .heightIn(min = 44.dp)
+                .padding(start = 12.dp, end = if (copyEnabled) 0.dp else 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             RendererStreamingActiveTextImpl(
                 text = title,
@@ -2551,8 +2512,11 @@ private fun RendererMarkdownTableRowImpl(
                 minLineHeight = 24.dp,
                 inlineMode = inlineMode,
                 linksEnabled = linksEnabled,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.weight(1f)
             )
+            if (copyEnabled) {
+                RendererCopyTableIconButton(onClick = onCopy)
+            }
         }
         visibleEntries.forEachIndexed { index, (header, value) ->
             HorizontalDivider(
@@ -2590,45 +2554,33 @@ private fun RendererCopyTableIconButton(
     DisableSelection {
         Box(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(10.dp))
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
                 .clickable(onClick = onClick)
                 .clearAndSetSemantics { contentDescription = "复制表格" },
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(22.dp)) {
-                val iconColor = Color(0xFF343A40)
-                val stroke = Stroke(width = 2.dp.toPx())
-                val radius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
+            Canvas(modifier = Modifier.size(28.dp)) {
+                val iconColor = Color(0xFF111111)
+                val stroke = Stroke(width = 2.35.dp.toPx())
+                val radius = CornerRadius(4.dp.toPx(), 4.dp.toPx())
                 drawRoundRect(
                     color = iconColor,
-                    topLeft = Offset(x = size.width * 0.34f, y = size.height * 0.14f),
-                    size = Size(width = size.width * 0.45f, height = size.height * 0.58f),
+                    topLeft = Offset(x = size.width * 0.38f, y = size.height * 0.12f),
+                    size = Size(width = size.width * 0.46f, height = size.height * 0.55f),
                     cornerRadius = radius,
                     style = stroke
                 )
                 drawRoundRect(
                     color = iconColor,
-                    topLeft = Offset(x = size.width * 0.19f, y = size.height * 0.28f),
-                    size = Size(width = size.width * 0.45f, height = size.height * 0.58f),
+                    topLeft = Offset(x = size.width * 0.16f, y = size.height * 0.33f),
+                    size = Size(width = size.width * 0.46f, height = size.height * 0.55f),
                     cornerRadius = radius,
                     style = stroke
                 )
             }
         }
     }
-}
-
-private fun rendererMarkdownTableHeaderSummary(headers: List<String>): String {
-    val cleanHeaders = headers.map { plainRendererInlineText(it).trim() }
-    val firstHeader = cleanHeaders.firstOrNull().orEmpty()
-    val displayHeaders =
-        if (firstHeader in setOf("维度", "项目", "类别", "指标", "对比项")) {
-            cleanHeaders.drop(1)
-        } else {
-            cleanHeaders
-        }
-    return displayHeaders.filter { it.isNotBlank() }.joinToString(" / ")
 }
 
 private fun rendererMarkdownTableDisplayTitle(

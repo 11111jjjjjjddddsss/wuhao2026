@@ -903,21 +903,23 @@ if ($failures.Count -eq 0) {
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `
         "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)copyEnabled\s*=\s*copyEnabled(?s:.*?)onCopy\s*=\s*\{(?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)Toast\.makeText\(context,\s*"已复制"(?s:.*?)RendererMarkdownTableHeaderImpl(?s:.*?)if\s*\(\s*copyEnabled\s*\)\s*\{(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)' `
-        "Markdown table UI must keep a compact copy icon inside the lightweight table header and enable it only after the message is settled."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)val\s+copyTable\s*=\s*\{(?s:.*?)table\.toPlainCopyText\(\)(?s:.*?)Toast\.makeText\(context,\s*"已复制"(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)copyEnabled\s*=\s*copyEnabled\s*&&\s*rowIndex\s*==\s*0(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)' `
+        "Markdown table UI must keep the copy action inside the first row title strip and enable it only after the message is settled."
     Require-NoMatch $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
         "Markdown tables must be allowed to render a streaming shell after the header and delimiter are confirmed, before body rows arrive."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
-        "Markdown tables must render a lightweight header shell while body rows are still streaming."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableHeaderImpl(?s:.*?)rendererMarkdownTableHeaderSummary\(headers\)(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)lineHeight\s*=\s*19\.sp(?s:.*?)Color\(0xFF4B5560\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium(?s:.*?)background\(Color\(0xFFF5F7F9\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium' `
-        "Markdown table UI must stay in one complete lightweight frame with a subtle header and clear mobile field labels."
-    Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(40\.dp\)(?s:.*?)clip\(RoundedCornerShape\(10\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(22\.dp\)\)' `
-        "Markdown table copy action must stay as a larger borderless icon button, not a small circled text button."
-    Require-Match $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary(?s:.*?)firstHeader\s+in\s+setOf\("维度",\s*"项目",\s*"类别",\s*"指标",\s*"对比项"\)(?s:.*?)cleanHeaders\.drop\(1\)' `
-        "Markdown table header summary must omit structural first-column labels such as 维度 from the top header strip."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"完整表格框、轻表头去首列、无框复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
+    Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*table\.rows\.isEmpty\(\)\s*\)\s*return' `
+        "Markdown table UI must avoid showing a redundant raw header-summary strip before any body row arrives."
+    Require-NoMatch $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
+        "Markdown table UI must not reintroduce the redundant header-summary strip above the first row."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)heightIn\(min\s*=\s*44\.dp\)' `
+        "Markdown table UI must stay in one complete lightweight frame with first-row title strip and clear mobile field labels."
+    Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(44\.dp\)(?s:.*?)clip\(RoundedCornerShape\(12\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(28\.dp\)\)(?s:.*?)Color\(0xFF111111\)(?s:.*?)Stroke\(width\s*=\s*2\.35\.dp\.toPx\(\)\)' `
+        "Markdown table copy action must stay as a GPT-style borderless overlapping-page icon, not a small circled text button."
+    Require-NoMatch $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary' `
+        "Markdown table UI must not show a redundant raw column summary above rows."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、首行内置GPT式复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
         "Debug preview panel must mention the latest table header/card/copy-button visual contract."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)copyEnabled(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
         "Markdown table rows must stay inside the shared table frame with row headers and internal dividers."
     Require-Match $failures $chatStreamingRenderer 'headerColumnCount\s*=\s*splitRendererMarkdownTableCells\(current\)\.size(?s:.*?)separatorColumnCount\s*=\s*splitRendererMarkdownTableCells\(lines\[index \+ 1\]\)\.size(?s:.*?)headerColumnCount\s*!=\s*separatorColumnCount(?s:.*?)expectedColumnCount\s*=\s*headerColumnCount(?s:.*?)bodyRowsWithoutEdgeMode(?s:.*?)looksLikeRendererMarkdownTableBodyRow\((?s:.*?)expectedColumnCount\s*=\s*expectedColumnCount' `
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
