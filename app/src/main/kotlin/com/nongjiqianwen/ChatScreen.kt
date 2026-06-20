@@ -8649,7 +8649,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "嵌套列表、任务项、删除线、公式和图片语法", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
-                    UiCopyPreviewItem("AI 表格", "完整表格框、轻表头和复制图标", UiCopyPreviewKind.AssistantTableSample),
+                    UiCopyPreviewItem("AI 表格", "完整表格框、轻表头去首列、无框复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
             ),

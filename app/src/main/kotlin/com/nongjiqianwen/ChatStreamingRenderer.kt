@@ -2460,6 +2460,7 @@ private fun RendererMarkdownTableHeaderImpl(
     onCopy: () -> Unit
 ) {
     if (headers.isEmpty()) return
+    val headerText = rendererMarkdownTableHeaderSummary(headers)
     val headerStyle = remember {
         TextStyle(
             fontSize = 13.5.sp,
@@ -2478,7 +2479,7 @@ private fun RendererMarkdownTableHeaderImpl(
         verticalAlignment = Alignment.CenterVertically
     ) {
         RendererStreamingActiveTextImpl(
-            text = headers.joinToString(" / "),
+            text = headerText,
             style = headerStyle,
             minLineHeight = 19.dp,
             inlineMode = inlineMode,
@@ -2589,28 +2590,26 @@ private fun RendererCopyTableIconButton(
     DisableSelection {
         Box(
             modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(999.dp))
-                .background(Color.White)
-                .border(width = 0.8.dp, color = Color(0xFFD8DEE6), shape = RoundedCornerShape(999.dp))
+                .size(40.dp)
+                .clip(RoundedCornerShape(10.dp))
                 .clickable(onClick = onClick)
                 .clearAndSetSemantics { contentDescription = "复制表格" },
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(16.dp)) {
+            Canvas(modifier = Modifier.size(22.dp)) {
                 val iconColor = Color(0xFF343A40)
-                val stroke = Stroke(width = 1.6.dp.toPx())
-                val radius = CornerRadius(2.dp.toPx(), 2.dp.toPx())
+                val stroke = Stroke(width = 2.dp.toPx())
+                val radius = CornerRadius(3.dp.toPx(), 3.dp.toPx())
                 drawRoundRect(
                     color = iconColor,
-                    topLeft = Offset(x = size.width * 0.34f, y = size.height * 0.16f),
+                    topLeft = Offset(x = size.width * 0.34f, y = size.height * 0.14f),
                     size = Size(width = size.width * 0.45f, height = size.height * 0.58f),
                     cornerRadius = radius,
                     style = stroke
                 )
                 drawRoundRect(
                     color = iconColor,
-                    topLeft = Offset(x = size.width * 0.20f, y = size.height * 0.30f),
+                    topLeft = Offset(x = size.width * 0.19f, y = size.height * 0.28f),
                     size = Size(width = size.width * 0.45f, height = size.height * 0.58f),
                     cornerRadius = radius,
                     style = stroke
@@ -2618,6 +2617,18 @@ private fun RendererCopyTableIconButton(
             }
         }
     }
+}
+
+private fun rendererMarkdownTableHeaderSummary(headers: List<String>): String {
+    val cleanHeaders = headers.map { plainRendererInlineText(it).trim() }
+    val firstHeader = cleanHeaders.firstOrNull().orEmpty()
+    val displayHeaders =
+        if (firstHeader in setOf("维度", "项目", "类别", "指标", "对比项")) {
+            cleanHeaders.drop(1)
+        } else {
+            cleanHeaders
+        }
+    return displayHeaders.filter { it.isNotBlank() }.joinToString(" / ")
 }
 
 private fun rendererMarkdownTableDisplayTitle(

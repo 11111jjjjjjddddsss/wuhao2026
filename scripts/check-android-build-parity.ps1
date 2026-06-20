@@ -909,9 +909,13 @@ if ($failures.Count -eq 0) {
         "Markdown tables must be allowed to render a streaming shell after the header and delimiter are confirmed, before body rows arrive."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
         "Markdown tables must render a lightweight header shell while body rows are still streaming."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableHeaderImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)lineHeight\s*=\s*19\.sp(?s:.*?)Color\(0xFF4B5560\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium(?s:.*?)background\(Color\(0xFFF5F7F9\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium' `
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableHeaderImpl(?s:.*?)rendererMarkdownTableHeaderSummary\(headers\)(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)lineHeight\s*=\s*19\.sp(?s:.*?)Color\(0xFF4B5560\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium(?s:.*?)background\(Color\(0xFFF5F7F9\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium' `
         "Markdown table UI must stay in one complete lightweight frame with a subtle header and clear mobile field labels."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"完整表格框、轻表头和复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
+    Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(40\.dp\)(?s:.*?)clip\(RoundedCornerShape\(10\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(22\.dp\)\)' `
+        "Markdown table copy action must stay as a larger borderless icon button, not a small circled text button."
+    Require-Match $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary(?s:.*?)firstHeader\s+in\s+setOf\("维度",\s*"项目",\s*"类别",\s*"指标",\s*"对比项"\)(?s:.*?)cleanHeaders\.drop\(1\)' `
+        "Markdown table header summary must omit structural first-column labels such as 维度 from the top header strip."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"完整表格框、轻表头去首列、无框复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
         "Debug preview panel must mention the latest table header/card/copy-button visual contract."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
         "Markdown table rows must stay inside the shared table frame with row headers and internal dividers."
