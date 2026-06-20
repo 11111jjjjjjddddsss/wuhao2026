@@ -54,6 +54,18 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun emphasisDisabledHidesBoldMarkersWithoutBoldWeight() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "**高**。开袋即用。",
+            mode = RendererInlineMode.Settled,
+            emphasisEnabled = false
+        )
+
+        assertEquals("高。开袋即用。", rendered.text)
+        assertFalse(rendered.hasSpanFor("高") { it.fontWeight == FontWeight.Medium })
+    }
+
+    @Test
     fun streamingClosedBoldKeepsStableTextAndStyle() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "建议**控水**后观察",

@@ -28,7 +28,7 @@ func TestLocalUploadStoreSaveAndOpen(t *testing.T) {
 	if err := store.Save(context.Background(), filename, "image/jpeg", []byte(body)); err != nil {
 		t.Fatalf("Save returned error: %v", err)
 	}
-	reader, contentType, err := store.Open(context.Background(), filename)
+	reader, contentType, contentLength, err := store.Open(context.Background(), filename)
 	if err != nil {
 		t.Fatalf("Open returned error: %v", err)
 	}
@@ -42,6 +42,9 @@ func TestLocalUploadStoreSaveAndOpen(t *testing.T) {
 	}
 	if contentType != "" {
 		t.Fatalf("local store should not synthesize content type, got %q", contentType)
+	}
+	if contentLength != int64(len(body)) {
+		t.Fatalf("contentLength=%d, want %d", contentLength, len(body))
 	}
 }
 
@@ -53,7 +56,7 @@ func TestLocalUploadStoreSaveAndOpenSupportObject(t *testing.T) {
 	if err := store.Save(context.Background(), filename, "image/jpeg", []byte(body)); err != nil {
 		t.Fatalf("Save returned error: %v", err)
 	}
-	reader, contentType, err := store.Open(context.Background(), filename)
+	reader, contentType, contentLength, err := store.Open(context.Background(), filename)
 	if err != nil {
 		t.Fatalf("Open returned error: %v", err)
 	}
@@ -67,6 +70,9 @@ func TestLocalUploadStoreSaveAndOpenSupportObject(t *testing.T) {
 	}
 	if contentType != "" {
 		t.Fatalf("local store should not synthesize content type, got %q", contentType)
+	}
+	if contentLength != int64(len(body)) {
+		t.Fatalf("contentLength=%d, want %d", contentLength, len(body))
 	}
 }
 

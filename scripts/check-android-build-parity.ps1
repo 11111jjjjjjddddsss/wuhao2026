@@ -885,8 +885,10 @@ if ($failures.Count -eq 0) {
         "Active streaming closed bold section prefixes should still show a stable divider as soon as the section signal is clear."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
         "Active streaming Chinese section heading text should render immediately when it is clearly structural."
-    Require-Match $failures $chatStreamingRenderer 'fun\s+currentTextStyle\(\)(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*\)\s*FontWeight\.Medium\s+else\s+null' `
-        "Assistant inline Markdown bold text should stay visually lighter than section headings."
+    Require-Match $failures $chatStreamingRenderer 'fun\s+currentTextStyle\(\)(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*&&\s*emphasisEnabled\s*\)\s*FontWeight\.Medium\s+else\s+null' `
+        "Assistant inline Markdown bold text should stay visually lighter than section headings and be suppressible inside table cells."
+    Require-Match $failures $chatStreamingRendererTest 'emphasisDisabledHidesBoldMarkersWithoutBoldWeight' `
+        "Assistant renderer tests must prove table-cell emphasis can hide Markdown bold markers without applying bold weight."
     Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural' `
         "Assistant text divider tests must cover active Chinese section headings rendering immediately when clearly structural."
     Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Numbered(?s:.*?)Text\((?s:.*?)modifier\s*=\s*Modifier\.alignBy\(FirstBaseline\)(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)modifier\s*=\s*Modifier(?s:.*?)\.alignBy\(FirstBaseline\)(?s:.*?)\.weight\(1f\)' `
@@ -911,13 +913,15 @@ if ($failures.Count -eq 0) {
         "Markdown table UI must avoid showing a redundant raw header-summary strip before any body row arrives."
     Require-NoMatch $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
         "Markdown table UI must not reintroduce the redundant header-summary strip above the first row."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Medium(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)heightIn\(min\s*=\s*44\.dp\)' `
-        "Markdown table UI must stay in one complete lightweight frame with first-row title strip and clear mobile field labels."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*13\.5\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Normal(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)heightIn\(min\s*=\s*44\.dp\)' `
+        "Markdown table UI must stay in one complete lightweight frame with first-row title strip and normal-weight mobile field labels."
     Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(44\.dp\)(?s:.*?)clip\(RoundedCornerShape\(12\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(28\.dp\)\)(?s:.*?)Color\(0xFF111111\)(?s:.*?)coverColor\s*=\s*Color\(0xFFFAFBFC\)(?s:.*?)squareSize\s*=\s*size\.width\s*\*\s*0\.48f(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*coverColor(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*iconColor' `
         "Markdown table copy action must stay as a GPT-style covered overlapping-square icon, not transparent overlapping rounded rectangles or a small circled text button."
     Require-NoMatch $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary' `
         "Markdown table UI must not show a redundant raw column summary above rows."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、首行GPT式方块复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*value(?s:.*?)emphasisEnabled\s*=\s*false' `
+        "Markdown table cell values must suppress inline bold emphasis so table bodies do not become visually noisy."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、正文不加粗、GPT式复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
         "Debug preview panel must mention the latest table header/card/copy-button visual contract."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)copyEnabled(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
         "Markdown table rows must stay inside the shared table frame with row headers and internal dividers."

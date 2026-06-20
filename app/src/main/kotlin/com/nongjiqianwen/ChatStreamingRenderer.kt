@@ -1807,6 +1807,7 @@ private fun RendererStreamingActiveTextImpl(
     minLineHeight: Dp,
     inlineMode: RendererInlineMode,
     linksEnabled: Boolean,
+    emphasisEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     if (text.isEmpty()) {
@@ -1815,12 +1816,13 @@ private fun RendererStreamingActiveTextImpl(
     }
     val rememberedLinkInteractionListener = rememberRendererLinkInteractionListener()
     val linkInteractionListener = rememberedLinkInteractionListener.takeIf { linksEnabled }
-    val renderedText = remember(text, inlineMode, linkInteractionListener) {
+    val renderedText = remember(text, inlineMode, linkInteractionListener, emphasisEnabled) {
         buildRendererInlineAnnotatedString(
             text = text,
             mode = inlineMode,
             linkInteractionListener = linkInteractionListener,
-            linksEnabled = linksEnabled
+            linksEnabled = linksEnabled,
+            emphasisEnabled = emphasisEnabled
         )
     }
     Text(
@@ -1862,9 +1864,11 @@ internal fun buildRendererInlineAnnotatedString(
     text: String,
     mode: RendererInlineMode,
     linkInteractionListener: LinkInteractionListener? = null,
-    linksEnabled: Boolean = true
+    linksEnabled: Boolean = true,
+    emphasisEnabled: Boolean = true
 ): AnnotatedString {
-    val canUseCache = mode == RendererInlineMode.Settled && linkInteractionListener == null && linksEnabled
+    val canUseCache =
+        mode == RendererInlineMode.Settled && linkInteractionListener == null && linksEnabled && emphasisEnabled
     if (canUseCache) {
         synchronized(rendererSettledInlineMarkdownCache) {
             rendererSettledInlineMarkdownCache[text]?.let { return it }
@@ -1879,7 +1883,7 @@ internal fun buildRendererInlineAnnotatedString(
 
         fun currentTextStyle(): SpanStyle {
             return SpanStyle(
-                fontWeight = if (bold) FontWeight.Medium else null,
+                fontWeight = if (bold && emphasisEnabled) FontWeight.Medium else null,
                 fontStyle = if (italic) FontStyle.Italic else null,
                 fontFamily = if (code) FontFamily.Monospace else null,
                 background = if (code) Color(0xFFF2F3F5) else Color.Unspecified,
@@ -2473,7 +2477,7 @@ private fun RendererMarkdownTableRowImpl(
             lineHeight = 19.sp,
             color = Color(0xFF666D76),
             letterSpacing = 0.sp,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Normal
         )
     }
     val valueStyle = remember {
@@ -2540,6 +2544,7 @@ private fun RendererMarkdownTableRowImpl(
                     minLineHeight = 23.dp,
                     inlineMode = inlineMode,
                     linksEnabled = linksEnabled,
+                    emphasisEnabled = false,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

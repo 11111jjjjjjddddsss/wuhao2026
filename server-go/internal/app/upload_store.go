@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
@@ -15,7 +16,7 @@ import (
 type UploadStore interface {
 	Name() string
 	Save(ctx context.Context, filename string, contentType string, data []byte) error
-	Open(ctx context.Context, filename string) (io.ReadCloser, string, error)
+	Open(ctx context.Context, filename string) (io.ReadCloser, string, int64, error)
 }
 
 func NewUploadStoreFromEnv(localDir string) (UploadStore, error) {
@@ -74,9 +75,17 @@ func (s LocalUploadStore) Save(_ context.Context, filename string, _ string, dat
 	return os.WriteFile(path, data, 0o644)
 }
 
-func (s LocalUploadStore) Open(_ context.Context, filename string) (io.ReadCloser, string, error) {
+func (s LocalUploadStore) Open(_ context.Context, filename string) (io.ReadCloser, string, int64, error) {
 	file, err := os.Open(filepath.Join(s.dir, filepath.FromSlash(filename)))
-	return file, "", err
+	if err != nil {
+		return nil, "", -1, err
+	}
+	stat, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return nil, "", -1, err
+	}
+	return file, "", stat.Size(), nil
 }
 
 type OSSUploadStore struct {
@@ -92,17 +101,23 @@ func (s *OSSUploadStore) Save(_ context.Context, filename string, contentType st
 	return s.bucket.PutObject(s.objectKey(filename), bytes.NewReader(data), oss.ContentType(contentType))
 }
 
-func (s *OSSUploadStore) Open(_ context.Context, filename string) (io.ReadCloser, string, error) {
+func (s *OSSUploadStore) Open(_ context.Context, filename string) (io.ReadCloser, string, int64, error) {
 	key := s.objectKey(filename)
 	meta, err := s.bucket.GetObjectDetailedMeta(key)
 	if err != nil {
-		return nil, "", err
+		return nil, "", -1, err
 	}
 	reader, err := s.bucket.GetObject(key)
 	if err != nil {
-		return nil, "", err
+		return nil, "", -1, err
 	}
-	return reader, meta.Get("Content-Type"), nil
+	size := int64(-1)
+	if rawSize := strings.TrimSpace(meta.Get("Content-Length")); rawSize != "" {
+		if parsed, parseErr := strconv.ParseInt(rawSize, 10, 64); parseErr == nil && parsed >= 0 {
+			size = parsed
+		}
+	}
+	return reader, meta.Get("Content-Type"), size, nil
 }
 
 func (s *OSSUploadStore) objectKey(filename string) string {

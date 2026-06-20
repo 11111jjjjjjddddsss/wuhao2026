@@ -32,6 +32,9 @@ func TestHandleUploadsStaticCacheControlByPurpose(t *testing.T) {
 	if got := rec.Header().Get("Cache-Control"); got != "public, max-age=3600" {
 		t.Fatalf("plain Cache-Control=%q, want public", got)
 	}
+	if got := rec.Header().Get("Content-Length"); got != "5" {
+		t.Fatalf("plain Content-Length=%q, want %d", got, len("plain"))
+	}
 
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()
@@ -49,6 +52,9 @@ func TestHandleUploadsStaticCacheControlByPurpose(t *testing.T) {
 	}
 	if got := rec.Header().Get("Cache-Control"); got != "private, no-store" {
 		t.Fatalf("support Cache-Control=%q, want private no-store", got)
+	}
+	if got := rec.Header().Get("Content-Length"); got != "7" {
+		t.Fatalf("support Content-Length=%q, want %d", got, len("support"))
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

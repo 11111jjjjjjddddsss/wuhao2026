@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -123,7 +124,7 @@ func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	reader, contentType, err := s.uploadStore.Open(r.Context(), name)
+	reader, contentType, contentLength, err := s.uploadStore.Open(r.Context(), name)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -137,6 +138,9 @@ func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "private, no-store")
 	} else {
 		w.Header().Set("Cache-Control", "public, max-age=3600")
+	}
+	if contentLength >= 0 {
+		w.Header().Set("Content-Length", strconv.FormatInt(contentLength, 10))
 	}
 	if r.Method == http.MethodHead {
 		return
