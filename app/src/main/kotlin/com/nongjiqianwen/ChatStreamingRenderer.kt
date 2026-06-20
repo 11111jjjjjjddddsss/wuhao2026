@@ -229,7 +229,7 @@ internal fun RendererMarkdownTable.toPlainCopyText(): String {
 }
 
 internal fun buildRendererMarkdownTableCopyText(table: RendererMarkdownTable): String =
-    table.toPlainCopyText()
+    table.toReadableCopyText()
 
 internal fun RendererMarkdownTable.toReadableCopyText(): String {
     val cleanHeaders = headers.map { plainRendererInlineText(it) }
@@ -2427,32 +2427,30 @@ private fun RendererMarkdownTableImpl(
         clipboardManager.setText(AnnotatedString(buildRendererMarkdownTableCopyText(table)))
         Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
     }
-    DisableSelection {
-        Column(
-            modifier = modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.White)
-                .border(width = 0.8.dp, color = Color(0xFFDDE2E8), shape = RoundedCornerShape(8.dp))
-        ) {
-            table.rows.forEachIndexed { rowIndex, row ->
-                if (rowIndex > 0) {
-                    HorizontalDivider(
-                        modifier = Modifier.fillMaxWidth(),
-                        thickness = 0.8.dp,
-                        color = Color(0xFFE2E6EA)
-                    )
-                }
-                RendererMarkdownTableRowImpl(
-                    headers = table.headers,
-                    cells = row,
-                    rowIndex = rowIndex,
-                    inlineMode = inlineMode,
-                    linksEnabled = linksEnabled,
-                    copyEnabled = copyEnabled && rowIndex == 0,
-                    onCopy = copyTable
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color.White)
+            .border(width = 0.8.dp, color = Color(0xFFDDE2E8), shape = RoundedCornerShape(8.dp))
+    ) {
+        table.rows.forEachIndexed { rowIndex, row ->
+            if (rowIndex > 0) {
+                HorizontalDivider(
+                    modifier = Modifier.fillMaxWidth(),
+                    thickness = 0.8.dp,
+                    color = Color(0xFFE2E6EA)
                 )
             }
+            RendererMarkdownTableRowImpl(
+                headers = table.headers,
+                cells = row,
+                rowIndex = rowIndex,
+                inlineMode = inlineMode,
+                linksEnabled = linksEnabled,
+                copyEnabled = copyEnabled && rowIndex == 0,
+                onCopy = copyTable
+            )
         }
     }
 }

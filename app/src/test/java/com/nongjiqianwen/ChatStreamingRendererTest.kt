@@ -460,7 +460,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun markdownTableButtonCopyExcludesSurroundingMessageText() {
+    fun markdownTableButtonCopyExcludesHiddenHeaderAndSurroundingMessageText() {
         val content = "先说明一句。\n\n" +
             "|项目|建议|\n" +
             "|---|---|\n" +
@@ -473,9 +473,10 @@ class ChatStreamingRendererTest {
         val tableCopyText = buildRendererMarkdownTableCopyText(table)
 
         assertEquals(
-            "项目\t建议\n水分\t控水",
+            "水分：\n建议：控水",
             tableCopyText
         )
+        assertFalse(tableCopyText.contains("项目\t建议"))
         assertFalse(tableCopyText.contains("先说明一句"))
         assertFalse(tableCopyText.contains("后面还有一句"))
         assertTrue(buildRendererPlainCopyText(content).contains("先说明一句"))
