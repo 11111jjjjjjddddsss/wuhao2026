@@ -10,7 +10,7 @@
 
 ## 当前代码真相
 
-- 2026-06-20 已为当前 `46301eca` 生成最新内部 debug 测试包并上传私有 OSS `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-161816-46301eca914a.apk`，包 SHA-256 为 `d452540e6214363c874ba9c97be8c71e228b8e27ff0ac1ac3b98ef600021b0e6`，包名 / 签名匹配 / debug 属性 / OSS `test-apks/` 3 天生命周期 / 200 与 206 下载探针均通过；下载仍走 `download.nongjiqiancha.cn` 私有 OSS 72 小时短签名链接，签名 URL 不写入仓库、官网或检查更新配置。本轮没有发布正式 Android 包，没有开启检查更新下发，没有部署生产后端 / 后台。
+- 2026-06-20 已为当前 `cfb3dc87` 生成最新内部 debug 测试包并上传私有 OSS `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-163451-cfb3dc877ae5.apk`，包 SHA-256 为 `3ddd77c1a03fe601dc046ec9a38e158fd6070b7f729ffe3150547da7692a4710`，包名 / 签名匹配 / debug 属性 / OSS `test-apks/` 3 天生命周期 / 200 与 206 下载探针均通过；下载仍走 `download.nongjiqiancha.cn` 私有 OSS 72 小时短签名链接，签名 URL 不写入仓库、官网或检查更新配置。本轮没有发布正式 Android 包，没有开启检查更新下发，没有部署生产后端 / 后台。
 - 2026-06-20 Android 主聊天 Markdown 表格视觉继续按用户截图反馈收口：仍不恢复横向宽表，避免三列内容在手机上挤压；移动端表格卡片改成更像正规表格的“顶部表头加重 + 每个维度块内置浅底标题栏 + 行分割”结构，卡片字段标签加深并使用 Medium，提升表头 / 字段 / 正文层级。该改动只调整表格视觉层级，不改变 Markdown 表格解析、复制表格内容、流式出壳、主聊天滚动链或模型输出。
 - 2026-06-20 Android 主聊天正文按用户最新截图反馈继续微调阅读密度：AI 正文在上一版偏小后回调到 16.5sp / 27.5sp，streaming 行高为 29sp，章节标题为 19.5/17.5sp，列表圆点同步为 17.5sp；中文正文字距归零，减少截图压缩、粗体词和长行换行叠加造成的“文字有点斜 / 漂”的视觉错觉。今日农情主聊天渲染继续复用普通 AI 标题 / 正文 / 灰色辅助文本样式，保持农情和正常正文视觉一致。该改动只调整文字视觉密度，不改变 Markdown 解析、表格卡片、分割线、滚动链、输入框或模型输出。
 - 2026-06-20 Android debug-only UI 文案样式预览面板同步消息尾部最新口径：`ASSISTANT_RETRYING_STATUS_TEXT` / `USER_RETRYING_STATUS_TEXT` 仍渲染真实 `MessageStatusFooter`，二级说明从旧“补上传图片”改为“点击重试 / 重发进行中”，避免测试预览误导带图发送过程仍有专属尾巴；正式用户可见尾部文案和发送链路不变。
