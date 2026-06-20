@@ -5,6 +5,8 @@
 
 ## 2026-06-20
 
+- Android 主聊天 Markdown 列表展示改为无圆点左齐：仍解析 `- / * / +` 列表和嵌套层级，但 UI 不再画小圆点、不再把二级列表正文推到右侧，整体按正文左边线展示；复制纯文本也不再额外插入界面没有的小圆点，编号列表仍保留数字结构。debug 预览面板“AI Markdown 兜底”同步为“列表无圆点左齐”，`ChatStreamingRendererTest` 和 Android parity 已同步锁住该口径。
+
 - 收紧 Android 表格复制入口：表格右上复制图标改为只复制当前表格的可读内容，不带隐藏的原始表头行，也不带前后正文；长按正文 / 表格区域触发的消息级“复制 / 全文复制”逻辑不变，不禁用。debug 预览面板“AI 表格”同步为“单表复制图标”，`ChatStreamingRendererTest` 新增“表格按钮复制不包含隐藏表头或周围正文”单测，Android parity 新增对应护栏。
 
 - 为主动发送 / 重发不被本地 pending 或网络预检卡住、表格字段标签同正文大小提交 `ef28864e` 后，又提交 `226d6041` 将内部测试包策略改为“新包探针通过后只保留最新 1 个”。当前最新内部 debug 测试包为 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-202412-4a6bae4f0307.apk`，SHA-256 为 `9cf9ded65e1be2044d7db182c4732c76248794711d9e8fe9828ff611bbc588f0`，大小 `20,946,504` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK，OSS `test-apks/debug/` 当前只剩 1 个对象。该包包含后续 `4a6bae4f` 的表格图标复制当前可见表格内容修复，只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新；本轮没有后端代码改动、没有部署生产后端，线上后端 readiness 实测仍为 `server_revision=0df890e1 / active_upstream_port=3000 / ok=true`。

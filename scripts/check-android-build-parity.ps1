@@ -638,14 +638,16 @@ if ($failures.Count -eq 0) {
         "Assistant main-chat text must keep the balanced half-step typography and zero Chinese body letter spacing."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.5\.sp\s*else\s*17\.5\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*30\.sp\s*else\s*27\.sp' `
         "Assistant headings must keep the balanced half-step scale instead of returning to the heavier 20/18sp layout."
-    Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)paragraphStyle\.copy\(fontSize\s*=\s*17\.5\.sp\)' `
-        "Assistant bullet markers must scale with the softened main-chat text."
-    Require-Match $failures $chatStreamingRenderer 'data\s+class\s+Bullet\(val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)data\s+class\s+Numbered\(val\s+number:\s*String,\s*val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)rendererMarkdownIndentLevel(?s:.*?)rendererListIndentDp\(model\.indentLevel\)(?s:.*?)padding\(start\s*=\s*listIndent\)(?s:.*?)rendererListIndentDp\(model\.indentLevel\)(?s:.*?)padding\(start\s*=\s*listIndent\)(?s:.*?)rendererListIndentDp\(indentLevel:\s*Int\):\s*Dp\s*=\s*\(indentLevel\.coerceAtLeast\(0\)\s*\*\s*10\)\.dp' `
-        "Assistant markdown lists must keep nested list indentation, but keep child bullets close enough to the left edge for Chinese long text."
+    Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*model\.text(?s:.*?)modifier\s*=\s*Modifier(?s:.*?)\.fillMaxWidth\(\)(?s:.*?)\.heightIn\(min\s*=\s*paragraphLineHeight\)' `
+        "Assistant bullet lists must render as clean left-aligned text without visual dot markers."
+    Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Bullet\s*->\s*plainRendererInlineText\(model\.text\)' `
+        "Assistant plain-copy text must not reintroduce bullet dots that are no longer visible in the UI."
+    Require-Match $failures $chatStreamingRenderer 'data\s+class\s+Bullet\(val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)data\s+class\s+Numbered\(val\s+number:\s*String,\s*val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)rendererMarkdownIndentLevel(?s:.*?)rendererListIndentDp\(model\.indentLevel\)(?s:.*?)padding\(start\s*=\s*listIndent\)(?s:.*?)rendererListIndentDp\(indentLevel:\s*Int\):\s*Dp\s*=\s*\(indentLevel\.coerceAtLeast\(0\)\s*\*\s*10\)\.dp' `
+        "Assistant markdown numbered lists must keep compact nested indentation for structured numbered content."
     Require-Match $failures $chatStreamingRenderer 'rendererMarkdownImageRegex(?s:.*?)normalizeRendererTaskListText(?s:.*?)hasRendererUnclosedStrikeDelimiter(?s:.*?)TextDecoration\.LineThrough(?s:.*?)isRendererStrikeDelimiter' `
         "Assistant Markdown fallback rendering must keep image syntax visible as text, task-list markers readable, and strikethrough styled without dropping content."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"嵌套列表收窄、任务项、删除线和公式",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
-        "Debug preview panel must include the latest Markdown fallback sample for compact nested lists, task items, strikethrough, and formulas."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"列表无圆点左齐、任务项、删除线和公式",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
+        "Debug preview panel must include the latest Markdown fallback sample for left-aligned dotless lists, task items, strikethrough, and formulas."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
