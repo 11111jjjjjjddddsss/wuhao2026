@@ -9,7 +9,7 @@
 
 - Android 主聊天 AI Markdown 展示补横杠控制符和装饰符清洗：模型单独吐 `--- / *** / ___` 时会作为 Markdown 控制符删除，不再把三条横杠当正文露出、复制，也不额外生成一条重复分割线；原有标题 / 章节分割线仍按现有规则显示。AI 正文 / 表格 / 复制链会隐藏图钉、绿勾、表情、警告等装饰性 emoji，保留普通文字、箭头、度数、百分号、加号和 Markdown 任务列表黑白 checkbox。debug-only 预览面板“AI Markdown 兜底”加入 `---`、图钉、绿勾样例，`ChatStreamingRendererTest` 和 Android parity 同步锁住该口径。该改动只做 Android 展示层清洗，不改用户输入、不新增模型输出过滤或提示词限制。
 
-- 为当前 `5162d8246262` 生成最新内部 debug 测试包 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-213701-5162d8246262.apk`，SHA-256 为 `7a96ed18d02a622676dce3aef6269ee6d6ad755a6a04995af17b497067e09f8e`，大小 `20,944,052` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK，OSS `test-apks/debug/` 当前只剩 1 个对象。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新；本轮没有部署生产后端。
+- 为当前 `336f7a8f197a` 生成最新内部 debug 测试包 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-220036-336f7a8f197a.apk`，SHA-256 为 `9741eee55de61d8bb26c502c92491eb0ce2c99902d0d9a861bbd994814f294e3`，大小 `20,944,303` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK，OSS `test-apks/debug/` 当前只剩 1 个对象。该包包含 AI Markdown `--- / *** / ___` 控制符删除、装饰 emoji 清洗和预览面板同步；生产后端同轮已部署 `336f7a8f` 的诊断约束总组装。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新。
 
 - Android 设置页法律入口和二级目录标题统一改为“隐私与协议”，debug-only 预览面板和 Android parity 护栏同步更新，避免继续显示旧顺序。同时补后端删除历史对话单测，锁住 `POST /api/session/clear` 的清理范围：递增 `session_generation`，只删除聊天 UI 归档、主界面今日农情展示记录和 `session_ab` 短期窗口 / 长期记忆，不碰会员、额度、礼品卡、订单、帮助反馈、App 日志或账号登录态；生成中删除仍按 409 提示稍后再删。本轮没有部署生产后端。
 
