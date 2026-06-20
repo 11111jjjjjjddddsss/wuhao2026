@@ -5,6 +5,8 @@
 
 ## 2026-06-20
 
+- 为预览面板更新提交 `3d615360` 生成最新内部 debug 测试包 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-154320-3d61536030f7.apk`，SHA-256 为 `40e36df1ce4d28733b65d238c0a7176840a850b33c9d0ad8effb93a4cceaa32c`；脚本确认包名、签名匹配、debug 属性、OSS 生命周期、下载域名 200 / 206 探针均 ready。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新，也未部署生产后端 / 后台。
+
 - Android debug-only UI 文案样式预览面板同步消息尾部最新口径：`ASSISTANT_RETRYING_STATUS_TEXT` / `USER_RETRYING_STATUS_TEXT` 仍渲染真实 `MessageStatusFooter`，二级说明从旧“补上传图片”改为“点击重试 / 重发进行中”，避免测试预览误导带图发送过程仍有专属尾巴；正式用户可见尾部文案和发送链路不变。
 
 - 为交互收口提交 `2d791d44` 生成最新内部 debug 测试包 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-141516-2d791d4404fc.apk`，SHA-256 为 `63554570a13d007a39d93d31267ebc5f4073aa686e8b2a9955b583ee69a961d8`；脚本确认包名、签名匹配、debug 属性、OSS 生命周期、下载域名 200 / 206 探针均 ready。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新，也未部署生产后端 / 后台。
