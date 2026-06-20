@@ -8706,7 +8706,7 @@ private fun UiCopyPreviewOverlay(
                 title = "主界面中部浮层",
                 items = listOf(
                     UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽中部短提示", UiCopyPreviewKind.Quota),
-                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "门户 Wi-Fi / 无网络", UiCopyPreviewKind.Network),
+                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网 / 门户 Wi-Fi；可联网先放行", UiCopyPreviewKind.Network),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
                     UiCopyPreviewItem(SERVICE_UNAVAILABLE_HINT_TEXT, "服务临时不可用浮层", UiCopyPreviewKind.ServiceUnavailable),
                     UiCopyPreviewItem(ACTIVE_STREAM_HINT_TEXT, "上一条仍在处理浮层", UiCopyPreviewKind.ActiveStream),

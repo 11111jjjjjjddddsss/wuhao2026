@@ -774,8 +774,8 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must explicitly show that today agri is not inserted mid-chat before it has appeared."
     Require-Match $failures $chatScreen '"远端确认当天 ready 后，用户在它后面发送的后三轮会临时带当天农情标记"' `
         "Debug UI copy preview must explicitly show that today-agri context is only carried after the remote card is confirmed ready."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\(NETWORK_UNAVAILABLE_HINT_TEXT,\s*"门户 Wi-Fi / 无网络",\s*UiCopyPreviewKind\.Network\)' `
-        "Debug UI copy preview must show that network unavailable covers no network and captive portal Wi-Fi without treating unvalidated internet as offline."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\(NETWORK_UNAVAILABLE_HINT_TEXT,\s*"无网 / 门户 Wi-Fi；可联网先放行",\s*UiCopyPreviewKind\.Network\)' `
+        "Debug UI copy preview must show that network unavailable covers no network and captive portal Wi-Fi while explicitly allowing unvalidated internet."
     Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button(?s:.*?)onClick\(label\s*=\s*label\)' `
         "Message action menu buttons must expose clickable button semantics for accessibility and UI automation."
     Require-Match $failures $chatScreen 'if\s*\(\s*canAttemptRemoteAssistantRecovery\(reason\)\s*\)(?s:.*?)upsertAssistantMessagePlaceholder(?s:.*?)failedAssistantMessageStates\[finalId\]\s*=\s*FailedAssistantMessageState(?s:.*?)retryingAssistantMessageIds\[finalId\]\s*=\s*true' `
