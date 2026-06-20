@@ -8722,6 +8722,7 @@ private fun UiCopyPreviewOverlay(
             UiCopyPreviewGroup(
                 title = "主界面中部浮层",
                 items = listOf(
+                    UiCopyPreviewItem("正在检查更新...", "设置 / 反馈 / 礼品卡等菜单短提示统一到这里", UiCopyPreviewKind.MenuNoticeHint),
                     UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽中部短提示", UiCopyPreviewKind.Quota),
                     UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网 / 门户 Wi-Fi；可联网先放行", UiCopyPreviewKind.Network),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
@@ -9020,6 +9021,7 @@ private enum class UiCopyPreviewKind {
     Interrupted,
     InterruptedFallback,
     InputTooLong,
+    MenuNoticeHint,
     MessageMenu,
     InputMenu,
     ImageReadFailure,
@@ -9719,6 +9721,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.Interrupted -> UiCopyPreviewHint(INTERRUPTED_NETWORK_HINT_TEXT)
                 UiCopyPreviewKind.InterruptedFallback -> UiCopyPreviewHint(INTERRUPTED_FALLBACK_HINT_TEXT)
                 UiCopyPreviewKind.InputTooLong -> UiCopyPreviewHint(INPUT_TOO_LONG_HINT_TEXT)
+                UiCopyPreviewKind.MenuNoticeHint -> UiCopyPreviewHint("正在检查更新...")
                 UiCopyPreviewKind.MessageMenu -> {
                     MessageActionMenuCardContent(onCopy = {}, onCopyFull = {})
                 }

@@ -644,6 +644,8 @@ if ($failures.Count -eq 0) {
         "Hamburger menu short notices must be routed into the main middle floating hint layer."
     Require-Match $failures $hamburgerMenuSheet 'fun\s+showNotice\(text:\s*String\)\s*\{\s*onPlaceholderClick\(text\)\s*\}' `
         "Hamburger menu short notices must not keep a separate bottom notice layer."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("正在检查更新\.\.\.",\s*"设置 / 反馈 / 礼品卡等菜单短提示统一到这里",\s*UiCopyPreviewKind\.MenuNoticeHint\)(?s:.*?)UiCopyPreviewKind\.MenuNoticeHint\s*->\s*UiCopyPreviewHint\("正在检查更新\.\.\."\)' `
+        "Debug preview panel must expose the unified middle hint sample for menu short notices."
     Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*model\.text(?s:.*?)modifier\s*=\s*Modifier(?s:.*?)\.fillMaxWidth\(\)(?s:.*?)\.heightIn\(min\s*=\s*paragraphLineHeight\)' `
         "Assistant bullet lists must render as clean left-aligned text without visual dot markers."
     Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Bullet\s*->\s*plainRendererInlineText\(model\.text\)' `
