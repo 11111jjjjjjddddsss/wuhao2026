@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- Android 主聊天流式正文贴底时序做最小收口：打字机 reveal 在把新文本写入可见正文前，如果当前仍是 AutoFollow 且用户没有拖动 / 浏览，会先预请求一次 forward LazyColumn 底部锚点；原有 `SideEffect` 同帧锚点兜底继续保留。该改动用于缓解长文生成时“先往下掉一下、再被拉回去”的轻微上下校准感，不恢复反向列表、不引入 overlay、不改变输入框、发送 / 重发 / 重试、Markdown 解析、模型输出或后端接口。
+
 - 主聊天按质量优先改为默认所有轮次开启思考，预算固定 `thinking_budget=1024`，不按会员区分；`CHAT_THINKING_MODE=off` 可应急关闭，`CHAT_THINKING_MODE=image` 可回退为仅图像上下文开启。Android 空回复等待态同步改为按实际等待时间展示：先显示呼吸小球，约 1.8 秒仍无正文再切为“正在思考...”，不再只限图片问诊；省略号循环由 `1050ms` 放慢到 `1500ms` 一轮；预览面板“图片问诊思考”改为通用“等待思考态”。用户记忆文档摘要和今日农情仍关闭思考；本轮不新增内容过滤、关键词拦截、字数硬卡、`max_tokens` 或客户端模型 Key。
 
 - 生产后端已部署提交 `6f5694c0`，`scripts/check-ecs-readiness.ps1 -ExpectedRevision 6f5694c0` 通过，线上 healthz 返回 `revision=6f5694c0` 且关键依赖 ready；主聊天完成日志继续记录 `thinking_enabled`、`thinking_budget`、`done_received`、`send_done_after_archive`、`assistant_reply_chars` 等安全字段，方便真机回归确认 1024 是否生效且不记录正文或图片 URL。Android 最新内部 debug 测试包仍为 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-012316-2348e444aa09.apk`，SHA-256 为 `859e4ceb80dd0afb4de29d06bc6237a1c32da567ef3261fcb97f7f1c5a30c238`，大小 `20,949,688` 字节；脚本已确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，OSS `test-apks/debug/` 当前只剩 1 个对象。该包只用于内部真机回归；本轮后端组装词小改未重新打 Android 包、未发布正式包、未写官网正式下载、未配置检查更新。
