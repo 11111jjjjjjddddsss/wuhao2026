@@ -798,7 +798,7 @@ if ($failures.Count -eq 0) {
         "ChatRecyclerViewHost must remain a single user-scrollable forward LazyColumn over the provided timeline items."
     Require-NoMatch $failures $chatRecyclerViewHost 'reverseLayout\s*=' `
         "ChatRecyclerViewHost must not opt into reverseLayout."
-    Require-Match $failures $chatScreen 'shouldAnchorStreamingBottomThisFrame(?s:.*?)SideEffect\s*\{\s*requestForwardListBottomAnchor\s*\(\s*\)\s*\}' `
+    Require-Match $failures $chatScreen 'shouldAnchorStreamingBottomThisFrame(?s:.*?)SideEffect\s*\{\s*requestProgrammaticForwardListBottomAnchor\s*\(\s*\)\s*\}' `
         "Streaming content must keep the same-frame bottom-anchor SideEffect that prevents the tail from flashing below the workline."
     Require-Match $failures $chatScreen 'STREAM_TYPEWRITER_IDLE_POLL_MS\s*=\s*20L' `
         "Streaming typewriter idle polling must keep the calmer 20ms rhythm."

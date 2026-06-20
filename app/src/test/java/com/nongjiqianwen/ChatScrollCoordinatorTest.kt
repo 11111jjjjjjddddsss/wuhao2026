@@ -113,4 +113,51 @@ class ChatScrollCoordinatorTest {
         assertEquals(ScrollMode.UserBrowsing, scrollMode.value)
         assertTrue(userInteracting.value)
     }
+
+    @Test
+    fun streamingAutoFollowRequestsPostLayoutAnchorWhenTailDrifts() {
+        assertTrue(
+            shouldRequestStreamingAutoFollowAnchorAfterLayout(
+                isStreaming = true,
+                hasStreamingItem = true,
+                streamingMessageContent = "正在生成一段较长的诊断回复",
+                sendStartAnchorActive = false,
+                scrollMode = ScrollMode.AutoFollow,
+                userInteracting = false,
+                listScrollInProgress = false,
+                isComposerSettling = false,
+                contentBottomPx = 900,
+                legalBottomPx = 760,
+                isNearStreamingWorkline = false
+            )
+        )
+    }
+
+    @Test
+    fun streamingAutoFollowPostLayoutAnchorRespectsUserAndStableTail() {
+        fun shouldAnchor(
+            scrollMode: ScrollMode = ScrollMode.AutoFollow,
+            userInteracting: Boolean = false,
+            listScrollInProgress: Boolean = false,
+            isNearStreamingWorkline: Boolean = false
+        ): Boolean =
+            shouldRequestStreamingAutoFollowAnchorAfterLayout(
+                isStreaming = true,
+                hasStreamingItem = true,
+                streamingMessageContent = "正在生成一段较长的诊断回复",
+                sendStartAnchorActive = false,
+                scrollMode = scrollMode,
+                userInteracting = userInteracting,
+                listScrollInProgress = listScrollInProgress,
+                isComposerSettling = false,
+                contentBottomPx = 900,
+                legalBottomPx = 760,
+                isNearStreamingWorkline = isNearStreamingWorkline
+            )
+
+        assertFalse(shouldAnchor(scrollMode = ScrollMode.UserBrowsing))
+        assertFalse(shouldAnchor(userInteracting = true))
+        assertFalse(shouldAnchor(listScrollInProgress = true))
+        assertFalse(shouldAnchor(isNearStreamingWorkline = true))
+    }
 }

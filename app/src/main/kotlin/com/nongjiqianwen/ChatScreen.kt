@@ -5703,13 +5703,13 @@ fun ChatScreen() {
     val shouldAnchorStreamingBottomThisFrame = shouldAnchorStreamingBottomNow()
     fun requestStreamingBottomAnchorBeforeVisibleTextChange() {
         if (!shouldAnchorStreamingBottomNow()) return
-        requestForwardListBottomAnchor()
+        requestProgrammaticForwardListBottomAnchor()
     }
     if (shouldAnchorStreamingBottomThisFrame) {
         // Run after this composition commits but before layout, so a streaming wrap and bottom
         // Anchor in the same frame so the tail does not appear below the workline for one draw.
         SideEffect {
-            requestForwardListBottomAnchor()
+            requestProgrammaticForwardListBottomAnchor()
         }
     }
 
