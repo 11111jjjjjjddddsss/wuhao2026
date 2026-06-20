@@ -425,7 +425,7 @@ internal fun HamburgerMenuSheet(
                 message = "App update install permission required",
                 attrs = appUpdateLogAttrs(update, true) + mapOf("settings_opened" to opened)
             )
-            showNotice(if (opened) "允许农技千查安装更新包后，返回本页继续更新" else "请先允许农技千查安装更新包")
+            showNotice(if (opened) "允许安装更新包后返回继续" else "请先允许安装更新包")
             return
         }
         pendingInstallPermissionUpdate = null
@@ -1001,28 +1001,28 @@ private fun HamburgerAppUpdateCard(
                 lineHeight = 18.sp
             )
             Text(
-                text = notes.ifBlank { "修复已知问题，优化使用体验。" },
+                text = notes.ifBlank { "优化使用体验。" },
                 color = Color(0xFF222222),
                 fontSize = 15.sp,
                 lineHeight = 22.sp
             )
             if (downloading) {
                 Text(
-                    text = "正在准备安装包，请稍候。",
+                    text = "正在准备安装包。",
                     color = Color(0xFF6D7178),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 )
             } else if (installPermissionPending) {
                 Text(
-                    text = "还需要允许本 App 安装更新包。授权后返回本页，会自动继续；也可以稍后再更新。",
+                    text = "需允许安装更新包，返回后自动继续。",
                     color = Color(0xFF6D7178),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
                 )
             } else {
                 Text(
-                    text = "点击后会打开系统安装确认页，安装完成前不会自动替换当前 App。",
+                    text = "将打开系统安装确认页。",
                     color = Color(0xFF6D7178),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
@@ -1091,7 +1091,7 @@ internal fun HamburgerAppUpdateDialogPreview(
     HamburgerAppUpdateCard(
         versionText = "版本 1.0.1 (2)",
         sizeText = "38.5MB",
-        notes = "修复已知问题，优化使用体验。",
+        notes = "优化使用体验。",
         downloading = downloading,
         installPermissionPending = installPermissionPending,
         onDismiss = {},
@@ -4478,14 +4478,6 @@ private fun HamburgerRedeemCodeContent(
                         lineHeight = 20.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = "礼品卡一般由活动或客服发放，兑换不会扣费，成功后权益立即生效。",
-                        color = Color(0xFF6D7178),
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
                     )
                     Surface(
                         color = Color(0xFFFAFBFC),

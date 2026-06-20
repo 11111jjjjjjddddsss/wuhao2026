@@ -1449,7 +1449,7 @@ async function submitAppUpdate(form: HTMLFormElement): Promise<void> {
     return;
   }
   const confirmText = enabled
-    ? `确认对外启用普通检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\nSHA-256: ${apkSHA256}\n文件大小: ${fileSizeBytes} bytes\n\n请确认已经获得业务负责人正式发版口令，并已跑 check-app-update-release-match.ps1 核对 APK 包名、签名、versionCode、SHA-256 和文件大小。保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。更新说明留空时默认显示“修复已知问题，优化使用体验。”`
+    ? `确认对外启用普通检查更新？\n\nversionCode: ${latestVersionCode}\nversionName: ${latestVersionName || "未填写"}\nAPK: ${apkURL}\nSHA-256: ${apkSHA256}\n文件大小: ${fileSizeBytes} bytes\n\n请确认已经获得业务负责人正式发版口令，并已跑 check-app-update-release-match.ps1 核对 APK 包名、签名、versionCode、SHA-256 和文件大小。保存后，旧版 App 启动时会静默检查，用户手动检查也会拿到这份配置。更新说明留空时默认显示“优化使用体验。”`
     : "确认保存为停更状态？停更后，App 启动静默检查和用户手动检查都不会拿到新包。";
   if (!window.confirm(confirmText)) {
     return;
@@ -3033,7 +3033,7 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
       </label>
       <label class="field">
         <span>更新说明</span>
-        <textarea class="textarea" name="release_notes" placeholder="留空默认：修复已知问题，优化使用体验。">${escapeHTML(config.release_notes || "")}</textarea>
+        <textarea class="textarea" name="release_notes" placeholder="留空默认：优化使用体验。">${escapeHTML(config.release_notes || "")}</textarea>
       </label>
       <label class="checkline"><input type="checkbox" name="enabled" ${config.enabled ? "checked" : ""} /> 对外启用更新</label>
       <div class="row-actions">

@@ -1143,6 +1143,10 @@ class ChatTimelineItemsTest {
             imageUris = listOf("file:///tmp/local.jpg"),
             imageUrls = emptyList()
         )
+        val uploadedImageUser = pendingImageUser.copy(
+            imageUris = emptyList(),
+            imageUrls = listOf("/uploads/u1.jpg")
+        )
 
         assertTrue(
             shouldTrackPendingImageAssistantRecovery(
@@ -1164,10 +1168,19 @@ class ChatTimelineItemsTest {
         )
         assertTrue(
             shouldTrackPendingImageAssistantRecovery(
-                message = pendingImageUser,
+                message = uploadedImageUser,
                 pendingExists = false,
                 terminalFailureExists = false,
                 remoteCompletionExists = true,
+                hasSettledAssistant = false
+            )
+        )
+        assertTrue(
+            shouldTrackPendingImageAssistantRecovery(
+                message = uploadedImageUser,
+                pendingExists = false,
+                terminalFailureExists = true,
+                remoteCompletionExists = false,
                 hasSettledAssistant = false
             )
         )
@@ -1225,81 +1238,23 @@ class ChatTimelineItemsTest {
     }
 
     @Test
-    fun pendingImageSendFooterShowsOnlyWhileBackgroundSendIsPending() {
-        val pendingImageUser = ChatMessage(
-            id = "u1",
-            role = ChatRole.USER,
-            content = "看下这个病害",
-            imageUris = listOf("file:///tmp/local.jpg"),
-            imageUrls = emptyList()
-        )
-        val uploadedImageUser = pendingImageUser.copy(
-            imageUris = emptyList(),
-            imageUrls = listOf("/uploads/u1.jpg")
-        )
-
+    fun remoteCompletionAwaitingSnapshotTimesOutOnlyBeforeAssistantSettles() {
         assertTrue(
-            shouldShowPendingImageSendFooter(
-                message = pendingImageUser,
-                pendingExists = true,
-                failedUserStateExists = false
-            )
-        )
-        assertFalse(
-            shouldShowPendingImageSendFooter(
-                message = pendingImageUser,
-                pendingExists = false,
-                failedUserStateExists = false
-            )
-        )
-        assertFalse(
-            shouldShowPendingImageSendFooter(
-                message = pendingImageUser,
-                pendingExists = true,
-                failedUserStateExists = true
-            )
-        )
-        assertFalse(
-            shouldShowPendingImageSendFooter(
-                message = uploadedImageUser,
-                pendingExists = true,
-                failedUserStateExists = false
-            )
-        )
-    }
-
-    @Test
-    fun remoteCompletionAwaitingSnapshotFooterShowsUntilAssistantSettles() {
-        val uploadedImageUser = ChatMessage(
-            id = "u1",
-            role = ChatRole.USER,
-            content = "看下这个病害",
-            imageUris = listOf("file:///tmp/local.jpg"),
-            imageUrls = listOf("/uploads/u1.jpg")
-        )
-
-        assertTrue(
-            shouldShowRemoteCompletionAwaitingSnapshotFooter(
-                message = uploadedImageUser,
+            shouldTimeoutRemoteCompletionAwaitingSnapshot(
                 remoteCompletionExists = true,
-                failedUserStateExists = false,
                 hasSettledAssistant = false
             )
         )
         assertFalse(
-            shouldShowRemoteCompletionAwaitingSnapshotFooter(
-                message = uploadedImageUser,
+            shouldTimeoutRemoteCompletionAwaitingSnapshot(
                 remoteCompletionExists = true,
-                failedUserStateExists = true,
-                hasSettledAssistant = false
-            )
-        )
-        assertFalse(
-            shouldShowRemoteCompletionAwaitingSnapshotFooter(
-                message = uploadedImageUser,
-                remoteCompletionExists = true,
-                failedUserStateExists = false,
                 hasSettledAssistant = true
+            )
+        )
+        assertFalse(
+            shouldTimeoutRemoteCompletionAwaitingSnapshot(
+                remoteCompletionExists = false,
+                hasSettledAssistant = false
             )
         )
     }

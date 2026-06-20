@@ -507,6 +507,14 @@ if ($failures.Count -eq 0) {
         "Manual app-update checks must use a clear no-available-update notice instead of implying broken release materials are already latest."
     Require-Match $failures $hamburgerMenuSheet 'text\s*=\s*"发现新版本"' `
         "App update dialog must keep the mature user-facing title."
+    Require-Match $failures $hamburgerMenuSheet 'text\s*=\s*notes\.ifBlank\s*\{\s*"优化使用体验。"\s*\}' `
+        "App update dialog fallback release notes must stay concise."
+    Require-Match $failures $hamburgerMenuSheet 'text\s*=\s*"需允许安装更新包，返回后自动继续。"' `
+        "App update permission prompt must stay concise."
+    Require-Match $failures $hamburgerMenuSheet 'text\s*=\s*"将打开系统安装确认页。"' `
+        "App update install-page prompt must stay concise."
+    Require-NoMatch $failures $hamburgerMenuSheet '礼品卡一般由活动|兑换不会扣费|成功后权益立即生效|还需要允许本 App 安装更新包|授权后返回本页，会自动继续|安装完成前不会自动替换当前 App|修复已知问题，优化使用体验' `
+        "Gift-card and app-update pages must not keep the removed long explanatory copy."
     Require-Match $failures $hamburgerMenuSheet 'saveLastPromptedUpdateVersionCode(?s:.*?)event\s*=\s*"app_update\.install_started"' `
         "App update must record the install-page attempt so completed or cancelled installs can be reconciled."
     Require-Match $failures $hamburgerMenuSheet 'APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY\s*=\s*"pending_install_version_code"' `
@@ -523,6 +531,8 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must keep large-font coverage for app update permission and account management screens."
     Require-Match $failures $chatScreen 'UiCopyPreviewKind\.AppUpdateInstallPermissionHint(?s:.*?)HamburgerAppUpdateDialogPreview\(installPermissionPending\s*=\s*true\)' `
         "Debug UI copy preview must render the real app-update permission-pending dialog, not only a plain text hint."
+    Require-NoMatch $failures $chatScreen '后台发送中|正在同步回复|UserPendingImageSend|UserRemoteCompletionAwaiting|USER_PENDING_IMAGE_SEND|USER_REMOTE_COMPLETION' `
+        "Main chat must not show special image-send progress footers; only failure/retry footers should be user-visible."
     Require-Match $failures $chatScreen 'private\s+fun\s+UiCopyPreviewLargeFont(?s:.*?)LocalDensity\s+provides\s+Density\((?s:.*?)fontScale\s*=\s*1\.6f' `
         "Debug UI copy preview must include a reusable large-font wrapper for regression checks."
     Require-NoMatch $failures $hamburgerMenuSheet 'fun\s+startAppUpdate\s*\([^{]+\)\s*\{(?s:.*?)val\s+appContext\s*=\s*context\.applicationContext(?s:.*?)update\.latestVersionCode(?s:.*?)saveLastPromptedUpdateVersionCode(?s:.*?)if\s*\(\s*!AppUpdateInstaller\.canRequestInstallPackages' `
@@ -537,6 +547,8 @@ if ($failures.Count -eq 0) {
         "Membership topup copy must not keep the old vague validity-period wording."
     Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPlanSectionTitle(?s:.*?)heightIn\(min\s*=\s*24\.dp\)' `
         "Membership section title must use a minimum height instead of a fixed height so large fonts are not clipped."
+    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPlanSectionTitle(?s:.*?)FlowRow\((?s:.*?)horizontalArrangement\s*=\s*Arrangement\.spacedBy\(8\.dp\)(?s:.*?)MembershipExtraCountPill\(text\s*=\s*"升级补偿次数\s+\$\{upgradeRemaining\}次"\)(?s:.*?)MembershipExtraCountPill\(text\s*=\s*"加油包\s+\$\{topupRemaining\}次"\)' `
+        "Membership extra-count pills must stay in a horizontal wrapping row instead of stacking vertically."
     Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipActionButton(?s:.*?)heightIn\(min\s*=\s*46\.dp\)(?s:.*?)maxLines\s*=\s*2' `
         "Membership action buttons must allow two-line text and avoid fixed-height clipping on large font settings."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
@@ -853,8 +865,12 @@ if ($failures.Count -eq 0) {
         "Active streaming closed bold section prefixes should still show a stable divider as soon as the section signal is clear."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
         "Active streaming Chinese section heading text should render immediately when it is clearly structural."
+    Require-Match $failures $chatStreamingRenderer 'fun\s+currentTextStyle\(\)(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*\)\s*FontWeight\.Medium\s+else\s+null' `
+        "Assistant inline Markdown bold text should stay visually lighter than section headings."
     Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural' `
         "Assistant text divider tests must cover active Chinese section headings rendering immediately when clearly structural."
+    Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Numbered(?s:.*?)Text\((?s:.*?)modifier\s*=\s*Modifier\.alignBy\(FirstBaseline\)(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)modifier\s*=\s*Modifier(?s:.*?)\.alignBy\(FirstBaseline\)(?s:.*?)\.weight\(1f\)' `
+        "Assistant numbered list markers must align to the first text baseline so 1/2/3/4 labels do not sit visually higher than their titles."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableSeparatorDoesNotCreateSectionDivider' `
         "Assistant text divider tests must prove Markdown table separators do not create section dividers."
     Require-Match $failures $chatStreamingRenderer 'shouldEnableRendererMarkdownTableCopy(?s:.*?)messageSettled\s*&&\s*inlineMode\s*==\s*RendererInlineMode\.Settled' `

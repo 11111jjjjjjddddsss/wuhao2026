@@ -19,7 +19,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("建议控水", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
     }
 
     @Test
@@ -50,7 +50,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("建议控水后观察", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
     }
 
     @Test
@@ -61,7 +61,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("建议控水后观察", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
     }
 
     @Test
@@ -571,7 +571,7 @@ class ChatStreamingRendererTest {
             mode = RendererInlineMode.Streaming
         )
         assertEquals("控水", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
     }
 
     @Test
@@ -584,7 +584,7 @@ class ChatStreamingRendererTest {
             mode = RendererInlineMode.Settled
         )
         assertEquals("农业场景： 面对高温多湿，先让农户看见真实对比。", rendered.text)
-        assertTrue(rendered.hasSpanFor("农业场景：") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(rendered.hasSpanFor("农业场景：") { it.fontWeight == FontWeight.Medium })
     }
 
     @Test
@@ -650,7 +650,7 @@ class ChatStreamingRendererTest {
 
         assertEquals(RendererInlineMode.Streaming, mode)
         assertEquals("建议控水", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
     }
 
     @Test
@@ -1000,7 +1000,7 @@ class ChatStreamingRendererTest {
         assertEquals("**控", advanced.content)
         assertEquals("", advanced.revealBuffer)
         assertEquals("控", rendered.text)
-        assertTrue(rendered.hasSpanFor("控") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(rendered.hasSpanFor("控") { it.fontWeight == FontWeight.Medium })
     }
 
     @Test

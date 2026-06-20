@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.FirstBaseline
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -1807,7 +1808,7 @@ internal fun buildRendererInlineAnnotatedString(
 
         fun currentTextStyle(): SpanStyle {
             return SpanStyle(
-                fontWeight = if (bold) FontWeight.SemiBold else null,
+                fontWeight = if (bold) FontWeight.Medium else null,
                 fontStyle = if (italic) FontStyle.Italic else null,
                 fontFamily = if (code) FontFamily.Monospace else null,
                 background = if (code) Color(0xFFF2F3F5) else Color.Unspecified
@@ -2200,10 +2201,15 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                         if (compactNumberedSection) 6.dp else 8.dp
                     )
                 ) {
-                    Text(text = "${model.number}.", style = numberStyle)
+                    Text(
+                        text = "${model.number}.",
+                        modifier = Modifier.alignBy(FirstBaseline),
+                        style = numberStyle
+                    )
                     RendererStreamingActiveTextImpl(
                         text = model.text,
                         modifier = Modifier
+                            .alignBy(FirstBaseline)
                             .weight(1f)
                             .heightIn(min = bodyLineHeight),
                         style = bodyStyle,

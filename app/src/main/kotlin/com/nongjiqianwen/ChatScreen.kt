@@ -315,25 +315,9 @@ private fun ChatMessage.isLocalImageUploadPendingUserMessage(): Boolean =
         imageUris.orEmpty().isNotEmpty() &&
         imageUrls.orEmpty().isEmpty()
 
-internal fun shouldShowPendingImageSendFooter(
-    message: ChatMessage,
-    pendingExists: Boolean,
-    failedUserStateExists: Boolean
-): Boolean =
-    message.isLocalImageUploadPendingUserMessage() &&
-        pendingExists &&
-        !failedUserStateExists
-
-internal fun shouldShowRemoteCompletionAwaitingSnapshotFooter(
-    message: ChatMessage,
-    remoteCompletionExists: Boolean,
-    failedUserStateExists: Boolean,
-    hasSettledAssistant: Boolean
-): Boolean =
-    message.role == ChatRole.USER &&
-        remoteCompletionExists &&
-        !failedUserStateExists &&
-        !hasSettledAssistant
+private fun ChatMessage.hasUserImageAttachment(): Boolean =
+    role == ChatRole.USER &&
+        (imageUris.orEmpty().isNotEmpty() || imageUrls.orEmpty().isNotEmpty())
 
 private fun ChatMessage.isCompletedAssistantAnswer(failedAssistantMessageIds: Set<String> = emptySet()): Boolean =
     role == ChatRole.ASSISTANT && content.isNotBlank() && id !in failedAssistantMessageIds
@@ -657,7 +641,8 @@ internal fun shouldTrackPendingImageAssistantRecovery(
     remoteCompletionExists: Boolean,
     hasSettledAssistant: Boolean
 ): Boolean =
-    message.isLocalImageUploadPendingUserMessage() &&
+    message.id.isNotBlank() &&
+        message.hasUserImageAttachment() &&
         !hasSettledAssistant &&
         (pendingExists || terminalFailureExists || remoteCompletionExists)
 
@@ -680,6 +665,12 @@ internal fun shouldApplyPendingImageTerminalFailure(
         "stale_session"
     )
 }
+
+internal fun shouldTimeoutRemoteCompletionAwaitingSnapshot(
+    remoteCompletionExists: Boolean,
+    hasSettledAssistant: Boolean
+): Boolean =
+    remoteCompletionExists && !hasSettledAssistant
 
 @Immutable
 internal data class LocalStreamingDraft(
@@ -818,10 +809,6 @@ private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
 private const val USER_RETRYING_STATUS_TEXT = "正在重发..."
 private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
-private const val USER_PENDING_IMAGE_SEND_STATUS_TEXT = "后台发送中 · 稍后自动重试"
-private const val USER_PENDING_IMAGE_SEND_PREVIEW_TEXT = "后台发送中 · 稍后自动重试"
-private const val USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT = "已发送 · 正在同步回复"
-private const val USER_REMOTE_COMPLETION_REFRESH_ACTION_TEXT = "刷新"
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -4822,16 +4809,21 @@ fun ChatScreen() {
             if (recoveryClearEpoch != chatHistoryClearEpoch) return@launch
             val timedOutRemoteCompletionIds = remainingSourceUserMessageIds
                 .filter { sourceUserMessageId ->
-                    PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
-                        context,
-                        chatScopeId,
-                        sourceUserMessageId
-                    ) && !hasSettledAssistantMessageForUser(sourceUserMessageId)
+                    shouldTimeoutRemoteCompletionAwaitingSnapshot(
+                        remoteCompletionExists = PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                            context,
+                            chatScopeId,
+                            sourceUserMessageId
+                        ),
+                        hasSettledAssistant = hasSettledAssistantMessageForUser(sourceUserMessageId)
+                    )
                 }
             timedOutRemoteCompletionIds.forEach { sourceUserMessageId ->
+                failedUserMessageStates.putIfAbsent(sourceUserMessageId, "network")
                 retryingUserMessageIds.remove(sourceUserMessageId)
                 clearFailedAssistantStateForUser(sourceUserMessageId)
                 PendingChatSendRuntime.markInactive(sourceUserMessageId)
+                PendingChatSendStore.consumeRemoteCompletion(context, chatScopeId, sourceUserMessageId)
                 remainingSourceUserMessageIds.remove(sourceUserMessageId)
             }
             if (timedOutRemoteCompletionIds.isNotEmpty()) {
@@ -5319,6 +5311,27 @@ fun ChatScreen() {
         if (!hasRemoteHistorySource || !historyHydrationComplete) return@LaunchedEffect
         if (hasStartedConversation || isStreaming) return@LaunchedEffect
         if (hasSettledAssistantMessageForUser(sourceUserMessageId)) return@LaunchedEffect
+        fun shouldDeferToPendingImageRecovery(): Boolean {
+            val sourceUserMessage = messages.firstOrNull { message ->
+                message.id == sourceUserMessageId && message.role == ChatRole.USER
+            } ?: return false
+            return shouldTrackPendingImageAssistantRecovery(
+                message = sourceUserMessage,
+                pendingExists = PendingChatSendStore.has(context, chatScopeId, sourceUserMessageId),
+                terminalFailureExists = PendingChatSendStore.hasTerminalFailure(
+                    context,
+                    chatScopeId,
+                    sourceUserMessageId
+                ),
+                remoteCompletionExists = PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
+                    context,
+                    chatScopeId,
+                    sourceUserMessageId
+                ),
+                hasSettledAssistant = hasSettledAssistantMessageForUser(sourceUserMessageId)
+            )
+        }
+        if (shouldDeferToPendingImageRecovery()) return@LaunchedEffect
         val recoveryClearEpoch = chatHistoryClearEpoch
         repeat(REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS) { attempt ->
             if (recoveryClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
@@ -5341,6 +5354,7 @@ fun ChatScreen() {
         }
         if (!hasSettledAssistantMessageForUser(sourceUserMessageId)) {
             if (recoveryClearEpoch != chatHistoryClearEpoch) return@LaunchedEffect
+            if (shouldDeferToPendingImageRecovery()) return@LaunchedEffect
             val assistantMessageId = assistantMessageIdForSourceUser(sourceUserMessageId)
             val existingPartialContent = messages
                 .firstOrNull { message ->
@@ -7363,25 +7377,6 @@ fun ChatScreen() {
                         val userImageUris = msg.imageUris.orEmpty()
                         val userImageUrls = msg.imageUrls.orEmpty()
                         val userMessageHasImages = userImageUris.isNotEmpty() || userImageUrls.isNotEmpty()
-                        val isLocalPendingImageMessage = msg.isLocalImageUploadPendingUserMessage()
-                        val userHasSettledAssistant = hasSettledAssistantMessageForUser(msg.id)
-                        val remoteCompletionExists = PendingChatSendStore.hasRemoteCompletionAwaitingSnapshot(
-                            context,
-                            chatScopeId,
-                            msg.id
-                        )
-                        val showPendingImageSendFooter = shouldShowPendingImageSendFooter(
-                            message = msg,
-                            pendingExists = isLocalPendingImageMessage &&
-                                PendingChatSendStore.has(context, chatScopeId, msg.id),
-                            failedUserStateExists = failedUserState != null
-                        )
-                        val showRemoteCompletionAwaitingFooter = shouldShowRemoteCompletionAwaitingSnapshotFooter(
-                            message = msg,
-                            remoteCompletionExists = remoteCompletionExists,
-                            failedUserStateExists = failedUserState != null,
-                            hasSettledAssistant = userHasSettledAssistant
-                        )
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -7454,25 +7449,6 @@ fun ChatScreen() {
                                     onActionClick = {
                                         performButtonHaptic()
                                         retryFailedUserMessage(msg.id)
-                                    }
-                                )
-                            } else if (showPendingImageSendFooter) {
-                                MessageStatusFooter(
-                                    statusText = USER_PENDING_IMAGE_SEND_STATUS_TEXT,
-                                    actionText = null,
-                                    alignEnd = true,
-                                    enabled = false,
-                                    onActionClick = {}
-                                )
-                            } else if (showRemoteCompletionAwaitingFooter) {
-                                MessageStatusFooter(
-                                    statusText = USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT,
-                                    actionText = USER_REMOTE_COMPLETION_REFRESH_ACTION_TEXT,
-                                    alignEnd = true,
-                                    enabled = !isStreaming && !sendUiSettling && !imageSendInProgress,
-                                    onActionClick = {
-                                        performButtonHaptic()
-                                        schedulePendingImageAssistantRecovery(listOf(msg.id))
                                     }
                                 )
                             }
@@ -8697,8 +8673,6 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
                     UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 尾部补上传图片时", UiCopyPreviewKind.AssistantRetrying),
                     UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
-                    UiCopyPreviewItem(USER_PENDING_IMAGE_SEND_PREVIEW_TEXT, "用户带图后台发送中尾部", UiCopyPreviewKind.UserPendingImageSend),
-                    UiCopyPreviewItem(USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT, "后台已发完、等远端快照回填", UiCopyPreviewKind.UserRemoteCompletionAwaiting),
                     UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户尾部补上传图片时", UiCopyPreviewKind.UserRetrying)
                 )
             ),
@@ -8979,8 +8953,6 @@ private enum class UiCopyPreviewKind {
     AssistantRetry,
     AssistantRetrying,
     UserRetry,
-    UserPendingImageSend,
-    UserRemoteCompletionAwaiting,
     UserRetrying,
     Network,
     SupportSendFailed,
@@ -9657,23 +9629,6 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     MessageStatusFooter(
                         statusText = USER_RETRY_STATUS_TEXT,
                         actionText = USER_RETRY_ACTION_TEXT,
-                        alignEnd = true,
-                        onActionClick = {}
-                    )
-                }
-                UiCopyPreviewKind.UserPendingImageSend -> {
-                    MessageStatusFooter(
-                        statusText = USER_PENDING_IMAGE_SEND_STATUS_TEXT,
-                        actionText = null,
-                        alignEnd = true,
-                        enabled = false,
-                        onActionClick = {}
-                    )
-                }
-                UiCopyPreviewKind.UserRemoteCompletionAwaiting -> {
-                    MessageStatusFooter(
-                        statusText = USER_REMOTE_COMPLETION_AWAITING_STATUS_TEXT,
-                        actionText = USER_REMOTE_COMPLETION_REFRESH_ACTION_TEXT,
                         alignEnd = true,
                         onActionClick = {}
                     )

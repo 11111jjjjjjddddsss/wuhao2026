@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	defaultAndroidUpdateReleaseNotes = "修复已知问题，优化使用体验。"
+	defaultAndroidUpdateReleaseNotes = "优化使用体验。"
 	maxAndroidAPKBytes               = int64(200 * 1024 * 1024)
 	officialAndroidAPKHost           = "download.nongjiqiancha.cn"
 	officialAndroidAPKPathPrefix     = "/android/releases/"

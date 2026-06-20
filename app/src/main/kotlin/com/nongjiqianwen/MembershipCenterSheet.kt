@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
@@ -645,6 +647,7 @@ private fun MembershipUnavailableNotice() {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MembershipPlanSectionTitle(
     upgradeRemaining: Int,
@@ -667,8 +670,9 @@ private fun MembershipPlanSectionTitle(
                 .wrapContentHeight(Alignment.CenterVertically)
         )
         if (upgradeRemaining > 0 || topupRemaining > 0) {
-            Column(
+            FlowRow(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 if (upgradeRemaining > 0) {
