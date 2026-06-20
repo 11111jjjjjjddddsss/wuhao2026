@@ -12,7 +12,7 @@
 - DNS：`@` 和 `www` A 记录均指向 ECS 公网 IP `39.106.1.151`
 - Nginx 配置：`/etc/nginx/sites-available/nongjiqiancha-site`
 - 站点目录：`/var/www/nongjiqiancha-site/current`
-- 内部测试包下载主链：`download.nongjiqiancha.cn + OSS private object + signed URL`；debug/internal APK 只走 OSS `test-apks/debug/...` 短签名链接，正常由 OSS `test-apks/` 3 天生命周期自动删除。ECS `/test-apks/` 已停用，`-UseEcsDownloadFallback` 已退役并会被脚本拒绝，不挂官网正式下载按钮，不进入检查更新
+- 内部测试包下载主链：`download.nongjiqiancha.cn + OSS private object + signed URL`；debug/internal APK 只走 OSS `test-apks/debug/...` 短签名链接，发布脚本会在新包探针通过后清理旧内部 APK，只保留最新 1 个，OSS 3 天生命周期作为兜底。ECS `/test-apks/` 已停用，`-UseEcsDownloadFallback` 已退役并会被脚本拒绝，不挂官网正式下载按钮，不进入检查更新
 - 证书：Let's Encrypt / certbot，路径 `/etc/letsencrypt/live/nongjiqiancha.cn/`，有效期到 2026-09-04，自动续期 timer 已启用；只记录证书路径，不记录私钥内容
 - 公网验证：根域名 HTTP 会 301 到 HTTPS，根域名 / www HTTPS 返回官网首页 200，`/gongan.png` 返回图片；`/legal/user-agreement/`、`/legal/privacy-policy/`、`/legal/third-party-sharing/`、`/legal/personal-info-list/`、`/legal/app-permissions/` 和 `/legal/risk-notice/` 在根域名与 www 域名下均返回 200；`api.nongjiqiancha.cn` healthz 仍独立走 API Nginx 配置
 - Nginx 静态站 HTTPS 配置包含 `X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`、`Content-Security-Policy` 和 HSTS；全局安全头兜底见 [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md)

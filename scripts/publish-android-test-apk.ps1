@@ -12,7 +12,8 @@ param(
     [switch]$AllowDirty,
     [switch]$UseOssSignedDownload,
     [switch]$UseEcsDownloadFallback,
-    [switch]$SkipEcsDownloadPublish
+    [switch]$SkipEcsDownloadPublish,
+    [switch]$SkipPruneOldTestApks
 )
 
 $ErrorActionPreference = "Stop"
@@ -290,6 +291,72 @@ function Assert-TestApkLifecycle {
     Write-Host "test_apk_lifecycle_status=verified prefix=test-apks/ expiration_days=3 abort_multipart_days=1"
 }
 
+function Assert-SafeTestApkObjectKey {
+    param(
+        [string]$ObjectKey,
+        [string]$Prefix
+    )
+    $escapedPrefix = [regex]::Escape($Prefix.Trim("/"))
+    if ($ObjectKey -notmatch "^$escapedPrefix/\d{8}/nongjiqiancha-debug-internal-\d{8}-\d{6}-[0-9a-f]{12}\.apk$") {
+        throw "refusing unsafe test APK object key: $ObjectKey"
+    }
+}
+
+function Get-TestApkObjectKeys {
+    param(
+        [string]$BucketName,
+        [string]$Prefix,
+        [string]$OssEndpoint
+    )
+    $safePrefix = $Prefix.Trim("/")
+    if ($safePrefix -ne "test-apks/debug" -and -not $safePrefix.StartsWith("test-apks/debug/")) {
+        throw "refusing to list test APKs outside test-apks/debug: $safePrefix"
+    }
+    $listUrl = "oss://$BucketName/$safePrefix/"
+    $text = Invoke-TextCommand @(
+        "aliyun",
+        "oss",
+        "ls",
+        $listUrl,
+        "--endpoint",
+        $OssEndpoint,
+        "--include",
+        "nongjiqiancha-debug-internal-*.apk"
+    )
+    $prefixRegex = [regex]::Escape("oss://$BucketName/")
+    $objectMatches = [regex]::Matches($text, "$prefixRegex($([regex]::Escape($safePrefix))/[^\s]+\.apk)")
+    $objects = @()
+    foreach ($match in $objectMatches) {
+        $objectKey = $match.Groups[1].Value
+        Assert-SafeTestApkObjectKey -ObjectKey $objectKey -Prefix $safePrefix
+        $objects += $objectKey
+    }
+    return @($objects | Sort-Object -Unique)
+}
+
+function Remove-OldTestApks {
+    param(
+        [string]$BucketName,
+        [string]$Prefix,
+        [string]$OssEndpoint,
+        [string]$KeepObjectKey
+    )
+    $safePrefix = $Prefix.Trim("/")
+    Assert-SafeTestApkObjectKey -ObjectKey $KeepObjectKey -Prefix $safePrefix
+    $allObjects = @(Get-TestApkObjectKeys -BucketName $BucketName -Prefix $safePrefix -OssEndpoint $OssEndpoint)
+    $oldObjects = @($allObjects | Where-Object { $_ -ne $KeepObjectKey })
+    foreach ($oldObject in $oldObjects) {
+        Assert-SafeTestApkObjectKey -ObjectKey $oldObject -Prefix $safePrefix
+        $ossObject = "oss://$BucketName/$oldObject"
+        & aliyun oss rm $ossObject --endpoint $OssEndpoint --force
+        if ($LASTEXITCODE -ne 0) {
+            throw "failed to remove old test APK: $ossObject"
+        }
+        Write-Host ("test_apk_pruned={0}" -f $oldObject)
+    }
+    Write-Host ("test_apk_prune_status=ready kept={0} removed_count={1}" -f $KeepObjectKey, $oldObjects.Count)
+}
+
 function Invoke-AndroidTool {
     param(
         [string]$FilePath,
@@ -488,10 +555,16 @@ if ($useOssSignedDownloadEffective) {
     Test-PublicDownloadUrl -Url $ossSignedDownloadUrl -ExpectedSize $apkItem.Length -Method "GetRange"
 }
 
+if (-not $SkipPruneOldTestApks) {
+    Remove-OldTestApks -BucketName $Bucket -Prefix $normalizedOssPrefix -OssEndpoint $Endpoint -KeepObjectKey $objectKey
+} else {
+    Write-Host "test_apk_prune_status=skipped"
+}
+
 Write-Host "test_apk_build_type=debug"
 Write-Host ("test_apk_expires_hours={0}" -f $ExpireHours)
-Write-Host "test_apk_cleanup=oss_lifecycle_3d"
-Write-Host "test_apk_cleanup_note=normal internal test APK cleanup is handled by the OSS test-apks/ lifecycle; manual cleanup is only for abnormal residue after explicit review."
+Write-Host "test_apk_cleanup=keep_latest_only"
+Write-Host "test_apk_cleanup_note=internal test APK publishing prunes older test-apks/debug APK objects after the new signed download probe succeeds; the OSS 3-day lifecycle remains a fallback."
 if ($UseOssSignedDownload) {
     Write-Host "test_apk_download_mode=oss_signed"
 } elseif ($SkipEcsDownloadPublish) {

@@ -10,7 +10,7 @@
 - 测试包可以包含 debug-only 预览面板和调试日志；除此之外，业务链路应尽量和正式包一致。
 - 测试包文件名和 OSS 路径必须显式包含 `debug`、`internal` 或 `test-apks`，避免和正式 release 物料混淆。
 - 测试包默认先上传到 OSS 私有对象，再通过 `download.nongjiqiancha.cn` 自有 HTTPS 下载域名生成签名链接；阿里云 OSS 默认公网 endpoint 不允许直接分发 APK，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。低成本下载方案见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。
-- 上传脚本只负责生成 / 上传 debug/internal 测试包和输出签名下载链接，不在本机或 ECS 写清理 cron，也不在每次发布时硬删旧对象，避免误删正在测试的链接；正常清理由 OSS `test-apks/` 前缀 3 天生命周期自动完成，发布前脚本会只读校验该生命周期规则仍为启用状态，异常残留才由用户明确喊 Codex 后单次列清目标并处理。ECS `/test-apks/` 旧直链已停用，不再作为下载回退。
+- 上传脚本负责生成 / 上传 debug/internal 测试包、输出签名下载链接，并在新包下载探针通过后清理同前缀旧 debug/internal APK，只保留最新 1 个，避免用户下载错包；脚本不在本机或 ECS 写清理 cron。OSS `test-apks/` 前缀 3 天生命周期继续启用并由脚本只读校验，作为兜底清理。ECS `/test-apks/` 旧直链已停用，不再作为下载回退。
 - 没有用户明确发版口令时，不生成并对外发布正式 release APK，不配置 App 内检查更新，不改官网正式下载按钮。
 
 ## 生成测试包
@@ -31,7 +31,8 @@
 6. 只读校验 OSS `test-apks/` 生命周期仍为启用、3 天删除、未完成分片 1 天清理。
 7. 上传到私有 OSS `test-apks/debug/<日期>/nongjiqiancha-debug-internal-<时间>-<commit>.apk`。
 8. 通过 `download.nongjiqiancha.cn` 生成限时签名下载链接和 HEAD 探针。
-9. 输出自有下载域名测试链接、commit、SHA-256、文件大小、签名指纹和有效期口径。
+9. 新包自有下载域名 HEAD / range 探针通过后，清理同前缀旧 `nongjiqiancha-debug-internal-*.apk`，只保留最新 1 个。
+10. 输出自有下载域名测试链接、commit、SHA-256、文件大小、签名指纹、旧包清理数量和有效期口径。
 
 如果只是本机已构建好的 APK，可传 `-NoBuild -ApkPath <path>`，但脚本仍会读取 APK 本体确认它是 debuggable debug 包，并比对固定 release 证书指纹；同时要求 Android 构建输入没有未提交改动，且 APK 修改时间不早于这些输入的最新 commit，避免把几天前的旧 debug 包误当成当前测试包发出去。release APK 不能通过这个脚本发给用户或代理。如果确实要发布未提交工作区的临时包，必须显式传 `-AllowDirty`，并在对外说明中标注这是未提交测试包。日常不要这样做。
 
@@ -39,7 +40,7 @@
 
 ## 清理边界
 
-仓库不再保留内部测试包清理脚本，测试包发布脚本也不在发布后主动删除旧对象或写 ECS 清理 cron。正常测试包清理由 OSS `test-apks/` 生命周期 3 天自动完成；需要清理本机 APK 构建产物、历史异常残留对象或旧 ECS `/test-apks/` 镜像时，由用户明确提出后，Codex 再按当时状态单次检查、列出目标并人工执行；不要把本机 / ECS 清理做成后台自动任务。正式包保留策略见 [app-update.md](D:/wuhao/docs/runbooks/app-update.md)。
+内部测试包发布后只保留最新 1 个 OSS APK 对象，旧测试包签名链接会随对象删除而失效；这符合“测试包只给当前回归使用”的口径。清理范围被脚本限制在 `oss://nongjiqiancha-prod/test-apks/debug/.../nongjiqiancha-debug-internal-*.apk`，不会删除正式 release 包、用户上传图片、support 图片、官网文件或 App 检查更新物料。OSS `test-apks/` 生命周期 3 天仍保留，作为脚本异常中断时的兜底。需要清理本机 APK 构建产物或旧 ECS `/test-apks/` 镜像时，由用户明确提出后，Codex 再按当时状态单次检查、列出目标并人工执行；不要把本机 / ECS 清理做成后台自动任务。正式包保留策略见 [app-update.md](D:/wuhao/docs/runbooks/app-update.md)。
 
 ## 禁止混用
 
