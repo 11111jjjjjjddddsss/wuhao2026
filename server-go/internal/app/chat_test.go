@@ -64,6 +64,21 @@ func TestResolveChatThinkingOptionsDefaultsToImagesOnly(t *testing.T) {
 	}
 }
 
+func TestResolveChatThinkingOptionsEnablesHistoricalImageContext(t *testing.T) {
+	t.Setenv("CHAT_THINKING_MODE", "")
+	t.Setenv("CHAT_THINKING_BUDGET", "")
+
+	got := resolveChatThinkingOptionsForImageContext(true)
+	if !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("historical image context thinking options = %#v, want enabled with default budget", got)
+	}
+
+	t.Setenv("CHAT_THINKING_MODE", "off")
+	if got := resolveChatThinkingOptionsForImageContext(true); got.EnableThinking {
+		t.Fatalf("off mode should disable thinking even for historical image context: %#v", got)
+	}
+}
+
 func TestResolveChatThinkingOptionsDoesNotEnableTextOnlyWhenConfiguredOn(t *testing.T) {
 	t.Setenv("CHAT_THINKING_MODE", "on")
 	t.Setenv("CHAT_THINKING_BUDGET", "1200")
@@ -97,6 +112,27 @@ func TestResolveChatThinkingOptionsCanDisableAndClampBudget(t *testing.T) {
 	got := resolveChatThinkingOptions("带图问题", []string{"https://img/current.jpg"})
 	if !got.EnableThinking || got.ThinkingBudget != maxChatThinkingBudget {
 		t.Fatalf("image thinking options = %#v, want clamped budget", got)
+	}
+}
+
+func TestPromptIncludesImageContextUsesCurrentOrPreviousRoundImage(t *testing.T) {
+	if !promptIncludesImageContext(nil, 6, []string{"https://img/current.jpg"}) {
+		t.Fatalf("current images should mark prompt as image context")
+	}
+	snapshot := &SessionSnapshot{
+		ARoundsFull: []SessionRound{
+			{User: "old", UserImages: []string{"https://img/old.jpg"}},
+		},
+	}
+	if !promptIncludesImageContext(snapshot, 6, nil) {
+		t.Fatalf("previous round image should mark prompt as image context")
+	}
+	if promptIncludesImageContext(snapshot, 0, nil) {
+		t.Fatalf("previous image outside A window should not mark prompt as image context")
+	}
+	snapshot.ARoundsFull = append(snapshot.ARoundsFull, SessionRound{User: "text follow-up"})
+	if promptIncludesImageContext(snapshot, 6, nil) {
+		t.Fatalf("only the previous prompt image is preserved, older image should not mark current prompt")
 	}
 }
 

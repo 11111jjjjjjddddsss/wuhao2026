@@ -376,7 +376,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
 	promptChars := countBailianMessageContentRunes(promptMessages)
-	thinkingOptions := resolveChatThinkingOptions(text, images)
+	promptHasImages := promptIncludesImageContext(snapshot, aWindowRounds, images)
+	thinkingOptions := resolveChatThinkingOptionsForImageContext(promptHasImages)
 
 	if err := s.store.TouchSessionContext(ctx, auth.UserID, region.Region, region.Source, region.Reliability, time.Now().UnixMilli()); err != nil {
 		s.logger.Warn("touch session context failed", "userId", auth.UserID, "error", err)
@@ -392,6 +393,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"prompt_chars", promptChars,
 		"current_text_chars", len([]rune(text)),
 		"current_image_count", len(images),
+		"prompt_has_images", promptHasImages,
 		"injected_time", injectedTime,
 		"region", region.Region,
 		"region_source", region.Source,
@@ -910,6 +912,10 @@ func isRetryableUpstreamStatus(status int) bool {
 }
 
 func resolveChatThinkingOptions(text string, images []string) BailianStreamOptions {
+	return resolveChatThinkingOptionsForImageContext(len(images) > 0)
+}
+
+func resolveChatThinkingOptionsForImageContext(hasImageContext bool) BailianStreamOptions {
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv("CHAT_THINKING_MODE")))
 	if mode == "" {
 		mode = defaultChatThinkingMode
@@ -918,15 +924,32 @@ func resolveChatThinkingOptions(text string, images []string) BailianStreamOptio
 	case "off", "false", "0", "no", "disabled":
 		return BailianStreamOptions{}
 	case "image", "images", "vision", "auto", "on", "true", "1", "enabled":
-		if len(images) > 0 {
+		if hasImageContext {
 			return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
 		}
 	default:
-		if len(images) > 0 {
+		if hasImageContext {
 			return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
 		}
 	}
 	return BailianStreamOptions{}
+}
+
+func promptIncludesImageContext(snapshot *SessionSnapshot, aWindowRounds int, currentImages []string) bool {
+	if len(currentImages) > 0 {
+		return true
+	}
+	if snapshot == nil || aWindowRounds <= 0 || len(snapshot.ARoundsFull) == 0 {
+		return false
+	}
+	rounds := snapshot.ARoundsFull
+	if len(rounds) > aWindowRounds {
+		rounds = rounds[len(rounds)-aWindowRounds:]
+	}
+	if len(rounds) == 0 {
+		return false
+	}
+	return len(rounds[len(rounds)-1].UserImages) > 0
 }
 
 func resolveChatThinkingBudget() int {
