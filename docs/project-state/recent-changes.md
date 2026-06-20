@@ -15,6 +15,8 @@
 
 - 已为当前 `9d88ae199e53` 生成内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-030440-9d88ae199e53.apk`，SHA-256 为 `4a87d0b819c01f4e56e6ca7d4382edc73439354af84411a476f48619e9399b90`，大小 `20,952,314` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK。该包包含主聊天流式正文预锚点 / 布局后补锚小修、松散 Markdown 加粗星号展示容错和对应 debug-only 预览面板样例，只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新；用户真机反馈该包滚动更抖，下一包会撤掉布局后补锚。
 
+- 已为当前 `8af997f26b4a` 生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-032113-8af997f26b4a.apk`，SHA-256 为 `0d62179afbb4cb26846fcff69e8eb1f2f9dc812c0a96c2dbafba01c0e9828039`，大小 `20,951,677` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK。该包撤掉布局后补锚、保留预锚点和同帧锚点，并把“正在思考...”文案延后到约 2.6 秒后出现；只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新。
+
 - 主聊天按质量优先改为默认所有轮次开启思考，预算固定 `thinking_budget=1024`，不按会员区分；`CHAT_THINKING_MODE=off` 可应急关闭，`CHAT_THINKING_MODE=image` 可回退为仅图像上下文开启。Android 空回复等待态同步改为按实际等待时间展示：先显示呼吸小球，约 2.6 秒仍无正文再切为“正在思考...”，不再只限图片问诊；省略号循环由 `1050ms` 放慢到 `1500ms` 一轮；预览面板“图片问诊思考”改为通用“等待思考态”。用户记忆文档摘要和今日农情仍关闭思考；本轮不新增内容过滤、关键词拦截、字数硬卡、`max_tokens` 或客户端模型 Key。
 
 - 生产后端已部署提交 `9d88ae19`，`scripts/check-ecs-readiness.ps1 -ExpectedRevision 9d88ae19` 通过，线上 healthz 返回 `revision=9d88ae19` 且关键依赖 ready；主聊天完成日志继续记录 `thinking_enabled`、`thinking_budget`、`done_received`、`send_done_after_archive`、`assistant_reply_chars` 等安全字段，方便真机回归确认 1024 是否生效且不记录正文或图片 URL。本轮后端组装词新增“所有回答不得使用表格。”；未发布正式 Android 包、未写官网正式下载、未配置检查更新。
