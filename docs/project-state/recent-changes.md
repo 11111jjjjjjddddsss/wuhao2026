@@ -5,7 +5,7 @@
 
 ## 2026-06-20
 
-- 部署当前 `master` 后端到生产 ECS：线上 `/healthz` revision 已从旧 `bc581133` 更新为 `b235c515`，包含 `support_upload_ownership` 迁移和 support 图片归属鉴权；部署前按线上差异 `bc581133..b235c515` 跑迁移风险脚本为 `ready checked_files=1`，后端 `go test ./...` 通过。部署后 `scripts/check-ecs-readiness.ps1 -ExpectedRevision b235c515`、`scripts/check-public-blackbox.ps1`、support 图片专项 Go 测试和记忆 pending 专项 Go 测试均通过。当前 active slot 仍以 readiness 实测为准；本次没有发布正式 Android 包、没有开启检查更新下发，仍需最新内部测试包配套真机验证 support 发图 / 预览 / 切账号。
+- 部署当前 `master` 后端到生产 ECS：线上 `/healthz` revision 已从旧 `bc581133` 更新为 `b235c515`，包含 `support_upload_ownership` 迁移和 support 图片归属鉴权；部署前按线上差异 `bc581133..b235c515` 跑迁移风险脚本为 `ready checked_files=1`，后端 `go test ./...` 通过。部署后 `scripts/check-ecs-readiness.ps1 -ExpectedRevision b235c515`、`scripts/check-public-blackbox.ps1`、support 图片专项 Go 测试和记忆 pending 专项 Go 测试均通过。随后为当前 `ec1770b1` 生成内部 debug 测试包并上传私有 OSS `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-105413-ec1770b11e19.apk`，SHA-256 为 `8f3f903a6ce87868c430adc1dd45c78ad449d32a69a2f6c5a8206faced01942e`，包名 / 签名 / debug 属性 / OSS 生命周期 / 下载探针通过；签名下载链接 72 小时有效且不写入仓库、官网或检查更新。当前 active slot 仍以 readiness 实测为准；本次没有发布正式 Android 包、没有开启检查更新下发，仍需真机验证 support 发图 / 预览 / 切账号。
 
 - Android 隐私同意版本提升到 2，配合本轮协议 / 隐私 / 清单页按应用市场标准更新；旧测试用户安装新包后会重新勾选确认，避免用户仍停留在旧协议版本。
 
