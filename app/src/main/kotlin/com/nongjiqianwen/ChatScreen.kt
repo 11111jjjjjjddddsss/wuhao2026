@@ -5702,10 +5702,6 @@ fun ChatScreen() {
             !chatListUserDragging &&
             latestMessageIndexOrMinusOne() >= 0
     val shouldAnchorStreamingBottomThisFrame = shouldAnchorStreamingBottomNow()
-    fun requestStreamingBottomAnchorBeforeVisibleTextChange() {
-        if (!shouldAnchorStreamingBottomNow()) return
-        requestProgrammaticForwardListBottomAnchor()
-    }
     if (shouldAnchorStreamingBottomThisFrame) {
         // Run after this composition commits but before layout, so a streaming wrap and bottom
         // Anchor in the same frame so the tail does not appear below the workline for one draw.
@@ -5774,9 +5770,6 @@ fun ChatScreen() {
             assistantIdProvider = ::assistantMessageIdForSourceUser,
             fallbackIdProvider = { "assistant_${UUID.randomUUID()}" },
             onAdvance = { advance ->
-                if (advance.content != streamingMessageContent) {
-                    requestStreamingBottomAnchorBeforeVisibleTextChange()
-                }
                 streamingMessageId = advance.messageId
                 streamingRevealBuffer = advance.revealBuffer
                 streamingMessageContent = advance.content
