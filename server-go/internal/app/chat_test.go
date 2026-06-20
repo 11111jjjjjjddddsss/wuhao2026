@@ -35,10 +35,14 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 
 func TestChatDiagnosticConstraintText(t *testing.T) {
 	for _, want := range []string{
-		"时间、地点、天气、历史上下文、记忆摘要仅作风险参考",
-		"不得覆盖本轮可观察症状证据",
-		"诊断以当前图片/描述为准",
-		"反证明显的候选不得排第一",
+		"本轮图片和用户描述中的可观察症状是诊断主证据",
+		"用户预设病名仅作风险参考",
+		"不得覆盖、替代或反推诊断",
+		"证据充分时可以给出“倾向判断/优先排查”",
+		"证据不足时必须明确“不确定/待排查”",
+		"不要给出看似精确的百分比概率",
+		"支持证据、不支持点/反证和下一步验证方法",
+		"不得写成确诊",
 	} {
 		if !strings.Contains(chatDiagnosticConstraint, want) {
 			t.Fatalf("diagnostic constraint missing %q: %q", want, chatDiagnosticConstraint)
@@ -170,8 +174,8 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	if hasMemoryDocument {
 		t.Fatalf("expected no memory document, got hasMemoryDocument=%v", hasMemoryDocument)
 	}
-	if len(messages) != 7 {
-		t.Fatalf("expected 7 messages, got %d", len(messages))
+	if len(messages) != 8 {
+		t.Fatalf("expected 8 messages, got %d", len(messages))
 	}
 
 	firstHistoricalUser := messages[2]
@@ -194,7 +198,10 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		t.Fatalf("expected previous round image preserved, got %#v", got)
 	}
 
-	currentUser := messages[6]
+	if messages[6].Role != "system" || messages[6].Content != chatDiagnosticConstraint {
+		t.Fatalf("expected diagnostic constraint immediately before current user input, got %#v", messages[6])
+	}
+	currentUser := messages[7]
 	currentContent, ok := currentUser.Content.([]map[string]any)
 	if !ok || len(currentContent) != 2 {
 		t.Fatalf("expected current round to keep images in context, got %#v", currentUser.Content)
@@ -382,8 +389,8 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	if !hasMemoryDocument {
 		t.Fatalf("expected memory document present")
 	}
-	if len(messages) != 4 {
-		t.Fatalf("expected 4 messages, got %d", len(messages))
+	if len(messages) != 5 {
+		t.Fatalf("expected 5 messages, got %d", len(messages))
 	}
 	if messages[2].Role != "system" {
 		t.Fatalf("expected memory document to be inserted as system message")
@@ -396,8 +403,11 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 			t.Fatalf("memory document prompt should not expose legacy label %q: %#v", forbidden, messages[2].Content)
 		}
 	}
-	if messages[3].Content != "hello" {
-		t.Fatalf("expected current text-only user message, got %#v", messages[3].Content)
+	if messages[3].Role != "system" || messages[3].Content != chatDiagnosticConstraint {
+		t.Fatalf("expected diagnostic constraint before current user input, got %#v", messages[3])
+	}
+	if messages[4].Content != "hello" {
+		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
 	}
 }
 
@@ -642,14 +652,17 @@ func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 	if hasMemoryDocument {
 		t.Fatalf("expected no memory document")
 	}
-	if len(messages) != 4 {
-		t.Fatalf("expected 4 messages, got %d", len(messages))
+	if len(messages) != 5 {
+		t.Fatalf("expected 5 messages, got %d", len(messages))
 	}
 	if messages[2].Role != "system" || messages[2].Content != todayAgriContext {
-		t.Fatalf("expected today agri context as the last system message before user input, got %#v", messages[2])
+		t.Fatalf("expected today agri context before diagnostic constraint, got %#v", messages[2])
 	}
-	if messages[3].Role != "user" || messages[3].Content != "刚才第二条什么意思" {
-		t.Fatalf("expected current user message after today agri context, got %#v", messages[3])
+	if messages[3].Role != "system" || messages[3].Content != chatDiagnosticConstraint {
+		t.Fatalf("expected diagnostic constraint as the last system message before user input, got %#v", messages[3])
+	}
+	if messages[4].Role != "user" || messages[4].Content != "刚才第二条什么意思" {
+		t.Fatalf("expected current user message after diagnostic constraint, got %#v", messages[4])
 	}
 }
 

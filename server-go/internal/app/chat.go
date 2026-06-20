@@ -36,7 +36,7 @@ const (
 	todayAgriContextRoundLimit      = 2
 )
 
-const chatDiagnosticConstraint = "【诊断约束】时间、地点、天气、历史上下文、记忆摘要仅作风险参考，不得覆盖本轮可观察症状证据；诊断以当前图片/描述为准，反证明显的候选不得排第一。"
+const chatDiagnosticConstraint = "【诊断约束】本轮图片和用户描述中的可观察症状是诊断主证据；时间、地点、天气、历史上下文、记忆摘要和用户预设病名仅作风险参考，不得覆盖、替代或反推诊断。证据充分时可以给出“倾向判断/优先排查”，证据不足时必须明确“不确定/待排查”；不要给出看似精确的百分比概率。候选结论应说明支持证据、不支持点/反证和下一步验证方法；与本轮症状不吻合或缺少关键证据的候选，不得写成确诊。"
 
 type chatRateLimiter struct {
 	mu            sync.Mutex
@@ -368,11 +368,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	injectedTime := FormatShanghaiNowToSecond(s.shanghai, time.Now())
 	contextHeader := fmt.Sprintf(
-		"后台背景时间：%s（Asia/Shanghai，仅供参考）；后台背景地点：%s；地点可信度：%s（仅供参考）\n%s",
+		"后台背景时间：%s（Asia/Shanghai，仅供参考）；后台背景地点：%s；地点可信度：%s（仅供参考）",
 		injectedTime,
 		region.Region,
 		region.Reliability,
-		chatDiagnosticConstraint,
 	)
 	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
@@ -1213,6 +1212,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		messages = append(messages, BailianMessage{Role: "user", Content: s.roundToUserContent(round, index == previousRoundIndex)})
 		messages = append(messages, BailianMessage{Role: "assistant", Content: round.Assistant})
 	}
+	messages = append(messages, BailianMessage{Role: "system", Content: chatDiagnosticConstraint})
 	messages = append(messages, BailianMessage{Role: "user", Content: buildVisionUserContent(currentText, currentImages)})
 	return messages, len(rounds), hasMemoryDocument
 }
