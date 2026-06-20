@@ -726,6 +726,8 @@ if ($failures.Count -eq 0) {
         "Remote chat image preview reads must stay isolated and capped at 2MiB."
     Require-Match $failures $chatImagePreview $chatImageDecodePattern `
         "Chat image preview decoding must stay in ChatImagePreview.kt."
+    Require-Match $failures $chatImagePreview 'fun\s+authenticatedSupportImageModel(?s:.*?)supportImageAuthorizationHeader(?s:.*?)memoryCacheKey\(chatImagePreviewCacheKey\(source\)\)(?s:.*?)memoryCachePolicy\(CachePolicy\.DISABLED\)(?s:.*?)diskCachePolicy\(CachePolicy\.DISABLED\)' `
+        "Support image full-screen preview must use bearer auth and disable Coil memory/disk caches so account logout cannot leave support images in shared image caches."
     $chatScreenImageImplementationPattern = "private\s+fun\s+UserMessageImageStrip|private\s+fun\s+UserMessageImageThumb|private\s+fun\s+UserMessageImagePreviewDialog|fun\s+Context\.decodeChatImagePreview|chatImagePreviewCache\s*=|CHAT_IMAGE_PREVIEW_CACHE_MAX_KB|CHAT_REMOTE_PREVIEW_MAX_BYTES"
     Require-NoMatch $failures $chatScreen $chatScreenImageImplementationPattern `
         "ChatScreen must not re-embed user image rendering or image preview cache/decode code; keep it isolated."

@@ -169,7 +169,7 @@ func (s *Server) handleCreateSupportMessage(w http.ResponseWriter, r *http.Reque
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
+	if validationError := s.validateSupportImageURLs(r, auth.UserID, imageURLs); validationError != "" {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
@@ -322,7 +322,7 @@ func (s *Server) handleInternalCreateSupportMessage(w http.ResponseWriter, r *ht
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
+	if validationError := s.validateSupportImageURLs(r, userID, imageURLs); validationError != "" {
 		s.recordAdminAuditLog(r, "support_admin_secret", "internal.support.messages.create", "support_messages", "", userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
@@ -909,6 +909,55 @@ func (s *Store) CreateSupportMessage(ctx context.Context, userID string, senderT
 		return nil, err
 	}
 	return message, nil
+}
+
+func (s *Store) UserOwnsSupportImageObject(ctx context.Context, userID string, objectName string) (bool, error) {
+	userID = strings.TrimSpace(userID)
+	objectName = strings.TrimSpace(objectName)
+	if userID == "" || !strings.HasPrefix(objectName, uploadPurposeSupport+"/") || !isServableUploadObjectName(objectName) {
+		return false, nil
+	}
+	var found int
+	err := s.db.QueryRowContext(
+		ctx,
+		`SELECT 1
+		   FROM support_upload_ownership
+		  WHERE user_id = ?
+		    AND object_name = ?
+		    AND purpose = 'support'
+		  LIMIT 1`,
+		userID,
+		objectName,
+	).Scan(&found)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return found == 1, nil
+}
+
+func (s *Store) RecordSupportUploadOwnership(ctx context.Context, userID string, objectName string, nowMs int64) error {
+	userID = strings.TrimSpace(userID)
+	objectName = strings.TrimSpace(objectName)
+	if userID == "" || !strings.HasPrefix(objectName, uploadPurposeSupport+"/") || !isServableUploadObjectName(objectName) {
+		return fmt.Errorf("invalid support upload ownership")
+	}
+	if nowMs <= 0 {
+		nowMs = time.Now().UnixMilli()
+	}
+	_, err := s.db.ExecContext(
+		ctx,
+		`INSERT INTO support_upload_ownership(object_name, user_id, purpose, created_at)
+		 VALUES (?, ?, 'support', ?)
+		 ON DUPLICATE KEY UPDATE
+		   object_name = object_name`,
+		objectName,
+		userID,
+		nowMs,
+	)
+	return err
 }
 
 func (s *Store) CreateUserSupportMessageWithAutoReply(ctx context.Context, userID string, body string, imageURLs []string, createdAt int64, replyBody string, clientMsgID string) (*SupportMessage, *SupportMessage, error) {
@@ -1504,7 +1553,7 @@ func supportImageURLsJSON(imageURLs []string) (any, error) {
 	return string(data), nil
 }
 
-func (s *Server) validateSupportImageURLs(r *http.Request, images []string) string {
+func (s *Server) validateSupportImageURLs(r *http.Request, userID string, images []string) string {
 	if len(images) == 0 {
 		return ""
 	}
@@ -1525,6 +1574,17 @@ func (s *Server) validateSupportImageURLs(r *http.Request, images []string) stri
 		}
 		name := strings.TrimPrefix(parsed.Path, "/uploads/")
 		if name == parsed.Path || !strings.HasPrefix(name, uploadPurposeSupport+"/") || !isServableUploadObjectName(name) {
+			return "invalid image url"
+		}
+		if s.store == nil {
+			return "image host not configured"
+		}
+		owned, err := s.store.UserOwnsSupportImageObject(r.Context(), userID, name)
+		if err != nil {
+			s.logger.Error("support image ownership validation failed", "userId", userID, "error", err)
+			return "invalid image url"
+		}
+		if !owned {
 			return "invalid image url"
 		}
 	}

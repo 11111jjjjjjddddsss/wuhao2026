@@ -20,7 +20,7 @@ import (
 
 type summaryStore interface {
 	GetSessionSnapshot(ctx context.Context, userID string) (*SessionSnapshot, error)
-	WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error)
+	WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int, completedPendingJobIndex int) (bool, error)
 	SetUserMemoryPendingIfCurrent(ctx context.Context, userID string, pending bool, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error)
 }
 
@@ -120,8 +120,18 @@ func (s *SummaryService) processOnePendingMemoryJob(ctx context.Context, userID 
 	if s == nil || snapshot == nil || !snapshot.PendingMemory {
 		return false
 	}
-	dialogueText := buildDialogueText(memoryExtractionRounds(snapshot))
+	selection := memoryExtractionSelectionFor(snapshot)
+	dialogueText := buildDialogueText(selection.rounds)
 	if dialogueText == "" {
+		cleared, err := s.store.SetUserMemoryPendingIfCurrent(ctx, userID, false, snapshot.RoundTotal, snapshot.UpdatedAt, snapshot.SessionGeneration)
+		if err != nil {
+			s.log().Error("clear empty memory pending failed", "userId", userID, "error", err)
+			return false
+		}
+		if cleared {
+			snapshot.PendingMemory = false
+			snapshot.PendingMemoryJobs = nil
+		}
 		s.log().Warn("summary extraction skipped: empty dialogue", "userId", userID)
 		return false
 	}
@@ -142,6 +152,7 @@ func (s *SummaryService) processOnePendingMemoryJob(ctx context.Context, userID 
 		snapshot.RoundTotal,
 		snapshot.UpdatedAt,
 		snapshot.SessionGeneration,
+		selection.pendingJobIndex,
 	)
 	if err != nil {
 		s.keepPending(ctx, userID, snapshot)
@@ -154,24 +165,53 @@ func (s *SummaryService) processOnePendingMemoryJob(ctx context.Context, userID 
 	}
 
 	snapshot.MemoryDocument = nextMemory.MemoryDocument
-	if len(snapshot.PendingMemoryJobs) > 0 {
-		snapshot.PendingMemoryJobs = snapshot.PendingMemoryJobs[1:]
-	}
+	snapshot.PendingMemoryJobs = removePendingMemoryJobAt(snapshot.PendingMemoryJobs, selection.pendingJobIndex)
 	snapshot.PendingMemory = len(snapshot.PendingMemoryJobs) > 0
 	s.log().Info("memory document extraction success", "userId", userID, "memory_chars", len(nextMemory.MemoryDocument))
 	return true
 }
 
-func memoryExtractionRounds(snapshot *SessionSnapshot) []SessionRound {
+type memoryExtractionSelection struct {
+	rounds          []SessionRound
+	pendingJobIndex int
+}
+
+func memoryExtractionSelectionFor(snapshot *SessionSnapshot) memoryExtractionSelection {
 	if snapshot == nil {
-		return nil
+		return memoryExtractionSelection{pendingJobIndex: -1}
 	}
-	for _, job := range snapshot.PendingMemoryJobs {
+	for index, job := range snapshot.PendingMemoryJobs {
 		if len(job.Rounds) > 0 {
-			return job.Rounds
+			return memoryExtractionSelection{
+				rounds:          job.Rounds,
+				pendingJobIndex: index,
+			}
 		}
 	}
-	return snapshot.ARoundsFull
+	if len(snapshot.PendingMemoryJobs) > 0 {
+		return memoryExtractionSelection{pendingJobIndex: -1}
+	}
+	return memoryExtractionSelection{
+		rounds:          snapshot.ARoundsFull,
+		pendingJobIndex: -1,
+	}
+}
+
+func memoryExtractionRounds(snapshot *SessionSnapshot) []SessionRound {
+	return memoryExtractionSelectionFor(snapshot).rounds
+}
+
+func removePendingMemoryJobAt(jobs []MemoryExtractionJob, index int) []MemoryExtractionJob {
+	if len(jobs) == 0 {
+		return jobs
+	}
+	if index < 0 || index >= len(jobs) {
+		index = 0
+	}
+	next := make([]MemoryExtractionJob, 0, len(jobs)-1)
+	next = append(next, jobs[:index]...)
+	next = append(next, jobs[index+1:]...)
+	return next
 }
 
 func (s *SummaryService) tryStart(userID string) bool {

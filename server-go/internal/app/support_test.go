@@ -254,14 +254,40 @@ func TestSupportImageURLsJSON(t *testing.T) {
 
 func TestValidateSupportImageURLsAllowsSupportObjects(t *testing.T) {
 	t.Setenv("BASE_PUBLIC_URL", "https://api.example.com")
-	server := &Server{}
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+	mock.ExpectQuery("SELECT 1").
+		WithArgs("acct_support_owner", "support/b.jpg").
+		WillReturnRows(sqlmock.NewRows([]string{"1"}).AddRow(1))
+	server := &Server{store: store}
 	req := httptest.NewRequest(http.MethodPost, "https://api.example.com/api/support/messages", nil)
 
 	images := []string{
 		"https://api.example.com/uploads/support/b.jpg",
 	}
-	if got := server.validateSupportImageURLs(req, images); got != "" {
+	if got := server.validateSupportImageURLs(req, "acct_support_owner", images); got != "" {
 		t.Fatalf("validateSupportImageURLs = %q, want empty", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestValidateSupportImageURLsRejectsUnownedSupportObject(t *testing.T) {
+	t.Setenv("BASE_PUBLIC_URL", "https://api.example.com")
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+	mock.ExpectQuery("SELECT 1").
+		WithArgs("acct_other", "support/b.jpg").
+		WillReturnRows(sqlmock.NewRows([]string{"1"}))
+	server := &Server{store: store}
+	req := httptest.NewRequest(http.MethodPost, "https://api.example.com/api/support/messages", nil)
+
+	if got := server.validateSupportImageURLs(req, "acct_other", []string{"https://api.example.com/uploads/support/b.jpg"}); got != "invalid image url" {
+		t.Fatalf("validateSupportImageURLs = %q, want invalid image url", got)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
 	}
 }
 
@@ -280,7 +306,7 @@ func TestValidateSupportImageURLsRejectsUnsafeURLs(t *testing.T) {
 	}
 	for name, image := range cases {
 		t.Run(name, func(t *testing.T) {
-			if got := server.validateSupportImageURLs(req, []string{image}); got != "invalid image url" {
+			if got := server.validateSupportImageURLs(req, "acct_support_owner", []string{image}); got != "invalid image url" {
 				t.Fatalf("validateSupportImageURLs = %q, want invalid image url", got)
 			}
 		})

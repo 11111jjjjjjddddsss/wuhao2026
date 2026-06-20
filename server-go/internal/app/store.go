@@ -233,7 +233,7 @@ func (s *Store) CountSessionRoundsAfterClientMsgID(ctx context.Context, userID s
 	return count.Int64, true, nil
 }
 
-func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error) {
+func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int, completedPendingJobIndex int) (bool, error) {
 	normalized := strings.TrimSpace(memoryDocument)
 	if normalized == "" {
 		return false, fmt.Errorf("memory_document empty")
@@ -279,10 +279,7 @@ func (s *Store) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID str
 	if err != nil {
 		return false, err
 	}
-	remainingJobs := pendingJobs
-	if len(pendingJobs) > 0 {
-		remainingJobs = pendingJobs[1:]
-	}
+	remainingJobs := removePendingMemoryJobAt(pendingJobs, completedPendingJobIndex)
 	encodedRemainingJobs, err := encodeMemoryExtractionJobs(remainingJobs)
 	if err != nil {
 		return false, err

@@ -318,6 +318,9 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 	if _, err := tx.ExecContext(ctx, "UPDATE support_messages SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
 		return "", err
 	}
+	if _, err := tx.ExecContext(ctx, "UPDATE support_upload_ownership SET user_id = ? WHERE user_id = ?", newUserID, oldUserID); err != nil {
+		return "", err
+	}
 	if err := syncMergedSupportConversationTx(ctx, tx, oldUserID, newUserID, nowMs); err != nil {
 		return "", err
 	}

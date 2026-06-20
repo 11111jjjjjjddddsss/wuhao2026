@@ -332,7 +332,7 @@ func (s *summaryFakeStore) GetSessionSnapshot(ctx context.Context, userID string
 	return cloneSummaryTestSnapshot(s.snapshot), nil
 }
 
-func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int) (bool, error) {
+func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context, userID string, memoryDocument string, expectedRoundTotal int, expectedUpdatedAt int64, expectedSessionGeneration int, completedPendingJobIndex int) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.writeCalls++
@@ -346,9 +346,7 @@ func (s *summaryFakeStore) WriteUserMemoryDocumentIfCurrent(ctx context.Context,
 			return false, nil
 		}
 		s.snapshot.MemoryDocument = memoryDocument
-		if len(s.snapshot.PendingMemoryJobs) > 0 {
-			s.snapshot.PendingMemoryJobs = s.snapshot.PendingMemoryJobs[1:]
-		}
+		s.snapshot.PendingMemoryJobs = removePendingMemoryJobAt(s.snapshot.PendingMemoryJobs, completedPendingJobIndex)
 		s.snapshot.PendingMemory = len(s.snapshot.PendingMemoryJobs) > 0
 		if s.nextUpdatedAt <= s.snapshot.UpdatedAt {
 			s.nextUpdatedAt = s.snapshot.UpdatedAt + 1
@@ -430,6 +428,33 @@ func TestProcessSessionSummariesKeepsPendingWhenSnapshotStale(t *testing.T) {
 	}
 }
 
+func TestProcessSessionSummariesClearsEmptyPendingMemory(t *testing.T) {
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	store := &summaryFakeStore{}
+	service := &SummaryService{
+		store:   store,
+		prompts: summaryTestPromptLoader(t),
+		bailian: NewBailianClient(),
+		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	snapshot := &SessionSnapshot{
+		UserID:            "u1",
+		PendingMemory:     true,
+		RoundTotal:        6,
+		UpdatedAt:         1700000000000,
+		SessionGeneration: 1,
+	}
+
+	service.ProcessSessionSummaries("u1", snapshot)
+
+	if !store.pendingSet || store.pendingValue {
+		t.Fatalf("empty pending memory should be cleared, store=%#v", store)
+	}
+	if snapshot.PendingMemory || len(snapshot.PendingMemoryJobs) != 0 {
+		t.Fatalf("snapshot pending should be cleared: %#v", snapshot)
+	}
+}
+
 func TestProcessSessionSummariesUsesFrozenPendingJobWindow(t *testing.T) {
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -490,6 +515,64 @@ func TestProcessSessionSummariesUsesFrozenPendingJobWindow(t *testing.T) {
 	}
 	if strings.Contains(userContent, "第七轮新问题") {
 		t.Fatalf("summary input should not slide into later A window: %q", userContent)
+	}
+}
+
+func TestProcessSessionSummariesRemovesSelectedPendingJobWhenQueueStartsWithEmptyJob(t *testing.T) {
+	var captured map[string]any
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"短期承接：已整理有效冻结窗口。\n农业重点事件：有效冻结窗口。"}}]}`))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	store := &summaryFakeStore{writeOK: true}
+	service := &SummaryService{
+		store:   store,
+		prompts: summaryTestPromptLoader(t),
+		bailian: NewBailianClient(),
+		logger:  slog.New(slog.NewTextHandler(os.Stderr, nil)),
+	}
+	snapshot := &SessionSnapshot{
+		UserID:            "u1",
+		PendingMemory:     true,
+		MemoryDocument:    "短期承接：旧短期",
+		RoundTotal:        7,
+		UpdatedAt:         1700000000000,
+		SessionGeneration: 1,
+		PendingMemoryJobs: []MemoryExtractionJob{
+			{RoundTotal: 6, Rounds: nil},
+			{
+				RoundTotal: 7,
+				Rounds: []SessionRound{
+					{User: "有效冻结窗口问题", Assistant: "有效冻结窗口回答"},
+				},
+			},
+		},
+	}
+
+	service.ProcessSessionSummaries("u1", snapshot)
+
+	if store.writeCalls != 1 {
+		t.Fatalf("expected one memory write, got %d", store.writeCalls)
+	}
+	if len(snapshot.PendingMemoryJobs) != 1 || snapshot.PendingMemoryJobs[0].RoundTotal != 6 {
+		t.Fatalf("successful extraction should remove selected non-empty job, got %#v", snapshot.PendingMemoryJobs)
+	}
+	messages, ok := captured["messages"].([]any)
+	if !ok || len(messages) != 2 {
+		t.Fatalf("messages mismatch: %#v", captured["messages"])
+	}
+	userMessage, _ := messages[1].(map[string]any)
+	userContent, _ := userMessage["content"].(string)
+	if !strings.Contains(userContent, "有效冻结窗口问题") {
+		t.Fatalf("summary input should use the selected non-empty job: %q", userContent)
 	}
 }
 

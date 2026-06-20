@@ -94,7 +94,7 @@
 ## 服务器落地后已回填 / 仍需回填
 
 - 已回填：阿里云 Region、ECS 实例、RDS MySQL、Redis、OSS bucket、DNS `api/@/www/admin/download` 记录、`api.nongjiqiancha.cn` HTTPS / Nginx 443、根域名官网 HTTPS / 静态站、管理后台 HTTPS / 静态站 / `/admin-api/` 反代、`download.nongjiqiancha.cn` OSS 低成本下载域名和 HTTPS 证书绑定、ECS 后端双端口部署 / 回滚脚本、官网部署脚本、管理后台部署脚本、生产 readiness 检查、公网黑盒只读巡检脚本、Go 后端请求级日志、ECS 日志只读查询脚本、农技千查专用 SLS Project / Logstore、SLS 只读查询脚本、帮助与反馈内部会话列表 / 详情 / 回复接口、App 自动日志内部查询、今日农情内部生成入口、第一版网页后台代码、监控面板、检查更新发布配置 / 发布历史和后台账号 / session / CSRF / 角色 / 审计骨架。
-- 仍需回填：App 公安备案后的正式公网入口、数据库只读排查脚本、第一封 SLS / 黑盒告警邮件送达确认、登录后后台 smoke 实跑；下载域名已启用，后续证书续期后要通过 `scripts/sync-oss-download-certificate.ps1` 同步 OSS CNAME 证书。网站 ICP 备案已于 2026-06-05 通过，App 备案已通过并取得 `京ICP备2026031728号-2A`，网站公安备案号已下发并已补官网 footer，公安备案数据码不写入仓库或聊天交接。
+- 仍需回填：App 公安备案后的正式公网入口、第一封 SLS / 黑盒告警邮件送达确认、后台 owner 全量 smoke 上线前实跑；低权限登录后 smoke 和数据库只读账号归属巡检已有脚本入口。下载域名已启用，后续证书续期后要通过 `scripts/sync-oss-download-certificate.ps1` 同步 OSS CNAME 证书。网站 ICP 备案已于 2026-06-05 通过，App 备案已通过并取得 `京ICP备2026031728号-2A`，网站公安备案号已下发并已补官网 footer，公安备案数据码不写入仓库或聊天交接。
 - 若后续重新启用 SAE，再补新的 SAE 应用名 / 应用 ID 和镜像部署 / 回滚入口。
 - 管理后台权限细化、二次确认、高风险动作和审计验收
 

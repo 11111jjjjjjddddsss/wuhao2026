@@ -88,6 +88,7 @@ object IdManager {
 
     fun clearAuthSession() {
         val prefs = prefs() ?: return
+        clearSupportChatImagePreviewCache()
         prefs.edit()
             .remove(KEY_AUTH_USER_ID)
             .remove(KEY_AUTH_TOKEN)

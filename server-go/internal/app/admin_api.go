@@ -936,7 +936,7 @@ func (s *Server) handleAdminCreateSupportMessage(w http.ResponseWriter, r *http.
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	if validationError := s.validateSupportImageURLs(r, imageURLs); validationError != "" {
+	if validationError := s.validateSupportImageURLs(r, userID, imageURLs); validationError != "" {
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", userID, false, http.StatusBadRequest, map[string]any{"error_code": validationError})
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return

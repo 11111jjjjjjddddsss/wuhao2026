@@ -74,6 +74,7 @@ func TestWriteUserMemoryDocumentIfCurrentGuardsSnapshotGenerationAndUpdatedAt(t 
 		expectedRoundTotal,
 		expectedUpdatedAt,
 		expectedGeneration,
+		0,
 	)
 	if err != nil {
 		t.Fatalf("WriteUserMemoryDocumentIfCurrent failed: %v", err)
@@ -144,6 +145,7 @@ func TestWriteUserMemoryDocumentIfCurrentKeepsPendingWhenMoreJobsRemain(t *testi
 		expectedRoundTotal,
 		expectedUpdatedAt,
 		expectedGeneration,
+		0,
 	)
 	if err != nil {
 		t.Fatalf("WriteUserMemoryDocumentIfCurrent failed: %v", err)
@@ -171,6 +173,7 @@ func TestWriteUserMemoryDocumentIfCurrentRejectsUnknownSnapshotUpdatedAt(t *test
 		6,
 		0,
 		2,
+		0,
 	)
 	if err != nil {
 		t.Fatalf("WriteUserMemoryDocumentIfCurrent failed: %v", err)

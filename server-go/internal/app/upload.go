@@ -90,6 +90,17 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "upload failed")
 		return
 	}
+	if strings.HasPrefix(objectName, uploadPurposeSupport+"/") {
+		if s.store == nil {
+			s.writeError(w, http.StatusInternalServerError, "internal_error")
+			return
+		}
+		if err := s.store.RecordSupportUploadOwnership(r.Context(), auth.UserID, objectName, time.Now().UnixMilli()); err != nil {
+			s.logger.Error("record support upload ownership failed", "userId", auth.UserID, "object", objectName, "error", err)
+			s.writeError(w, http.StatusInternalServerError, "upload failed")
+			return
+		}
+	}
 
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"url": strings.TrimRight(publicBaseURL, "/") + "/uploads/" + objectName,
@@ -106,6 +117,9 @@ func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(r.URL.Path, "/uploads/")
 	if !isServableUploadObjectName(name) {
 		http.NotFound(w, r)
+		return
+	}
+	if strings.HasPrefix(name, uploadPurposeSupport+"/") && !s.authorizeSupportUploadAccess(w, r, name) {
 		return
 	}
 
@@ -213,6 +227,47 @@ func newUploadRateLimiter(redisClient *redis.Client) rateLimiter {
 func uploadRateLimitKey(userID string, ip string) string {
 	secret := strings.TrimSpace(os.Getenv("APP_SECRET"))
 	return "upload:" + rateLimitHash(userID, secret) + ":" + rateLimitHash(ip, secret)
+}
+
+func (s *Server) authorizeSupportUploadAccess(w http.ResponseWriter, r *http.Request, objectName string) bool {
+	if s.allowAdminSupportUploadAccess(r) {
+		return true
+	}
+	auth, ok := s.requireAuth(w, r)
+	if !ok {
+		return false
+	}
+	if s.store == nil {
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return false
+	}
+	allowed, err := s.store.UserOwnsSupportImageObject(r.Context(), auth.UserID, objectName)
+	if err != nil {
+		s.logger.Error("support upload ownership lookup failed", "userId", auth.UserID, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return false
+	}
+	if !allowed {
+		http.NotFound(w, r)
+		return false
+	}
+	return true
+}
+
+func (s *Server) allowAdminSupportUploadAccess(r *http.Request) bool {
+	rawSession := adminSessionTokenFromRequest(r)
+	if rawSession == "" || s.store == nil {
+		return false
+	}
+	session, err := s.store.GetActiveAdminSession(r.Context(), hashAdminToken(rawSession), time.Now().UnixMilli())
+	if err != nil {
+		return false
+	}
+	if session.AdminUser.MustChangePassword || !adminCanViewSupportMessageBody(session.AdminUser.Role) {
+		return false
+	}
+	_ = s.store.TouchAdminSession(contextBackground(), hashAdminToken(rawSession), time.Now().UnixMilli())
+	return true
 }
 
 func firstNonEmpty(values ...string) string {
