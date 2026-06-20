@@ -8677,9 +8677,9 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
                     UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
-                    UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 尾部补上传图片时", UiCopyPreviewKind.AssistantRetrying),
+                    UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 点击重试进行中", UiCopyPreviewKind.AssistantRetrying),
                     UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
-                    UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户尾部补上传图片时", UiCopyPreviewKind.UserRetrying)
+                    UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户点击重发进行中", UiCopyPreviewKind.UserRetrying)
                 )
             ),
             UiCopyPreviewGroup(

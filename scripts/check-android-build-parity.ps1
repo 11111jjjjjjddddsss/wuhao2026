@@ -533,6 +533,10 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must render the real app-update permission-pending dialog, not only a plain text hint."
     Require-NoMatch $failures $chatScreen '后台发送中|正在同步回复|UserPendingImageSend|UserRemoteCompletionAwaiting|USER_PENDING_IMAGE_SEND|USER_REMOTE_COMPLETION' `
         "Main chat must not show special image-send progress footers; only failure/retry footers should be user-visible."
+    Require-NoMatch $failures $chatScreen '尾部补上传图片时' `
+        "Debug UI copy preview must not describe retrying footers as image-send progress tails."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\(ASSISTANT_RETRYING_STATUS_TEXT,\s*"AI 点击重试进行中",\s*UiCopyPreviewKind\.AssistantRetrying\)(?s:.*?)UiCopyPreviewItem\(USER_RETRYING_STATUS_TEXT,\s*"用户点击重发进行中",\s*UiCopyPreviewKind\.UserRetrying\)' `
+        "Debug UI copy preview must label retrying footers as retry/resend in progress."
     Require-Match $failures $chatScreen 'private\s+fun\s+UiCopyPreviewLargeFont(?s:.*?)LocalDensity\s+provides\s+Density\((?s:.*?)fontScale\s*=\s*1\.6f' `
         "Debug UI copy preview must include a reusable large-font wrapper for regression checks."
     Require-NoMatch $failures $hamburgerMenuSheet 'fun\s+startAppUpdate\s*\([^{]+\)\s*\{(?s:.*?)val\s+appContext\s*=\s*context\.applicationContext(?s:.*?)update\.latestVersionCode(?s:.*?)saveLastPromptedUpdateVersionCode(?s:.*?)if\s*\(\s*!AppUpdateInstaller\.canRequestInstallPackages' `
