@@ -3652,7 +3652,11 @@ fun ChatScreen() {
     var jumpButtonUserScrollSignal by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var jumpButtonSawUserListMotion by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     val userDrivenListMotionForJumpButton =
-        !programmaticScroll && (chatListUserDragging || recyclerScrollInProgress)
+        !programmaticScroll &&
+            (chatListUserDragging ||
+                recyclerScrollInProgress ||
+                chatListState.isScrollInProgress ||
+                scrollRuntime.userInteracting.value)
     val userAwayFromBottomForJumpButton by remember(
         forwardListAwayFromJumpButtonBottom,
         chatListItems.size
@@ -3695,6 +3699,8 @@ fun ChatScreen() {
         userDrivenListMotionForJumpButton,
         keyboardVisibleForJumpButton,
         suppressJumpButtonForLifecycleResume,
+        chatListState.isScrollInProgress,
+        scrollRuntime.userInteracting.value,
         messages.size,
         initialWorklinePhase
     ) {

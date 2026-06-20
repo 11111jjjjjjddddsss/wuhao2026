@@ -790,6 +790,8 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must show that network unavailable covers no network and captive portal Wi-Fi while explicitly allowing unvalidated internet."
     Require-Match $failures $chatScreen 'MessageActionMenuButton(?s:.*?)contentDescription\s*=\s*label(?s:.*?)role\s*=\s*Role\.Button(?s:.*?)onClick\(label\s*=\s*label\)' `
         "Message action menu buttons must expose clickable button semantics for accessibility and UI automation."
+    Require-Match $failures $chatScreen 'val\s+userDrivenListMotionForJumpButton\s*=(?s:.*?)!programmaticScroll(?s:.*?)chatListUserDragging(?s:.*?)recyclerScrollInProgress(?s:.*?)chatListState\.isScrollInProgress(?s:.*?)scrollRuntime\.userInteracting\.value' `
+        "Jump-to-bottom must disappear immediately during real user/list scrolling so it does not intercept swipe gestures."
     Require-Match $failures $chatScreen 'if\s*\(\s*canAttemptRemoteAssistantRecovery\(reason\)\s*\)(?s:.*?)upsertAssistantMessagePlaceholder(?s:.*?)failedAssistantMessageStates\[finalId\]\s*=\s*FailedAssistantMessageState(?s:.*?)retryingAssistantMessageIds\[finalId\]\s*=\s*true' `
         "Recoverable stream interruptions must keep the assistant tail visible as a retrying footer while snapshot recovery runs."
     Require-Match $failures $chatScreen 'fun\s+finalizeInterruptedAssistant(?s:.*?)retryingAssistantMessageIds\.remove\(assistantMessageId\)' `
@@ -800,6 +802,8 @@ if ($failures.Count -eq 0) {
         "Composer send button must expose a hidden button label without adding visible text."
     Require-Match $failures $chatComposerPanel 'ComposerInlineAddButton(?s:.*?)contentDescription\s*=\s*"添加图片"(?s:.*?)role\s*=\s*Role\.Button' `
         "Composer add button must expose a hidden attachment label without adding visible text."
+    Require-Match $failures $chatComposerPanel 'ComposerImagePreviewThumb(?s:.*?)align\(Alignment\.TopEnd\)(?s:.*?)size\(36\.dp\)(?s:.*?)clickable(?s:.*?)onRemoveImage\(image\)(?s:.*?)size\(20\.dp\)(?s:.*?)ComposerCloseIcon' `
+        "Selected image delete affordance must keep a larger touch target while preserving the compact visual close circle."
     Require-Match $failures $chatScreen 'IconButton\((?s:.*?)contentDescription\s*=\s*"会员中心"(?s:.*?)MembershipCenterLeafIcon' `
         "The top-right membership icon must keep a hidden accessibility label on the outer button."
     Require-Match $failures $chatScreen 'private\s+fun\s+MembershipCenterLeafIcon(?s:.*?)Image\((?s:.*?)contentDescription\s*=\s*null' `

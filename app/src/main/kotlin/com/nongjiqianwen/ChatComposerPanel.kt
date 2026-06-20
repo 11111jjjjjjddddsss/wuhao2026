@@ -881,18 +881,24 @@ private fun ComposerImagePreviewThumb(
         Box(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(4.dp)
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(Color(0xCC111111))
+                .size(36.dp)
                 .zIndex(1f)
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
                 ) { onRemoveImage(image) },
-            contentAlignment = Alignment.Center
+            contentAlignment = Alignment.TopEnd
         ) {
-            ComposerCloseIcon(tint = Color.White, modifier = Modifier.size(10.dp))
+            Box(
+                modifier = Modifier
+                    .padding(4.dp)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xCC111111)),
+                contentAlignment = Alignment.Center
+            ) {
+                ComposerCloseIcon(tint = Color.White, modifier = Modifier.size(10.dp))
+            }
         }
     }
 }
