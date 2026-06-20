@@ -567,7 +567,6 @@ internal data class StreamingBlockState(
 
 internal sealed interface StreamingLineModel {
     data object Blank : StreamingLineModel
-    data object Divider : StreamingLineModel
     data class Heading(val level: Int, val text: String) : StreamingLineModel
     data class Bullet(val text: String, val indentLevel: Int = 0) : StreamingLineModel
     data class Numbered(val number: String, val text: String, val indentLevel: Int = 0) : StreamingLineModel
@@ -578,6 +577,16 @@ internal sealed interface StreamingLineModel {
 
 private fun isRendererHorizontalRuleLine(line: String): Boolean =
     line.trim().matches(rendererHorizontalRuleRegex)
+
+internal fun stripRendererStandaloneHorizontalRules(text: String): String {
+    if (text.isEmpty()) return text
+    val normalized = text.replace("\r\n", "\n")
+    if (!normalized.lineSequence().any(::isRendererHorizontalRuleLine)) return text
+    return normalized
+        .split('\n')
+        .filterNot(::isRendererHorizontalRuleLine)
+        .joinToString("\n")
+}
 
 private fun rendererMarkdownIndentLevel(line: String): Int {
     var columns = 0
@@ -711,7 +720,7 @@ internal fun splitStreamingBlockState(
     content: String,
     treatTrailingLineAsComplete: Boolean = false
 ): StreamingBlockState {
-    val displayContent = stripRendererDecorativeEmoji(content)
+    val displayContent = stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(content))
     val logicalLines = splitRendererStreamingLogicalLines(
         normalizeRendererMarkdownTables(
             content = displayContent,
@@ -779,7 +788,7 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
         return StreamingLineModel.Table(table)
     }
     if (isRendererHorizontalRuleLine(trimmed)) {
-        return StreamingLineModel.Divider
+        return StreamingLineModel.Blank
     }
     parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(2, headingText)
@@ -820,7 +829,7 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
         return StreamingLineModel.Table(table)
     }
     if (isRendererHorizontalRuleLine(trimmed)) {
-        return StreamingLineModel.Divider
+        return StreamingLineModel.Blank
     }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(3, headingText)
@@ -873,10 +882,8 @@ internal fun shouldShowStreamingSectionDivider(
     current: StreamingLineModel
 ): Boolean {
     if (
-        current is StreamingLineModel.Divider ||
         previous == null ||
-        previous is StreamingLineModel.Heading ||
-        previous is StreamingLineModel.Divider
+        previous is StreamingLineModel.Heading
     ) {
         return false
     }
@@ -895,11 +902,10 @@ internal fun buildRendererPlainCopyText(content: String): String {
         addAll(blockState.completedBlocks.map(::classifyStreamingLine))
         blockState.activeBlock?.let { add(classifyStreamingLine(it)) }
     }
-    if (models.isEmpty()) return content.trim()
+    if (models.isEmpty()) return stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(content)).trim()
     return models.joinToString(separator = "\n\n") { model ->
         when (model) {
             StreamingLineModel.Blank -> ""
-            StreamingLineModel.Divider -> ""
             is StreamingLineModel.Heading -> plainRendererInlineText(model.text)
             is StreamingLineModel.Bullet -> plainRendererInlineText(model.text)
             is StreamingLineModel.Numbered -> {
@@ -1406,7 +1412,6 @@ private fun isStructuralRendererActiveStreamingLine(line: String): Boolean {
     return when (classifyActiveStreamingLine(line)) {
         StreamingLineModel.Blank,
         is StreamingLineModel.Paragraph -> false
-        StreamingLineModel.Divider,
         is StreamingLineModel.Heading,
         is StreamingLineModel.Bullet,
         is StreamingLineModel.Numbered,
@@ -1526,7 +1531,9 @@ private fun RendererAssistantMessageContentImpl(
     tableCopyEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val displayContent = remember(content) { stripRendererDecorativeEmoji(content) }
+    val displayContent = remember(content) {
+        stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(content))
+    }
     val shouldRenderDisclaimer = remember(displayContent, showDisclaimer) {
         showDisclaimer && shouldShowAiDisclaimerRefined(displayContent)
     }
@@ -1662,9 +1669,6 @@ private fun rendererMarkdownBlockSpacingAfter(
     previousBlock: StreamingLineModel,
     currentBlock: StreamingLineModel
 ): Dp {
-    if (previousBlock is StreamingLineModel.Divider || currentBlock is StreamingLineModel.Divider) {
-        return 0.dp
-    }
     return if (
         previousBlock is StreamingLineModel.Numbered &&
         isRendererCompactNumberedSection(previousBlock) &&
@@ -1759,7 +1763,6 @@ internal fun rendererInlineModeForStreamingBlock(
 private fun StreamingLineModel.streamingInlineText(): String? {
     return when (this) {
         StreamingLineModel.Blank -> null
-        StreamingLineModel.Divider -> null
         is StreamingLineModel.Heading -> text
         is StreamingLineModel.Bullet -> text
         is StreamingLineModel.Numbered -> text
@@ -1942,7 +1945,7 @@ internal fun buildRendererInlineAnnotatedString(
     linksEnabled: Boolean = true,
     emphasisEnabled: Boolean = true
 ): AnnotatedString {
-    val displayText = stripRendererDecorativeEmoji(text)
+    val displayText = stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(text))
     val canUseCache =
         mode == RendererInlineMode.Settled && linkInteractionListener == null && linksEnabled && emphasisEnabled
     if (canUseCache) {
@@ -2358,7 +2361,6 @@ private fun RendererAssistantStreamingActiveBlockImpl(
     Box(modifier = modifier.fillMaxWidth()) {
         when (model) {
             StreamingLineModel.Blank -> Unit
-            StreamingLineModel.Divider -> RendererMarkdownSectionDividerImpl()
             is StreamingLineModel.Heading -> {
                 val headingStyle = remember(model.level) { assistantStreamingHeadingTextStyle(model.level) }
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {

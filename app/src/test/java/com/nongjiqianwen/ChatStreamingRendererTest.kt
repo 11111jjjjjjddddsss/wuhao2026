@@ -1102,7 +1102,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun standaloneHorizontalRuleRendersAsDividerNotRawText() {
+    fun standaloneHorizontalRuleIsRemovedInsteadOfAddingAnotherDivider() {
         val state = splitStreamingBlockState(
             "液积聚处。\n\n" +
                 "---\n\n" +
@@ -1112,12 +1112,14 @@ class ChatStreamingRendererTest {
         val models = state.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
 
-        assertTrue(models[1] is StreamingLineModel.Divider)
+        assertEquals(2, models.size)
+        assertTrue(models.none { it is StreamingLineModel.Blank })
         assertEquals(
             "液积聚处。\n\n建议下一步操作：",
             buildRendererPlainCopyText("液积聚处。\n\n---\n\n建议下一步操作：")
         )
         assertFalse(buildRendererPlainCopyText("液积聚处。\n\n---\n\n建议下一步操作：").contains("---"))
+        assertEquals("", buildRendererPlainCopyText("---"))
     }
 
     @Test

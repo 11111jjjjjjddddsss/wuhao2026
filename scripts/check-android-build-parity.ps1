@@ -654,12 +654,12 @@ if ($failures.Count -eq 0) {
         "Assistant markdown numbered lists must keep compact nested indentation for structured numbered content."
     Require-Match $failures $chatStreamingRenderer 'rendererMarkdownImageRegex(?s:.*?)normalizeRendererTaskListText(?s:.*?)hasRendererUnclosedStrikeDelimiter(?s:.*?)TextDecoration\.LineThrough(?s:.*?)isRendererStrikeDelimiter' `
         "Assistant Markdown fallback rendering must keep image syntax visible as text, task-list markers readable, and strikethrough styled without dropping content."
-    Require-Match $failures $chatStreamingRenderer 'rendererHorizontalRuleRegex(?s:.*?)data\s+object\s+Divider\s*:\s*StreamingLineModel(?s:.*?)isRendererHorizontalRuleLine(?s:.*?)RendererMarkdownSectionDividerImpl\(\)' `
-        "Assistant Markdown horizontal rules must render as the existing light divider instead of exposing raw --- text."
+    Require-Match $failures $chatStreamingRenderer 'rendererHorizontalRuleRegex(?s:.*?)stripRendererStandaloneHorizontalRules(?s:.*?)filterNot\(::isRendererHorizontalRuleLine\)(?s:.*?)buildRendererPlainCopyText' `
+        "Assistant Markdown standalone horizontal-rule controls must be removed instead of exposing raw --- text or adding another divider."
     Require-Match $failures $chatStreamingRenderer 'isRendererPreservedTaskCheckboxCodePoint(?s:.*?)isRendererDecorativeEmojiCodePoint(?s:.*?)0x1F000\.\.0x1FAFF(?s:.*?)0x2600\.\.0x27BF(?s:.*?)stripRendererDecorativeEmoji' `
         "Assistant Markdown display must hide decorative emoji while preserving task-list checkbox fallback text."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"列表左齐、分割线和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
-        "Debug preview panel must include the latest Markdown fallback sample for dotless lists, horizontal rules, and emoji cleanup."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"列表左齐、横杠和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
+        "Debug preview panel must include the latest Markdown fallback sample for dotless lists, hidden horizontal-rule controls, and emoji cleanup."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `

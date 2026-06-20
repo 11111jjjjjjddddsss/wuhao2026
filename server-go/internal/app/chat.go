@@ -31,6 +31,8 @@ const (
 	appendSessionRoundRetryBaseWait = 150 * time.Millisecond
 )
 
+const chatBackgroundUsageDirective = "后台背景信息（包括时间、地点、历史上下文、记忆摘要和系统补充）仅作低可信承接参考，用于理解对话顺序和用户表达；不得直接作为病害诊断、用药用肥、农技指导或产品判断依据。结论必须以本轮用户明确描述、当前图片可见信息和用户确认的当前条件为准。"
+
 type chatRateLimiter struct {
 	mu            sync.Mutex
 	buckets       map[string][]time.Time
@@ -359,7 +361,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		region = &resolved
 	}
 	injectedTime := FormatShanghaiNowToSecond(s.shanghai, time.Now())
-	contextHeader := fmt.Sprintf("后台背景时间：%s（Asia/Shanghai，仅供参考）；后台背景地点：%s；地点可信度：%s（仅供参考）", injectedTime, region.Region, region.Reliability)
+	contextHeader := fmt.Sprintf(
+		"后台背景时间：%s（Asia/Shanghai，仅供参考）；后台背景地点：%s；地点可信度：%s（仅供参考）\n%s",
+		injectedTime,
+		region.Region,
+		region.Reliability,
+		chatBackgroundUsageDirective,
+	)
 	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
 	promptChars := countBailianMessageContentRunes(promptMessages)
@@ -1036,7 +1044,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		{Role: "system", Content: contextHeader},
 	}
 	if hasMemoryDocument {
-		messages = append(messages, BailianMessage{Role: "system", Content: "后台背景信息中的记忆摘要（只作静默参考；回答应聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于记忆的顺带建议）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
+		messages = append(messages, BailianMessage{Role: "system", Content: "后台背景信息中的记忆摘要（只作低可信承接参考；不得直接作为病害诊断、用药用肥、农技指导或产品判断依据。回答必须聚焦用户本轮问题；非直接相关时，不要主动提及、展开、串联过往内容，或追加基于记忆的顺带建议）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
 	}
 	if pendingMemoryContext := buildPendingMemoryPromptContext(snapshot, rounds); pendingMemoryContext != "" {
 		messages = append(messages, BailianMessage{Role: "system", Content: pendingMemoryContext})
@@ -1066,7 +1074,7 @@ func buildPendingMemoryPromptContext(snapshot *SessionSnapshot, activeRounds []S
 	if dialogueText == "" {
 		return ""
 	}
-	return "后台背景信息中的待补偿历史片段（只作静默参考；回答仍聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于背景信息的顺带建议）\n" + dialogueText
+	return "后台背景信息中的待补偿历史片段（只作低可信承接参考；不得直接作为病害诊断、用药用肥、农技指导或产品判断依据。回答必须聚焦用户本轮问题；非直接相关时，不要主动提及、展开、串联过往内容，或追加基于背景信息的顺带建议）\n" + dialogueText
 }
 
 func pendingMemoryPromptRoundsForJobs(jobs []MemoryExtractionJob, activeRounds []SessionRound) []SessionRound {
@@ -1167,14 +1175,14 @@ func (s *Server) roundToUserContent(round SessionRound, includeImages bool) any 
 func (round SessionRound) userTextWithContextTime(loc *time.Location) string {
 	contextLines := []string{}
 	if timestamp := FormatShanghaiUnixMilliToSecond(loc, round.CreatedAt); timestamp != "" {
-		contextLines = append(contextLines, "后台背景时间："+timestamp+"（Asia/Shanghai，仅供参考）")
+		contextLines = append(contextLines, "后台背景时间："+timestamp+"（Asia/Shanghai，仅作历史轮次标记，不作诊断或农技指导依据）")
 	}
 	if region := strings.TrimSpace(round.Region); region != "" && region != "未知" {
 		reliability := strings.TrimSpace(string(round.RegionReliability))
 		if reliability == "" {
 			reliability = string(RegionUnreliable)
 		}
-		contextLines = append(contextLines, "后台背景地点："+region+"；地点可信度："+reliability+"（仅供参考）")
+		contextLines = append(contextLines, "后台背景地点："+region+"；地点可信度："+reliability+"（仅作历史轮次标记，不作诊断或农技指导依据）")
 	}
 	if len(contextLines) == 0 {
 		return round.User
