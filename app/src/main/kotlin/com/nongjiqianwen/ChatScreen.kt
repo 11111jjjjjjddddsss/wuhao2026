@@ -1791,9 +1791,9 @@ internal fun Context.hasActiveNetworkConnection(): Boolean {
     val network = connectivityManager.activeNetwork ?: return false
     val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
     val hasInternetCapability = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-    val hasValidatedConnection = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     val isCaptivePortal = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
-    return hasInternetCapability && hasValidatedConnection && !isCaptivePortal
+    // Some devices and carriers underreport VALIDATED even when the backend is reachable.
+    return hasInternetCapability && !isCaptivePortal
 }
 
 internal fun Context.readImageBytes(uri: Uri): ByteArray? {
@@ -8706,7 +8706,7 @@ private fun UiCopyPreviewOverlay(
                 title = "主界面中部浮层",
                 items = listOf(
                     UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽中部短提示", UiCopyPreviewKind.Quota),
-                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "未验证联网 / 门户 Wi-Fi / 无网络", UiCopyPreviewKind.Network),
+                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "门户 Wi-Fi / 无网络", UiCopyPreviewKind.Network),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
                     UiCopyPreviewItem(SERVICE_UNAVAILABLE_HINT_TEXT, "服务临时不可用浮层", UiCopyPreviewKind.ServiceUnavailable),
                     UiCopyPreviewItem(ACTIVE_STREAM_HINT_TEXT, "上一条仍在处理浮层", UiCopyPreviewKind.ActiveStream),
