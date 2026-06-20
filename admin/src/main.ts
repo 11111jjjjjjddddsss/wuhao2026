@@ -1029,7 +1029,7 @@ async function insightsPage(): Promise<string> {
 async function healthPage(): Promise<string> {
   const overview = await apiFetch<AdminOverview>("/admin-api/v1/overview");
   return `
-    ${pageHead("服务健康", "通过后台 overview 返回的健康字段查看 API、模型、认证、Redis 和上传存储状态。", "health")}
+    ${pageHead("服务健康", "通过后台 overview 返回的健康字段查看 API、智能分析、认证、Redis 和上传存储状态。", "health")}
     <div class="grid three">
       ${Object.entries(overview.health)
         .map(([key, value]) => `
@@ -2792,14 +2792,14 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
   if (!rows.length) return emptyState("没有今日农情记录", "当前暂无今日农情记录。");
   return `
     <table class="table">
-      <thead><tr><th>日期</th><th>状态</th><th>来源</th><th>标题</th><th>条目/来源</th><th>模型</th><th>生成时间</th><th>错误</th></tr></thead>
+      <thead><tr><th>日期</th><th>状态</th><th>来源</th><th>标题</th><th>条目/来源</th><th>生成链路</th><th>生成时间</th><th>错误</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
                 <td>${escapeHTML(row.day_cn)}</td><td>${statusPill(row.status)}</td><td>${todayAgriSourcePill(row)}</td><td class="wrap">${escapeHTML(row.title || "未返回")}</td>
-                <td>${row.item_count} / ${row.source_count}</td><td>${escapeHTML([row.model, row.search_strategy].filter(Boolean).join(" / "))}</td>
+                <td>${row.item_count} / ${row.source_count}</td><td>${escapeHTML(todayAgriGenerationPathText(row))}</td>
                 <td>${formatTime(row.generated_at || row.updated_at)}</td><td class="wrap">${escapeHTML(row.error || "")}</td>
               </tr>
             `,
@@ -2808,6 +2808,12 @@ function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
       </tbody>
     </table>
   `;
+}
+
+function todayAgriGenerationPathText(row: AdminDailyAgriEntry): string {
+  if (row.source_type === "manual" || row.search_strategy === "manual") return "人工发布";
+  if (row.status === "failed") return "自动生成";
+  return row.source_count > 0 ? "自动生成 / 带来源" : "自动生成";
 }
 
 function todayAgriPreviewCard(row: AdminDailyAgriEntry): string {
@@ -3346,7 +3352,7 @@ function monitoringQueueCards(report: AdminMonitoring): string {
   const authLevel = crashReports > 0 || authFailures >= 10 ? "bad" : authFailures > 0 ? "warn" : "ok";
   return `
     <div class="queue-grid">
-      ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "模型、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
+      ${queueCard("服务状态", queues.unready_dependency_count, queues.unready_dependency_count ? "智能分析、登录、Redis 或 OSS 有异常" : "关键服务正常", queues.unready_dependency_count ? "bad" : "ok")}
       ${queueCard("登录排障", authFailures, `最近24小时认证失败；闪退补报 ${crashReports} 条；${crashRecency}`, authLevel)}
       ${queueCard("客服反馈", queues.support_needs_reply, queues.support_oldest_pending_at ? `${supportBody}；最早 ${formatTime(queues.support_oldest_pending_at)}` : supportBody, queues.support_needs_reply ? "warn" : "ok")}
       ${queueCard("账号注销", accountDeletionPending, accountDeletionBody, accountDeletionOverdue ? "bad" : accountDeletionPending ? "warn" : "ok", "account-deletion")}
@@ -3361,26 +3367,26 @@ function monitoringQueueCards(report: AdminMonitoring): string {
 }
 
 function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): string {
-  if (!rows.length) return emptyState("没有模型口径", "当前暂无模型使用口径数据。");
+  if (!rows.length) return emptyState("没有智能链路口径", "当前暂无智能分析链路数据。");
   return `
     <div class="stack">
-      ${notice("看百炼控制台时先分清", "qwen-turbo 是模型名，且不在当前后端生产链路里；search_strategy=turbo 是联网搜索策略。当前项目后端只按下表这些链路调用模型，Android 不保存模型 Key。", "info")}
+      ${notice("智能分析链路只在后端调用", "当前项目的智能分析能力只由后端统一调用和记录，Android 不保存服务密钥；后台这里只展示用途和联网边界，不展示具体模型名或供应商内部字段。", "info")}
       <div class="table-wrap">
         <table class="table">
           <thead>
             <tr>
-              <th>链路</th><th>模型</th><th>协议</th><th>触发时机</th><th>联网</th><th>说明</th>
+              <th>链路</th><th>后端链路</th><th>响应方式</th><th>触发时机</th><th>联网</th><th>说明</th>
             </tr>
           </thead>
           <tbody>
             ${rows.map((row) => `
               <tr>
                 <td>${escapeHTML(row.title)}</td>
-                <td><strong>${escapeHTML(row.model || "未返回")}</strong></td>
-                <td>${escapeHTML(row.protocol || "未返回")}</td>
+                <td><strong>${escapeHTML(modelPolicyDisplayText(row))}</strong></td>
+                <td>${escapeHTML(modelPolicyProtocolText(row))}</td>
                 <td>${escapeHTML(row.trigger || "未返回")}</td>
                 <td>${modelSearchPolicyText(row)}</td>
-                <td>${escapeHTML(row.cost_note || "")}<div class="small muted">思考模式：${row.thinking_disabled ? "已关闭" : "未关闭"}</div></td>
+                <td>${escapeHTML(modelPolicyNoteText(row))}<div class="small muted">增强推理：${row.thinking_disabled ? "未启用" : "已启用"}</div></td>
               </tr>
             `).join("")}
           </tbody>
@@ -3390,9 +3396,30 @@ function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): str
   `;
 }
 
+function modelPolicyDisplayText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  if (row.title.includes("主聊天")) return "生产问诊链路";
+  if (row.title.includes("记忆")) return "生产记忆摘要链路";
+  if (row.title.includes("今日农情")) return "生产农情生成链路";
+  return "后端生产链路";
+}
+
+function modelPolicyProtocolText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  const protocol = row.protocol || "";
+  if (protocol.includes("流式")) return "流式响应";
+  if (protocol.includes("非流式")) return "非流式响应";
+  return "后端响应";
+}
+
+function modelPolicyNoteText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  if (row.title.includes("主聊天")) return "可联网但不强制搜索；Android 不保存服务密钥。";
+  if (row.title.includes("记忆")) return "不联网，后端异步维护用户记忆文档。";
+  if (row.title.includes("今日农情")) return "自动生成时联网检索并带来源；人工发布锁定当天内容；用户侧不点击外链，不扣问诊次数。";
+  return "后端统一调用，前端不保存服务密钥。";
+}
+
 function modelSearchPolicyText(row: AdminMonitoring["model_usage_policy"][number]): string {
   if (!row.search_strategy) return row.forced_search ? "强制联网" : "不联网";
-  return `${row.forced_search ? "强制" : "可选"} / ${escapeHTML(row.search_strategy)}`;
+  return row.forced_search ? "强制联网" : "可联网";
 }
 
 function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undefined): string {
@@ -3775,7 +3802,7 @@ function monitoringReadinessSummary(report: AdminMonitoring): string {
       <div class="readiness-next">
         <span class="small muted">下一步</span>
         <strong>${escapeHTML(next?.title || "继续推进")}</strong>
-        <p>${escapeHTML(next?.body || "当前可继续推进登录、礼品卡、模型问诊、图片问诊、反馈和更新配置。")}</p>
+        <p>${escapeHTML(next?.body || "当前可继续推进登录、礼品卡、智能问诊、图片问诊、反馈和更新配置。")}</p>
         ${routeActionButton(next?.route, "打开")}
       </div>
     </section>
@@ -4036,7 +4063,7 @@ function monitoringRegressionChecklist(report: AdminMonitoring): string {
       title: "主聊天文字问诊",
       status: chatRounds > 0 ? "有记录" : "待真机",
       level: report.queues.unready_dependency_count > 0 ? "bad" : chatRounds > 0 ? "ok" : "info",
-      body: report.queues.unready_dependency_count > 0 ? "先看服务健康，模型、登录、Redis 或 OSS 任一异常都会影响主链。" : "发一条纯文字问诊，后台看今日问诊数、App 错误和服务健康。",
+      body: report.queues.unready_dependency_count > 0 ? "先看服务健康，智能分析、登录、Redis 或 OSS 任一异常都会影响主链。" : "发一条纯文字问诊，后台看今日问诊数、App 错误和服务健康。",
       route: "health",
     },
     {
@@ -4583,7 +4610,7 @@ function friendlyError(error: unknown): { title: string; body: string } {
 function labelFor(key: string): string {
   const labels: Record<string, string> = {
     api: "API",
-    bailian: "百炼模型",
+    bailian: "智能分析服务",
     dypns: "旧DYPNS",
     dypns_fusion: "旧融合兼容",
     dypns_sms: "旧短信兼容",
