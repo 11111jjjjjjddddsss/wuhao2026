@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- Android 主聊天“正在思考”等待态从动态省略号改成文字高光扫动：仍保留先显示呼吸小球、约 2.6 秒后淡切到思考文字、正文开始后恢复正常流式渲染的逻辑；高光使用 Compose `Brush.linearGradient` 和 `rememberInfiniteTransition` 在“正在思考”文字上从左往右扫过，debug-only 预览面板“等待思考态”直接渲染同一个真实组件。Android parity 同步锁住该口径，避免回退成静态文字或旧省略号。该改动只影响等待视觉，不改滚动锚点、发送 / 重发 / 重试、Markdown、表格、后端接口、诊断约束或三份保护提示词。
+
 - Android 主聊天流式滚动按真机“尾部后半段轻微一上一下”反馈做最小回退：撤掉打字机 reveal 写入新可见正文前的预请求 bottom anchor，不再每次 `streamingMessageContent` 变化前抢先拉底；保留原有 `SideEffect` 同帧锚点、程序滚动标记和 `ui.streaming_scroll_jitter` 低频诊断日志。该改动只试这一刀，让测试包更接近最初滚动体感；不恢复反向列表、不引入 overlay、不改变输入框、发送 / 重发 / 重试、Markdown 解析、模型输出或后端接口。
 
 - 已为当前 `5817cd0d2a88` 生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-050206-5817cd0d2a88.apk`，SHA-256 为 `c5e0d2486bee44f4486da62fa6cd8c6099adc3e5880670fe9ef08df97047bd24`，大小 `20,954,159` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-033032-98b2054f00ad.apk`。该包只撤掉流式正文变更前预锚点，保留 SideEffect 同帧锚点、程序滚动标记、低频滚动抖动日志和现有渲染 / 表格 / 分割线 / 提示词口径；未发布正式包、未写官网正式下载、未配置检查更新。
