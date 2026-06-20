@@ -62,6 +62,9 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
 	}
+	if _, ok := captured["thinking_budget"]; ok {
+		t.Fatalf("thinking_budget should be omitted when thinking is disabled: %#v", captured["thinking_budget"])
+	}
 	if _, ok := captured["extra_body"]; ok {
 		t.Fatalf("OpenAI-compatible HTTP request should pass web search options at top level, got extra_body=%#v", captured["extra_body"])
 	}
@@ -77,6 +80,41 @@ func TestOpenStreamUsesUnifiedTemperature(t *testing.T) {
 	}
 	if got := searchOptions["forced_search"]; got != false {
 		t.Fatalf("forced_search mismatch: %#v", got)
+	}
+}
+
+func TestOpenStreamCanEnableThinkingBudget(t *testing.T) {
+	var captured map[string]any
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	response, err := NewBailianClient().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "hello"}},
+		BailianStreamOptions{EnableThinking: true, ThinkingBudget: 1024},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer response.Body.Close()
+
+	if got := captured["enable_thinking"]; got != true {
+		t.Fatalf("enable_thinking mismatch: %#v", got)
+	}
+	if got := captured["thinking_budget"]; got != float64(1024) {
+		t.Fatalf("thinking_budget mismatch: %#v", got)
+	}
+	if _, ok := captured["extra_body"]; ok {
+		t.Fatalf("OpenAI-compatible HTTP request should pass thinking options at top level, got extra_body=%#v", captured["extra_body"])
 	}
 }
 

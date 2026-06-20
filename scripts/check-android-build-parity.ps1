@@ -537,6 +537,18 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must not describe retrying footers as image-send progress tails."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\(ASSISTANT_RETRYING_STATUS_TEXT,\s*"AI 点击重试进行中",\s*UiCopyPreviewKind\.AssistantRetrying\)(?s:.*?)UiCopyPreviewItem\(USER_RETRYING_STATUS_TEXT,\s*"用户点击重发进行中",\s*UiCopyPreviewKind\.UserRetrying\)' `
         "Debug UI copy preview must label retrying footers as retry/resend in progress."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("清数据首次发送",\s*"用户短文本 \+ waiting 小球",\s*UiCopyPreviewKind\.CleanStateFirstSend\)' `
+        "Debug UI copy preview must keep ordinary first-send text waiting as the plain ball state."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("图片问诊思考",\s*"小球后切动态省略号",\s*UiCopyPreviewKind\.ImageDiagnosisThinking\)(?s:.*?)UiCopyPreviewKind\.ImageDiagnosisThinking\s*->(?s:.*?)showThinkingLabel\s*=\s*true' `
+        "Debug UI copy preview must expose the image-diagnosis thinking waiting animation separately from ordinary text sends."
+    Require-Match $failures $chatScreen 'val\s+showThinkingLabel\s*=\s*renderMode\s*==\s*StreamingRenderMode\.Waiting(?s:.*?)anchoredUserMessageId(?s:.*?)hasUserImageAttachment\(\)(?s:.*?)showThinkingLabel\s*=\s*showThinkingLabel' `
+        "Main chat must show the thinking label only for the active image-diagnosis waiting state."
+    Require-Match $failures $chatStreamingRenderer 'GPT_THINKING_LABEL_DELAY_MS\s*=\s*1800L(?s:.*?)GPT_THINKING_DOTS_MS\s*=\s*1050' `
+        "Assistant thinking animation timing must stay bounded and predictable."
+    Require-Match $failures $chatStreamingRenderer 'showThinkingLabel:\s*Boolean\s*=\s*false(?s:.*?)RendererAssistantStreamingWaitingIndicatorImpl(?s:.*?)LaunchedEffect\(showThinkingLabel\)(?s:.*?)targetState\s*=\s*showThinkingLabel\s*&&\s*showThinkingText(?s:.*?)RendererAssistantThinkingIndicatorImpl' `
+        "Assistant waiting indicator must keep the ball-first thinking transition opt-in rather than applying it to every empty reply."
+    Require-Match $failures $chatStreamingRenderer 'RendererAssistantThinkingIndicatorImpl(?s:.*?)rememberInfiniteTransition\(label\s*=\s*"assistantThinkingDots"\)(?s:.*?)dotsProgress(?s:.*?)text\s*=\s*"正在思考\$dots"' `
+        "Assistant thinking label must keep the animated ellipsis instead of becoming static text."
     Require-Match $failures $chatScreen 'private\s+fun\s+UiCopyPreviewLargeFont(?s:.*?)LocalDensity\s+provides\s+Density\((?s:.*?)fontScale\s*=\s*1\.6f' `
         "Debug UI copy preview must include a reusable large-font wrapper for regression checks."
     Require-NoMatch $failures $hamburgerMenuSheet 'fun\s+startAppUpdate\s*\([^{]+\)\s*\{(?s:.*?)val\s+appContext\s*=\s*context\.applicationContext(?s:.*?)update\.latestVersionCode(?s:.*?)saveLastPromptedUpdateVersionCode(?s:.*?)if\s*\(\s*!AppUpdateInstaller\.canRequestInstallPackages' `
@@ -662,8 +674,10 @@ if ($failures.Count -eq 0) {
         "Debug preview panel must include the latest Markdown fallback sample for dotless lists, hidden horizontal-rule controls, and emoji cleanup."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
-    Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
-        "Today agri context must be scoped to the next three user sends after its visual timeline anchor."
+    Require-Match $failures $chatScreen 'TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT\s*=\s*2' `
+        "Today agri follow-up context limit must stay at two sends."
+    Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT' `
+        "Today agri context must be scoped to the next two user sends after its visual timeline anchor."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)failedUserMessageIds' `
         "Today agri context counting must ignore local failed user sends so a failed send does not prematurely end the three-send window."
     Require-Match $failures $chatScreen 'requestedAfterMessageId\s*!=\s*null\s*&&\s*hiddenRoundCount\s*>\s*0(?s:.*?)ChatTimelineItem\.HistoryNotice' `
@@ -808,13 +822,13 @@ if ($failures.Count -eq 0) {
         "Today agri narrow preview must exercise the 280dp ordinary-text layout."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("检查更新",\s*"物料完整且版本更高才提示更新",\s*UiCopyPreviewKind\.HamburgerAppUpdateDialog\)' `
         "Debug UI copy preview must show that app updates only prompt when release metadata is complete and the version is newer."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"远端确认后显示，后方三轮临时参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
-        "Debug UI copy preview must include the today-agri empty-state, completed-tail, remote-ready three-round temporary context, and anti-surprise-insert rule."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("农情上下文规则",\s*"远端确认后显示，后方两轮临时参考",\s*UiCopyPreviewKind\.TodayAgriContextRule\)' `
+        "Debug UI copy preview must include the today-agri empty-state, completed-tail, remote-ready two-round temporary context, and anti-surprise-insert rule."
     Require-Match $failures $chatScreen '"无真实聊天时只显示欢迎语，今日农情不占空态"' `
         "Debug UI copy preview must explicitly show that today agri does not occupy the empty welcome state."
     Require-Match $failures $chatScreen '"如果用户本次开始问了而农情还没显示，本次运行不突然插入"' `
         "Debug UI copy preview must explicitly show that today agri is not inserted mid-chat before it has appeared."
-    Require-Match $failures $chatScreen '"远端确认当天 ready 后，用户在它后面发送的后三轮会临时带当天农情标记"' `
+    Require-Match $failures $chatScreen '"远端确认当天 ready 后，用户在它后面发送的后两轮会临时带当天农情标记"' `
         "Debug UI copy preview must explicitly show that today-agri context is only carried after the remote card is confirmed ready."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\(NETWORK_UNAVAILABLE_HINT_TEXT,\s*"无网 / 门户 Wi-Fi；可联网先放行",\s*UiCopyPreviewKind\.Network\)' `
         "Debug UI copy preview must show that network unavailable covers no network and captive portal Wi-Fi while explicitly allowing unvalidated internet."

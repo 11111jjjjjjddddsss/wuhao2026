@@ -60,6 +60,11 @@ type bailianAutoTokenUsage struct {
 	Tokens int
 }
 
+type BailianStreamOptions struct {
+	EnableThinking bool
+	ThinkingBudget int
+}
+
 var errResponseBodyTooLarge = errors.New("response body too large")
 
 func NewBailianClient() *BailianClient {
@@ -93,12 +98,16 @@ func (c *BailianClient) HasKeyConfigured() bool {
 	return len(c.keyEntries()) > 0
 }
 
-func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
+func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessage, options ...BailianStreamOptions) (*http.Response, error) {
+	streamOptions := BailianStreamOptions{}
+	if len(options) > 0 {
+		streamOptions = options[0]
+	}
 	body := map[string]any{
 		"model":           mainChatModel,
 		"stream":          true,
 		"temperature":     unifiedModelTemperature,
-		"enable_thinking": false,
+		"enable_thinking": streamOptions.EnableThinking,
 		"stream_options": map[string]any{
 			"include_usage": true,
 		},
@@ -108,6 +117,9 @@ func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessag
 			"forced_search":   false,
 		},
 		"messages": messages,
+	}
+	if streamOptions.EnableThinking && streamOptions.ThinkingBudget > 0 {
+		body["thinking_budget"] = streamOptions.ThinkingBudget
 	}
 	return c.doJSONRequest(ctx, "text/event-stream", body)
 }

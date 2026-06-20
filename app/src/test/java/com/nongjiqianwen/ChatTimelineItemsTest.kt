@@ -410,16 +410,14 @@ class ChatTimelineItemsTest {
     }
 
     @Test
-    fun todayAgriContextDayOnlyAppliesToThreeUserMessagesAfterCard() {
+    fun todayAgriContextDayOnlyAppliesToTwoUserMessagesAfterCard() {
         val items = listOf(
             ChatTimelineItem.TodayAgriCard(todayAgriCard()),
             ChatTimelineItem.Message(userMessage("u1")),
             ChatTimelineItem.Message(assistantMessage("a1")),
             ChatTimelineItem.Message(userMessage("u2")),
             ChatTimelineItem.Message(assistantMessage("a2")),
-            ChatTimelineItem.Message(userMessage("u3")),
-            ChatTimelineItem.Message(assistantMessage("a3")),
-            ChatTimelineItem.Message(userMessage("u4"))
+            ChatTimelineItem.Message(userMessage("u3"))
         )
 
         assertEquals(
@@ -434,16 +432,7 @@ class ChatTimelineItemsTest {
         assertEquals(
             "20260615",
             resolveTodayAgriContextDayForTimeline(
-                chatListItems = items.take(4),
-                currentTodayAgriCardDay = "20260615",
-                currentDayKey = "20260615",
-                remoteConfirmedDay = "20260615"
-            )
-        )
-        assertEquals(
-            "20260615",
-            resolveTodayAgriContextDayForTimeline(
-                chatListItems = items.take(5),
+                chatListItems = items.take(3),
                 currentTodayAgriCardDay = "20260615",
                 currentDayKey = "20260615",
                 remoteConfirmedDay = "20260615"
@@ -452,7 +441,7 @@ class ChatTimelineItemsTest {
         assertEquals(
             null,
             resolveTodayAgriContextDayForTimeline(
-                chatListItems = items,
+                chatListItems = items.take(4),
                 currentTodayAgriCardDay = "20260615",
                 currentDayKey = "20260615",
                 remoteConfirmedDay = "20260615"
@@ -546,8 +535,6 @@ class ChatTimelineItemsTest {
             ChatTimelineItem.TodayAgriCard(todayAgriCard()),
             ChatTimelineItem.Message(userMessage("u1")),
             ChatTimelineItem.Message(assistantMessage("a1")),
-            ChatTimelineItem.Message(userMessage("u2")),
-            ChatTimelineItem.Message(assistantMessage("a2")),
             ChatTimelineItem.Message(userMessage("failed-local"))
         )
 

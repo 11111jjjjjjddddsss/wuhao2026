@@ -406,7 +406,7 @@ internal fun resolveTodayAgriContextDayForTimeline(
                 message.message.id != existingUserMessageId &&
                 message.message.id !in failedUserMessageIds
     }
-    return day.takeIf { userMessagesAfterAnchor < 3 }
+    return day.takeIf { userMessagesAfterAnchor < TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT }
 }
 
 internal fun canAttachTodayAgriContextForCurrentRuntime(
@@ -769,6 +769,7 @@ private const val COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE = 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
+private const val TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT = 2
 internal const val GPT_BALL_PULSE_MS = 700
 private const val GPT_BALL_EXIT_MS = 180
 private const val GPT_STREAM_TEXT_ENTRY_MS = 180
@@ -7358,10 +7359,20 @@ fun ChatScreen() {
                                         isActiveStreamingAssistant && isStreaming -> StreamingRenderMode.Streaming
                                         else -> StreamingRenderMode.Settled
                                     }
+                                    val showThinkingLabel = renderMode == StreamingRenderMode.Waiting &&
+                                        isActiveStreamingAssistant &&
+                                        anchoredUserMessageId
+                                            ?.let { sourceUserMessageId ->
+                                                messages.firstOrNull { candidate ->
+                                                    candidate.id == sourceUserMessageId &&
+                                                        candidate.role == ChatRole.USER
+                                                }?.hasUserImageAttachment()
+                                            } == true
                                     ChatStreamingRenderer(
                                         content = assistantDisplayContent,
                                         renderMode = renderMode,
                                         showWaitingBall = renderMode == StreamingRenderMode.Waiting,
+                                        showThinkingLabel = showThinkingLabel,
                                         selectionEnabled =
                                             !isStreaming ||
                                                 isPendingStreamingFinalizeAssistant ||
@@ -8674,7 +8685,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
                     UiCopyPreviewItem("农情时间线组合", "历史提示、AI 回复、农情和后续用户消息同列表", UiCopyPreviewKind.TodayAgriTimelineComposite),
-                    UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方三轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
+                    UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方两轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
                     UiCopyPreviewItem("农情晚到不打断", "用户发送 / 生成中暂存，不强插不拉底", UiCopyPreviewKind.TodayAgriPendingNoInterrupt),
                     UiCopyPreviewItem("农情历史页", "日期收进卡片内，旧简报先展示后刷新", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
                     UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
@@ -8706,6 +8717,7 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
                     UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
+                    UiCopyPreviewItem("图片问诊思考", "小球后切动态省略号", UiCopyPreviewKind.ImageDiagnosisThinking),
                     UiCopyPreviewItem(IMAGE_EXPIRED_THUMB_TEXT, "远端历史图过期后的占位", UiCopyPreviewKind.ImageExpiredPlaceholder)
                 )
             ),
@@ -9008,6 +9020,7 @@ private enum class UiCopyPreviewKind {
     AssistantMarkdownFallbackSample,
     AssistantTableSample,
     UserLinkBubbleSample,
+    ImageDiagnosisThinking,
     AttachmentSheet,
     SupportAttachmentSheet,
     Disclaimer,
@@ -9603,9 +9616,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             "已有完整 AI 回答历史时，才跟在最后一条回答后",
                             "如果用户本次开始问了而农情还没显示，本次运行不突然插入",
                             "一旦主界面展示过，保存当天一条主界面记录，重开后稳定恢复",
-                            "远端确认当天 ready 后，用户在它后面发送的后三轮会临时带当天农情标记",
+                            "远端确认当天 ready 后，用户在它后面发送的后两轮会临时带当天农情标记",
                             "后端只在日期等于服务器当天时读取农情正文作为临时背景",
-                            "第四轮起自动不带；记忆整理、聊天归档和扣次都不写入农情正文"
+                            "第三轮起自动不带；记忆整理、聊天归档和扣次都不写入农情正文"
                         )
                     )
                 }
@@ -9670,6 +9683,18 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         userBubbleMaxWidth = 280.dp,
                         userBubbleColor = Color(0xFF050505),
                         userBubbleBorderColor = Color(0xFF050505)
+                    )
+                }
+                UiCopyPreviewKind.ImageDiagnosisThinking -> {
+                    ChatStreamingRenderer(
+                        content = "",
+                        renderMode = StreamingRenderMode.Waiting,
+                        showWaitingBall = true,
+                        showThinkingLabel = true,
+                        selectionEnabled = false,
+                        showDisclaimer = false,
+                        onStreamingContentBoundsChanged = null,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
                 UiCopyPreviewKind.AttachmentSheet -> {

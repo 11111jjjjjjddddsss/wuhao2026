@@ -46,6 +46,92 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 	}
 }
 
+func TestResolveChatThinkingOptionsDefaultsToImagesOnly(t *testing.T) {
+	t.Setenv("CHAT_THINKING_MODE", "")
+	t.Setenv("CHAT_THINKING_BUDGET", "")
+
+	if got := resolveChatThinkingOptions("普通文字问题", nil); got.EnableThinking || got.ThinkingBudget != 0 {
+		t.Fatalf("text-only thinking options = %#v, want disabled", got)
+	}
+
+	got := resolveChatThinkingOptions("这张叶片咋了", []string{"https://img/current.jpg"})
+	if !got.EnableThinking || got.ThinkingBudget != defaultChatThinkingBudget {
+		t.Fatalf("image thinking options = %#v, want enabled with default budget", got)
+	}
+}
+
+func TestResolveChatThinkingOptionsDoesNotEnableTextOnlyWhenConfiguredOn(t *testing.T) {
+	t.Setenv("CHAT_THINKING_MODE", "on")
+	t.Setenv("CHAT_THINKING_BUDGET", "1200")
+
+	got := resolveChatThinkingOptions("葡萄叶片这是什么病，怎么治", nil)
+	if got.EnableThinking || got.ThinkingBudget != 0 {
+		t.Fatalf("text-only diagnosis should not enable thinking: %#v", got)
+	}
+
+	got = resolveChatThinkingOptions("这张叶片咋了", []string{"https://img/current.jpg"})
+	if !got.EnableThinking || got.ThinkingBudget != 1200 {
+		t.Fatalf("image thinking options = %#v, want enabled with configured budget", got)
+	}
+}
+
+func TestResolveChatThinkingOptionsCanDisableAndClampBudget(t *testing.T) {
+	t.Setenv("CHAT_THINKING_MODE", "off")
+	t.Setenv("CHAT_THINKING_BUDGET", "1200")
+
+	if got := resolveChatThinkingOptions("这张图是什么病", []string{"https://img/current.jpg"}); got.EnableThinking {
+		t.Fatalf("off mode should disable thinking even for images: %#v", got)
+	}
+
+	t.Setenv("CHAT_THINKING_MODE", "enabled")
+	t.Setenv("CHAT_THINKING_BUDGET", "99999")
+
+	if got := resolveChatThinkingOptions("普通文字问题", nil); got.EnableThinking {
+		t.Fatalf("text-only should not enable thinking even when mode is on: %#v", got)
+	}
+
+	got := resolveChatThinkingOptions("带图问题", []string{"https://img/current.jpg"})
+	if !got.EnableThinking || got.ThinkingBudget != maxChatThinkingBudget {
+		t.Fatalf("image thinking options = %#v, want clamped budget", got)
+	}
+}
+
+func TestSanitizeUpstreamErrorPreviewRedactsSensitivePieces(t *testing.T) {
+	raw := `{"message":"bad image https://api.nongjiqiancha.cn/uploads/support/private-name.jpg","auth":"Bearer sk-abc.DEF_123"}`
+
+	got := sanitizeUpstreamErrorPreview(raw)
+	if strings.Contains(got, "private-name") || strings.Contains(got, "sk-abc") {
+		t.Fatalf("preview leaked sensitive pieces: %q", got)
+	}
+	if !strings.Contains(got, "/uploads/REDACTED.jpg") || !strings.Contains(got, "Bearer REDACTED") {
+		t.Fatalf("preview did not include redacted markers: %q", got)
+	}
+}
+
+func TestFilterBailianStreamDataForClientDropsReasoningOnlyChunks(t *testing.T) {
+	raw := `{"choices":[{"delta":{"reasoning_content":"内部推理","content":""},"finish_reason":null,"index":0}],"usage":null}`
+
+	filtered, ok := filterBailianStreamDataForClient(raw)
+	if ok || filtered != "" {
+		t.Fatalf("reasoning-only chunk should be dropped, got ok=%v data=%q", ok, filtered)
+	}
+}
+
+func TestFilterBailianStreamDataForClientRedactsReasoningWhenContentExists(t *testing.T) {
+	raw := `{"choices":[{"delta":{"reasoning_content":"内部推理","content":"可见正文"},"finish_reason":null,"index":0}],"usage":null}`
+
+	filtered, ok := filterBailianStreamDataForClient(raw)
+	if !ok {
+		t.Fatalf("content chunk should be forwarded")
+	}
+	if strings.Contains(filtered, "内部推理") || strings.Contains(filtered, "reasoning_content") {
+		t.Fatalf("filtered chunk leaked reasoning content: %q", filtered)
+	}
+	if !strings.Contains(filtered, "可见正文") {
+		t.Fatalf("filtered chunk dropped visible content: %q", filtered)
+	}
+}
+
 func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *testing.T) {
 	server := &Server{
 		systemAnchor: "anchor",
@@ -174,7 +260,7 @@ func TestResolveTodayAgriChatContextUsesSavedDisplayCopy(t *testing.T) {
 		 WHERE user_id = ?
 		   AND (created_at > ? OR (created_at = ? AND id > ?))`)).
 		WithArgs(userID, int64(1700000000000), int64(1700000000000), int64(11)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
 
 	got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN)
 	if !strings.Contains(got, "今日农情界面上下文") {
@@ -188,7 +274,7 @@ func TestResolveTodayAgriChatContextUsesSavedDisplayCopy(t *testing.T) {
 	}
 }
 
-func TestResolveTodayAgriChatContextStopsAfterThreeArchivedRounds(t *testing.T) {
+func TestResolveTodayAgriChatContextStopsAfterTwoArchivedRounds(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()
 
@@ -218,10 +304,10 @@ func TestResolveTodayAgriChatContextStopsAfterThreeArchivedRounds(t *testing.T) 
 		 WHERE user_id = ?
 		   AND (created_at > ? OR (created_at = ? AND id > ?))`)).
 		WithArgs(userID, int64(1700000000000), int64(1700000000000), int64(11)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(3)))
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
 
 	if got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN); got != "" {
-		t.Fatalf("context after three rounds = %q, want empty", got)
+		t.Fatalf("context after two rounds = %q, want empty", got)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)

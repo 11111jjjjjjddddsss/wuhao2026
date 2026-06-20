@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -29,6 +30,10 @@ const (
 	maxBailianSSELineBytes          = 256 * 1024
 	appendSessionRoundMaxAttempts   = 3
 	appendSessionRoundRetryBaseWait = 150 * time.Millisecond
+	defaultChatThinkingMode         = "image"
+	defaultChatThinkingBudget       = 1024
+	maxChatThinkingBudget           = 8192
+	todayAgriContextRoundLimit      = 2
 )
 
 const chatDiagnosticConstraint = "【诊断约束】时间、地点、天气、历史上下文、记忆摘要仅作风险参考，不得覆盖本轮可观察症状证据；诊断以当前图片/描述为准，反证明显的候选不得排第一。"
@@ -47,6 +52,7 @@ type upstreamStreamOpenError struct {
 	Kind        string
 	StatusCode  int
 	ContentType string
+	BodyPreview string
 }
 
 func (e *upstreamStreamOpenError) Error() string {
@@ -371,6 +377,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
 	promptChars := countBailianMessageContentRunes(promptMessages)
+	thinkingOptions := resolveChatThinkingOptions(text, images)
 
 	if err := s.store.TouchSessionContext(ctx, auth.UserID, region.Region, region.Source, region.Reliability, time.Now().UnixMilli()); err != nil {
 		s.logger.Warn("touch session context failed", "userId", auth.UserID, "error", err)
@@ -391,11 +398,13 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"region_source", region.Source,
 		"region_reliability", region.Reliability,
 		"has_today_agri_context", todayAgriContext != "",
+		"thinking_enabled", thinkingOptions.EnableThinking,
+		"thinking_budget", thinkingOptions.ThinkingBudget,
 	)
 
 	upstreamCtx, cancelUpstream := context.WithTimeout(context.Background(), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
-	upstream, err := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages)
+	upstream, err := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages, thinkingOptions)
 	if err != nil {
 		s.respondUpstreamOpenError(
 			w,
@@ -406,6 +415,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			"tier", tier,
 			"prompt_chars", promptChars,
 			"current_image_count", len(images),
+			"thinking_enabled", thinkingOptions.EnableThinking,
+			"thinking_budget", thinkingOptions.ThinkingBudget,
 		)
 		return
 	}
@@ -480,8 +491,12 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				}
 				updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources, &modelUsage)
 				if !clientDisconnected.Load() {
+					clientData, shouldForward := filterBailianStreamDataForClient(data)
+					if !shouldForward {
+						continue
+					}
 					writeMu.Lock()
-					_, err = io.WriteString(w, "data: "+data+"\n\n")
+					_, err = io.WriteString(w, "data: "+clientData+"\n\n")
 					if flusher != nil {
 						flusher.Flush()
 					}
@@ -739,10 +754,10 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 	}
 }
 
-func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
+func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
 	var lastErr error
 	for attempt := 1; attempt <= upstreamMaxAttempts; attempt++ {
-		response, err := s.bailian.OpenStream(ctx, messages)
+		response, err := s.bailian.OpenStream(ctx, messages, options)
 		if err != nil {
 			lastErr = &upstreamStreamOpenError{
 				Message:    "upstream request failed",
@@ -761,12 +776,13 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 
 		contentType := response.Header.Get("Content-Type")
 		if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-			_, _ = readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
+			bodyPreview, _ := readLimitedResponseBody(response.Body, bailianBodyPreviewLimit)
 			_ = response.Body.Close()
 			lastErr = &upstreamStreamOpenError{
-				Message:    fmt.Sprintf("upstream http %d", response.StatusCode),
-				Kind:       "http",
-				StatusCode: response.StatusCode,
+				Message:     fmt.Sprintf("upstream http %d", response.StatusCode),
+				Kind:        "http",
+				StatusCode:  response.StatusCode,
+				BodyPreview: sanitizeUpstreamErrorPreview(string(bodyPreview)),
 			}
 			if attempt < upstreamMaxAttempts && isRetryableUpstreamStatus(response.StatusCode) && ctx.Err() == nil {
 				s.logger.Warn("upstream open retry scheduled after non-200 response", "attempt", attempt, "maxAttempts", upstreamMaxAttempts, "status", response.StatusCode)
@@ -819,6 +835,9 @@ func (s *Server) respondUpstreamOpenError(w http.ResponseWriter, err error, attr
 	case "http":
 		logAttrs := append([]any{}, attrs...)
 		logAttrs = append(logAttrs, "status", openErr.StatusCode)
+		if openErr.BodyPreview != "" {
+			logAttrs = append(logAttrs, "upstream_error_preview", openErr.BodyPreview)
+		}
 		s.logger.Error("upstream non-200 after retry", logAttrs...)
 		s.writeError(w, http.StatusBadGateway, "upstream_error")
 	case "protocol":
@@ -891,6 +910,142 @@ func isRetryableUpstreamStatus(status int) bool {
 	return status == http.StatusRequestTimeout || status == http.StatusTooManyRequests || (status >= 500 && status <= 599)
 }
 
+func resolveChatThinkingOptions(text string, images []string) BailianStreamOptions {
+	mode := strings.ToLower(strings.TrimSpace(os.Getenv("CHAT_THINKING_MODE")))
+	if mode == "" {
+		mode = defaultChatThinkingMode
+	}
+	switch mode {
+	case "off", "false", "0", "no", "disabled":
+		return BailianStreamOptions{}
+	case "image", "images", "vision", "auto", "on", "true", "1", "enabled":
+		if len(images) > 0 {
+			return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
+		}
+	default:
+		if len(images) > 0 {
+			return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
+		}
+	}
+	return BailianStreamOptions{}
+}
+
+func resolveChatThinkingBudget() int {
+	raw := strings.TrimSpace(os.Getenv("CHAT_THINKING_BUDGET"))
+	if raw == "" {
+		return defaultChatThinkingBudget
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return defaultChatThinkingBudget
+	}
+	if value > maxChatThinkingBudget {
+		return maxChatThinkingBudget
+	}
+	return value
+}
+
+func sanitizeUpstreamErrorPreview(raw string) string {
+	preview := strings.TrimSpace(raw)
+	if preview == "" {
+		return ""
+	}
+	replacements := []string{
+		"Authorization: Bearer ",
+		"Bearer ",
+	}
+	for _, prefix := range replacements {
+		if idx := strings.Index(preview, prefix); idx >= 0 {
+			end := idx + len(prefix)
+			for end < len(preview) {
+				c := preview[end]
+				if !(c == '.' || c == '-' || c == '_' || c == '~' || c == '+' || c == '/' || c == '=' || c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
+					break
+				}
+				end++
+			}
+			preview = preview[:idx+len(prefix)] + "REDACTED" + preview[end:]
+		}
+	}
+	for searchStart := 0; searchStart < len(preview); {
+		idxRel := strings.Index(preview[searchStart:], "/uploads/")
+		if idxRel < 0 {
+			break
+		}
+		idx := searchStart + idxRel
+		end := idx + len("/uploads/")
+		for end < len(preview) {
+			c := preview[end]
+			if !(c == '/' || c == '.' || c == '-' || c == '_' || c >= '0' && c <= '9' || c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
+				break
+			}
+			end++
+		}
+		replacement := "/uploads/REDACTED.jpg"
+		preview = preview[:idx] + replacement + preview[end:]
+		searchStart = idx + len(replacement)
+	}
+	if len([]rune(preview)) > 700 {
+		preview = string([]rune(preview)[:700])
+	}
+	return preview
+}
+
+func filterBailianStreamDataForClient(data string) (string, bool) {
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(data), &payload); err != nil {
+		return data, true
+	}
+
+	changed := false
+	clientVisible := false
+	choices, _ := payload["choices"].([]any)
+	if len(choices) == 0 {
+		if _, ok := payload["usage"]; ok {
+			clientVisible = true
+		}
+	}
+	for _, choice := range choices {
+		choiceMap, _ := choice.(map[string]any)
+		if choiceMap == nil {
+			continue
+		}
+		if finishReason, exists := choiceMap["finish_reason"]; exists && finishReason != nil && finishReason != "" {
+			clientVisible = true
+		}
+		for _, key := range []string{"delta", "message"} {
+			contentMap, _ := choiceMap[key].(map[string]any)
+			if contentMap == nil {
+				continue
+			}
+			if _, exists := contentMap["reasoning_content"]; exists {
+				delete(contentMap, "reasoning_content")
+				changed = true
+			}
+			if asString(contentMap["content"]) != "" {
+				clientVisible = true
+			}
+			if _, exists := contentMap["citations"]; exists {
+				clientVisible = true
+			}
+			if _, exists := contentMap["sources"]; exists {
+				clientVisible = true
+			}
+		}
+	}
+	if !clientVisible {
+		return "", false
+	}
+	if !changed {
+		return data, true
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
+}
+
 func normalizeImages(images []string) []string {
 	result := make([]string, 0, len(images))
 	for _, image := range images {
@@ -954,7 +1109,7 @@ func (s *Server) resolveTodayAgriChatContext(ctx context.Context, userID string,
 		}
 		return ""
 	}
-	if !foundAnchor || roundsAfterAnchor >= 3 {
+	if !foundAnchor || roundsAfterAnchor >= todayAgriContextRoundLimit {
 		return ""
 	}
 	card := items[0].Card

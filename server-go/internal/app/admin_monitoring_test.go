@@ -378,12 +378,19 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 		t.Fatalf("missing daily agri model usage policy: %#v", rows)
 	}
 	for _, row := range rows {
-		if !row.ThinkingDisabled {
-			t.Fatalf("thinking should be disabled for admin model policy row: %#v", row)
-		}
 		if row.Model == "qwen-turbo" {
 			t.Fatalf("qwen-turbo should not appear in current backend model policy: %#v", rows)
 		}
+	}
+	mainRow := findAdminMonitoringModelPolicy(rows, "主聊天问诊")
+	if mainRow == nil {
+		t.Fatalf("missing main chat model usage policy: %#v", rows)
+	}
+	if mainRow.ThinkingDisabled {
+		t.Fatalf("main chat should allow thinking for image diagnosis path: %#v", mainRow)
+	}
+	if !strings.Contains(mainRow.CostNote, "带图问诊") || !strings.Contains(mainRow.CostNote, "纯文字默认") {
+		t.Fatalf("main chat cost note should describe image-only thinking policy: %#v", mainRow)
 	}
 	dailyRow := findAdminMonitoringModelPolicy(rows, "今日农情")
 	if dailyRow == nil {

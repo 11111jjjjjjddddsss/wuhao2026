@@ -2732,8 +2732,8 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 			Trigger:          "用户发送文字 / 图片问诊时触发",
 			SearchStrategy:   mainChatSearchStrategy,
 			ForcedSearch:     false,
-			ThinkingDisabled: true,
-			CostNote:         "可联网但不强制搜索；不会在 Android 端保存模型 Key。",
+			ThinkingDisabled: false,
+			CostNote:         "纯文字默认非思考；带图问诊默认启用小预算思考。可联网但不强制搜索；不会在 Android 端保存模型 Key。",
 		},
 		{
 			Title:            "记忆文档摘要",

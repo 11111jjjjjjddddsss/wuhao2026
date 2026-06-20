@@ -2,12 +2,16 @@ package com.nongjiqianwen
 
 import android.os.Handler
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
@@ -196,6 +200,9 @@ private const val RENDERER_TABLE_ROW_SEPARATOR = "\u001E"
 private const val RENDERER_TABLE_CELL_SEPARATOR = "\u001F"
 private const val RENDERER_INLINE_MARKDOWN_CACHE_LIMIT = 160
 private const val RENDERER_MAX_INLINE_WORD_TOKEN_CHARS = 8
+private const val GPT_THINKING_LABEL_DELAY_MS = 1800L
+private const val GPT_THINKING_TRANSITION_MS = 180
+private const val GPT_THINKING_DOTS_MS = 1050
 
 private val rendererSettledInlineMarkdownCache =
     object : LinkedHashMap<String, AnnotatedString>(RENDERER_INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
@@ -1496,6 +1503,7 @@ internal fun ChatStreamingRenderer(
     content: String,
     renderMode: StreamingRenderMode,
     showWaitingBall: Boolean,
+    showThinkingLabel: Boolean = false,
     selectionEnabled: Boolean,
     showDisclaimer: Boolean,
     showLeadingSectionDivider: Boolean = false,
@@ -1508,6 +1516,7 @@ internal fun ChatStreamingRenderer(
         content = content,
         isStreaming = renderMode != StreamingRenderMode.Settled,
         showWaitingBall = showWaitingBall,
+        showThinkingLabel = showThinkingLabel,
         selectionEnabled = selectionEnabled,
         showDisclaimer = showDisclaimer,
         showLeadingSectionDivider = showLeadingSectionDivider,
@@ -1523,6 +1532,7 @@ private fun RendererAssistantMessageContentImpl(
     content: String,
     isStreaming: Boolean,
     showWaitingBall: Boolean = false,
+    showThinkingLabel: Boolean = false,
     selectionEnabled: Boolean = false,
     showDisclaimer: Boolean = true,
     showLeadingSectionDivider: Boolean = false,
@@ -1564,6 +1574,7 @@ private fun RendererAssistantMessageContentImpl(
                 RendererAssistantStreamingContentImpl(
                     content = displayContent,
                     showWaitingBall = showWaitingBall,
+                    showThinkingLabel = showThinkingLabel,
                     showLeadingSectionDivider = showLeadingSectionDivider,
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1628,29 +1639,97 @@ private fun AssistantDisclaimerFooter(
 
 @Composable
 private fun RendererAssistantStreamingWaitingIndicatorImpl(
-    modifier: Modifier = Modifier
+	showThinkingLabel: Boolean,
+	modifier: Modifier = Modifier
 ) {
-    val density = LocalDensity.current
-    val paragraphStyle = remember { assistantStreamingParagraphTextStyle() }
-    val lineHeight = with(density) {
-        paragraphStyle.lineHeight.toDp()
-    }
-    Box(
-        modifier = modifier.heightIn(min = lineHeight),
+	val density = LocalDensity.current
+	val paragraphStyle = remember { assistantStreamingParagraphTextStyle() }
+	var showThinkingText by remember { mutableStateOf(false) }
+	LaunchedEffect(showThinkingLabel) {
+		showThinkingText = false
+		if (showThinkingLabel) {
+			delay(GPT_THINKING_LABEL_DELAY_MS)
+			showThinkingText = true
+		}
+	}
+	val lineHeight = with(density) {
+		paragraphStyle.lineHeight.toDp()
+	}
+	Box(
+		modifier = modifier.heightIn(min = lineHeight),
         contentAlignment = Alignment.BottomStart
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = lineHeight)
-                .padding(start = GPT_BALL_START_PADDING),
-            contentAlignment = Alignment.BottomStart
-        ) {
-            RendererGPTBreathingBallImpl(
-                modifier = Modifier
-            )
-        }
-    }
+				.heightIn(min = lineHeight)
+				.padding(start = GPT_BALL_START_PADDING),
+			contentAlignment = Alignment.BottomStart
+		) {
+			AnimatedContent(
+				targetState = showThinkingLabel && showThinkingText,
+				transitionSpec = {
+					fadeIn(animationSpec = tween(durationMillis = GPT_THINKING_TRANSITION_MS)) togetherWith
+						fadeOut(animationSpec = tween(durationMillis = GPT_THINKING_TRANSITION_MS))
+				},
+				label = "assistantThinkingIndicator"
+			) { thinking ->
+				if (thinking) {
+					RendererAssistantThinkingIndicatorImpl()
+				} else {
+					RendererGPTBreathingBallImpl()
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun RendererAssistantThinkingIndicatorImpl(
+	modifier: Modifier = Modifier
+) {
+	val density = LocalDensity.current
+	val textStyle = remember {
+		assistantStreamingParagraphTextStyle().copy(
+			fontSize = 16.sp,
+			lineHeight = 24.sp,
+			fontWeight = FontWeight.Medium,
+			color = Color(0xFF181A1D),
+			letterSpacing = 0.sp
+		)
+	}
+	val transition = rememberInfiniteTransition(label = "assistantThinkingDots")
+	val dotsProgress by transition.animateFloat(
+		initialValue = 0f,
+		targetValue = 1f,
+		animationSpec = infiniteRepeatable(
+			animation = tween(
+				durationMillis = GPT_THINKING_DOTS_MS,
+				easing = FastOutSlowInEasing
+			),
+			repeatMode = RepeatMode.Restart
+		),
+		label = "assistantThinkingDotsProgress"
+	)
+	val lineHeight = with(density) { textStyle.lineHeight.toDp() }
+	val dots = when {
+		dotsProgress < 0.25f -> ""
+		dotsProgress < 0.5f -> "."
+		dotsProgress < 0.75f -> ".."
+		else -> "..."
+	}
+	Box(
+		modifier = modifier
+			.heightIn(min = lineHeight)
+			.clearAndSetSemantics { contentDescription = "正在思考" },
+		contentAlignment = Alignment.BottomStart
+	) {
+		Text(
+			text = "正在思考$dots",
+			style = textStyle,
+			textAlign = TextAlign.Start
+		)
+	}
 }
 
 private fun markdownBlockSpacingModifier(
@@ -1684,6 +1763,7 @@ private fun rendererMarkdownBlockSpacingAfter(
 private fun RendererAssistantStreamingContentImpl(
     content: String,
     showWaitingBall: Boolean,
+    showThinkingLabel: Boolean,
     showLeadingSectionDivider: Boolean,
     modifier: Modifier = Modifier
 ) {
@@ -1708,6 +1788,7 @@ private fun RendererAssistantStreamingContentImpl(
         }
         if (showWaitingBall && unifiedModels.isEmpty()) {
             RendererAssistantStreamingWaitingIndicatorImpl(
+                showThinkingLabel = showThinkingLabel,
                 modifier = Modifier.fillMaxWidth()
             )
         }
