@@ -5,6 +5,8 @@
 
 ## 2026-06-20
 
+- Android 主聊天正文按用户最新截图反馈继续微调阅读密度：AI 正文从 17sp / 28sp 收到 16sp / 26.5sp，streaming 行高从 30sp 收到 28sp，章节标题从 20/18sp 收到 19/17sp，列表圆点同步降到 17sp；今日农情主聊天渲染改为复用普通 AI 标题 / 正文 / 灰色辅助文本样式，避免农情和正常正文出现两套字号。该改动只调整文字视觉密度，不改变 Markdown 解析、表格卡片、分割线、滚动链、输入框或模型输出。
+
 - 为预览面板更新提交 `3d615360` 生成最新内部 debug 测试包 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-154320-3d61536030f7.apk`，SHA-256 为 `40e36df1ce4d28733b65d238c0a7176840a850b33c9d0ad8effb93a4cceaa32c`；脚本确认包名、签名匹配、debug 属性、OSS 生命周期、下载域名 200 / 206 探针均 ready。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新，也未部署生产后端 / 后台。
 
 - Android debug-only UI 文案样式预览面板同步消息尾部最新口径：`ASSISTANT_RETRYING_STATUS_TEXT` / `USER_RETRYING_STATUS_TEXT` 仍渲染真实 `MessageStatusFooter`，二级说明从旧“补上传图片”改为“点击重试 / 重发进行中”，避免测试预览误导带图发送过程仍有专属尾巴；正式用户可见尾部文案和发送链路不变。

@@ -2150,7 +2150,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 }
             }
             is StreamingLineModel.Bullet -> {
-                val bulletStyle = remember(paragraphStyle) { paragraphStyle.copy(fontSize = 18.sp) }
+                val bulletStyle = remember(paragraphStyle) { paragraphStyle.copy(fontSize = 17.sp) }
                 val bodyStyle = paragraphStyle
                 Row(
                     modifier = Modifier.fillMaxWidth(),

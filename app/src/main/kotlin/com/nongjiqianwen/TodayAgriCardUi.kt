@@ -21,7 +21,6 @@ import androidx.compose.ui.platform.TextToolbar
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 fun SessionApi.TodayAgriCard.isRenderableTodayAgriCard(): Boolean {
     val cardItems = items.orEmpty().take(3)
@@ -68,10 +67,7 @@ fun TodayAgriNewsText(
                                     append(dateText)
                                 }
                             },
-                            color = Color(0xFF111111),
-                            fontSize = 22.sp,
-                            lineHeight = 30.sp,
-                            fontWeight = FontWeight.SemiBold
+                            style = assistantHeadingTextStyle(level = 2)
                         )
                         HorizontalDivider(
                             modifier = Modifier.fillMaxWidth(),
@@ -153,26 +149,21 @@ private fun TodayAgriNewsItem(
         if (title.isNotBlank()) {
             Text(
                 text = todayAgriItemTitle(index, title),
-                color = Color(0xFF111111),
-                fontSize = 18.sp,
-                lineHeight = 25.sp,
-                fontWeight = FontWeight.SemiBold,
+                style = assistantHeadingTextStyle(level = 3).copy(
+                    fontWeight = FontWeight.SemiBold
+                )
             )
         }
         if (summary.isNotBlank()) {
             Text(
                 text = summary,
-                color = Color(0xFF202124),
-                fontSize = 17.sp,
-                lineHeight = 28.sp
+                style = assistantParagraphTextStyle()
             )
         }
         if (source.isNotBlank()) {
             Text(
                 text = "来源：$source",
-                color = Color(0xFF6F747C),
-                fontSize = 14.sp,
-                lineHeight = 20.sp
+                style = assistantDisclaimerTextStyle()
             )
         }
     }

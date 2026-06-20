@@ -618,8 +618,8 @@ if ($failures.Count -eq 0) {
         "Today agri card display validation must stay near the card UI renderer."
     Require-NoMatch $failures $todayAgriCardUi 'BorderStroke\s*\(' `
         "Today agri main-chat item must stay as ordinary text, not a framed card."
-    Require-Match $failures $todayAgriCardUi 'fontWeight\s*=\s*FontWeight\.SemiBold(?s:.*?)TodayAgriNewsItem' `
-        "Today agri title must stay visually emphasized without becoming a separate card surface."
+    Require-Match $failures $todayAgriCardUi 'style\s*=\s*assistantHeadingTextStyle\(level\s*=\s*2\)(?s:.*?)style\s*=\s*assistantHeadingTextStyle\(level\s*=\s*3\)\.copy(?s:.*?)style\s*=\s*assistantParagraphTextStyle\(\)(?s:.*?)style\s*=\s*assistantDisclaimerTextStyle\(\)' `
+        "Today agri main-chat text must reuse the ordinary assistant heading/body/auxiliary text scale instead of carrying a separate larger typography set."
     Require-Match $failures $todayAgriCardUi 'HorizontalDivider(?s:.*?)Color\(0xFFE7E9ED\)(?s:.*?)items\.forEachIndexed' `
         "Today agri title must keep a light divider before the news items, without turning the item back into a framed card."
     Require-Match $failures $todayAgriCardUi '"一、"(?s:.*?)"二、"(?s:.*?)"三、"' `
@@ -634,6 +634,12 @@ if ($failures.Count -eq 0) {
         "Today agri main-chat copy menu must stay aligned with assistant text copy/full-copy behavior."
     Require-NoMatch $failures $chatScreen 'todayAgriBottomAnchorAppliedKey' `
         "Today agri appearance must not keep a dedicated force-bottom anchor state; it should not pull the user to the bottom at the moment it appears."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantParagraphTextStyle\(\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*16\.sp(?s:.*?)lineHeight\s*=\s*26\.5\.sp(?s:.*?)internal\s+fun\s+assistantStreamingParagraphTextStyle\(\):\s*TextStyle\s*=(?s:.*?)lineHeight\s*=\s*28\.sp(?s:.*?)internal\s+fun\s+assistantHeadingTextStyle' `
+        "Assistant main-chat text must stay slightly smaller than the earlier heavier 17/28sp body and 30sp streaming line-height."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.sp\s*else\s*17\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*29\.sp\s*else\s*26\.sp' `
+        "Assistant headings must keep the softened text scale instead of returning to the heavier 20/18sp layout."
+    Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)paragraphStyle\.copy\(fontSize\s*=\s*17\.sp\)' `
+        "Assistant bullet markers must scale with the softened main-chat text."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
