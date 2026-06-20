@@ -7239,10 +7239,6 @@ fun ChatScreen() {
             inputLimitHintVisible = inputLimitHintVisible
         )
         val globalStatusHintVisible = globalStatusHintText != null &&
-            !attachmentMenuVisible &&
-            !membershipCenterVisible &&
-            !hamburgerMenuVisible &&
-            !uiCopyPreviewVisible &&
             inputSelectionToolbarState == null &&
             activeMessageSelectionState == null
         val inputTextToolbar = remember(uiRuntimeResetKey) {
@@ -7961,14 +7957,6 @@ fun ChatScreen() {
                 renderChatList(conversationBottomPaddingPx, listBottomPaddingPx)
                 renderWelcomePlaceholder(listBottomPaddingPx)
                 renderComposerBar(Modifier.align(Alignment.BottomCenter))
-                GlobalStatusHint(
-                    visible = globalStatusHintVisible,
-                    text = globalStatusHintText.orEmpty(),
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 24.dp)
-                        .zIndex(56f)
-                )
 
                 ComposerAttachmentBottomSheet(
                     visible = attachmentMenuVisible,
@@ -7992,6 +7980,15 @@ fun ChatScreen() {
                         performButtonHaptic()
                         launchComposerPhotoPicker()
                     }
+                )
+
+                GlobalStatusHint(
+                    visible = globalStatusHintVisible,
+                    text = globalStatusHintText.orEmpty(),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 24.dp)
+                        .zIndex(120f)
                 )
 
                 MembershipCenterBottomSheet(
@@ -8051,8 +8048,9 @@ fun ChatScreen() {
                     onClearChatHistory = {
                         applyChatHistoryCleared()
                     },
-                    onPlaceholderClick = {
+                    onPlaceholderClick = { text ->
                         performButtonHaptic()
+                        showComposerStatusHint(text)
                     }
                 )
 

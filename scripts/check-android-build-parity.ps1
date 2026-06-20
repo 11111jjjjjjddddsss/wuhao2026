@@ -638,6 +638,12 @@ if ($failures.Count -eq 0) {
         "Assistant main-chat text must keep the balanced half-step typography and zero Chinese body letter spacing."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.5\.sp\s*else\s*17\.5\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*30\.sp\s*else\s*27\.sp' `
         "Assistant headings must keep the balanced half-step scale instead of returning to the heavier 20/18sp layout."
+    Require-Match $failures $chatScreen 'val\s+globalStatusHintVisible\s*=\s*globalStatusHintText\s*!=\s*null\s*&&\s*inputSelectionToolbarState\s*==\s*null\s*&&\s*activeMessageSelectionState\s*==\s*null(?s:.*?)ComposerAttachmentBottomSheet\((?s:.*?)GlobalStatusHint\((?s:.*?)\.zIndex\(120f\)' `
+        "Main-chat middle status hints must stay above transient panels so short business prompts give immediate visible feedback."
+    Require-Match $failures $chatScreen 'HamburgerMenuSheet\((?s:.*?)onPlaceholderClick\s*=\s*\{\s*text\s*->(?s:.*?)performButtonHaptic\(\)(?s:.*?)showComposerStatusHint\(text\)' `
+        "Hamburger menu short notices must be routed into the main middle floating hint layer."
+    Require-Match $failures $hamburgerMenuSheet 'fun\s+showNotice\(text:\s*String\)\s*\{\s*onPlaceholderClick\(text\)\s*\}' `
+        "Hamburger menu short notices must not keep a separate bottom notice layer."
     Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*model\.text(?s:.*?)modifier\s*=\s*Modifier(?s:.*?)\.fillMaxWidth\(\)(?s:.*?)\.heightIn\(min\s*=\s*paragraphLineHeight\)' `
         "Assistant bullet lists must render as clean left-aligned text without visual dot markers."
     Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Bullet\s*->\s*plainRendererInlineText\(model\.text\)' `

@@ -329,7 +329,6 @@ internal fun HamburgerMenuSheet(
     val view = LocalView.current
     val haptic = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
-    var noticeText by remember(visible) { mutableStateOf<String?>(null) }
     var page by remember(visible) { mutableStateOf(HamburgerMenuPage.Menu) }
     var legalSubpage by remember(visible) { mutableStateOf(false) }
     var supportSummary by remember(userId) { mutableStateOf<SessionApi.SupportSummary?>(null) }
@@ -355,7 +354,6 @@ internal fun HamburgerMenuSheet(
         }
     }
     fun showNotice(text: String) {
-        noticeText = text
         onPlaceholderClick(text)
     }
     fun checkAppUpdate(userTriggered: Boolean) {
@@ -581,11 +579,6 @@ internal fun HamburgerMenuSheet(
         legalSubpage = false
         page = HamburgerMenuPage.Menu
         onDismiss()
-    }
-    LaunchedEffect(noticeText) {
-        if (noticeText == null) return@LaunchedEffect
-        delay(1500)
-        noticeText = null
     }
     LaunchedEffect(visible, page, supportSummary?.unreadCount) {
         if (!visible || page != HamburgerMenuPage.Menu || settingsMainOpenLogged) {
@@ -844,27 +837,6 @@ internal fun HamburgerMenuSheet(
                         HamburgerBackIcon(
                             tint = Color(0xFF111111),
                             modifier = Modifier.size(23.dp)
-                        )
-                    }
-                }
-                noticeText?.let { text ->
-                    Surface(
-                        color = Color(0xEE111111),
-                        shape = RoundedCornerShape(999.dp),
-                        shadowElevation = 4.dp,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .imePadding()
-                            .navigationBarsPadding()
-                            .padding(bottom = 36.dp)
-                    ) {
-                        Text(
-                            text = text,
-                            color = Color.White,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp)
                         )
                     }
                 }
