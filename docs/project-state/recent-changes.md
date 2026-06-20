@@ -5,7 +5,7 @@
 
 ## 2026-06-20
 
-- 后台管理页按上架材料阶段继续收口模型信息展示：服务健康、监控队列、今日农情表格和智能分析链路卡统一改为“智能分析服务 / 生产问诊链路 / 生产记忆摘要链路 / 生产农情生成链路 / 自动生成 / 人工发布”等泛化业务文案，浏览器后台 UI 和构建产物不再直接展示具体模型名、模型平台名或供应商内部字段；后端真实模型配置、调用链路、成本统计和排障字段不变。验证通过后台 `npm run build`、`scripts/check-admin-surface.mjs`，并用关键词扫描确认后台构建产物无具体模型 / 平台名残留。该改动不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`。
+- 后台管理页按上架材料阶段继续收口模型信息展示：服务健康、监控队列、今日农情表格和智能分析链路卡统一改为“智能分析服务 / 生产问诊链路 / 生产记忆摘要链路 / 生产农情生成链路 / 自动生成 / 人工发布”等泛化业务文案，浏览器后台 UI 和构建产物不再直接展示具体模型名、模型平台名或供应商内部字段；后端真实模型配置、调用链路、成本统计和排障字段不变。验证通过后台 `npm run build`、`scripts/check-admin-surface.mjs`，并用关键词扫描确认后台构建产物无具体模型 / 平台名残留；随后已部署到 `admin.nongjiqiancha.cn`，后台静态包 SHA-256 为 `0bd524430eeb82ea73302b53ef58ffb8aad4ead3d7a15068ae80023faca386d0`，部署脚本验证 HTTPS 首页 / 首个 JS / 未登录 auth 401 通过。该改动不修改主对话锚点、今日农情提示词、记忆文档提示词，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`。
 
 - 部署当前 `master` 后端到生产 ECS：线上 `/healthz` revision 已从旧 `bc581133` 更新为 `b235c515`，包含 `support_upload_ownership` 迁移和 support 图片归属鉴权；部署前按线上差异 `bc581133..b235c515` 跑迁移风险脚本为 `ready checked_files=1`，后端 `go test ./...` 通过。部署后 `scripts/check-ecs-readiness.ps1 -ExpectedRevision b235c515`、`scripts/check-public-blackbox.ps1`、support 图片专项 Go 测试和记忆 pending 专项 Go 测试均通过。随后为当前 `ec1770b1` 生成内部 debug 测试包并上传私有 OSS `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-105413-ec1770b11e19.apk`，SHA-256 为 `8f3f903a6ce87868c430adc1dd45c78ad449d32a69a2f6c5a8206faced01942e`，包名 / 签名 / debug 属性 / OSS 生命周期 / 下载探针通过；签名下载链接 72 小时有效且不写入仓库、官网或检查更新。当前 active slot 仍以 readiness 实测为准；本次没有发布正式 Android 包、没有开启检查更新下发，仍需真机验证 support 发图 / 预览 / 切账号。
 
