@@ -769,6 +769,7 @@ private const val COMPOSER_DIRECT_JPEG_MAX_LONG_EDGE = 1024
 private const val INPUT_LIMIT_HINT_MS = 1600L
 private const val COMPOSER_STATUS_HINT_MS = 1800L
 private const val SCROLL_OFFSET_METRIC_BUCKET_PX = 24
+private const val STREAMING_SCROLL_JITTER_LOG_THROTTLE_MS = 5_000L
 private const val TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT = 2
 internal const val GPT_BALL_PULSE_MS = 700
 private const val GPT_BALL_EXIT_MS = 180
@@ -6762,6 +6763,110 @@ fun ChatScreen() {
         isAtPhysicalBottom = { !chatListState.canScrollForward },
         requestBottomAnchor = { requestProgrammaticForwardListBottomAnchor() }
     )
+
+    LaunchedEffect(isStreaming, hasStreamingItem, chatScopeId) {
+        if (!isStreaming || !hasStreamingItem) return@LaunchedEffect
+        val minMovementPx = with(density) { 4.dp.roundToPx().coerceAtLeast(3) }
+        val minSwingPx = with(density) { 8.dp.roundToPx().coerceAtLeast(6) }
+        var previousDeltaPx: Int? = null
+        var previousMovementDirection = 0
+        var previousMovementPx = 0
+        var previousAnchorGeneration = programmaticBottomAnchorGeneration
+        var lastLocalLogAtMs = 0L
+        while (isActive && isStreaming && hasStreamingItem) {
+            withFrameNanos { }
+            val contentBottomPx = currentStreamingContentBottomPx()
+            val worklineBottomPx = currentStreamingLegalBottomPx()
+            if (contentBottomPx <= 0 || worklineBottomPx <= 0) {
+                previousDeltaPx = null
+                previousMovementDirection = 0
+                previousMovementPx = 0
+                previousAnchorGeneration = programmaticBottomAnchorGeneration
+                continue
+            }
+            val deltaPx = contentBottomPx - worklineBottomPx
+            val previousDelta = previousDeltaPx
+            if (previousDelta != null) {
+                val movementPx = deltaPx - previousDelta
+                val movementDirection = when {
+                    movementPx >= minMovementPx -> 1
+                    movementPx <= -minMovementPx -> -1
+                    else -> 0
+                }
+                val anchorGenerationDelta =
+                    programmaticBottomAnchorGeneration - previousAnchorGeneration
+                val directionFlipped =
+                    previousMovementDirection != 0 &&
+                        movementDirection != 0 &&
+                        previousMovementDirection != movementDirection
+                val swingPx = abs(previousMovementPx) + abs(movementPx)
+                val shouldLogJitter =
+                    directionFlipped &&
+                        swingPx >= minSwingPx &&
+                        !chatListUserDragging
+                if (shouldLogJitter) {
+                    val nowMs = SystemClock.elapsedRealtime()
+                    if (nowMs - lastLocalLogAtMs >= STREAMING_SCROLL_JITTER_LOG_THROTTLE_MS) {
+                        lastLocalLogAtMs = nowMs
+                        val directionLabel = when {
+                            previousMovementDirection > 0 && movementDirection < 0 -> "down_then_up"
+                            previousMovementDirection < 0 && movementDirection > 0 -> "up_then_down"
+                            else -> "flip"
+                        }
+                        val reasonGuess = when {
+                            anchorGenerationDelta > 0 || scrollRuntime.programmaticScroll.value ->
+                                "anchor_correction"
+                            recyclerScrollInProgress || chatListState.isScrollInProgress ->
+                                "list_scroll_in_progress"
+                            isComposerSettling -> "composer_settling"
+                            else -> "text_remeasure_or_layout"
+                        }
+                        val attrs = mapOf(
+                            "reason_guess" to reasonGuess,
+                            "direction" to directionLabel,
+                            "delta_px" to deltaPx,
+                            "previous_delta_px" to previousDelta,
+                            "movement_px" to movementPx,
+                            "previous_movement_px" to previousMovementPx,
+                            "swing_px" to swingPx,
+                            "content_bottom_px" to contentBottomPx,
+                            "workline_bottom_px" to worklineBottomPx,
+                            "anchor_generation_delta" to anchorGenerationDelta,
+                            "programmatic_scroll" to scrollRuntime.programmaticScroll.value,
+                            "list_scroll_in_progress" to recyclerScrollInProgress,
+                            "lazy_scroll_in_progress" to chatListState.isScrollInProgress,
+                            "user_dragging" to chatListUserDragging,
+                            "user_interacting" to scrollRuntime.userInteracting.value,
+                            "scroll_mode" to scrollRuntime.scrollMode.value.name.lowercase(),
+                            "composer_settling" to isComposerSettling,
+                            "first_visible_item_index" to chatListState.firstVisibleItemIndex,
+                            "first_visible_item_scroll_offset" to chatListState.firstVisibleItemScrollOffset,
+                            "streaming_lengths" to
+                                "${streamingMessageContent.length}/${streamingRevealBuffer.length}"
+                        )
+                        if (BuildConfig.DEBUG) {
+                            Log.d(
+                                CHAT_STARTUP_DIAG_TAG,
+                                "streaming_scroll_jitter $attrs"
+                            )
+                        }
+                        SessionApi.reportClientLog(
+                            level = "info",
+                            event = "ui.streaming_scroll_jitter",
+                            message = "Streaming scroll jitter",
+                            attrs = attrs
+                        )
+                    }
+                }
+                if (movementDirection != 0) {
+                    previousMovementDirection = movementDirection
+                    previousMovementPx = movementPx
+                }
+            }
+            previousDeltaPx = deltaPx
+            previousAnchorGeneration = programmaticBottomAnchorGeneration
+        }
+    }
 
     BoxWithConstraints(
         modifier = Modifier

@@ -9,6 +9,8 @@
 
 - Android 主聊天流式贴底继续压“生成中一上一下”：流式正文变更前和同帧 SideEffect 的底部锚点改为程序锚点；真机反馈“布局后一帧再补锚”反而更抖后，已撤掉该二次补锚，避免 AutoFollow 中反复校正。目标是减少长文 / 换行 / Markdown 分块时“先偏一下再校正”的轻微跳动；正常底部跟随时新行出现、旧行向上让位仍属于聊天流式展示的自然移动。
 
+- Android 主聊天新增低频流式抖动诊断日志 `ui.streaming_scroll_jitter`：只在生成中底部距离发生明显方向反转时上报，记录 `reason_guess`、方向、delta / movement / swing 像素、contentBottom / worklineBottom、程序锚点代数、滚动状态、首个可见项和 `streaming_lengths`；不记录正文、图片 URL、手机号、token 或模型输出内容，用于区分锚点校正、Text 重测布局、列表滚动和输入框收敛导致的“一上一下”。
+
 - Android 主聊天 Markdown 展示层补松散加粗标记容错：模型偶发吐出 `** stippling 症状**`、`** 文本**` 这类加粗标记内侧带空格时，App 会先归一化为正常加粗再渲染，避免用户看到裸 `**` 星号；debug-only 预览面板“AI Markdown 兜底”已加入对应样例，`ChatStreamingRendererTest` 已锁住展示文本不露星号。这只是 Android 展示层容错，不翻译或过滤英文术语，不改用户输入、模型提示词、后端组装词、内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
 
 - Android 主聊天流式正文贴底时序做最小收口：打字机 reveal 在把新文本写入可见正文前，如果当前仍是 AutoFollow 且用户没有拖动 / 浏览，会先预请求一次 forward LazyColumn 底部锚点；原有 `SideEffect` 同帧锚点兜底继续保留。该改动用于缓解长文生成时“先往下掉一下、再被拉回去”的轻微上下校准感，不恢复反向列表、不引入 overlay、不改变输入框、发送 / 重发 / 重试、Markdown 解析、模型输出或后端接口。

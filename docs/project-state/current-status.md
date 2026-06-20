@@ -12,6 +12,7 @@
 
 - 2026-06-21 后端独立“【诊断约束】”继续按用户拍板收口：新增一句“所有回答不得使用表格。”，降低模型老吐表格导致移动端阅读负担的概率。该句只放在每轮主聊天组装的诊断约束 system 消息里，不改主对话锚点、今日农情提示词、记忆文档提示词，不新增后端内容过滤、关键词拦截、表格硬拦截、字数硬卡或 `max_tokens`。
 - 2026-06-21 Android 主聊天流式贴底继续压“生成中一上一下”：流式正文变更前和同帧 SideEffect 的底部锚点改为程序锚点；真机反馈“布局后一帧再补锚”反而更抖后，已撤掉该二次补锚，避免 AutoFollow 中反复校正。目标是减少长文 / 换行 / Markdown 分块时“先偏一下再校正”的轻微跳动；正常底部跟随时新行出现、旧行向上让位仍属于聊天流式展示的自然移动。
+- 2026-06-21 Android 主聊天新增低频流式抖动诊断日志 `ui.streaming_scroll_jitter`：仅在生成中底部距离发生明显方向反转时记录一次，字段包括 `reason_guess`、`direction`、`delta_px`、`previous_delta_px`、`movement_px`、`swing_px`、`content_bottom_px`、`workline_bottom_px`、程序锚点代数、滚动状态、首个可见项和 `streaming_lengths`；不记录聊天正文、图片 URL、手机号、token 或模型输出内容。该日志用于区分 `anchor_correction`、`text_remeasure_or_layout`、`list_scroll_in_progress`、`composer_settling` 等原因，避免继续凭体感盲调滚动。
 - 2026-06-21 Android 主聊天 Markdown 展示层补松散加粗标记容错：模型偶发吐出 `** stippling 症状**`、`** 文本**` 这类加粗标记内侧带空格时，App 会先归一化为正常加粗再渲染，避免用户看到裸 `**` 星号；debug-only 预览面板“AI Markdown 兜底”已加入对应样例，`ChatStreamingRendererTest` 已锁住展示文本不露星号。这只是 Android 展示层容错，不翻译或过滤英文术语，不改用户输入、模型提示词、后端组装词、内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
 - 2026-06-21 Android 主聊天流式正文贴底时序做了最小收口：在打字机 reveal 把新文本写入可见正文之前，若当前仍处于 AutoFollow 且用户没有拖动 / 浏览，会先预请求一次 forward LazyColumn 底部锚点，原有 `SideEffect` 同帧锚点兜底继续保留。目标是缓解长文生成时“先往下掉一下、再被拉回去”的轻微上下校准感；不恢复反向列表、不引入 overlay、不改变主聊天滚动主方案、输入框、发送 / 重发 / 重试、Markdown 解析或模型输出。
 - 2026-06-20 今日农情临时上下文窗口已收窄为视觉项后方连续两轮：只有今日农情已实际进入当前主界面可见范围、并且后端确认是服务器上海当天 ready 后，后方第 1、2 次用户发送才携带 `today_agri_context_day`；第 3 次起自动不带，失败的本地用户消息不占这两轮。Android 发送侧、后端 anchor 轮数兜底、debug-only 预览、parity 和单测已同步到两轮；不改今日农情提示词、不改今日农情生成、不把农情写入记忆或归档。
