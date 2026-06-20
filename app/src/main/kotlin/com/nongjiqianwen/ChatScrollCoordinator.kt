@@ -190,32 +190,6 @@ internal fun handleChatListScrollStateChanged(
     }
 }
 
-internal fun shouldRequestStreamingAutoFollowAnchorAfterLayout(
-    isStreaming: Boolean,
-    hasStreamingItem: Boolean,
-    streamingMessageContent: String,
-    sendStartAnchorActive: Boolean,
-    scrollMode: ScrollMode,
-    userInteracting: Boolean,
-    listScrollInProgress: Boolean,
-    isComposerSettling: Boolean,
-    contentBottomPx: Int,
-    legalBottomPx: Int,
-    isNearStreamingWorkline: Boolean
-): Boolean {
-    return isStreaming &&
-        hasStreamingItem &&
-        streamingMessageContent.isNotBlank() &&
-        !sendStartAnchorActive &&
-        scrollMode == ScrollMode.AutoFollow &&
-        !userInteracting &&
-        !listScrollInProgress &&
-        !isComposerSettling &&
-        contentBottomPx > 0 &&
-        legalBottomPx > 0 &&
-        !isNearStreamingWorkline
-}
-
 internal suspend fun performJumpToBottom(
     messagesCount: Int,
     hasVisualTailItem: Boolean,
@@ -292,10 +266,6 @@ internal fun BindChatListScrollEffects(
     val userBrowsingBottomStableFramesState = remember {
         mutableIntStateOf(0)
     }
-    val lastAutoFollowLayoutAnchorContentLengthState = remember {
-        mutableIntStateOf(-1)
-    }
-
     LaunchedEffect(
         isStreaming,
         hasStreamingItem,
@@ -382,31 +352,6 @@ internal fun BindChatListScrollEffects(
             }
             if (activeScrollMode != ScrollMode.AutoFollow) {
                 scrollModeState.value = ScrollMode.AutoFollow
-                lastAutoFollowLayoutAnchorContentLengthState.intValue = -1
-                continue
-            }
-            val shouldAnchorAfterLayout =
-                shouldRequestStreamingAutoFollowAnchorAfterLayout(
-                    isStreaming = isStreaming,
-                    hasStreamingItem = hasStreamingItem,
-                    streamingMessageContent = streamingMessageContent,
-                    sendStartAnchorActive = sendStartAnchorActiveState.value,
-                    scrollMode = activeScrollMode,
-                    userInteracting = userInteractingState.value,
-                    listScrollInProgress = listScrollInProgress,
-                    isComposerSettling = isComposerSettling,
-                    contentBottomPx = contentBottom,
-                    legalBottomPx = legalBottom,
-                    isNearStreamingWorkline = isNearStreamingWorkline()
-                )
-            if (shouldAnchorAfterLayout) {
-                val contentLength = streamingMessageContent.length
-                if (lastAutoFollowLayoutAnchorContentLengthState.intValue != contentLength) {
-                    lastAutoFollowLayoutAnchorContentLengthState.intValue = contentLength
-                    requestBottomAnchor()
-                }
-            } else if (isNearStreamingWorkline()) {
-                lastAutoFollowLayoutAnchorContentLengthState.intValue = -1
             }
             continue
         }
