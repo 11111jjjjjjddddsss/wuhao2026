@@ -2416,45 +2416,15 @@ private fun RendererMarkdownTableImpl(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        if (copyEnabled) {
-            DisableSelection {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 2.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    TextButton(
-                        enabled = copyEnabled,
-                        onClick = {
-                            clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
-                            Toast.makeText(context, "表格已复制，可粘贴到表格软件", Toast.LENGTH_SHORT).show()
-                        },
-                        modifier = Modifier
-                            .heightIn(min = 36.dp)
-                            .background(Color(0xFFF1F3F5), RoundedCornerShape(999.dp)),
-                        shape = RoundedCornerShape(999.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = Color(0xFF5F6368),
-                            containerColor = Color.Transparent,
-                            disabledContentColor = Color(0xFF9AA0A6),
-                            disabledContainerColor = Color.Transparent
-                        )
-                    ) {
-                        Text(
-                            text = "复制表格",
-                            fontSize = 13.sp,
-                            lineHeight = 16.sp
-                        )
-                    }
-                }
-            }
-        }
         RendererMarkdownTableHeaderImpl(
             headers = table.headers,
             inlineMode = inlineMode,
-            linksEnabled = linksEnabled
+            linksEnabled = linksEnabled,
+            copyEnabled = copyEnabled,
+            onCopy = {
+                clipboardManager.setText(AnnotatedString(table.toPlainCopyText()))
+                Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+            }
         )
         table.rows.forEachIndexed { rowIndex, row ->
             RendererMarkdownTableCardImpl(
@@ -2472,29 +2442,67 @@ private fun RendererMarkdownTableImpl(
 private fun RendererMarkdownTableHeaderImpl(
     headers: List<String>,
     inlineMode: RendererInlineMode,
-    linksEnabled: Boolean
+    linksEnabled: Boolean,
+    copyEnabled: Boolean,
+    onCopy: () -> Unit
 ) {
     if (headers.isEmpty()) return
     val headerStyle = remember {
         TextStyle(
             fontSize = 14.sp,
             lineHeight = 20.sp,
-            color = Color(0xFF4F5661),
+            color = Color.White,
             letterSpacing = 0.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
-    RendererStreamingActiveTextImpl(
-        text = headers.joinToString(" / "),
-        style = headerStyle,
-        minLineHeight = 20.dp,
-        inlineMode = inlineMode,
-        linksEnabled = linksEnabled,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFF3F5F7), RoundedCornerShape(8.dp))
-            .padding(horizontal = 12.dp, vertical = 9.dp)
-    )
+            .background(Color(0xFF151515), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        RendererStreamingActiveTextImpl(
+            text = headers.joinToString(" / "),
+            style = headerStyle,
+            minLineHeight = 20.dp,
+            inlineMode = inlineMode,
+            linksEnabled = linksEnabled,
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (copyEnabled) {
+            DisableSelection {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        enabled = true,
+                        onClick = onCopy,
+                        modifier = Modifier
+                            .heightIn(min = 32.dp)
+                            .background(Color.White, RoundedCornerShape(999.dp)),
+                        shape = RoundedCornerShape(999.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 5.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = Color(0xFF151515),
+                            containerColor = Color.Transparent,
+                            disabledContentColor = Color(0xFF9AA0A6),
+                            disabledContainerColor = Color.Transparent
+                        )
+                    ) {
+                        Text(
+                            text = "复制表格",
+                            fontSize = 13.sp,
+                            lineHeight = 16.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
