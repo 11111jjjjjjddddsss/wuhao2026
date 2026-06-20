@@ -5,7 +5,9 @@
 
 ## 2026-06-20
 
-- 定位并修复图片问诊无回复问题：用户真机图文消息进入“正在重试...”后，线上日志显示 `/upload` 成功、上游服务两次拉取同一 `/uploads/*.jpg` 均由 Nginx 返回 200，但上游接口返回 `400 InvalidParameter: Missing Content-Length of multimodal url`。根因是后端图片代理没有给普通问诊图片响应写 `Content-Length`，不是当前模型不支持图片、不是客户端压缩上传失败，也不是 HTTPS / Referer / UA 拦截。`server-go` 现在从本地文件 stat 或 OSS 对象元数据读取长度，并对普通 `/uploads/*.jpg` 和 support `/uploads/support/*.jpg` 都写入 `Content-Length`；Go 单测覆盖普通图和 support 图的响应头。该后端修复仍需部署生产后用同一张已上传图片和真机图文问诊复测。
+- 定位并修复图片问诊无回复问题：用户真机图文消息进入“正在重试...”后，线上日志显示 `/upload` 成功、上游服务两次拉取同一 `/uploads/*.jpg` 均由 Nginx 返回 200，但上游接口返回 `400 InvalidParameter: Missing Content-Length of multimodal url`。根因是后端图片代理没有给普通问诊图片响应写 `Content-Length`，不是当前模型不支持图片、不是客户端压缩上传失败，也不是 HTTPS / Referer / UA 拦截。`server-go` 现在从本地文件 stat 或 OSS 对象元数据读取长度，并对普通 `/uploads/*.jpg` 和 support `/uploads/support/*.jpg` 都写入 `Content-Length`；Go 单测覆盖普通图和 support 图的响应头。提交 `0df890e1` 已部署到生产 ECS，readiness expected revision 通过，同一张已上传图片公网响应已验证为 `200 / image/jpeg / Content-Length=146158`，上游图片调用返回 200；剩余只是真机新拍 / 新选图端到端回归。
+
+- 为当前 `0df890e1` 生成最新内部 debug 测试包 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-192137-0df890e10cb1.apk`，SHA-256 为 `f90a6e96ade4822bf3be5c8f78cef20fa6b70305870d45543ced86bc6a30859f`；脚本确认包名、签名匹配、debug 属性、OSS 生命周期、下载域名 200 / 206 探针均 ready。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新。
 
 - 为 GPT 式方块复制图标 / 嵌套列表缩进收窄提交 `7f75394c` 生成最新内部 debug 测试包 `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-184250-7f75394c6874.apk`，SHA-256 为 `147a9db21fbad7dfe09adafb06b9d31de519b4261f2b0912ee85c36908cf2df1`；脚本确认包名、签名匹配、debug 属性、OSS 生命周期、下载域名 200 / 206 探针均 ready。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新，也未部署生产后端 / 后台。
 
