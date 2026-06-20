@@ -54,6 +54,17 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun looseBoldSpacingHidesRawMarkersAndTrimsInnerText() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "** stippling 症状**：叶片出现密集针点。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("stippling 症状：叶片出现密集针点。", rendered.text)
+        assertTrue(rendered.hasSpanFor("stippling 症状") { it.fontWeight == FontWeight.Medium })
+    }
+
+    @Test
     fun emphasisDisabledHidesBoldMarkersWithoutBoldWeight() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "**高**。开袋即用。",

@@ -8928,6 +8928,7 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE =
         "+ [x] 已清理沟渠\n" +
         "1) 先控水排湿。\n" +
         "2) ~~中午高温打药~~，改到傍晚。\n" +
+        "** stippling 症状**：这种松散加粗标记不应露出星号。\n" +
         "普通链接仍可点击：[全国农技中心](https://www.natesc.org.cn/)。\n" +
         "图片语法只显示说明，不加载外部图片：![叶片病斑](https://example.com/leaf.jpg)。\n" +
         "公式原样可读：${'$'}K=N+P${'$'}，${'$'}${'$'}亩数=长度*宽度/666.7${'$'}${'$'}。"

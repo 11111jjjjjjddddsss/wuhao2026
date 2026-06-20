@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- Android 主聊天 Markdown 展示层补松散加粗标记容错：模型偶发吐出 `** stippling 症状**`、`** 文本**` 这类加粗标记内侧带空格时，App 会先归一化为正常加粗再渲染，避免用户看到裸 `**` 星号；debug-only 预览面板“AI Markdown 兜底”已加入对应样例，`ChatStreamingRendererTest` 已锁住展示文本不露星号。这只是 Android 展示层容错，不翻译或过滤英文术语，不改用户输入、模型提示词、后端组装词、内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
+
 - Android 主聊天流式正文贴底时序做最小收口：打字机 reveal 在把新文本写入可见正文前，如果当前仍是 AutoFollow 且用户没有拖动 / 浏览，会先预请求一次 forward LazyColumn 底部锚点；原有 `SideEffect` 同帧锚点兜底继续保留。该改动用于缓解长文生成时“先往下掉一下、再被拉回去”的轻微上下校准感，不恢复反向列表、不引入 overlay、不改变输入框、发送 / 重发 / 重试、Markdown 解析、模型输出或后端接口。
 
 - 已为当前 `bc3d22da5283` 生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-022721-bc3d22da5283.apk`，SHA-256 为 `a95ec1aa39acfb406526493ad37ce62d7fdaf6ba72520a794e81e6b72d758749`，大小 `20,950,428` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK，OSS `test-apks/debug/` 当前只剩 1 个对象。该包包含主聊天流式正文预锚点小修，只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新。

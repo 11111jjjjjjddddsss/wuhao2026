@@ -2026,7 +2026,9 @@ internal fun buildRendererInlineAnnotatedString(
     linksEnabled: Boolean = true,
     emphasisEnabled: Boolean = true
 ): AnnotatedString {
-    val displayText = stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(text))
+    val displayText = normalizeRendererLooseBoldDelimiterSpacing(
+        stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(text))
+    )
     val canUseCache =
         mode == RendererInlineMode.Settled && linkInteractionListener == null && linksEnabled && emphasisEnabled
     if (canUseCache) {
@@ -2152,6 +2154,56 @@ internal fun buildRendererInlineAnnotatedString(
             }
         }
     }
+}
+
+private fun normalizeRendererLooseBoldDelimiterSpacing(text: String): String {
+    if (!text.contains("**")) return text
+    val result = StringBuilder(text.length)
+    var index = 0
+    var code = false
+    while (index < text.length) {
+        val current = text[index]
+        if (current == '`') {
+            code = !code
+            result.append(current)
+            index += 1
+            continue
+        }
+        if (
+            !code &&
+            text.startsWith("**", startIndex = index) &&
+            !isRendererAsciiInlineOperatorRun(text, index, length = 2)
+        ) {
+            val closing = findRendererLooseBoldSpacingClosingDelimiter(text, index + 2)
+            if (closing != null) {
+                val inner = text.substring(index + 2, closing)
+                val trimmed = inner.trim()
+                if (
+                    trimmed.isNotEmpty() &&
+                    trimmed != inner &&
+                    !trimmed.contains("**")
+                ) {
+                    result.append("**")
+                    result.append(trimmed)
+                    result.append("**")
+                    index = closing + 2
+                    continue
+                }
+            }
+        }
+        result.append(current)
+        index += 1
+    }
+    return result.toString()
+}
+
+private fun findRendererLooseBoldSpacingClosingDelimiter(text: String, startIndex: Int): Int? {
+    var cursor = text.indexOf("**", startIndex)
+    while (cursor >= 0) {
+        if (!isRendererAsciiInlineOperatorRun(text, cursor, length = 2)) return cursor
+        cursor = text.indexOf("**", cursor + 2)
+    }
+    return null
 }
 
 private fun normalizeRendererLinkTarget(raw: String): String {
