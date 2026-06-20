@@ -5,7 +5,7 @@
 
 ## 2026-06-21
 
-- 主聊天按质量优先改为默认所有轮次开启思考，预算固定 `thinking_budget=1024`，不按会员区分；`CHAT_THINKING_MODE=off` 可应急关闭，`CHAT_THINKING_MODE=image` 可回退为仅图像上下文开启。Android 空回复等待态同步改为按实际等待时间展示：先显示呼吸小球，约 1.8 秒仍无正文再切为“正在思考...”，不再只限图片问诊；预览面板“图片问诊思考”改为通用“等待思考态”。用户记忆文档摘要和今日农情仍关闭思考；本轮不新增内容过滤、关键词拦截、字数硬卡、`max_tokens` 或客户端模型 Key。
+- 主聊天按质量优先改为默认所有轮次开启思考，预算固定 `thinking_budget=1024`，不按会员区分；`CHAT_THINKING_MODE=off` 可应急关闭，`CHAT_THINKING_MODE=image` 可回退为仅图像上下文开启。Android 空回复等待态同步改为按实际等待时间展示：先显示呼吸小球，约 1.8 秒仍无正文再切为“正在思考...”，不再只限图片问诊；省略号循环由 `1050ms` 放慢到 `1500ms` 一轮；预览面板“图片问诊思考”改为通用“等待思考态”。用户记忆文档摘要和今日农情仍关闭思考；本轮不新增内容过滤、关键词拦截、字数硬卡、`max_tokens` 或客户端模型 Key。
 
 - 生产后端已部署提交 `a9fdc627`，`scripts/check-ecs-readiness.ps1 -ExpectedRevision a9fdc627` 通过，线上 healthz 返回 `revision=a9fdc627` 且关键依赖 ready。已为同一提交生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-005111-a9fdc6279f83.apk`，SHA-256 为 `db6f957d781808571a6432a18919a553f2a16b470d03cd28009be94b0494fd1b`，大小 `20,949,683` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一个内部测试 APK，OSS `test-apks/debug/` 当前只剩 1 个对象。该包只用于内部真机回归，未发布正式包、未写官网正式下载、未配置检查更新。
 

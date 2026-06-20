@@ -202,7 +202,7 @@ private const val RENDERER_INLINE_MARKDOWN_CACHE_LIMIT = 160
 private const val RENDERER_MAX_INLINE_WORD_TOKEN_CHARS = 8
 private const val GPT_THINKING_LABEL_DELAY_MS = 1800L
 private const val GPT_THINKING_TRANSITION_MS = 180
-private const val GPT_THINKING_DOTS_MS = 1050
+private const val GPT_THINKING_DOTS_MS = 1500
 
 private val rendererSettledInlineMarkdownCache =
     object : LinkedHashMap<String, AnnotatedString>(RENDERER_INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {

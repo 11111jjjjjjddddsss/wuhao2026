@@ -543,7 +543,7 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must expose the delayed thinking waiting animation separately from ordinary first-send ball state."
     Require-Match $failures $chatScreen 'val\s+showThinkingLabel\s*=\s*renderMode\s*==\s*StreamingRenderMode\.Waiting\s*&&\s*isActiveStreamingAssistant(?s:.*?)showThinkingLabel\s*=\s*showThinkingLabel' `
         "Main chat must request the thinking label only for the active assistant waiting state."
-    Require-Match $failures $chatStreamingRenderer 'GPT_THINKING_LABEL_DELAY_MS\s*=\s*1800L(?s:.*?)GPT_THINKING_DOTS_MS\s*=\s*1050' `
+    Require-Match $failures $chatStreamingRenderer 'GPT_THINKING_LABEL_DELAY_MS\s*=\s*1800L(?s:.*?)GPT_THINKING_DOTS_MS\s*=\s*1500' `
         "Assistant thinking animation timing must stay bounded and predictable."
     Require-Match $failures $chatStreamingRenderer 'showThinkingLabel:\s*Boolean\s*=\s*false(?s:.*?)RendererAssistantStreamingWaitingIndicatorImpl(?s:.*?)LaunchedEffect\(showThinkingLabel\)(?s:.*?)targetState\s*=\s*showThinkingLabel\s*&&\s*showThinkingText(?s:.*?)RendererAssistantThinkingIndicatorImpl' `
         "Assistant waiting indicator must keep the ball-first thinking transition opt-in from screen state."

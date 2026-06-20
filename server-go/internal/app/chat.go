@@ -625,14 +625,23 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	close(stopHeartbeat)
 
 	logAttrs := []any{
+		"userId", auth.UserID,
+		"clientMsgId", clientMsgID,
+		"tier", tier,
 		"request_id", upstreamRequestID,
 		"enable_search", true,
 		"strategy", "turbo",
 		"forced_search", false,
+		"current_image_count", len(images),
+		"prompt_has_images", promptHasImages,
+		"thinking_enabled", thinkingOptions.EnableThinking,
+		"thinking_budget", thinkingOptions.ThinkingBudget,
 		"has_citations", hasCitations.Load(),
 		"has_sources", hasSources.Load(),
 		"done_received", doneReceived.Load(),
+		"send_done_after_archive", sendDoneAfterArchive,
 		"client_disconnected", clientDisconnected.Load(),
+		"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
 	}
 	s.bailian.ObserveUsage(modelUsage)
 	logAttrs = appendBailianUsageLogAttrs(logAttrs, modelUsage)
