@@ -3418,7 +3418,7 @@ private fun HamburgerSupportFeedbackContent(
                 ) {
                     if (inputText.isEmpty()) {
                         Text(
-                            text = if (selectedImages.isNotEmpty()) "补充图片说明" else "描述问题，可附订单号或礼品卡码",
+                            text = "描述问题",
                             color = Color(0xFFAEAFB4),
                             fontSize = 16.sp,
                             lineHeight = 22.sp

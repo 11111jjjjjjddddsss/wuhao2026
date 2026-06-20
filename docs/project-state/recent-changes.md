@@ -5,6 +5,8 @@
 
 ## 2026-06-20
 
+- Android 帮助与反馈输入框占位文案按截图反馈收短为“描述问题”，删除“可附订单号或礼品卡码”的提示，有无图片时都保持同一占位；这只是提示文案简化，不改变用户 / 客服可为排障发送数字、手机号、订单号、礼品卡码等正文的后端能力，也不新增内容拦截。
+
 - Android 网络预检按“不要影响体验、少误伤用户”重新收口：主聊天发送、失败重试、帮助反馈发送和带图 WorkManager 后台兜底仍会提前拦无网络、无公网能力和系统明确标记的门户 Wi-Fi，但不再把 `NET_CAPABILITY_VALIDATED` 当硬门槛，避免部分手机 / 运营商 / ROM 系统验证状态不准时，明明能访问生产后端却被 App 直接提示“当前网络不可用”。真实断网、弱网或后端不可达仍交给上传 / SSE 请求失败、后台 retry 和现有失败 / 重试 UI 兜底；debug-only 预览文案和 Android parity 脚本同步改成“无网 / 门户 Wi-Fi；可联网先放行”，并增加门禁防止重新把 `VALIDATED` 写成硬拦截。本轮不改主对话锚点、今日农情提示词、记忆文档提示词、官网首页文案，不新增模型输出过滤、关键词拦截、字数硬卡或 `max_tokens`，不发布正式 Android 包。
 
 - 为上述网络软门槛提交 `7bd5c394` 生成最新内部 debug 测试包并上传私有 OSS `test-apks/debug/20260620/nongjiqiancha-debug-internal-20260620-120249-7bd5c394c549.apk`，SHA-256 为 `eb48d985fb83cf81b1721f99a7b6cf00bd87d51559e23d89c6ffc321aae668b8`；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、`test-apks/` 生命周期 3 天、下载域名 200 / 206 探针均 ready。该包只用于内部真机回归，走 `download.nongjiqiancha.cn` 私有 OSS 短签名链接，未写入官网正式下载、未配置检查更新、未发布正式 Android 包。
