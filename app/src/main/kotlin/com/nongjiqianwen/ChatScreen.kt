@@ -8648,6 +8648,7 @@ private fun UiCopyPreviewOverlay(
                 title = "文本渲染",
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
+                    UiCopyPreviewItem("AI Markdown 兜底", "嵌套列表、任务项、删除线、公式和图片语法", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
                     UiCopyPreviewItem("AI 表格", "Markdown 表格按移动端分组展示，并保留复制表格按钮", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
@@ -8865,6 +8866,19 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
         "> AI 只能提供参考，现场仍要复核。\n" +
         "官方查询可看 https://www.moa.gov.cn/，或 [植保中心](https://www.natesc.org.cn/)。"
 
+private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE =
+    "## Markdown 兜底检查\n" +
+        "- **农业场景：**\n" +
+        "    - 通过**技术手段**对抗气候风险。\n" +
+        "    - 通过**真诚服务**建立信任。\n" +
+        "+ [ ] 复查叶背虫卵\n" +
+        "+ [x] 已清理沟渠\n" +
+        "1) 先控水排湿。\n" +
+        "2) ~~中午高温打药~~，改到傍晚。\n" +
+        "普通链接仍可点击：[全国农技中心](https://www.natesc.org.cn/)。\n" +
+        "图片语法只显示说明，不加载外部图片：![叶片病斑](https://example.com/leaf.jpg)。\n" +
+        "公式原样可读：${'$'}K=N+P${'$'}，${'$'}${'$'}亩数=长度*宽度/666.7${'$'}${'$'}。"
+
 private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
     "| 维度 | 成品含腐植酸尿素 | 普通尿素 + 矿源黄腐酸钾 |\n" +
         "| --- | --- | --- |\n" +
@@ -8951,6 +8965,7 @@ private enum class UiCopyPreviewKind {
     HamburgerTodayAgriHistoryPage,
     HamburgerTodayAgriHistoryFailed,
     AssistantMarkdownSample,
+    AssistantMarkdownFallbackSample,
     AssistantTableSample,
     UserLinkBubbleSample,
     AttachmentSheet,
@@ -9572,6 +9587,17 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.AssistantMarkdownSample -> {
                     ChatStreamingRenderer(
                         content = UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE,
+                        renderMode = StreamingRenderMode.Settled,
+                        showWaitingBall = false,
+                        selectionEnabled = true,
+                        showDisclaimer = true,
+                        onStreamingContentBoundsChanged = null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                UiCopyPreviewKind.AssistantMarkdownFallbackSample -> {
+                    ChatStreamingRenderer(
+                        content = UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE,
                         renderMode = StreamingRenderMode.Settled,
                         showWaitingBall = false,
                         selectionEnabled = true,

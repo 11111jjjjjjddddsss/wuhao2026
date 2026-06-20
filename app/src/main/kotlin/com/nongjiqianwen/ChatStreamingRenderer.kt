@@ -180,10 +180,11 @@ internal fun appendAssistantChunk(
 }
 
 private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
-private val rendererBulletRegex = Regex("^[*-]\\s+.*$")
-private val rendererNumberedRegex = Regex("^\\d+\\.\\s+.*$")
+private val rendererBulletRegex = Regex("^[-+*]\\s+.*$")
+private val rendererNumberedRegex = Regex("^\\d+[.)]\\s+.*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
 private val rendererChineseSectionHeadingRegex = Regex("^([一二三四五六七八九十]{1,3})([、.．])\\s*(.+)$")
+private val rendererMarkdownImageRegex = Regex("!\\[([^\\]]*)]\\(([^)]+)\\)")
 private val rendererMarkdownLinkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
 private val rendererBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 private const val RENDERER_TABLE_BLOCK_PREFIX = "\uE000NQ_TABLE:"
@@ -559,11 +560,38 @@ internal data class StreamingBlockState(
 internal sealed interface StreamingLineModel {
     data object Blank : StreamingLineModel
     data class Heading(val level: Int, val text: String) : StreamingLineModel
-    data class Bullet(val text: String) : StreamingLineModel
-    data class Numbered(val number: String, val text: String) : StreamingLineModel
+    data class Bullet(val text: String, val indentLevel: Int = 0) : StreamingLineModel
+    data class Numbered(val number: String, val text: String, val indentLevel: Int = 0) : StreamingLineModel
     data class Quote(val text: String) : StreamingLineModel
     data class Table(val table: RendererMarkdownTable) : StreamingLineModel
     data class Paragraph(val text: String) : StreamingLineModel
+}
+
+private fun rendererMarkdownIndentLevel(line: String): Int {
+    var columns = 0
+    for (ch in line) {
+        when (ch) {
+            ' ' -> columns += 1
+            '\t' -> columns += 4
+            else -> break
+        }
+    }
+    return (columns / 4).coerceIn(0, 2)
+}
+
+private fun rendererNumberedMarkerEnd(line: String): Int =
+    line.indexOfFirst { it == '.' || it == ')' }
+
+private fun normalizeRendererTaskListText(text: String): String {
+    val trimmed = text.trimStart()
+    if (trimmed.length < 4) return text
+    val marker = trimmed.take(3)
+    if (trimmed.getOrNull(3)?.isWhitespace() != true) return text
+    return when {
+        marker == "[ ]" -> "\u2610 ${trimmed.drop(4).trimStart()}"
+        marker.equals("[x]", ignoreCase = true) -> "\u2611 ${trimmed.drop(4).trimStart()}"
+        else -> text
+    }
 }
 
 internal data class QueuedStreamingChunk(
@@ -694,7 +722,7 @@ internal fun splitStreamingBlockState(
             trimmed.isBlank() -> flushParagraphBlock()
             isStructuralRendererStreamingLine(trimmed) -> {
                 flushParagraphBlock()
-                completedBlocks += trimmed
+                completedBlocks += line.trimEnd()
             }
             else -> paragraph.appendRendererActiveParagraphLine(trimmed)
         }
@@ -706,7 +734,7 @@ internal fun splitStreamingBlockState(
         when {
             paragraph.isNotEmpty() && activeLooksStructural -> {
                 flushParagraphBlock()
-                trimmed.ifEmpty { null }
+                line.trimEnd().ifEmpty { null }
             }
             paragraph.isNotEmpty() -> buildString {
                 append(paragraph.toString())
@@ -719,6 +747,7 @@ internal fun splitStreamingBlockState(
                 }
             }.trim().ifEmpty { null }
             trimmed.isBlank() -> null
+            activeLooksStructural -> line.trimEnd()
             else -> trimmed
         }
     } ?: paragraph.toString().trim().ifEmpty { null }
@@ -732,6 +761,7 @@ internal fun splitStreamingBlockState(
 internal fun classifyStreamingLine(line: String): StreamingLineModel {
     if (line.isBlank()) return StreamingLineModel.Blank
     val trimmed = line.trimStart()
+    val indentLevel = rendererMarkdownIndentLevel(line)
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
@@ -749,11 +779,18 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
             val marker = trimmed.takeWhile { it == '#' }
             StreamingLineModel.Heading(marker.length, trimmed.drop(marker.length).trimStart())
         }
-        trimmed.matches(rendererBulletRegex) -> StreamingLineModel.Bullet(trimmed.drop(1).trimStart())
-        trimmed.matches(rendererNumberedRegex) -> StreamingLineModel.Numbered(
-            number = trimmed.substringBefore('.'),
-            text = trimmed.substringAfter('.').trimStart()
+        trimmed.matches(rendererBulletRegex) -> StreamingLineModel.Bullet(
+            text = normalizeRendererTaskListText(trimmed.drop(1).trimStart()),
+            indentLevel = indentLevel
         )
+        trimmed.matches(rendererNumberedRegex) -> {
+            val markerEnd = rendererNumberedMarkerEnd(trimmed)
+            StreamingLineModel.Numbered(
+                number = trimmed.take(markerEnd),
+                text = normalizeRendererTaskListText(trimmed.drop(markerEnd + 1).trimStart()),
+                indentLevel = indentLevel
+            )
+        }
         trimmed.matches(rendererQuoteRegex) -> StreamingLineModel.Quote(trimmed.drop(1).trimStart())
         else -> StreamingLineModel.Paragraph(line)
     }
@@ -762,6 +799,7 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
 internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     if (line.isBlank()) return StreamingLineModel.Blank
     val trimmed = line.trimStart()
+    val indentLevel = rendererMarkdownIndentLevel(line)
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
@@ -784,22 +822,27 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
             return StreamingLineModel.Quote(remainder.trimStart())
         }
     }
-    if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ")) {
         val remainder = trimmed.drop(2)
         if (remainder.trim().isNotEmpty()) {
-            return StreamingLineModel.Bullet(remainder.trimStart())
+            return StreamingLineModel.Bullet(
+                text = normalizeRendererTaskListText(remainder.trimStart()),
+                indentLevel = indentLevel
+            )
         }
     }
     val numberedPrefix = trimmed.takeWhile { it.isDigit() }
     if (
         numberedPrefix.isNotEmpty() &&
-        trimmed.drop(numberedPrefix.length).startsWith(". ")
+        (trimmed.drop(numberedPrefix.length).startsWith(". ") ||
+            trimmed.drop(numberedPrefix.length).startsWith(") "))
     ) {
         val remainder = trimmed.drop(numberedPrefix.length + 2)
         if (remainder.trim().isNotEmpty()) {
             return StreamingLineModel.Numbered(
                 number = numberedPrefix,
-                text = remainder.trimStart()
+                text = normalizeRendererTaskListText(remainder.trimStart()),
+                indentLevel = indentLevel
             )
         }
     }
@@ -831,8 +874,12 @@ internal fun buildRendererPlainCopyText(content: String): String {
         when (model) {
             StreamingLineModel.Blank -> ""
             is StreamingLineModel.Heading -> plainRendererInlineText(model.text)
-            is StreamingLineModel.Bullet -> "\u2022 ${plainRendererInlineText(model.text)}".trim()
-            is StreamingLineModel.Numbered -> "${model.number}. ${plainRendererInlineText(model.text)}".trim()
+            is StreamingLineModel.Bullet -> {
+                "${"  ".repeat(model.indentLevel)}\u2022 ${plainRendererInlineText(model.text)}".trimEnd()
+            }
+            is StreamingLineModel.Numbered -> {
+                "${"  ".repeat(model.indentLevel)}${model.number}. ${plainRendererInlineText(model.text)}".trimEnd()
+            }
             is StreamingLineModel.Quote -> plainRendererInlineText(model.text)
             is StreamingLineModel.Table -> model.table.toReadableCopyText()
             is StreamingLineModel.Paragraph -> plainRendererInlineText(model.text)
@@ -1012,7 +1059,8 @@ private fun Char.isRendererStrongPausePunctuation(): Boolean =
 
 private fun Char.isRendererWeakPausePunctuation(): Boolean = this in setOf('，', ',', '、', '·')
 
-private fun Char.isRendererStructuralMarkdownChar(): Boolean = this == '#' || this == '-' || this == '*' || this == '>' || this == '`'
+private fun Char.isRendererStructuralMarkdownChar(): Boolean =
+    this == '#' || this == '-' || this == '+' || this == '*' || this == '>' || this == '`'
 
 private fun String.rendererCodePointAtOrNull(index: Int): Int? {
     if (index !in indices) return null
@@ -1095,6 +1143,7 @@ private fun takeRendererMarkdownPrefixToken(buffer: String, startIndex: Int = 0)
         buffer.startsWith("# ", startIndex = startIndex) -> "# "
         buffer.startsWith("- ", startIndex = startIndex) -> "- "
         buffer.startsWith("* ", startIndex = startIndex) -> "* "
+        buffer.startsWith("+ ", startIndex = startIndex) -> "+ "
         buffer.startsWith("> ", startIndex = startIndex) -> "> "
         else -> {
             var cursor = startIndex
@@ -1104,7 +1153,7 @@ private fun takeRendererMarkdownPrefixToken(buffer: String, startIndex: Int = 0)
             if (
                 cursor > startIndex &&
                 cursor + 1 < buffer.length &&
-                buffer[cursor] == '.' &&
+                (buffer[cursor] == '.' || buffer[cursor] == ')') &&
                 buffer[cursor + 1] == ' '
             ) {
                 buffer.substring(startIndex, cursor + 2)
@@ -1193,6 +1242,7 @@ private fun hasRendererStructuralMarkdownPrefix(text: String, startIndex: Int = 
             text.startsWith("**", startIndex = cursor) ||
             text.startsWith("- ", startIndex = cursor) ||
             text.startsWith("* ", startIndex = cursor) ||
+            text.startsWith("+ ", startIndex = cursor) ||
             text.startsWith("> ", startIndex = cursor) ||
             run {
                 var digitCursor = cursor
@@ -1201,7 +1251,7 @@ private fun hasRendererStructuralMarkdownPrefix(text: String, startIndex: Int = 
                 }
                 digitCursor > cursor &&
                     digitCursor + 1 < text.length &&
-                    text[digitCursor] == '.' &&
+                    (text[digitCursor] == '.' || text[digitCursor] == ')') &&
                     text[digitCursor + 1] == ' '
             }
         )
@@ -1651,6 +1701,7 @@ private fun StreamingLineModel.streamingInlineText(): String? {
 
 private fun String.hasRendererUnclosedStreamingInlineDelimiter(): Boolean {
     return hasRendererUnclosedBoldDelimiter() ||
+        hasRendererUnclosedStrikeDelimiter() ||
         hasRendererUnclosedItalicDelimiter() ||
         hasRendererUnclosedCodeDelimiter()
 }
@@ -1686,6 +1737,22 @@ private fun String.hasRendererUnclosedItalicDelimiter(): Boolean {
             cursor = closing + 1
         } else {
             cursor = index + 1
+        }
+    }
+    return false
+}
+
+private fun String.hasRendererUnclosedStrikeDelimiter(): Boolean {
+    var cursor = 0
+    while (cursor < length) {
+        val index = indexOf("~~", cursor)
+        if (index < 0) return false
+        if (isRendererStreamingPendingStrikeOpeningDelimiter(this, index)) {
+            val closing = findRendererStrikeClosingDelimiter(this, index + 2)
+            if (closing == null) return true
+            cursor = closing + 2
+        } else {
+            cursor = index + 2
         }
     }
     return false
@@ -1804,6 +1871,7 @@ internal fun buildRendererInlineAnnotatedString(
         var index = 0
         var bold = false
         var italic = false
+        var strike = false
         var code = false
 
         fun currentTextStyle(): SpanStyle {
@@ -1811,7 +1879,8 @@ internal fun buildRendererInlineAnnotatedString(
                 fontWeight = if (bold) FontWeight.Medium else null,
                 fontStyle = if (italic) FontStyle.Italic else null,
                 fontFamily = if (code) FontFamily.Monospace else null,
-                background = if (code) Color(0xFFF2F3F5) else Color.Unspecified
+                background = if (code) Color(0xFFF2F3F5) else Color.Unspecified,
+                textDecoration = if (strike) TextDecoration.LineThrough else null
             )
         }
 
@@ -1859,6 +1928,13 @@ internal fun buildRendererInlineAnnotatedString(
                     index = markdownLink.range.last + 1
                     continue
                 }
+                val markdownImage = rendererMarkdownImageRegex.find(text, index)
+                    ?.takeIf { it.range.first == index }
+                if (markdownImage != null) {
+                    appendStyled(markdownImage.groupValues[1].ifBlank { markdownImage.groupValues[2] })
+                    index = markdownImage.range.last + 1
+                    continue
+                }
                 val bareUrl = rendererBareUrlRegex.find(text, index)
                     ?.takeIf { it.range.first == index }
                 if (bareUrl != null) {
@@ -1879,6 +1955,10 @@ internal fun buildRendererInlineAnnotatedString(
                     code = !code
                     index += 1
                 }
+                !code && isRendererStrikeDelimiter(text, index, strike, mode) -> {
+                    strike = !strike
+                    index += 2
+                }
                 !code && isRendererItalicDelimiter(text, index, italic, mode) -> {
                     italic = !italic
                     index += 1
@@ -1889,6 +1969,7 @@ internal fun buildRendererInlineAnnotatedString(
                         startIndex = index,
                         bold = bold,
                         italic = italic,
+                        strike = strike,
                         code = code,
                         mode = mode
                     )
@@ -2011,6 +2092,36 @@ private fun findRendererItalicClosingDelimiter(text: String, startIndex: Int): I
     return null
 }
 
+private fun isRendererStrikeOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("~~", index)) return false
+    if (isRendererAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val next = text.getOrNull(index + 2)
+    return next != null && !next.isWhitespace()
+}
+
+private fun isRendererStreamingPendingStrikeOpeningDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("~~", index)) return false
+    if (isRendererAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val next = text.getOrNull(index + 2)
+    return next == null || !next.isWhitespace()
+}
+
+private fun isRendererStrikeClosingDelimiter(text: String, index: Int): Boolean {
+    if (!text.startsWith("~~", index)) return false
+    if (isRendererAsciiInlineOperatorRun(text, index, length = 2)) return false
+    val previous = text.getOrNull(index - 1)
+    return previous != null && !previous.isWhitespace()
+}
+
+private fun findRendererStrikeClosingDelimiter(text: String, startIndex: Int): Int? {
+    var cursor = text.indexOf("~~", startIndex)
+    while (cursor >= 0) {
+        if (isRendererStrikeClosingDelimiter(text, cursor)) return cursor
+        cursor = text.indexOf("~~", cursor + 2)
+    }
+    return null
+}
+
 private fun isRendererBoldDelimiter(
     text: String,
     index: Int,
@@ -2047,6 +2158,24 @@ private fun isRendererItalicDelimiter(
     }
 }
 
+private fun isRendererStrikeDelimiter(
+    text: String,
+    index: Int,
+    isStrike: Boolean,
+    mode: RendererInlineMode
+): Boolean {
+    return if (isStrike) {
+        isRendererStrikeClosingDelimiter(text, index)
+    } else {
+        if (mode == RendererInlineMode.Streaming) {
+            isRendererStreamingPendingStrikeOpeningDelimiter(text, index)
+        } else {
+            isRendererStrikeOpeningDelimiter(text, index) &&
+                findRendererStrikeClosingDelimiter(text, index + 2) != null
+        }
+    }
+}
+
 private fun isRendererCodeDelimiter(
     text: String,
     index: Int,
@@ -2073,11 +2202,17 @@ private fun findNextStreamingInlineDelimiterIndex(
     startIndex: Int,
     bold: Boolean,
     italic: Boolean,
+    strike: Boolean,
     code: Boolean,
     mode: RendererInlineMode
 ): Int {
     var next = text.length
     if (!code) {
+        val markdownImageIndex = rendererMarkdownImageRegex.find(text, startIndex)
+            ?.range
+            ?.first
+            ?.takeIf { it >= startIndex }
+        if (markdownImageIndex != null) next = minOf(next, markdownImageIndex)
         val markdownLinkIndex = rendererMarkdownLinkRegex.find(text, startIndex)
             ?.range
             ?.first
@@ -2100,6 +2235,11 @@ private fun findNextStreamingInlineDelimiterIndex(
             boldIndex = text.indexOf("**", boldIndex + 2)
         }
         if (boldIndex >= 0) next = minOf(next, boldIndex)
+        var strikeIndex = text.indexOf("~~", startIndex)
+        while (strikeIndex >= 0 && !isRendererStrikeDelimiter(text, strikeIndex, isStrike = strike, mode = mode)) {
+            strikeIndex = text.indexOf("~~", strikeIndex + 2)
+        }
+        if (strikeIndex >= 0) next = minOf(next, strikeIndex)
         var italicIndex = text.indexOf('*', startIndex)
         while (italicIndex >= 0 && !isRendererItalicDelimiter(text, italicIndex, isItalic = italic, mode = mode)) {
             italicIndex = text.indexOf('*', italicIndex + 1)
@@ -2152,9 +2292,12 @@ private fun RendererAssistantStreamingActiveBlockImpl(
             is StreamingLineModel.Bullet -> {
                 val bulletStyle = remember(paragraphStyle) { paragraphStyle.copy(fontSize = 17.5.sp) }
                 val bodyStyle = paragraphStyle
+                val listIndent = (model.indentLevel * 18).dp
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = listIndent),
+                    horizontalArrangement = Arrangement.spacedBy(if (model.indentLevel > 0) 7.dp else 8.dp)
                 ) {
                     Text(text = "\u2022", style = bulletStyle)
                     RendererStreamingActiveTextImpl(
@@ -2195,8 +2338,11 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     }
                 }
                 val bodyLineHeight = with(density) { bodyStyle.lineHeight.toDp() }
+                val listIndent = (model.indentLevel * 18).dp
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = listIndent),
                     horizontalArrangement = Arrangement.spacedBy(
                         if (compactNumberedSection) 6.dp else 8.dp
                     )

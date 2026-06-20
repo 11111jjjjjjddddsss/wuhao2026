@@ -640,6 +640,12 @@ if ($failures.Count -eq 0) {
         "Assistant headings must keep the balanced half-step scale instead of returning to the heavier 20/18sp layout."
     Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)paragraphStyle\.copy\(fontSize\s*=\s*17\.5\.sp\)' `
         "Assistant bullet markers must scale with the softened main-chat text."
+    Require-Match $failures $chatStreamingRenderer 'data\s+class\s+Bullet\(val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)data\s+class\s+Numbered\(val\s+number:\s*String,\s*val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)rendererMarkdownIndentLevel(?s:.*?)padding\(start\s*=\s*listIndent\)' `
+        "Assistant markdown lists must keep nested list indentation instead of flattening child bullets after parent colon labels."
+    Require-Match $failures $chatStreamingRenderer 'rendererMarkdownImageRegex(?s:.*?)normalizeRendererTaskListText(?s:.*?)hasRendererUnclosedStrikeDelimiter(?s:.*?)TextDecoration\.LineThrough(?s:.*?)isRendererStrikeDelimiter' `
+        "Assistant Markdown fallback rendering must keep image syntax visible as text, task-list markers readable, and strikethrough styled without dropping content."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"嵌套列表、任务项、删除线、公式和图片语法",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
+        "Debug preview panel must include a Markdown fallback sample for nested lists, task items, strikethrough, formulas, and image syntax."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'resolveTodayAgriContextDayForTimeline(?s:.*?)userMessagesAfterAnchor\s*<\s*3' `
@@ -937,6 +943,18 @@ if ($failures.Count -eq 0) {
         "Markdown table tests must cover ordinary pipe paragraphs immediately after a table body row."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableKeepsPipesInsideDoubleBacktickInlineCodeCell' `
         "Markdown table tests must cover pipe characters inside double-backtick inline code cells."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableAcceptsAlignmentSeparators' `
+        "Markdown table tests must cover GFM-style alignment separator rows."
+    Require-Match $failures $chatStreamingRendererTest 'markdownTableKeepsEscapedPipeInsideCell' `
+        "Markdown table tests must cover escaped pipe characters inside cells."
+    Require-Match $failures $chatStreamingRendererTest 'markdownImageFallsBackToVisibleTextWithoutUrlAnnotation' `
+        "Assistant Markdown tests must prove image syntax falls back to visible text instead of loading or linking external images."
+    Require-Match $failures $chatStreamingRendererTest 'strikethroughHidesMarkersAndStylesText' `
+        "Assistant Markdown tests must cover GFM-style strikethrough markers."
+    Require-Match $failures $chatStreamingRendererTest 'mathFormulaMarkersStayVisibleAsPlainText' `
+        "Assistant Markdown tests must prove math markers remain visible plain text instead of being swallowed."
+    Require-Match $failures $chatStreamingRendererTest 'taskListMarkersRenderAsVisualCheckboxText' `
+        "Assistant Markdown tests must cover task-list markers as readable visual checkbox text."
     Require-NoMatch $failures $chatStreamingRenderer 'horizontalScroll\s*\(' `
         "Assistant Markdown table rendering must not revert to the old horizontal-scroll wide table on mobile."
     Require-Match $failures $chatStreamingRenderer 'visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE4E7EB\)' `

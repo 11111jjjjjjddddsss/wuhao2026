@@ -164,6 +164,72 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun markdownImageFallsBackToVisibleTextWithoutUrlAnnotation() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "图片说明：![叶片病斑](https://example.com/a.jpg)。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("图片说明：叶片病斑。", rendered.text)
+        assertFalse(rendered.hasUrlFor("叶片病斑", "https://example.com/a.jpg"))
+    }
+
+    @Test
+    fun markdownImageWithoutAltFallsBackToUrlText() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "图片说明：![](https://example.com/a.jpg)。",
+            mode = RendererInlineMode.Settled,
+            linksEnabled = false
+        )
+
+        assertEquals("图片说明：https://example.com/a.jpg。", rendered.text)
+    }
+
+    @Test
+    fun strikethroughHidesMarkersAndStylesText() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "不建议~~中午高温打药~~，傍晚再看。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("不建议中午高温打药，傍晚再看。", rendered.text)
+        assertTrue(rendered.hasSpanFor("中午高温打药") { it.textDecoration == TextDecoration.LineThrough })
+    }
+
+    @Test
+    fun streamingPendingStrikeMarkerDoesNotFlashRawMarkers() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "不建议~~",
+            mode = RendererInlineMode.Streaming
+        )
+
+        assertEquals("不建议", rendered.text)
+    }
+
+    @Test
+    fun settledUnclosedStrikeKeepsRawMarkers() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "不建议~~中午打药",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("不建议~~中午打药", rendered.text)
+    }
+
+    @Test
+    fun mathFormulaMarkersStayVisibleAsPlainText() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "配比公式：${'$'}K=N+P${'$'}，面积公式：${'$'}${'$'}亩数=长度*宽度/666.7${'$'}${'$'}。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals(
+            "配比公式：${'$'}K=N+P${'$'}，面积公式：${'$'}${'$'}亩数=长度*宽度/666.7${'$'}${'$'}。",
+            rendered.text
+        )
+    }
+
+    @Test
     fun finishShouldFlushInvisibleStructureMarkers() {
         assertTrue(shouldForceFlushStreamingRevealBufferForFinish("**"))
         assertTrue(shouldForceFlushStreamingRevealBufferForFinish("`"))
@@ -205,6 +271,35 @@ class ChatStreamingRendererTest {
             ),
             table.rows
         )
+    }
+
+    @Test
+    fun markdownTableAcceptsAlignmentSeparators() {
+        val state = splitStreamingBlockState(
+            "|项目|建议|\n" +
+                "|:---|---:|\n" +
+                "|水分|控水|\n"
+        )
+        val model = classifyStreamingLine(state.completedBlocks.first())
+
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(listOf(listOf("水分", "控水")), table.rows)
+    }
+
+    @Test
+    fun markdownTableKeepsEscapedPipeInsideCell() {
+        val state = splitStreamingBlockState(
+            "|项目|建议|\n" +
+                "|---|---|\n" +
+                "|配方|N\\|P\\|K 均衡|\n"
+        )
+        val model = classifyStreamingLine(state.completedBlocks.first())
+
+        assertTrue(model is StreamingLineModel.Table)
+        val table = (model as StreamingLineModel.Table).table
+        assertEquals(listOf(listOf("配方", "N|P|K 均衡")), table.rows)
     }
 
     @Test
@@ -614,6 +709,62 @@ class ChatStreamingRendererTest {
         assertEquals(
             "再补一句现场做法，不能被下一条吞掉。",
             (continuation as StreamingLineModel.Paragraph).text
+        )
+    }
+
+    @Test
+    fun nestedBulletKeepsMarkdownIndentLevel() {
+        val parent = classifyStreamingLine("*   **不认命**：")
+        val child = classifyStreamingLine("    *   通过**技术手段**对抗气候风险。")
+        val activeChild = classifyActiveStreamingLine("    *   通过**真诚服务**对抗市场信任危机。")
+
+        assertTrue(parent is StreamingLineModel.Bullet)
+        assertEquals(0, (parent as StreamingLineModel.Bullet).indentLevel)
+        assertTrue(child is StreamingLineModel.Bullet)
+        assertEquals(1, (child as StreamingLineModel.Bullet).indentLevel)
+        assertEquals("通过**技术手段**对抗气候风险。", child.text)
+        assertTrue(activeChild is StreamingLineModel.Bullet)
+        assertEquals(1, (activeChild as StreamingLineModel.Bullet).indentLevel)
+    }
+
+    @Test
+    fun plusBulletAndParenthesisNumberedMarkersRenderAsLists() {
+        val plus = classifyStreamingLine("+ 补钾后观察新叶。")
+        val numbered = classifyStreamingLine("1) 先清沟排水。")
+        val activePlus = classifyActiveStreamingLine("+ 叶背看虫卵。")
+        val activeNumbered = classifyActiveStreamingLine("2) 傍晚再喷施。")
+
+        assertTrue(plus is StreamingLineModel.Bullet)
+        assertEquals("补钾后观察新叶。", (plus as StreamingLineModel.Bullet).text)
+        assertTrue(numbered is StreamingLineModel.Numbered)
+        assertEquals("1", (numbered as StreamingLineModel.Numbered).number)
+        assertEquals("先清沟排水。", numbered.text)
+        assertTrue(activePlus is StreamingLineModel.Bullet)
+        assertTrue(activeNumbered is StreamingLineModel.Numbered)
+    }
+
+    @Test
+    fun taskListMarkersRenderAsVisualCheckboxText() {
+        val open = classifyStreamingLine("- [ ] 复查叶背虫卵")
+        val done = classifyStreamingLine("- [x] 已清理沟渠")
+
+        assertTrue(open is StreamingLineModel.Bullet)
+        assertEquals("\u2610 复查叶背虫卵", (open as StreamingLineModel.Bullet).text)
+        assertTrue(done is StreamingLineModel.Bullet)
+        assertEquals("\u2611 已清理沟渠", (done as StreamingLineModel.Bullet).text)
+    }
+
+    @Test
+    fun nestedListIndentIsKeptInPlainCopyText() {
+        val copy = buildRendererPlainCopyText(
+            "*   **不认命**：\n" +
+                "    *   通过**技术手段**对抗气候风险。\n" +
+                "    1. 通过持续学习对抗行业变革。"
+        )
+
+        assertEquals(
+            "• 不认命：\n\n  • 通过技术手段对抗气候风险。\n\n  1. 通过持续学习对抗行业变革。",
+            copy
         )
     }
 
