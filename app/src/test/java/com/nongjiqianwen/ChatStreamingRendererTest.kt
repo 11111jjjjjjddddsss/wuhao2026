@@ -1102,6 +1102,43 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun standaloneHorizontalRuleRendersAsDividerNotRawText() {
+        val state = splitStreamingBlockState(
+            "液积聚处。\n\n" +
+                "---\n\n" +
+                "建议下一步操作：",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertTrue(models[1] is StreamingLineModel.Divider)
+        assertEquals(
+            "液积聚处。\n\n建议下一步操作：",
+            buildRendererPlainCopyText("液积聚处。\n\n---\n\n建议下一步操作：")
+        )
+        assertFalse(buildRendererPlainCopyText("液积聚处。\n\n---\n\n建议下一步操作：").contains("---"))
+    }
+
+    @Test
+    fun decorativeEmojiAreHiddenButSemanticSymbolsRemain() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "📌 建议：✅ 叶背检查 → 若有白霉，25~30°C，0.2%。😀",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("建议：叶背检查 → 若有白霉，25~30°C，0.2%。", rendered.text)
+    }
+
+    @Test
+    fun taskListCheckboxesRemainReadableAfterEmojiCleanup() {
+        val model = classifyStreamingLine("- [x] 已清理沟渠")
+
+        require(model is StreamingLineModel.Bullet)
+        assertEquals("☑ 已清理沟渠", model.text)
+    }
+
+    @Test
     fun markdownTableKeepsPipesInsideInlineCodeCell() {
         val state = splitStreamingBlockState(
             "|项目|内容|\n" +

@@ -186,6 +186,7 @@ private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
 private val rendererBulletRegex = Regex("^[-+*]\\s+.*$")
 private val rendererNumberedRegex = Regex("^\\d+[.)]\\s+.*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
+private val rendererHorizontalRuleRegex = Regex("""^([-*_])(?:\s*\1){2,}\s*$""")
 private val rendererChineseSectionHeadingRegex = Regex("^([一二三四五六七八九十]{1,3})([、.．])\\s*(.+)$")
 private val rendererMarkdownImageRegex = Regex("!\\[([^\\]]*)]\\(([^)]+)\\)")
 private val rendererMarkdownLinkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
@@ -358,7 +359,8 @@ private fun isRendererMarkdownTableBodyBlockBoundary(line: String): Boolean {
     if (rendererMarkdownCodeFenceMarker(line) != null) return true
     if (hasRendererMarkdownTableRowEdge(line)) return false
     val trimmed = line.trimStart()
-    return trimmed.startsWith(">") ||
+    return isRendererHorizontalRuleLine(trimmed) ||
+        trimmed.startsWith(">") ||
         trimmed.matches(Regex("""#{1,6}\s+.+""")) ||
         trimmed.matches(Regex("""[-+*]\s+.+""")) ||
         trimmed.matches(Regex("""\d{1,9}[.)]\s+.+"""))
@@ -565,6 +567,7 @@ internal data class StreamingBlockState(
 
 internal sealed interface StreamingLineModel {
     data object Blank : StreamingLineModel
+    data object Divider : StreamingLineModel
     data class Heading(val level: Int, val text: String) : StreamingLineModel
     data class Bullet(val text: String, val indentLevel: Int = 0) : StreamingLineModel
     data class Numbered(val number: String, val text: String, val indentLevel: Int = 0) : StreamingLineModel
@@ -572,6 +575,9 @@ internal sealed interface StreamingLineModel {
     data class Table(val table: RendererMarkdownTable) : StreamingLineModel
     data class Paragraph(val text: String) : StreamingLineModel
 }
+
+private fun isRendererHorizontalRuleLine(line: String): Boolean =
+    line.trim().matches(rendererHorizontalRuleRegex)
 
 private fun rendererMarkdownIndentLevel(line: String): Int {
     var columns = 0
@@ -705,9 +711,10 @@ internal fun splitStreamingBlockState(
     content: String,
     treatTrailingLineAsComplete: Boolean = false
 ): StreamingBlockState {
+    val displayContent = stripRendererDecorativeEmoji(content)
     val logicalLines = splitRendererStreamingLogicalLines(
         normalizeRendererMarkdownTables(
-            content = content,
+            content = displayContent,
             treatTrailingLineAsComplete = treatTrailingLineAsComplete
         )
     )
@@ -771,6 +778,9 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
+    if (isRendererHorizontalRuleLine(trimmed)) {
+        return StreamingLineModel.Divider
+    }
     parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(2, headingText)
     }
@@ -808,6 +818,9 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     val indentLevel = rendererMarkdownIndentLevel(line)
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
+    }
+    if (isRendererHorizontalRuleLine(trimmed)) {
+        return StreamingLineModel.Divider
     }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(3, headingText)
@@ -859,7 +872,14 @@ internal fun shouldShowStreamingSectionDivider(
     previous: StreamingLineModel?,
     current: StreamingLineModel
 ): Boolean {
-    if (previous == null || previous is StreamingLineModel.Heading) return false
+    if (
+        current is StreamingLineModel.Divider ||
+        previous == null ||
+        previous is StreamingLineModel.Heading ||
+        previous is StreamingLineModel.Divider
+    ) {
+        return false
+    }
     val heading = current as? StreamingLineModel.Heading
     if (heading != null) return heading.level <= 3
     val paragraph = current as? StreamingLineModel.Paragraph ?: return false
@@ -879,6 +899,7 @@ internal fun buildRendererPlainCopyText(content: String): String {
     return models.joinToString(separator = "\n\n") { model ->
         when (model) {
             StreamingLineModel.Blank -> ""
+            StreamingLineModel.Divider -> ""
             is StreamingLineModel.Heading -> plainRendererInlineText(model.text)
             is StreamingLineModel.Bullet -> plainRendererInlineText(model.text)
             is StreamingLineModel.Numbered -> {
@@ -1139,6 +1160,52 @@ private fun String.takeRendererCodePointCluster(startIndex: Int): String {
     return substring(startIndex, cursor)
 }
 
+private fun Int.isRendererPreservedTaskCheckboxCodePoint(): Boolean =
+    this == 0x2610 || this == 0x2611
+
+private fun Int.isRendererDecorativeEmojiCodePoint(): Boolean {
+    if (isRendererPreservedTaskCheckboxCodePoint()) return false
+    return this == 0x200D ||
+        this == 0x20E3 ||
+        isRendererVariationSelectorCodePoint() ||
+        isRendererEmojiModifierCodePoint() ||
+        isRendererRegionalIndicatorCodePoint() ||
+        this in 0x1F000..0x1FAFF ||
+        this in 0x2600..0x27BF ||
+        this == 0x2B50 ||
+        this == 0x2B55
+}
+
+internal fun stripRendererDecorativeEmoji(text: String): String {
+    if (text.isEmpty()) return text
+    val output = StringBuilder(text.length)
+    var index = 0
+    var skipSingleWhitespaceAfterDecorative = false
+    while (index < text.length) {
+        val codePoint = text.rendererCodePointAtOrNull(index) ?: break
+        val charCount = text.rendererCodePointCharCountAt(index).coerceAtLeast(1)
+        if (codePoint.isRendererDecorativeEmojiCodePoint()) {
+            skipSingleWhitespaceAfterDecorative = true
+            index += charCount
+            continue
+        }
+        val chunk = text.substring(index, index + charCount)
+        if (skipSingleWhitespaceAfterDecorative && codePoint != '\n'.code && chunk.isBlank()) {
+            skipSingleWhitespaceAfterDecorative = false
+            index += charCount
+            continue
+        }
+        output.append(chunk)
+        if (codePoint == '\n'.code) {
+            skipSingleWhitespaceAfterDecorative = false
+        } else if (!chunk.isBlank()) {
+            skipSingleWhitespaceAfterDecorative = false
+        }
+        index += charCount
+    }
+    return output.toString()
+}
+
 private fun takeRendererMarkdownPrefixToken(buffer: String, startIndex: Int = 0): String? {
     if (startIndex !in 0 until buffer.length) return null
     return when {
@@ -1325,6 +1392,7 @@ private fun splitRendererStreamingLogicalLines(content: String): StreamingLogica
 
 private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
     return decodeRendererMarkdownTableBlock(trimmed) != null ||
+        isRendererHorizontalRuleLine(trimmed) ||
         trimmed.matches(rendererHeadingRegex) ||
         parseRendererStandaloneBoldHeading(trimmed) != null ||
         parseRendererActiveStandaloneBoldHeading(trimmed) != null ||
@@ -1338,6 +1406,7 @@ private fun isStructuralRendererActiveStreamingLine(line: String): Boolean {
     return when (classifyActiveStreamingLine(line)) {
         StreamingLineModel.Blank,
         is StreamingLineModel.Paragraph -> false
+        StreamingLineModel.Divider,
         is StreamingLineModel.Heading,
         is StreamingLineModel.Bullet,
         is StreamingLineModel.Numbered,
@@ -1457,8 +1526,9 @@ private fun RendererAssistantMessageContentImpl(
     tableCopyEnabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    val shouldRenderDisclaimer = remember(content, showDisclaimer) {
-        showDisclaimer && shouldShowAiDisclaimerRefined(content)
+    val displayContent = remember(content) { stripRendererDecorativeEmoji(content) }
+    val shouldRenderDisclaimer = remember(displayContent, showDisclaimer) {
+        showDisclaimer && shouldShowAiDisclaimerRefined(displayContent)
     }
     val disclaimerStyle = remember { assistantDisclaimerTextStyle() }
     val boundsReportingModifier = if (onStreamingContentBoundsChanged != null) {
@@ -1485,7 +1555,7 @@ private fun RendererAssistantMessageContentImpl(
                 contentAlignment = Alignment.BottomStart
             ) {
                 RendererAssistantStreamingContentImpl(
-                    content = content,
+                    content = displayContent,
                     showWaitingBall = showWaitingBall,
                     showLeadingSectionDivider = showLeadingSectionDivider,
                     modifier = Modifier.fillMaxWidth()
@@ -1501,14 +1571,14 @@ private fun RendererAssistantMessageContentImpl(
             if (selectionEnabled) {
                 SelectionContainer {
                     RendererAssistantMarkdownContentImpl(
-                        content = content,
+                        content = displayContent,
                         showLeadingSectionDivider = showLeadingSectionDivider,
                         tableCopyEnabled = tableCopyEnabled
                     )
                 }
             } else {
                 RendererAssistantMarkdownContentImpl(
-                    content = content,
+                    content = displayContent,
                     showLeadingSectionDivider = showLeadingSectionDivider,
                     tableCopyEnabled = tableCopyEnabled
                 )
@@ -1592,6 +1662,9 @@ private fun rendererMarkdownBlockSpacingAfter(
     previousBlock: StreamingLineModel,
     currentBlock: StreamingLineModel
 ): Dp {
+    if (previousBlock is StreamingLineModel.Divider || currentBlock is StreamingLineModel.Divider) {
+        return 0.dp
+    }
     return if (
         previousBlock is StreamingLineModel.Numbered &&
         isRendererCompactNumberedSection(previousBlock) &&
@@ -1686,6 +1759,7 @@ internal fun rendererInlineModeForStreamingBlock(
 private fun StreamingLineModel.streamingInlineText(): String? {
     return when (this) {
         StreamingLineModel.Blank -> null
+        StreamingLineModel.Divider -> null
         is StreamingLineModel.Heading -> text
         is StreamingLineModel.Bullet -> text
         is StreamingLineModel.Numbered -> text
@@ -1868,11 +1942,12 @@ internal fun buildRendererInlineAnnotatedString(
     linksEnabled: Boolean = true,
     emphasisEnabled: Boolean = true
 ): AnnotatedString {
+    val displayText = stripRendererDecorativeEmoji(text)
     val canUseCache =
         mode == RendererInlineMode.Settled && linkInteractionListener == null && linksEnabled && emphasisEnabled
     if (canUseCache) {
         synchronized(rendererSettledInlineMarkdownCache) {
-            rendererSettledInlineMarkdownCache[text]?.let { return it }
+            rendererSettledInlineMarkdownCache[displayText]?.let { return it }
         }
     }
     return buildAnnotatedString {
@@ -1924,9 +1999,9 @@ internal fun buildRendererInlineAnnotatedString(
             }
         }
 
-        while (index < text.length) {
+        while (index < displayText.length) {
             if (!code) {
-                val markdownLink = rendererMarkdownLinkRegex.find(text, index)
+                val markdownLink = rendererMarkdownLinkRegex.find(displayText, index)
                     ?.takeIf { it.range.first == index }
                 if (markdownLink != null) {
                     appendLinked(
@@ -1936,14 +2011,14 @@ internal fun buildRendererInlineAnnotatedString(
                     index = markdownLink.range.last + 1
                     continue
                 }
-                val markdownImage = rendererMarkdownImageRegex.find(text, index)
+                val markdownImage = rendererMarkdownImageRegex.find(displayText, index)
                     ?.takeIf { it.range.first == index }
                 if (markdownImage != null) {
                     appendStyled(markdownImage.groupValues[1].ifBlank { markdownImage.groupValues[2] })
                     index = markdownImage.range.last + 1
                     continue
                 }
-                val bareUrl = rendererBareUrlRegex.find(text, index)
+                val bareUrl = rendererBareUrlRegex.find(displayText, index)
                     ?.takeIf { it.range.first == index }
                 if (bareUrl != null) {
                     val displayText = trimRendererBareUrlDisplayText(bareUrl.value)
@@ -1955,25 +2030,25 @@ internal fun buildRendererInlineAnnotatedString(
                 }
             }
             when {
-                !code && isRendererBoldDelimiter(text, index, bold, mode) -> {
+                !code && isRendererBoldDelimiter(displayText, index, bold, mode) -> {
                     bold = !bold
                     index += 2
                 }
-                isRendererCodeDelimiter(text, index, code, mode) -> {
+                isRendererCodeDelimiter(displayText, index, code, mode) -> {
                     code = !code
                     index += 1
                 }
-                !code && isRendererStrikeDelimiter(text, index, strike, mode) -> {
+                !code && isRendererStrikeDelimiter(displayText, index, strike, mode) -> {
                     strike = !strike
                     index += 2
                 }
-                !code && isRendererItalicDelimiter(text, index, italic, mode) -> {
+                !code && isRendererItalicDelimiter(displayText, index, italic, mode) -> {
                     italic = !italic
                     index += 1
                 }
                 else -> {
                     val nextSpecial = findNextStreamingInlineDelimiterIndex(
-                        text = text,
+                        text = displayText,
                         startIndex = index,
                         bold = bold,
                         italic = italic,
@@ -1981,7 +2056,7 @@ internal fun buildRendererInlineAnnotatedString(
                         code = code,
                         mode = mode
                     )
-                    appendStyled(text.substring(index, nextSpecial))
+                    appendStyled(displayText.substring(index, nextSpecial))
                     index = nextSpecial
                 }
             }
@@ -1989,7 +2064,7 @@ internal fun buildRendererInlineAnnotatedString(
     }.also { built ->
         if (canUseCache) {
             synchronized(rendererSettledInlineMarkdownCache) {
-                rendererSettledInlineMarkdownCache[text] = built
+                rendererSettledInlineMarkdownCache[displayText] = built
             }
         }
     }
@@ -2283,6 +2358,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
     Box(modifier = modifier.fillMaxWidth()) {
         when (model) {
             StreamingLineModel.Blank -> Unit
+            StreamingLineModel.Divider -> RendererMarkdownSectionDividerImpl()
             is StreamingLineModel.Heading -> {
                 val headingStyle = remember(model.level) { assistantStreamingHeadingTextStyle(model.level) }
                 Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {

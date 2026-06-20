@@ -10,6 +10,7 @@
 
 ## 当前代码真相
 
+- 2026-06-20 Android 主聊天 AI Markdown 展示补分割线和装饰符清洗：模型单独吐 `--- / *** / ___` 时归类为 UI 分割线，只显示现有浅灰细线，不再把三条横杠当正文露出或复制；AI 正文 / 表格 / 复制链会隐藏图钉、绿勾、表情、警告等装饰性 emoji，保留普通文字、箭头、度数、百分号、加号和 Markdown 任务列表黑白 checkbox。debug-only 预览面板“AI Markdown 兜底”已加入 `---`、图钉、绿勾样例；Android parity 和 `ChatStreamingRendererTest` 已锁住该口径。这只是 Android 展示层清洗，不改用户输入、不改后端内容边界、不新增模型输出过滤或提示词限制。
 - 2026-06-20 Android 设置页法律入口和二级目录标题已统一改为“隐私与协议”，debug-only 预览面板和 Android parity 护栏同步更新，避免继续显示旧顺序。后端删除历史对话当前仍走 `POST /api/session/clear`，会在同用户聊天流 gate 下确认没有活跃主聊天流后，递增 `session_generation`，删除 `session_round_archive`、`today_agri_user_items` 和 `session_ab`，从而清理 UI 归档、主界面今日农情展示记录、A 层滑窗和长期记忆；不删除会员、额度、加油包、礼品卡、订单、帮助反馈、App 日志或账号登录态。Android 成功收到后端结果后才清本地聊天 UI / 快照 / 草稿 / pending 图片任务；后端返回 409 时提示生成中稍后再删。新增后端单测锁住清理范围和 session generation 边界；本轮没有部署生产后端。
 - 2026-06-20 Android 短业务提示统一收敛到主屏中部浮层：主聊天图片数上限、图片读取 / 上传失败、相机打开失败、额度 / 网络 / 服务忙等原有 `showComposerStatusHint` 继续走中部浮层；设置页 / 帮助反馈 / 礼品卡 / 今日农情历史等菜单内 `showNotice/onPendingAction` 短提示也上抛到同一中部浮层，不再保留菜单底部小黑条。中部浮层不再因附件面板、菜单、会员中心或 debug 预览打开而隐藏，只在文本选择菜单打开时避让；渲染顺序在附件面板之后，zIndex 提高到 120，避免提示等面板收缩后才露出。已选满 4 张时，用户在附件面板里点“相机”或“照片”会立即看到“最多4张图片”。debug 预览面板“主界面中部浮层”新增“菜单短提示统一到这里”样例；Android parity 新增护栏锁住该层级、菜单提示上抛和预览样例。
 - 2026-06-20 Android 主聊天 Markdown 列表展示已改为无圆点左齐：模型吐 `- / * / +` 列表时仍按列表结构解析、参与统计和换行分块，但 UI 不再额外绘制圆点或把嵌套列表推到右侧，复制纯文本也不再重新插入可见界面没有的小圆点；编号列表仍保留数字结构。debug 预览面板“AI Markdown 兜底”说明同步为“列表无圆点左齐”，Android parity 和 `ChatStreamingRendererTest` 已同步锁住该口径。
