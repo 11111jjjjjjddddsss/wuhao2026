@@ -394,6 +394,8 @@ type AdminRoundExcerpt struct {
 	ClientMsgID       string            `json:"client_msg_id"`
 	UserExcerpt       string            `json:"user_excerpt"`
 	AssistantExcerpt  string            `json:"assistant_excerpt"`
+	UserText          string            `json:"user_text,omitempty"`
+	AssistantText     string            `json:"assistant_text,omitempty"`
 	HasImages         bool              `json:"has_images"`
 	ImageCount        int               `json:"image_count"`
 	Region            string            `json:"region,omitempty"`
@@ -3490,10 +3492,14 @@ func (s *Store) ListAdminRoundExcerpts(ctx context.Context, userID string, limit
 				imageCount = len(images)
 			}
 		}
+		trimmedUserText := strings.TrimSpace(userText)
+		trimmedAssistantText := strings.TrimSpace(assistantText)
 		entries = append(entries, AdminRoundExcerpt{
 			ClientMsgID:       clientMsgID,
-			UserExcerpt:       truncateRunes(strings.TrimSpace(userText), adminExcerptRunes),
-			AssistantExcerpt:  truncateRunes(strings.TrimSpace(assistantText), adminExcerptRunes),
+			UserExcerpt:       truncateRunes(trimmedUserText, adminExcerptRunes),
+			AssistantExcerpt:  truncateRunes(trimmedAssistantText, adminExcerptRunes),
+			UserText:          trimmedUserText,
+			AssistantText:     trimmedAssistantText,
 			HasImages:         imageCount > 0,
 			ImageCount:        imageCount,
 			Region:            nullStringValue(region),

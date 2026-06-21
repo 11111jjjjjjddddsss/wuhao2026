@@ -430,6 +430,8 @@ export interface AdminRoundExcerpt {
   client_msg_id: string;
   user_excerpt: string;
   assistant_excerpt: string;
+  user_text?: string;
+  assistant_text?: string;
   has_images: boolean;
   image_count: number;
   region?: string;

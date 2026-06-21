@@ -1672,6 +1672,34 @@ button {
   background: #f8f6ee;
 }
 
+.round-detail summary {
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.round-detail[open] summary {
+  margin-bottom: 8px;
+}
+
+.round-block {
+  display: grid;
+  gap: 4px;
+  padding-top: 8px;
+  border-top: 1px solid #e6ebf0;
+}
+
+.round-block + .round-block {
+  margin-top: 8px;
+}
+
+.round-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+
 .message-head {
   display: flex;
   justify-content: space-between;

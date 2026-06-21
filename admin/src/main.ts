@@ -1206,13 +1206,18 @@ async function handleAction(button: HTMLElement): Promise<void> {
   }
   if (action === "load-user-detail") {
     const userID = button.dataset.userId || "";
-    pageState.userQuery = userID;
     pageState.userDetailID = userID;
     if (userID && isRouteVisible("users") && activeRoute !== "users") {
+      pageState.userQuery = userID;
       location.hash = "users";
     } else {
       await render();
     }
+    return;
+  }
+  if (action === "close-user-detail") {
+    pageState.userDetailID = "";
+    await render();
     return;
   }
   if (action === "support-select") {
@@ -1741,7 +1746,10 @@ async function userDetailCard(userID: string): Promise<string> {
       <section class="card">
         <div class="card-head">
           <div class="card-title">用户详情</div>
-          ${statusPill(detail.user.tier || "free")}
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="button small-button" type="button" data-action="close-user-detail">返回列表</button>
+            ${statusPill(detail.user.tier || "free")}
+          </div>
         </div>
         <div class="card-body stack">
           ${userKV(detail.user)}
@@ -4443,16 +4451,29 @@ function appErrorTopTable(rows: ClientAppLogSummaryEntry[]): string {
 function roundExcerptList(rows: AdminUserDetail["recent_rounds"]): string {
   if (!rows.length) return emptyState("没有最近问诊", "当前暂无最近问诊摘录。");
   return rows
-    .slice(0, 4)
+    .slice(0, 12)
     .map(
-      (row) => `
-        <article class="message">
-          <div class="message-head"><strong>${row.has_images ? "图文问诊" : "文字问诊"}</strong><span>${formatTime(row.created_at)}</span></div>
-          <div class="small muted">${escapeHTML(row.region || "未知地区")} ${row.image_count ? ` / ${row.image_count} 图` : ""}</div>
-          <div style="margin-top:6px">${escapeHTML(row.user_excerpt || "")}</div>
-          <div class="muted" style="margin-top:6px">${escapeHTML(row.assistant_excerpt || "")}</div>
-        </article>
-      `,
+      (row) => {
+        const userText = row.user_text || row.user_excerpt || "";
+        const assistantText = row.assistant_text || row.assistant_excerpt || "";
+        const title = `${row.has_images ? "图文问诊" : "文字问诊"} · ${formatTime(row.created_at)}`;
+        return `
+          <details class="message round-detail">
+            <summary>
+              <span>${escapeHTML(title)}</span>
+              <span class="small muted">${escapeHTML(row.region || "未知地区")}${row.image_count ? ` / ${row.image_count} 图` : ""}</span>
+            </summary>
+            <div class="round-block">
+              <div class="small muted">用户问题</div>
+              <div class="round-text">${escapeHTML(userText || "无正文")}</div>
+            </div>
+            <div class="round-block">
+              <div class="small muted">AI 回复</div>
+              <div class="round-text muted">${escapeHTML(assistantText || "无回复正文")}</div>
+            </div>
+          </details>
+        `;
+      },
     )
     .join("");
 }
