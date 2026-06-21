@@ -515,6 +515,15 @@ button {
   background: #fbfcfd;
 }
 
+.table tr.clickable-row {
+  cursor: pointer;
+}
+
+.table tr.clickable-row.active td,
+.table tr.clickable-row:focus-within td {
+  background: #f3f7f4;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;

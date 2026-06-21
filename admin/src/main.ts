@@ -504,7 +504,7 @@ async function usersPage(): Promise<string> {
         <div class="table-wrap">${usersTable(response.users)}</div>
       </section>
       <aside id="user-detail-drawer" class="drawer">
-        ${pageState.userDetailID ? await userDetailCard(pageState.userDetailID) : emptyState("选择用户", "点击列表中的“详情”查看会员、额度、日志、反馈和订单。")}
+        ${pageState.userDetailID ? await userDetailCard(pageState.userDetailID) : emptyState("选择用户", "点击用户行或“详情”查看会员、额度、日志、反馈和订单。")}
       </aside>
     </div>
   `;
@@ -1822,9 +1822,9 @@ function usersTable(users: AdminUserListEntry[]): string {
         ${users
           .map(
             (user) => `
-              <tr>
+              <tr class="clickable-row ${pageState.userDetailID === user.user_id ? "active" : ""}" data-action="load-user-detail" data-user-id="${escapeAttr(user.user_id)}">
                 <td>
-                  <div class="truncate" style="max-width:220px">${escapeHTML(user.user_id)}</div>
+                  <button class="link-button truncate" style="max-width:220px" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(user.user_id)}">${escapeHTML(user.user_id)}</button>
                   <div class="small muted">${accountPhoneDisplay(user)}</div>
                 </td>
                 <td>${statusPill(user.tier || "free")}</td>
