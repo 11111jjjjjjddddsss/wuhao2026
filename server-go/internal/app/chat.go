@@ -21,20 +21,22 @@ import (
 )
 
 const (
-	upstreamMaxAttempts             = 1
-	upstreamRetryBaseWait           = 350 * time.Millisecond
-	chatStreamMaxDuration           = 30 * time.Minute
-	chatStreamFirstVisibleTimeout   = 3 * time.Minute
-	chatStreamIdleTimeout           = 4 * time.Minute
-	maxClientMsgIDLength            = 128
-	maxChatTextRunes                = 6000
-	maxBailianSSELineBytes          = 256 * 1024
-	appendSessionRoundMaxAttempts   = 3
-	appendSessionRoundRetryBaseWait = 150 * time.Millisecond
-	defaultChatThinkingMode         = "always"
-	defaultChatThinkingBudget       = 1024
-	todayAgriContextRoundLimit      = 2
-	chatHistoricalImageContextTTL   = 72 * time.Hour
+	upstreamMaxAttempts              = 1
+	upstreamRetryBaseWait            = 350 * time.Millisecond
+	chatStreamMaxDuration            = 30 * time.Minute
+	chatStreamFirstVisibleTimeout    = 3 * time.Minute
+	chatStreamIdleTimeout            = 4 * time.Minute
+	maxClientMsgIDLength             = 128
+	maxChatTextRunes                 = 6000
+	maxBailianSSELineBytes           = 256 * 1024
+	appendSessionRoundMaxAttempts    = 3
+	appendSessionRoundRetryBaseWait  = 150 * time.Millisecond
+	chatStreamFinalizeTimeout        = 15 * time.Second
+	chatStreamInflightReleaseTimeout = 5 * time.Second
+	defaultChatThinkingMode          = "always"
+	defaultChatThinkingBudget        = 1024
+	todayAgriContextRoundLimit       = 2
+	chatHistoricalImageContextTTL    = 72 * time.Hour
 )
 
 const chatDiagnosticConstraint = `【诊断约束】
@@ -265,7 +267,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer func() {
-		if err := s.store.ReleaseChatStreamInflight(context.Background(), auth.UserID, clientMsgID, inflightToken); err != nil {
+		releaseCtx, releaseCancel := context.WithTimeout(context.Background(), chatStreamInflightReleaseTimeout)
+		defer releaseCancel()
+		if err := s.store.ReleaseChatStreamInflight(releaseCtx, auth.UserID, clientMsgID, inflightToken); err != nil {
 			s.logger.Warn("release chat stream inflight failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
 		}
 	}()
@@ -649,7 +653,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	if doneReceived.Load() {
 		replyText := strings.TrimSpace(assistantText.String())
 		if replyText != "" {
-			stale, appendErr := s.isStaleChatStreamRequest(context.Background(), auth.UserID, body.SessionGeneration, requestReceivedAtMs)
+			finalizeCtx, finalizeCancel := context.WithTimeout(context.Background(), chatStreamFinalizeTimeout)
+			defer finalizeCancel()
+			stale, appendErr := s.isStaleChatStreamRequest(finalizeCtx, auth.UserID, body.SessionGeneration, requestReceivedAtMs)
 			if appendErr != nil {
 				s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
 			} else if stale {
@@ -661,7 +667,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				var appendErr error
 				for attempt := 1; attempt <= appendSessionRoundMaxAttempts; attempt++ {
 					replay, updatedSnapshot, appendErr = s.store.AppendSessionRoundComplete(
-						context.Background(),
+						finalizeCtx,
 						auth.UserID,
 						clientMsgID,
 						requestHash,
@@ -693,7 +699,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						"error", appendErr,
 					)
 					if attempt < appendSessionRoundMaxAttempts {
-						time.Sleep(time.Duration(attempt) * appendSessionRoundRetryBaseWait)
+						if waitErr := waitForRetryDelay(finalizeCtx, time.Duration(attempt)*appendSessionRoundRetryBaseWait); waitErr != nil {
+							appendErr = waitErr
+							break
+						}
 					}
 				}
 				if appendErr != nil {
@@ -710,12 +719,12 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					}
 					s.logger.Error("append session round after stream failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", appendErr)
 				} else {
-					consume, consumeErr := s.store.consumeOnDoneAt(context.Background(), auth.UserID, tier, clientMsgID, dayCN, completionAtMs)
+					consume, consumeErr := s.store.consumeOnDoneAt(finalizeCtx, auth.UserID, tier, clientMsgID, dayCN, completionAtMs)
 					if consumeErr != nil {
 						s.logger.Error("quota consume on DONE failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", consumeErr)
 						go s.retryQuotaConsumeOnDone(auth.UserID, tier, clientMsgID, dayCN, completionAtMs)
 					} else {
-						if err := s.store.MarkQuotaConsumeOutboxDone(context.Background(), auth.UserID, clientMsgID, time.Now().UnixMilli()); err != nil {
+						if err := s.store.MarkQuotaConsumeOutboxDone(finalizeCtx, auth.UserID, clientMsgID, time.Now().UnixMilli()); err != nil {
 							s.logger.Warn("quota consume outbox mark done failed", "userId", auth.UserID, "clientMsgId", clientMsgID, "error", err)
 						}
 						s.logger.Info("quota consume on DONE", "userId", auth.UserID, "clientMsgId", clientMsgID, "deducted", consume.Deducted, "source", consume.Source)

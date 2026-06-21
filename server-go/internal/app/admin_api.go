@@ -614,13 +614,14 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	includePhoneNumber := adminCanViewAccountPhoneInUserList(admin.User.Role)
 	filter := AdminUserQuery{
 		Query:                strings.TrimSpace(r.URL.Query().Get("query")),
 		DayCN:                GetTodayKeyCN(s.shanghai, time.Now()),
 		Limit:                parseAdminLimit(r.URL.Query().Get("limit")),
 		NowMs:                time.Now().UnixMilli(),
 		SinceMs:              time.Now().Add(-24 * time.Hour).UnixMilli(),
-		IncludePhoneNumber:   adminCanViewAccountPhone(admin.User.Role),
+		IncludePhoneNumber:   includePhoneNumber,
 		AllowPhoneHashSearch: adminCanSearchAccountPhone(admin.User.Role),
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
@@ -632,7 +633,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", true, http.StatusOK, map[string]any{"limit": filter.Limit, "row_count": len(users), "phone_number_visible": filter.IncludePhoneNumber})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", true, http.StatusOK, map[string]any{"limit": filter.Limit, "row_count": len(users), "phone_number_visible": includePhoneNumber})
 	s.writeJSON(w, http.StatusOK, map[string]any{"users": users, "filter": filter})
 }
 
@@ -855,7 +856,7 @@ func (s *Server) handleAdminSupportConversations(w http.ResponseWriter, r *http.
 		return
 	}
 	output := make([]AdminSupportConversation, 0, len(conversations))
-	includePhoneNumber := adminCanViewAccountPhone(admin.User.Role)
+	includePhoneNumber := adminCanViewAccountPhoneInSupportConversationList(admin.User.Role)
 	includeMessageBody := adminCanViewSupportMessageBody(admin.User.Role)
 	includeNote := adminCanViewSupportConversationNote(admin.User.Role)
 	for _, item := range conversations {
@@ -1474,6 +1475,18 @@ type AdminUserQuery struct {
 
 func adminCanViewAccountPhone(role string) bool {
 	return adminRoleAllowed(role, "support", "finance_ops")
+}
+
+func adminCanViewAccountPhoneInUserList(role string) bool {
+	// List endpoints may return many rows. Keep full phone numbers on audited detail
+	// endpoints only; list search can still use phone_hash for authorized roles.
+	return false
+}
+
+func adminCanViewAccountPhoneInSupportConversationList(role string) bool {
+	// Support conversation lists are summaries. Full phone numbers remain available
+	// through audited user detail, not in batch list responses.
+	return false
 }
 
 func adminCanSearchAccountPhone(role string) bool {
