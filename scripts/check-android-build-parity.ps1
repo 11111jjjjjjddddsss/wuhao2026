@@ -674,10 +674,8 @@ if ($failures.Count -eq 0) {
         "Assistant Markdown standalone horizontal-rule controls must be removed instead of exposing raw --- text or adding another divider."
     Require-Match $failures $chatStreamingRenderer 'isRendererPreservedTaskCheckboxCodePoint(?s:.*?)isRendererDecorativeEmojiCodePoint(?s:.*?)0x1F000\.\.0x1FAFF(?s:.*?)0x2600\.\.0x27BF(?s:.*?)stripRendererDecorativeEmoji' `
         "Assistant Markdown display must hide decorative emoji while preserving task-list checkbox fallback text."
-    Require-Match $failures $chatStreamingRenderer 'normalizeRendererTerminalDanglingColon(?s:.*?)terminalBeforeBold == ''：'' \|\| terminalBeforeBold == '':''(?s:.*?)terminal != ''：'' && terminal != '':''(?s:.*?)normalizeTerminalColon:\s*Boolean\s*=\s*mode\s*==\s*RendererInlineMode\.Settled' `
-        "Assistant Markdown fallback rendering must normalize completed dangling terminal colons without changing active streaming lines."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"列表左齐、横杠、emoji 和孤冒号清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
-        "Debug preview panel must include the latest Markdown fallback sample for dotless lists, hidden horizontal-rule controls, emoji cleanup, and dangling colon cleanup."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"列表左齐、横杠和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
+        "Debug preview panel must include the latest Markdown fallback sample for dotless lists, hidden horizontal-rule controls, and emoji cleanup."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT\s*=\s*2' `

@@ -11,7 +11,6 @@
 ## 当前代码真相
 
 - 2026-06-21 今日农情两轮临时上下文口径已同步到 active runbook 和 Android parity 内部门禁：`docs/runbooks/today-agri-card.md` 不再保留三轮 / 第四轮的旧说法，`check-android-build-parity.ps1` 的失败提示也改为 two-send，并把 `ChatScrollCoordinatorTest`、`SecurityBoundaryTest` 纳入必读护栏，防止滚动和安全边界测试被删除或改名却未被 parity 发现。该同步不改变 App 可见 UI、今日农情提示词、主聊天滚动方案或后端运行逻辑。
-- 2026-06-21 Android 主聊天 Markdown 展示层继续收口“孤冒号”：AI 已完成段落、标题、列表项或复制文本如果只以 `：` / `:` 结尾且后面没有正文，展示时统一收成句号，避免“影响明显：”这类引出句在移动端看起来像冒号后缺内容；冒号后已有正文的 `病害风险：高温高湿...` 不改，当前仍在生成中的最后一行也先不改，避免流式过程中标点来回跳。debug-only 预览面板“AI Markdown 兜底”和 Android parity 已同步锁住该口径。
 - 2026-06-21 后端独立“【诊断约束】”继续按用户拍板收口：新增一句“所有回答不得使用表格。”，降低模型老吐表格导致移动端阅读负担的概率。该句只放在每轮主聊天组装的诊断约束 system 消息里，不改主对话锚点、今日农情提示词、记忆文档提示词，不新增后端内容过滤、关键词拦截、表格硬拦截、字数硬卡或 `max_tokens`。
 - 2026-06-21 Android 主聊天流式贴底继续按真机体感收口：已撤掉“流式正文变更前预请求底部锚点”这一刀，保留原有 `SideEffect` 同帧底部锚点和低频抖动日志，使当前测试包更接近最初滚动体感；此前真机反馈“布局后一帧再补锚”更抖，该二次补锚也已撤掉。当前目标是减少长文后半段 / 尾部生成时每次 reveal 抢先拉底造成的轻微“一上一下”；正常底部跟随时新行出现、旧行向上让位仍属于聊天流式展示的自然移动。
 - 2026-06-21 Android 主聊天新增低频流式抖动诊断日志 `ui.streaming_scroll_jitter`：仅在生成中底部距离发生明显方向反转时记录一次，字段包括 `reason_guess`、`direction`、`delta_px`、`previous_delta_px`、`movement_px`、`swing_px`、`content_bottom_px`、`workline_bottom_px`、程序锚点代数、滚动状态、首个可见项和 `streaming_lengths`；不记录聊天正文、图片 URL、手机号、token 或模型输出内容。该日志用于区分 `anchor_correction`、`text_remeasure_or_layout`、`list_scroll_in_progress`、`composer_settling` 等原因，避免继续凭体感盲调滚动。
