@@ -802,7 +802,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun bulletPlainCopyTextOmitsVisualDotsAndIndent() {
+    fun bulletPlainCopyTextKeepsVisibleDotsAndIndent() {
         val copy = buildRendererPlainCopyText(
             "*   **不认命**：\n" +
                 "    *   通过**技术手段**对抗气候风险。\n" +
@@ -810,7 +810,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals(
-            "不认命：\n\n通过技术手段对抗气候风险。\n\n  1. 通过持续学习对抗行业变革。",
+            "\u2022 不认命：\n\n  \u2022 通过技术手段对抗气候风险。\n\n  1. 通过持续学习对抗行业变革。",
             copy
         )
     }

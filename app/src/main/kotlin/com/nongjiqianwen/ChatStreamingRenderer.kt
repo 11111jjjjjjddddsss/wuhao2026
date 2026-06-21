@@ -917,7 +917,9 @@ internal fun buildRendererPlainCopyText(content: String): String {
         when (model) {
             StreamingLineModel.Blank -> ""
             is StreamingLineModel.Heading -> plainRendererInlineText(model.text)
-            is StreamingLineModel.Bullet -> plainRendererInlineText(model.text)
+            is StreamingLineModel.Bullet -> {
+                "${"  ".repeat(model.indentLevel)}\u2022 ${plainRendererInlineText(model.text)}".trimEnd()
+            }
             is StreamingLineModel.Numbered -> {
                 "${"  ".repeat(model.indentLevel)}${model.number}. ${plainRendererInlineText(model.text)}".trimEnd()
             }
@@ -2532,17 +2534,32 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 }
             }
             is StreamingLineModel.Bullet -> {
+                val bulletStyle = remember(paragraphStyle) { paragraphStyle.copy(fontSize = 17.5.sp) }
                 val bodyStyle = paragraphStyle
-                RendererStreamingActiveTextImpl(
-                    text = model.text,
+                val listIndent = rendererListIndentDp(model.indentLevel)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = paragraphLineHeight),
-                    style = bodyStyle,
-                    minLineHeight = paragraphLineHeight,
-                    inlineMode = inlineMode,
-                    linksEnabled = linksEnabled
-                )
+                        .padding(start = listIndent),
+                    horizontalArrangement = Arrangement.spacedBy(if (model.indentLevel > 0) 7.dp else 8.dp)
+                ) {
+                    Text(
+                        text = "\u2022",
+                        modifier = Modifier.alignBy(FirstBaseline),
+                        style = bulletStyle
+                    )
+                    RendererStreamingActiveTextImpl(
+                        text = model.text,
+                        modifier = Modifier
+                            .alignBy(FirstBaseline)
+                            .weight(1f)
+                            .heightIn(min = paragraphLineHeight),
+                        style = bodyStyle,
+                        minLineHeight = paragraphLineHeight,
+                        inlineMode = inlineMode,
+                        linksEnabled = linksEnabled
+                    )
+                }
             }
             is StreamingLineModel.Numbered -> {
                 val compactNumberedSection = remember(model.text, inlineMode) {

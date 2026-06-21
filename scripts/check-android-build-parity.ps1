@@ -662,10 +662,10 @@ if ($failures.Count -eq 0) {
         "Hamburger menu short notices must not keep a separate bottom notice layer."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("正在检查更新\.\.\.",\s*"设置 / 反馈 / 礼品卡等菜单短提示统一到这里",\s*UiCopyPreviewKind\.MenuNoticeHint\)(?s:.*?)UiCopyPreviewKind\.MenuNoticeHint\s*->\s*UiCopyPreviewHint\("正在检查更新\.\.\."\)' `
         "Debug preview panel must expose the unified middle hint sample for menu short notices."
-    Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*model\.text(?s:.*?)modifier\s*=\s*Modifier(?s:.*?)\.fillMaxWidth\(\)(?s:.*?)\.heightIn\(min\s*=\s*paragraphLineHeight\)' `
-        "Assistant bullet lists must render as clean left-aligned text without visual dot markers."
-    Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Bullet\s*->\s*plainRendererInlineText\(model\.text\)' `
-        "Assistant plain-copy text must not reintroduce bullet dots that are no longer visible in the UI."
+    Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)paragraphStyle\.copy\(fontSize\s*=\s*17\.5\.sp\)(?s:.*?)Text\((?s:.*?)text\s*=\s*"\\u2022"(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*model\.text' `
+        "Assistant bullet lists must keep visible dot markers so Markdown list hierarchy remains clear."
+    Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Bullet\s*->\s*\{(?s:.*?)"(?s:.*?)\\u2022 \$\{plainRendererInlineText\(model\.text\)\}"' `
+        "Assistant plain-copy text must keep bullet dots consistent with the visible UI."
     Require-Match $failures $chatStreamingRenderer 'data\s+class\s+Bullet\(val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)data\s+class\s+Numbered\(val\s+number:\s*String,\s*val\s+text:\s*String,\s*val\s+indentLevel:\s*Int\s*=\s*0\)(?s:.*?)rendererMarkdownIndentLevel(?s:.*?)rendererListIndentDp\(model\.indentLevel\)(?s:.*?)padding\(start\s*=\s*listIndent\)(?s:.*?)rendererListIndentDp\(indentLevel:\s*Int\):\s*Dp\s*=\s*\(indentLevel\.coerceAtLeast\(0\)\s*\*\s*10\)\.dp' `
         "Assistant markdown numbered lists must keep compact nested indentation for structured numbered content."
     Require-Match $failures $chatStreamingRenderer 'rendererMarkdownImageRegex(?s:.*?)normalizeRendererTaskListText(?s:.*?)hasRendererUnclosedStrikeDelimiter(?s:.*?)TextDecoration\.LineThrough(?s:.*?)isRendererStrikeDelimiter' `
@@ -674,8 +674,8 @@ if ($failures.Count -eq 0) {
         "Assistant Markdown standalone horizontal-rule controls must be removed instead of exposing raw --- text or adding another divider."
     Require-Match $failures $chatStreamingRenderer 'isRendererPreservedTaskCheckboxCodePoint(?s:.*?)isRendererDecorativeEmojiCodePoint(?s:.*?)0x1F000\.\.0x1FAFF(?s:.*?)0x2600\.\.0x27BF(?s:.*?)stripRendererDecorativeEmoji' `
         "Assistant Markdown display must hide decorative emoji while preserving task-list checkbox fallback text."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"列表左齐、横杠和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
-        "Debug preview panel must include the latest Markdown fallback sample for dotless lists, hidden horizontal-rule controls, and emoji cleanup."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"小点列表、横杠和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
+        "Debug preview panel must include the latest Markdown fallback sample for visible bullet lists, hidden horizontal-rule controls, and emoji cleanup."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT\s*=\s*2' `
