@@ -48,8 +48,8 @@ interface RouteItem {
 }
 
 const routes: RouteItem[] = [
-  { key: "monitoring", label: "监控面板", section: "工作台", hint: "可用" },
-  { key: "overview", label: "总览", section: "工作台", hint: "可用" },
+  { key: "monitoring", label: "首页 · 今天先看", section: "工作台", hint: "先看" },
+  { key: "overview", label: "数据总览", section: "工作台", hint: "指标" },
   { key: "users", label: "用户管理", section: "用户与增长", hint: "可查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "insights", label: "产品洞察", section: "用户与增长", hint: "聚合报表" },
   { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops", "auditor"] },
@@ -73,6 +73,8 @@ let auth: AuthPayload | null = getStoredAuth();
 let activeRoute: RouteKey = routeFromHash();
 let lastGiftCardCodes: AdminGiftCardCreatedCode[] = [];
 let sidebarScrollTop = 0;
+let pendingScrollTarget = "";
+let privacyMaskEnabled = false;
 const pageState = {
   userQuery: "",
   userDetailID: "",
@@ -163,6 +165,11 @@ async function render(): Promise<void> {
   } catch (error) {
     main.innerHTML = errorBlock(error);
   }
+  if (pendingScrollTarget) {
+    const target = pendingScrollTarget;
+    pendingScrollTarget = "";
+    scrollElementIntoViewOnMobile(target);
+  }
 }
 
 function renderLogin(message = ""): void {
@@ -205,7 +212,7 @@ function renderLogin(message = ""): void {
 function renderLoadingShell(label: string): void {
   captureSidebarScroll();
   app.innerHTML = `
-    <div class="app-shell">
+    <div class="app-shell${privacyMaskEnabled ? " privacy-mask" : ""}">
       ${sidebarHTML()}
       <section class="workspace">
         ${topbarHTML()}
@@ -219,7 +226,7 @@ function renderLoadingShell(label: string): void {
 function renderShell(content: string): void {
   captureSidebarScroll();
   app.innerHTML = `
-    <div class="app-shell">
+    <div class="app-shell${privacyMaskEnabled ? " privacy-mask" : ""}">
       ${sidebarHTML()}
       <section class="workspace">
         ${topbarHTML()}
@@ -278,15 +285,30 @@ function topbarHTML(): string {
         <span class="muted small topbar-api">当前页面：${escapeHTML(currentRoute?.label || "总览")}</span>
       </div>
       <div class="topbar-right">
+        <form id="global-search-form" class="global-search-form">
+          <input class="input" name="query" value="" placeholder="账号ID / 手机号" aria-label="账号ID或手机号" />
+          <button class="button" type="submit">查</button>
+        </form>
+        <div class="mobile-quick-actions" aria-label="常用入口">
+          ${quickRouteButton("monitoring", "看监控")}
+          ${quickRouteButton("users", "查用户")}
+          ${quickRouteButton("support", "看反馈")}
+        </div>
         <span class="role-badge">${escapeHTML(roleLabel(user?.role))}</span>
         <span class="small">${escapeHTML(user?.display_name || user?.username || "")}</span>
         ${user?.must_change_password ? `<span class="pill warn">需要改密</span>` : ""}
+        <button class="button" type="button" data-action="toggle-privacy-mask">${privacyMaskEnabled ? "显示敏感" : "截图模式"}</button>
         <button class="button" data-action="route" data-route="account">账号安全</button>
         <button class="button" data-action="refresh">刷新</button>
         <button class="button" data-action="logout">退出</button>
       </div>
     </header>
   `;
+}
+
+function quickRouteButton(route: RouteKey, label: string): string {
+  if (!isRouteVisible(route)) return "";
+  return `<button class="button quick-button" data-action="route" data-route="${escapeAttr(route)}">${escapeHTML(label)}</button>`;
 }
 
 async function routeContent(route: RouteKey): Promise<string> {
@@ -353,6 +375,7 @@ async function overviewPage(): Promise<string> {
       ${kpi("未回复反馈", today.support_needs_reply, `近30天 ${today.support_conversations} 个会话`)}
       ${kpi("今日农情", today.daily_agri_status || "unknown", "当天内容状态")}
     </section>
+    ${overviewActionStrip()}
     <div class="grid two" style="margin-top:12px">
       <section class="card">
         <div class="card-head">
@@ -396,6 +419,17 @@ async function overviewPage(): Promise<string> {
   `;
 }
 
+function overviewActionStrip(): string {
+  return `
+    <div class="overview-action-strip">
+      ${routeActionButton("monitoring", "回首页看重点")}
+      ${routeActionButton("support", "处理反馈")}
+      ${routeActionButton("app-logs", "看 App 日志")}
+      ${routeActionButton("users", "查用户")}
+    </div>
+  `;
+}
+
 async function monitoringPage(): Promise<string> {
   const report = await apiFetch<AdminMonitoring>("/admin-api/v1/monitoring");
   const today = report.windows.find((item) => item.key === "today") || report.windows[0];
@@ -404,6 +438,10 @@ async function monitoringPage(): Promise<string> {
     ${pageHead("监控面板", "查看上线准备状态、待处理事项和对应处理入口。", "monitoring")}
     ${monitoringHero(report)}
     ${monitoringReadinessSummary(report)}
+    <section class="card" style="margin-bottom:12px">
+      <div class="card-head"><div class="card-title">先处理事项</div><span class="small muted">${report.action_items?.length || 0} 项</span></div>
+      <div class="card-body">${actionItemList(report.action_items || [])}</div>
+    </section>
     ${monitoringOperatorGuide(report)}
     ${monitoringProgramCheckStrip(report)}
     ${monitoringManualCheckStrip(report)}
@@ -430,16 +468,10 @@ async function monitoringPage(): Promise<string> {
       ${kpi("礼品卡异常", report.queues.gift_card_failed_attempts, "最近24小时兑换失败")}
       ${kpi("今日农情", dailyAgriStatusText(report.queues.daily_agri_status), report.queues.daily_agri_updated_at ? formatTime(report.queues.daily_agri_updated_at) : "未返回更新时间")}
     </section>
-    <div class="grid two" style="margin-top:12px">
-      <section class="card">
-        <div class="card-head"><div class="card-title">先处理事项</div><span class="small muted">${report.action_items?.length || 0} 项</span></div>
-        <div class="card-body">${actionItemList(report.action_items || [])}</div>
-      </section>
-      <section class="card">
-        <div class="card-head"><div class="card-title">运营队列</div><span class="small muted">反馈、注销、农情、更新、礼品卡</span></div>
-        <div class="card-body">${monitoringQueueCards(report)}</div>
-      </section>
-    </div>
+    <section class="card" style="margin-top:12px">
+      <div class="card-head"><div class="card-title">运营队列</div><span class="small muted">反馈、注销、农情、更新、礼品卡</span></div>
+      <div class="card-body">${monitoringQueueCards(report)}</div>
+    </section>
     <section class="card" style="margin-top:12px">
       <div class="card-head"><div class="card-title">登录排障</div><span class="small muted">短信验证码 / 登录 / 闪退补报</span></div>
       <div class="card-body">${authTroubleshootingBlock(report.auth_logs)}</div>
@@ -501,7 +533,7 @@ async function usersPage(): Promise<string> {
       ${query ? `<button class="button" type="button" data-action="clear-user-filter">清空</button>` : ""}
     </form>
     <div class="detail-grid">
-      <section class="card">
+      <section id="users-list-card" class="card">
         <div class="card-head"><div class="card-title">用户列表</div><span class="small muted">${response.users.length} 条</span></div>
         <div class="table-wrap">${usersTable(response.users)}</div>
       </section>
@@ -778,6 +810,9 @@ async function supportPage(): Promise<string> {
     pageState.supportUserID = response.conversations[0].user_id;
   }
   const selected = response.conversations.find((item) => item.user_id === pageState.supportUserID);
+  const nextNeedsReply = response.conversations.find(
+    (item) => item.user_id !== pageState.supportUserID && (item.needs_reply || item.status === "open"),
+  );
   let messages: AdminSupportMessage[] = [];
   let searchMatchedMessages = 0;
   let messagesError = "";
@@ -794,7 +829,7 @@ async function supportPage(): Promise<string> {
     ${pageHead("帮助反馈", "按待回复、已处理、已关闭队列处理用户反馈；回复和状态动作都会写审计。", "support")}
     ${supportFilterForm()}
     <div class="split">
-      <section class="card list-pane">
+      <section id="support-list-card" class="card list-pane">
         <div class="card-head"><div class="card-title">会话队列</div><span class="small muted">${response.conversations.length} 条</span></div>
         ${supportConversationList(response.conversations)}
       </section>
@@ -804,7 +839,7 @@ async function supportPage(): Promise<string> {
           <span class="small muted">${escapeHTML(pageState.supportUserID || "未选择")}</span>
         </div>
         <div class="card-body">
-          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected, messagesError, searchMatchedMessages) : emptyState("未选择会话", "请先在左侧选择一条反馈会话。")}
+          ${pageState.supportUserID ? supportMessagesBlock(pageState.supportUserID, messages, selected, messagesError, searchMatchedMessages, nextNeedsReply) : emptyState("未选择会话", "请先在左侧选择一条反馈会话。")}
         </div>
       </section>
     </div>
@@ -820,6 +855,7 @@ async function appLogsPage(): Promise<string> {
   return `
     ${pageHead("App日志", "只展示后端清洗后的自动日志，不显示聊天正文、图片 URL、手机号或 token。", "app-logs")}
     ${logFilterForm("app-log-form", "app-log", pageState.appLogWindow)}
+    ${appLogQuickFilters()}
     <div class="grid two">
       <section class="card">
         <div class="card-head"><div class="card-title">日志明细</div><span class="small muted">${response.logs.length} 条</span></div>
@@ -913,6 +949,7 @@ function rethrowBlockingAdminError(results: PromiseSettledResult<unknown>[]): vo
 async function auditPage(): Promise<string> {
   const sinceMs = sinceFromWindow(pageState.auditWindow);
   const params = readFilterState("audit", { since_ms: sinceMs, limit: 100 });
+  const hasFilter = Object.values(filterState.get("audit") || {}).some((value) => value.trim() !== "") || pageState.auditWindow !== "24h";
   const response = await apiFetch<{ logs: AdminAuditLogEntry[] }>(
     `/admin-api/v1/audit-logs${toQuery(params)}`,
   );
@@ -924,6 +961,7 @@ async function auditPage(): Promise<string> {
       <label class="field"><span>目标账号ID</span><input class="input" name="target_user_id" value="${escapeAttr(readInputValue("audit", "target_user_id"))}" /></label>
       <label class="field"><span>success</span>${selectHTML("success", readInputValue("audit", "success"), [["", "全部"], ["true", "成功"], ["false", "失败"]])}</label>
       <button class="button primary" type="submit">查询</button>
+      ${hasFilter ? `<button class="button" type="button" data-action="clear-log-filter" data-filter-key="audit">清空</button>` : ""}
     </form>
     <section class="card">
       <div class="card-head"><div class="card-title">审计日志</div><span class="small muted">${response.logs.length} 条</span></div>
@@ -1109,6 +1147,20 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
     await render();
     return;
   }
+  if (form.id === "global-search-form") {
+    const query = formValue(form, "query");
+    if (!query) return;
+    pageState.userQuery = query;
+    pageState.userDetailID = "";
+    if (isRouteVisible("users") && activeRoute !== "users") {
+      pendingScrollTarget = "users-list-card";
+      location.hash = "users";
+    } else {
+      await render();
+      scrollElementIntoViewOnMobile("users-list-card");
+    }
+    return;
+  }
   if (form.id === "entitlements-form") {
     pageState.entitlementUserID = formValue(form, "user_id");
     await render();
@@ -1206,11 +1258,18 @@ async function handleAction(button: HTMLElement): Promise<void> {
     await logout();
     return;
   }
+  if (action === "toggle-privacy-mask") {
+    privacyMaskEnabled = !privacyMaskEnabled;
+    await render();
+    showTransientNotice(privacyMaskEnabled ? "已隐藏敏感信息" : "已显示敏感信息");
+    return;
+  }
   if (action === "load-user-detail") {
     const userID = button.dataset.userId || "";
     pageState.userDetailID = userID;
     if (userID && isRouteVisible("users") && activeRoute !== "users") {
       pageState.userQuery = userID;
+      pendingScrollTarget = "user-detail-drawer";
       location.hash = "users";
     } else {
       await render();
@@ -1221,6 +1280,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
   if (action === "close-user-detail") {
     pageState.userDetailID = "";
     await render();
+    scrollElementIntoViewOnMobile("users-list-card");
     return;
   }
   if (action === "clear-user-filter") {
@@ -1235,6 +1295,10 @@ async function handleAction(button: HTMLElement): Promise<void> {
     scrollElementIntoViewOnMobile("support-detail-card");
     return;
   }
+  if (action === "support-back-list") {
+    scrollElementIntoViewOnMobile("support-list-card");
+    return;
+  }
   if (action === "open-support-user") {
     const userID = button.dataset.userId || "";
     if (!userID) return;
@@ -1245,7 +1309,38 @@ async function handleAction(button: HTMLElement): Promise<void> {
       await render();
       scrollElementIntoViewOnMobile("support-detail-card");
     } else {
+      pendingScrollTarget = "support-detail-card";
       location.hash = "support";
+    }
+    return;
+  }
+  if (action === "support-next-open") {
+    const userID = button.dataset.userId || "";
+    if (!userID) return;
+    pageState.supportUserID = userID;
+    await render();
+    scrollElementIntoViewOnMobile("support-detail-card");
+    return;
+  }
+  if (action === "support-template") {
+    const text = button.dataset.template || "";
+    const textarea = document.querySelector<HTMLTextAreaElement>("#support-reply-form textarea[name='body']");
+    if (!textarea || !text) return;
+    textarea.value = textarea.value.trim() ? `${textarea.value.trim()}\n${text}` : text;
+    textarea.focus();
+    return;
+  }
+  if (action === "clear-log-filter") {
+    const key = button.dataset.filterKey || "";
+    if (key === "app-log") {
+      filterState.delete("app-log");
+      pageState.appLogWindow = "24h";
+      await render();
+    }
+    if (key === "audit") {
+      filterState.delete("audit");
+      pageState.auditWindow = "24h";
+      await render();
     }
     return;
   }
@@ -2006,6 +2101,10 @@ function usersTable(users: AdminUserListEntry[]): string {
   `;
 }
 
+function tableCell(label: string, content: string, className = ""): string {
+  return `<td data-label="${escapeAttr(label)}"${className ? ` class="${escapeAttr(className)}"` : ""}>${content}</td>`;
+}
+
 function accountPhoneDisplay(user: AdminUserListEntry, context: "list" | "detail" = "detail"): string {
   return phoneDisplay(user.phone_number, user.phone_mask, context);
 }
@@ -2030,7 +2129,7 @@ function phoneDisplay(phoneNumber?: string, phoneMask?: string, context: "list" 
   if (fullPhone && canViewAccountPhone()) {
     return `
       <span class="inline-actions">
-        <span>${escapeHTML(fullPhone)}</span>
+        <span class="sensitive-text">${escapeHTML(fullPhone)}</span>
         <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(fullPhone)}">复制</button>
         ${phoneDialLink(fullPhone)}
       </span>
@@ -2056,7 +2155,7 @@ function phoneDialLink(phone: string): string {
 function phoneDisplayMaskedInline(phoneNumber?: string, phoneMask?: string): string {
   const fullPhone = (phoneNumber || "").trim();
   if (fullPhone && canViewAccountPhone()) {
-    return escapeHTML(fullPhone);
+    return `<span class="sensitive-text">${escapeHTML(fullPhone)}</span>`;
   }
   if (phoneMask) {
     return escapeHTML(phoneMask);
@@ -2137,7 +2236,7 @@ function supportMessagesMiniList(rows: AdminSupportMessage[]): string {
                 <strong>${escapeHTML(supportSenderLabel(message.sender_type))}</strong>
                 <span>${formatTime(message.created_at)}</span>
               </div>
-              <div>${escapeHTML(supportMessageText(message))}</div>
+              <div class="sensitive-body">${escapeHTML(supportMessageText(message))}</div>
               ${supportMessageImages(message)}
             </article>
           `,
@@ -2245,21 +2344,21 @@ function quotaConsumeOutboxTable(rows: AdminQuotaConsumeOutboxEntry[]): string {
   if (!rows.length) return emptyState("自动对账正常", "后台没有未完成的扣次对账记录。");
   const canManage = canManageQuotaOutbox();
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>ID</th><th>状态</th><th>账号ID</th><th>日期/档位</th><th>尝试</th><th>下次处理</th><th>错误</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${row.id}</td>
-                <td>${statusPill(quotaOutboxStatusText(row.status), quotaOutboxStatusLevel(row.status))}</td>
-                <td><button class="link-button" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button><div class="small muted">${escapeHTML(row.client_msg_id)}</div></td>
-                <td>${escapeHTML(row.day_cn)}<div class="small muted">${escapeHTML(row.tier_at_completion || "free")} · ${formatTime(row.completion_at)}</div></td>
-                <td>${row.attempts}</td>
-                <td>${row.next_attempt_at ? formatTime(row.next_attempt_at) : "系统复核中"}</td>
-                <td class="wrap">${escapeHTML(row.last_error || "")}</td>
-                <td>${canManage ? quotaOutboxActions(row) : `<span class="small muted">自动处理</span>`}</td>
+                ${tableCell("ID", String(row.id))}
+                ${tableCell("状态", statusPill(quotaOutboxStatusText(row.status), quotaOutboxStatusLevel(row.status)))}
+                ${tableCell("账号ID", `<button class="link-button" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button><div class="small muted">${escapeHTML(row.client_msg_id)}</div>`)}
+                ${tableCell("日期/档位", `${escapeHTML(row.day_cn)}<div class="small muted">${escapeHTML(row.tier_at_completion || "free")} · ${formatTime(row.completion_at)}</div>`)}
+                ${tableCell("尝试", String(row.attempts))}
+                ${tableCell("下次处理", row.next_attempt_at ? formatTime(row.next_attempt_at) : "系统复核中")}
+                ${tableCell("错误", escapeHTML(row.last_error || ""), "wrap")}
+                ${tableCell("操作", canManage ? quotaOutboxActions(row) : `<span class="small muted">自动处理</span>`)}
               </tr>
             `,
           )
@@ -2301,15 +2400,19 @@ function quotaOutboxStatusLevel(status: string): "ok" | "warn" | "bad" | "info" 
 function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
   if (!rows.length) return emptyState("没有扣次流水", "该用户当前暂无额度流水。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>ID</th><th>日期</th><th>来源</th><th>delta</th><th>client_msg_id</th><th>时间</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${row.id}</td><td>${escapeHTML(row.day_cn)}</td><td>${escapeHTML(row.source)}</td><td>${row.delta}</td>
-                <td>${escapeHTML(row.client_msg_id)}</td><td>${formatTime(row.created_at)}</td>
+                ${tableCell("ID", String(row.id))}
+                ${tableCell("日期", escapeHTML(row.day_cn))}
+                ${tableCell("来源", escapeHTML(row.source))}
+                ${tableCell("delta", String(row.delta))}
+                ${tableCell("client_msg_id", escapeHTML(row.client_msg_id))}
+                ${tableCell("时间", formatTime(row.created_at))}
               </tr>
             `,
           )
@@ -2322,16 +2425,20 @@ function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
 function ordersTable(rows: AdminOrderEntry[]): string {
   if (!rows.length) return emptyState("没有订单数据", "支付未正式接入，或当前筛选范围内没有现有订单 / 会员变更记录。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>订单</th><th>账号ID</th><th>类型</th><th>开发期金额</th><th>状态</th><th>创建时间</th><th>结果</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.order_id)}</td><td><div class="truncate" style="max-width:220px">${escapeHTML(row.user_id)}</div></td>
-                <td>${escapeHTML(row.type)}</td><td>${escapeHTML(row.amount)}</td>
-                <td>${statusPill(row.status)}</td><td>${formatTime(row.created_at)}</td><td class="wrap">${jsonInline(redactSensitiveDisplayValue(row.result))}</td>
+                ${tableCell("订单", escapeHTML(row.order_id))}
+                ${tableCell("账号ID", `<div class="truncate" style="max-width:220px">${escapeHTML(row.user_id)}</div>`)}
+                ${tableCell("类型", escapeHTML(row.type))}
+                ${tableCell("开发期金额", escapeHTML(row.amount))}
+                ${tableCell("状态", statusPill(row.status))}
+                ${tableCell("创建时间", formatTime(row.created_at))}
+                ${tableCell("结果", jsonInline(redactSensitiveDisplayValue(row.result)), "wrap")}
               </tr>
             `,
           )
@@ -2367,15 +2474,21 @@ function summarizeOrders(rows: AdminOrderEntry[]): { success: number; failed: nu
 function topupPacksTable(rows: AdminTopupPackEntry[]): string {
   if (!rows.length) return emptyState("没有加油包", "该用户没有加油包记录。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>包</th><th>订单</th><th>状态</th><th>初始</th><th>已用</th><th>剩余</th><th>到期</th><th>创建时间</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.pack_id)}</td><td>${escapeHTML(row.order_id || "")}</td><td>${statusPill(row.status)}</td>
-                <td>${row.initial}</td><td>${row.used}</td><td>${row.remaining}</td><td>${formatTime(row.expire_at)}</td><td>${formatTime(row.created_at)}</td>
+                ${tableCell("包", escapeHTML(row.pack_id))}
+                ${tableCell("订单", escapeHTML(row.order_id || ""))}
+                ${tableCell("状态", statusPill(row.status))}
+                ${tableCell("初始", String(row.initial))}
+                ${tableCell("已用", String(row.used))}
+                ${tableCell("剩余", String(row.remaining))}
+                ${tableCell("到期", formatTime(row.expire_at))}
+                ${tableCell("创建时间", formatTime(row.created_at))}
               </tr>
             `,
           )
@@ -2388,14 +2501,17 @@ function topupPacksTable(rows: AdminTopupPackEntry[]): string {
 function upgradeCreditsTable(rows: AdminUpgradeCredit[]): string {
   if (!rows.length) return emptyState("没有升级补偿", "该用户没有升级补偿次数记录。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>账号ID</th><th>剩余次数</th><th>到期</th><th>更新时间</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.user_id)}</td><td>${row.remaining}</td><td>${formatTime(row.expire_at)}</td><td>${formatTime(row.updated_at)}</td>
+                ${tableCell("账号ID", escapeHTML(row.user_id))}
+                ${tableCell("剩余次数", String(row.remaining))}
+                ${tableCell("到期", formatTime(row.expire_at))}
+                ${tableCell("更新时间", formatTime(row.updated_at))}
               </tr>
             `,
           )
@@ -2413,15 +2529,18 @@ function createdGiftCardCodesBlock(rows: AdminGiftCardCreatedCode[]): string {
       <div class="muted" style="margin-top:6px">完整卡码已加密保存；本页可以直接复制，下方“卡与兑换”列表刷新后也能查看。不要写入备注、作废原因或公开文档。</div>
       <button class="button" type="button" data-action="clear-gift-card-codes" style="margin-top:10px">清除本次卡码</button>
       <div class="table-wrap" style="margin-top:10px">
-        <table class="table">
+        <table class="table mobile-card-table">
           <thead><tr><th>完整卡码</th><th>档位</th><th>天数</th><th>有效至</th><th>操作</th></tr></thead>
           <tbody>
             ${rows
               .map(
                 (row) => `
                   <tr>
-                    <td class="mono code-cell">${escapeHTML(row.code)}</td><td>${statusPill(row.tier)}</td><td>${row.duration_days}</td><td>${formatTime(row.valid_until)}</td>
-                    <td><button class="button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button></td>
+                    ${tableCell("完整卡码", escapeHTML(row.code), "mono code-cell")}
+                    ${tableCell("档位", statusPill(row.tier))}
+                    ${tableCell("天数", String(row.duration_days))}
+                    ${tableCell("有效至", formatTime(row.valid_until))}
+                    ${tableCell("操作", `<button class="button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>`)}
                   </tr>
                 `,
               )
@@ -2483,31 +2602,31 @@ function accountDeletionFilterForm(): string {
 function accountDeletionTable(rows: AccountDeletionRequest[]): string {
   if (!rows.length) return emptyState("没有注销申请", "当前筛选条件下没有账号注销申请。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>申请</th><th>账号</th><th>状态</th><th>原因 / 留言</th><th>处理期限</th><th>处理</th><th>时间</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td><div class="mono">${escapeHTML(row.request_id)}</div></td>
-                <td>
+                ${tableCell("申请", `<div class="mono">${escapeHTML(row.request_id)}</div>`)}
+                ${tableCell("账号", `
                   <button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>
                   <div class="small muted">${escapeHTML(row.phone_mask || "未返回手机号")}</div>
-                </td>
-                <td>${statusPill(accountDeletionStatusLabel(row.status), accountDeletionStatusLevel(row))}</td>
-                <td class="wrap">
+                `)}
+                ${tableCell("状态", statusPill(accountDeletionStatusLabel(row.status), accountDeletionStatusLevel(row)))}
+                ${tableCell("原因 / 留言", `
                   <div>${escapeHTML(row.reason || "未填写")}</div>
                   ${row.user_message ? `<div class="small muted">${escapeHTML(row.user_message)}</div>` : ""}
-                </td>
-                <td class="wrap">${accountDeletionDeadlineBlock(row)}</td>
-                <td class="wrap">
+                `, "wrap")}
+                ${tableCell("处理期限", accountDeletionDeadlineBlock(row), "wrap")}
+                ${tableCell("处理", `
                   <div>${escapeHTML(row.handled_by || "未处理")}</div>
                   ${row.handler_note ? `<div class="small muted">${escapeHTML(row.handler_note)}</div>` : ""}
                   ${row.handled_at ? `<div class="small muted">${formatTime(row.handled_at)}</div>` : ""}
-                </td>
-                <td>${formatTime(row.created_at)}<div class="small muted">更新 ${formatTime(row.updated_at)}</div></td>
-                <td>${accountDeletionActions(row)}</td>
+                `, "wrap")}
+                ${tableCell("时间", `${formatTime(row.created_at)}<div class="small muted">更新 ${formatTime(row.updated_at)}</div>`)}
+                ${tableCell("操作", accountDeletionActions(row))}
               </tr>
             `,
           )
@@ -2624,10 +2743,10 @@ function giftCardFailureReasonTable(rows: AdminGiftCardSummary["failure_reasons"
   rows = rows ?? [];
   if (!rows.length) return emptyState("没有失败原因", "最近 7 天没有失败兑换，或者还没有兑换尝试。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>原因</th><th>次数</th></tr></thead>
       <tbody>
-        ${rows.map((row) => `<tr><td>${escapeHTML(row.reason)}</td><td>${row.count}</td></tr>`).join("")}
+        ${rows.map((row) => `<tr>${tableCell("原因", escapeHTML(row.reason))}${tableCell("次数", String(row.count))}</tr>`).join("")}
       </tbody>
     </table>
   `;
@@ -2636,7 +2755,7 @@ function giftCardFailureReasonTable(rows: AdminGiftCardSummary["failure_reasons"
 function insightWindowTable(rows: AdminInsights["windows"]): string {
   if (!rows.length) return emptyState("没有洞察窗口", "当前暂无产品洞察窗口数据。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead>
         <tr>
           <th>范围</th><th>新增用户</th><th>登录</th><th>问诊</th><th>图片问诊</th><th>消耗</th><th>App异常</th><th>登录排障</th><th>反馈</th><th>礼品卡</th><th>农情失败</th>
@@ -2647,17 +2766,17 @@ function insightWindowTable(rows: AdminInsights["windows"]): string {
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div></td>
-                <td>${row.new_users}</td>
-                <td>${row.recent_auth_sessions}</td>
-                <td>${row.chat_rounds}<div class="small muted">${row.chat_users} 位用户</div></td>
-                <td>${row.image_chat_rounds}<div class="small muted">${formatPercent(row.image_chat_ratio)}</div></td>
-                <td>${row.quota_deductions}</td>
-                <td>${row.app_errors} / ${row.app_warns}</td>
-                <td>${row.auth_failures}<div class="small muted">闪退 ${row.crash_reports}</div></td>
-                <td>${row.support_messages}<div class="small muted">${row.support_users} 位用户</div></td>
-                <td>${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div></td>
-                <td>${row.daily_agri_failed_cards}</td>
+                ${tableCell("范围", `${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div>`)}
+                ${tableCell("新增用户", String(row.new_users))}
+                ${tableCell("登录", String(row.recent_auth_sessions))}
+                ${tableCell("问诊", `${row.chat_rounds}<div class="small muted">${row.chat_users} 位用户</div>`)}
+                ${tableCell("图片问诊", `${row.image_chat_rounds}<div class="small muted">${formatPercent(row.image_chat_ratio)}</div>`)}
+                ${tableCell("消耗", String(row.quota_deductions))}
+                ${tableCell("App异常", `${row.app_errors} / ${row.app_warns}`)}
+                ${tableCell("登录排障", `${row.auth_failures}<div class="small muted">闪退 ${row.crash_reports}</div>`)}
+                ${tableCell("反馈", `${row.support_messages}<div class="small muted">${row.support_users} 位用户</div>`)}
+                ${tableCell("礼品卡", `${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div>`)}
+                ${tableCell("农情失败", String(row.daily_agri_failed_cards))}
               </tr>
             `,
           )
@@ -2695,16 +2814,22 @@ function breakdownBars(rows: AdminInsightBreakdown[] | null | undefined, foot: s
 function giftCardBatchesTable(rows: AdminGiftCardBatch[]): string {
   if (!rows.length) return emptyState("没有礼品卡批次", "还没有创建礼品卡批次。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>批次</th><th>档位</th><th>天数</th><th>总数</th><th>active（未兑）</th><th>已兑</th><th>作废</th><th>可兑换至</th><th>创建</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td><div>${escapeHTML(row.name || row.batch_id)}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
-                <td>${statusPill(row.tier)}</td><td>${row.duration_days}</td><td>${row.quantity}</td><td>${row.active_count}</td><td>${row.redeemed_count}</td><td>${row.void_count}</td>
-                <td>${formatTime(row.valid_until)}</td><td>${formatTime(row.created_at)}</td>
+                ${tableCell("批次", `<div>${escapeHTML(row.name || row.batch_id)}</div><div class="small muted">${escapeHTML(row.batch_id)}</div>`)}
+                ${tableCell("档位", statusPill(row.tier))}
+                ${tableCell("天数", String(row.duration_days))}
+                ${tableCell("总数", String(row.quantity))}
+                ${tableCell("active（未兑）", String(row.active_count))}
+                ${tableCell("已兑", String(row.redeemed_count))}
+                ${tableCell("作废", String(row.void_count))}
+                ${tableCell("可兑换至", formatTime(row.valid_until))}
+                ${tableCell("创建", formatTime(row.created_at))}
               </tr>
             `,
           )
@@ -2719,24 +2844,26 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
   const canVoid = canManageGiftCards();
   const canViewCodes = canViewGiftCardCodes();
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>卡</th><th>完整卡码</th><th>档位</th><th>状态</th><th>兑换账号ID</th><th>兑换时间</th><th>会员到期</th><th>地区</th><th>操作</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
-                <td><div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "未显示完整码"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
-                <td>${statusPill(row.tier)}</td><td>${giftCardStatusPill(row.status)}</td>
-                <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
-                <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
-                <td>${escapeHTML(row.redeemed_region || "")}<div class="small muted">${escapeHTML([row.redeemed_region_source, row.redeemed_region_reliability].filter(Boolean).join(" / "))}</div></td>
-                <td>${
+                ${tableCell("卡", `<div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div>`)}
+                ${tableCell("完整卡码", `<div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "未显示完整码"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}`)}
+                ${tableCell("档位", statusPill(row.tier))}
+                ${tableCell("状态", giftCardStatusPill(row.status))}
+                ${tableCell("兑换账号ID", `${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div>`)}
+                ${tableCell("兑换时间", formatTime(row.redeemed_at))}
+                ${tableCell("会员到期", formatTime(row.membership_expire_at))}
+                ${tableCell("地区", `${escapeHTML(row.redeemed_region || "")}<div class="small muted">${escapeHTML([row.redeemed_region_source, row.redeemed_region_reliability].filter(Boolean).join(" / "))}</div>`)}
+                ${tableCell("操作", `${
                   row.status === "active" && canVoid
                     ? `<button class="button danger" data-action="void-gift-card" data-card-id="${escapeAttr(row.card_id)}">作废</button>`
                     : `<span class="small muted">${row.status === "void" ? `已作废 ${formatTime(row.voided_at)}` : canVoid ? "无操作" : "只读"}</span>`
-                }</td>
+                }`)}
               </tr>
             `,
           )
@@ -2775,17 +2902,21 @@ function giftCardFailureReasonLabel(reason?: string): string {
 function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
   if (!rows.length) return emptyState("没有兑换尝试", "当前暂无兑换尝试记录。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>ID</th><th>卡尾号</th><th>账号ID</th><th>结果</th><th>原因</th><th>地区</th><th>IP</th><th>时间</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${row.id}</td><td class="mono">${escapeHTML(row.code_suffix || "")}</td><td>${row.user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>` : ""}</td>
-                <td>${row.success ? statusPill("成功", "ok") : statusPill("失败", "bad")}</td><td>${escapeHTML(giftCardFailureReasonLabel(row.failure_reason))}</td>
-                <td>${escapeHTML(row.region || "")}<div class="small muted">${escapeHTML([row.region_source, row.region_reliability].filter(Boolean).join(" / "))}</div></td>
-                <td>${escapeHTML(row.masked_ip || "")}</td><td>${formatTime(row.created_at)}</td>
+                ${tableCell("ID", String(row.id))}
+                ${tableCell("卡尾号", escapeHTML(row.code_suffix || ""), "mono")}
+                ${tableCell("账号ID", row.user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.user_id)}">${escapeHTML(row.user_id)}</button>` : "")}
+                ${tableCell("结果", row.success ? statusPill("成功", "ok") : statusPill("失败", "bad"))}
+                ${tableCell("原因", escapeHTML(giftCardFailureReasonLabel(row.failure_reason)))}
+                ${tableCell("地区", `${escapeHTML(row.region || "")}<div class="small muted">${escapeHTML([row.region_source, row.region_reliability].filter(Boolean).join(" / "))}</div>`)}
+                ${tableCell("IP", escapeHTML(row.masked_ip || ""))}
+                ${tableCell("时间", formatTime(row.created_at))}
               </tr>
             `,
           )
@@ -2842,7 +2973,14 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
     .join("");
 }
 
-function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], conversation?: AdminSupportConversation, loadError = "", searchMatchedMessages = 0): string {
+function supportMessagesBlock(
+  userID: string,
+  messages: AdminSupportMessage[],
+  conversation?: AdminSupportConversation,
+  loadError = "",
+  searchMatchedMessages = 0,
+  nextNeedsReply?: AdminSupportConversation,
+): string {
   const canManage = canManageSupport();
   const truncatedMessageNotice =
     conversation && messages.length > 0 && conversation.message_count > messages.length
@@ -2854,6 +2992,11 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
       : "";
   return `
     ${conversation ? supportConversationMeta(conversation) : ""}
+    <div class="support-detail-actions">
+      <button class="button" type="button" data-action="support-back-list">返回会话队列</button>
+      ${nextNeedsReply ? `<button class="button" type="button" data-action="support-next-open" data-user-id="${escapeAttr(nextNeedsReply.user_id)}">下一条待回复</button>` : ""}
+      <button class="button" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(userID)}">打开用户详情</button>
+    </div>
     ${loadError ? errorBlock(new Error(loadError)) : ""}
     ${truncatedMessageNotice}
     <div class="message-list">
@@ -2867,7 +3010,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
                       <strong>${escapeHTML(supportSenderLabel(message.sender_type))}</strong>
                       <span>${formatTime(message.created_at)}</span>
                     </div>
-                    <div>${escapeHTML(supportMessageText(message))}</div>
+                    <div class="sensitive-body">${escapeHTML(supportMessageText(message))}</div>
                     ${message.body_redacted ? `<div class="small muted" style="margin-top:6px">这条正文未在当前后台显示。</div>` : ""}
                     ${supportMessageImages(message)}
                   </article>
@@ -2889,7 +3032,10 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
               <span>后台回复</span>
               <textarea class="textarea" name="body" maxlength="2000" placeholder="只写必要的客服回复；手机号、订单号、礼品卡码等排障信息可以发送，不要发送后台密钥、token 或内部排障细节。"></textarea>
             </label>
-            <button class="button primary" type="submit">发送给用户（生产）</button>
+            ${supportReplyTemplates()}
+            <div class="row-actions">
+              <button class="button primary" type="submit">发送给用户（生产）</button>
+            </div>
           </form>
           <div class="row-actions" style="margin-top:12px">
             <button class="button" data-action="support-status" data-user-id="${escapeAttr(userID)}" data-status="open" type="button">重开待回复</button>
@@ -2901,6 +3047,31 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
         : notice("只读会话", "当前账号只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
     }
   `;
+}
+
+function supportReplyTemplates(): string {
+  const templates = [
+    "您好，已收到您的反馈。为了更快排查，请补充一下手机型号、App 版本，以及出现问题前后您点了哪些入口。",
+    "您好，这个问题我先记录处理。后续如果需要核对账号、订单或礼品卡信息，我会继续在本页回复您。",
+    "您好，您可以先回到主聊天页重新发送一次；如果仍失败，请把失败截图发在这里，我继续帮您查。",
+  ];
+  return `
+    <div class="template-row" aria-label="常用回复">
+      ${templates
+        .map(
+          (text) => `
+            <button class="button template-button" type="button" data-action="support-template" data-template="${escapeAttr(text)}">${escapeHTML(templateButtonLabel(text))}</button>
+          `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function templateButtonLabel(text: string): string {
+  if (text.includes("手机型号")) return "让用户补充信息";
+  if (text.includes("记录处理")) return "已记录继续跟进";
+  return "请重试并发截图";
 }
 
 function supportMessageText(message: AdminSupportMessage): string {
@@ -2971,17 +3142,21 @@ function supportStatusPill(item: AdminSupportConversation): string {
 function appLogsTable(rows: ClientAppLogEntry[]): string {
   if (!rows.length) return emptyState("没有 App 日志", "当前筛选条件下暂无日志。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>时间</th><th>级别</th><th>事件</th><th>账号ID</th><th>版本</th><th>设备</th><th>消息</th><th>attrs</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${formatTime(row.created_at)}</td><td>${statusPill(row.level)}</td><td>${escapeHTML(row.event)}</td>
-                <td>${escapeHTML(row.user_id)}</td><td>${escapeHTML([row.app_version_name || String(row.app_version_code || ""), row.build_type].filter(Boolean).join(" / "))}</td>
-                <td>${escapeHTML([row.platform, row.os_version, row.device_model].filter(Boolean).join(" / "))}</td>
-                <td class="wrap">${escapeHTML(redactSensitiveDisplayText(row.message || ""))}</td><td class="wrap">${jsonInline(redactSensitiveDisplayValue(row.attrs))}</td>
+                ${tableCell("时间", formatTime(row.created_at))}
+                ${tableCell("级别", statusPill(row.level))}
+                ${tableCell("事件", escapeHTML(row.event))}
+                ${tableCell("账号ID", escapeHTML(row.user_id))}
+                ${tableCell("版本", escapeHTML([row.app_version_name || String(row.app_version_code || ""), row.build_type].filter(Boolean).join(" / ")))}
+                ${tableCell("设备", escapeHTML([row.platform, row.os_version, row.device_model].filter(Boolean).join(" / ")))}
+                ${tableCell("消息", escapeHTML(redactSensitiveDisplayText(row.message || "")), "wrap")}
+                ${tableCell("attrs", jsonInline(redactSensitiveDisplayValue(row.attrs)), "wrap")}
               </tr>
             `,
           )
@@ -2994,26 +3169,58 @@ function appLogsTable(rows: ClientAppLogEntry[]): string {
 function appLogSummaryTable(rows: ClientAppLogSummaryEntry[]): string {
   if (!rows?.length) return emptyState("没有聚合", "当前暂无事件聚合。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>事件</th><th>级别</th><th>数量</th></tr></thead>
-      <tbody>${rows.map((row) => `<tr><td>${escapeHTML(row.event)}</td><td>${statusPill(row.level)}</td><td>${row.count}</td></tr>`).join("")}</tbody>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                ${tableCell("事件", escapeHTML(row.event))}
+                ${tableCell("级别", statusPill(row.level))}
+                ${tableCell("数量", String(row.count))}
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
     </table>
+  `;
+}
+
+function appLogQuickFilters(): string {
+  return `
+    <div class="quick-filter-strip" aria-label="常用日志筛选">
+      ${filterButton("短信发送失败", { event: "auth.sms_send_failed", window: "24h" })}
+      ${filterButton("短信登录失败", { event: "auth.sms_login_failed", window: "24h" })}
+      ${filterButton("登录闪退", { event: "auth.app_crash", window: "24h" })}
+      ${filterButton("普通闪退", { event: "app.crash", window: "24h" })}
+      ${filterButton("检查更新失败", { event: "app_update.check_failed", window: "24h" })}
+      ${filterButton("下载失败", { event: "app_update.download_failed", window: "24h" })}
+      ${filterButton("安装未完成", { event: "app_update.install_not_completed", window: "24h" })}
+      ${filterButton("图片上传失败", { eventPrefix: "upload.", level: "error", window: "24h" })}
+    </div>
   `;
 }
 
 function todayAgriTable(rows: AdminDailyAgriEntry[]): string {
   if (!rows.length) return emptyState("没有今日农情记录", "当前暂无今日农情记录。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>日期</th><th>状态</th><th>来源</th><th>标题</th><th>条目/来源</th><th>生成链路</th><th>生成时间</th><th>错误</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.day_cn)}</td><td>${statusPill(row.status)}</td><td>${todayAgriSourcePill(row)}</td><td class="wrap">${escapeHTML(row.title || "未返回")}</td>
-                <td>${row.item_count} / ${row.source_count}</td><td>${escapeHTML(todayAgriGenerationPathText(row))}</td>
-                <td>${formatTime(row.generated_at || row.updated_at)}</td><td class="wrap">${escapeHTML(row.error || "")}</td>
+                ${tableCell("日期", escapeHTML(row.day_cn))}
+                ${tableCell("状态", statusPill(row.status))}
+                ${tableCell("来源", todayAgriSourcePill(row))}
+                ${tableCell("标题", escapeHTML(row.title || "未返回"), "wrap")}
+                ${tableCell("条目/来源", `${row.item_count} / ${row.source_count}`)}
+                ${tableCell("生成链路", escapeHTML(todayAgriGenerationPathText(row)))}
+                ${tableCell("生成时间", formatTime(row.generated_at || row.updated_at))}
+                ${tableCell("错误", escapeHTML(row.error || ""), "wrap")}
               </tr>
             `,
           )
@@ -3175,17 +3382,21 @@ function todayAgriItems(content: JsonValue | undefined): DailyAgriItem[] {
 function auditTable(rows: AdminAuditLogEntry[]): string {
   if (!rows.length) return emptyState("没有审计日志", "当前筛选条件下暂无审计记录。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>时间</th><th>actor</th><th>action</th><th>目标</th><th>目标账号ID</th><th>结果</th><th>状态码</th><th>详情</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${formatTime(row.created_at)}</td><td>${escapeHTML(row.actor)}</td><td>${escapeHTML(row.action)}</td>
-                <td>${escapeHTML([row.target_type, row.target_id].filter(Boolean).join(" / "))}</td>
-                <td>${escapeHTML(row.target_user_id || "")}</td><td>${row.success ? statusPill("success", "ok") : statusPill("failed", "bad")}</td>
-                <td>${row.status_code || ""}</td><td class="wrap">${jsonInline(redactSensitiveDisplayValue(row.details))}</td>
+                ${tableCell("时间", formatTime(row.created_at))}
+                ${tableCell("actor", escapeHTML(row.actor))}
+                ${tableCell("action", escapeHTML(row.action))}
+                ${tableCell("目标", escapeHTML([row.target_type, row.target_id].filter(Boolean).join(" / ")))}
+                ${tableCell("目标账号ID", escapeHTML(row.target_user_id || ""))}
+                ${tableCell("结果", row.success ? statusPill("success", "ok") : statusPill("failed", "bad"))}
+                ${tableCell("状态码", String(row.status_code || ""))}
+                ${tableCell("详情", jsonInline(redactSensitiveDisplayValue(row.details)), "wrap")}
               </tr>
             `,
           )
@@ -3270,7 +3481,7 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
 function appUpdateEventsTable(rows: AdminAppUpdateEvent[]): string {
   if (!rows.length) return emptyState("没有发布历史", "后台还没有保存过 Android 更新配置。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead>
         <tr>
           <th>时间</th><th>动作</th><th>版本</th><th>状态</th><th>物料</th><th>操作人</th><th>说明</th>
@@ -3287,13 +3498,13 @@ function appUpdateEventsTable(rows: AdminAppUpdateEvent[]): string {
             ].join(" / ");
             return `
               <tr>
-                <td>${formatTime(row.created_at)}</td>
-                <td>${statusPill(appUpdateActionLabel(row.action), appUpdateActionLevel(row.action))}</td>
-                <td>${escapeHTML(version)}</td>
-                <td>${row.enabled ? statusPill("启用", "ok") : statusPill("停更", "warn")}</td>
-                <td>${statusPill(row.config_valid ? "配置合法" : "配置异常", row.config_valid ? "ok" : "warn")} ${statusPill(row.artifacts_complete ? "物料已齐" : "物料未齐", row.artifacts_complete ? "ok" : "warn")}<div class="small muted">${escapeHTML(artifactText)}</div></td>
-                <td>${escapeHTML(row.actor || "未记录")}</td>
-                <td class="wrap">${escapeHTML(row.release_notes || "")}</td>
+                ${tableCell("时间", formatTime(row.created_at))}
+                ${tableCell("动作", statusPill(appUpdateActionLabel(row.action), appUpdateActionLevel(row.action)))}
+                ${tableCell("版本", escapeHTML(version))}
+                ${tableCell("状态", row.enabled ? statusPill("启用", "ok") : statusPill("停更", "warn"))}
+                ${tableCell("物料", `${statusPill(row.config_valid ? "配置合法" : "配置异常", row.config_valid ? "ok" : "warn")} ${statusPill(row.artifacts_complete ? "物料已齐" : "物料未齐", row.artifacts_complete ? "ok" : "warn")}<div class="small muted">${escapeHTML(artifactText)}</div>`)}
+                ${tableCell("操作人", escapeHTML(row.actor || "未记录"))}
+                ${tableCell("说明", escapeHTML(row.release_notes || ""), "wrap")}
               </tr>
             `;
           })
@@ -3357,6 +3568,7 @@ async function userScopedPage(options: {
 }
 
 function logFilterForm(formID: string, key: string, selectedWindow: string): string {
+  const hasFilter = Object.values(filterState.get(key) || {}).some((value) => value.trim() !== "") || selectedWindow !== "24h";
   return `
     <form class="filters" id="${formID}">
       ${timeWindowField(key === "app-log" ? "app_log_window" : `${key}_window`, selectedWindow)}
@@ -3371,6 +3583,7 @@ function logFilterForm(formID: string, key: string, selectedWindow: string): str
       <label class="field"><span>设备</span><input class="input" name="device_model" value="${escapeAttr(readInputValue(key, "device_model"))}" placeholder="机型前缀" /></label>
       <label class="field"><span>level</span>${selectHTML("level", readInputValue(key, "level"), [["", "全部"], ["info", "info"], ["warn", "warn"], ["error", "error"]])}</label>
       <button class="button primary" type="submit">查询</button>
+      ${hasFilter ? `<button class="button" type="button" data-action="clear-log-filter" data-filter-key="${escapeAttr(key)}">清空</button>` : ""}
     </form>
   `;
 }
@@ -3507,7 +3720,7 @@ function healthGrid(health: AdminOverview["health"]): string {
 function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
   if (!rows.length) return emptyState("没有窗口指标", "当前暂无监控窗口数据。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead>
         <tr>
           <th>范围</th><th>新增用户</th><th>登录 session</th><th>问诊量</th><th>图片问诊</th><th>消耗次数</th><th>自动追账</th><th>App异常</th><th>登录排障</th><th>反馈消息</th><th>礼品卡兑换</th><th>后台失败</th>
@@ -3518,18 +3731,18 @@ function monitoringWindowTable(rows: AdminMonitoring["windows"]): string {
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div></td>
-                <td>${row.new_users}</td>
-                <td>${row.recent_auth_sessions}<div class="small muted">当前有效 ${row.active_sessions}</div></td>
-                <td>${row.chat_rounds} / ${row.chat_users}<div class="small muted">去重用户</div></td>
-                <td>${row.image_chat_rounds}</td>
-                <td>${row.quota_deductions}</td>
-                <td>${row.quota_consume_pending ?? 0}</td>
-                <td>${row.app_errors} / ${row.app_warns}</td>
-                <td>${row.auth_failures ?? 0}<div class="small muted">闪退 ${row.crash_reports ?? 0}</div></td>
-                <td>${row.support_messages}<div class="small muted">${row.support_users} 位去重用户</div></td>
-                <td>${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div></td>
-                <td>${row.audit_failures}<div class="small muted">${row.admin_actions} 次操作</div></td>
+                ${tableCell("范围", `${escapeHTML(row.label)}<div class="small muted">since ${formatTime(row.since_ms)}</div>`)}
+                ${tableCell("新增用户", String(row.new_users))}
+                ${tableCell("登录 session", `${row.recent_auth_sessions}<div class="small muted">当前有效 ${row.active_sessions}</div>`)}
+                ${tableCell("问诊量", `${row.chat_rounds} / ${row.chat_users}<div class="small muted">去重用户</div>`)}
+                ${tableCell("图片问诊", String(row.image_chat_rounds))}
+                ${tableCell("消耗次数", String(row.quota_deductions))}
+                ${tableCell("自动追账", String(row.quota_consume_pending ?? 0))}
+                ${tableCell("App异常", `${row.app_errors} / ${row.app_warns}`)}
+                ${tableCell("登录排障", `${row.auth_failures ?? 0}<div class="small muted">闪退 ${row.crash_reports ?? 0}</div>`)}
+                ${tableCell("反馈消息", `${row.support_messages}<div class="small muted">${row.support_users} 位去重用户</div>`)}
+                ${tableCell("礼品卡兑换", `${row.gift_card_redeems} 成功<div class="small muted">${row.gift_card_failures} 失败</div>`)}
+                ${tableCell("后台失败", `${row.audit_failures}<div class="small muted">${row.admin_actions} 次操作</div>`)}
               </tr>
             `,
           )
@@ -3585,7 +3798,7 @@ function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): str
     <div class="stack">
       ${notice("智能分析链路只在后端调用", "当前项目的智能分析能力只由后端统一调用和记录，Android 不保存服务密钥；后台这里只展示用途和联网边界，不展示具体模型名或供应商内部字段。", "info")}
       <div class="table-wrap">
-        <table class="table">
+        <table class="table mobile-card-table">
           <thead>
             <tr>
               <th>链路</th><th>后端链路</th><th>响应方式</th><th>触发时机</th><th>联网</th><th>说明</th>
@@ -3594,12 +3807,12 @@ function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): str
           <tbody>
             ${rows.map((row) => `
               <tr>
-                <td>${escapeHTML(row.title)}</td>
-                <td><strong>${escapeHTML(modelPolicyDisplayText(row))}</strong></td>
-                <td>${escapeHTML(modelPolicyProtocolText(row))}</td>
-                <td>${escapeHTML(row.trigger || "未返回")}</td>
-                <td>${modelSearchPolicyText(row)}</td>
-                <td>${escapeHTML(modelPolicyNoteText(row))}<div class="small muted">增强推理：${row.thinking_disabled ? "未启用" : "已启用"}</div></td>
+                ${tableCell("链路", escapeHTML(row.title))}
+                ${tableCell("后端链路", `<strong>${escapeHTML(modelPolicyDisplayText(row))}</strong>`)}
+                ${tableCell("响应方式", escapeHTML(modelPolicyProtocolText(row)))}
+                ${tableCell("触发时机", escapeHTML(row.trigger || "未返回"))}
+                ${tableCell("联网", modelSearchPolicyText(row))}
+                ${tableCell("说明", `${escapeHTML(modelPolicyNoteText(row))}<div class="small muted">增强推理：${row.thinking_disabled ? "未启用" : "已启用"}</div>`)}
               </tr>
             `).join("")}
           </tbody>
@@ -3688,7 +3901,7 @@ function authFunnelTable(stages: AdminMonitoring["auth_logs"]["funnel"]): string
       </div>
     </div>
     <div class="table-wrap">
-      <table class="table">
+      <table class="table mobile-card-table">
         <thead>
           <tr>
             <th>阶段</th><th>状态</th><th>总数</th><th>明确成功</th><th>告警</th><th>错误</th><th>主要事件</th>
@@ -3697,13 +3910,13 @@ function authFunnelTable(stages: AdminMonitoring["auth_logs"]["funnel"]): string
         <tbody>
           ${stages.map((stage) => `
             <tr>
-              <td><strong>${escapeHTML(stage.label || stage.key)}</strong><div class="small muted">${escapeHTML(authFunnelStageHint(stage.key))}</div></td>
-              <td>${authFunnelStagePill(stage)}</td>
-              <td>${stage.total ?? 0}</td>
-              <td>${stage.successes ?? 0}</td>
-              <td>${stage.warnings ?? 0}</td>
-              <td>${stage.errors ?? 0}</td>
-              <td class="wrap">${authFunnelEventButtons(stage.top_events || [])}</td>
+              ${tableCell("阶段", `<strong>${escapeHTML(stage.label || stage.key)}</strong><div class="small muted">${escapeHTML(authFunnelStageHint(stage.key))}</div>`)}
+              ${tableCell("状态", authFunnelStagePill(stage))}
+              ${tableCell("总数", String(stage.total ?? 0))}
+              ${tableCell("明确成功", String(stage.successes ?? 0))}
+              ${tableCell("告警", String(stage.warnings ?? 0))}
+              ${tableCell("错误", String(stage.errors ?? 0))}
+              ${tableCell("主要事件", authFunnelEventButtons(stage.top_events || []), "wrap")}
             </tr>
           `).join("")}
         </tbody>
@@ -3875,18 +4088,18 @@ function dailyAgriStatusText(status: string): string {
 function regionMetricsTable(rows: AdminMonitoring["top_regions"]): string {
   if (!rows.length) return emptyState("没有地区数据", "最近30天问诊归档中没有可聚合地区。");
   return `
-    <table class="table">
+    <table class="table mobile-card-table">
       <thead><tr><th>地区</th><th>轮次</th><th>去重用户</th><th>来源</th><th>最近出现</th></tr></thead>
       <tbody>
         ${rows
           .map(
             (row) => `
               <tr>
-                <td>${escapeHTML(row.region)}</td>
-                <td>${row.count}</td>
-                <td>${row.user_count}</td>
-                <td>${escapeHTML([row.source, row.reliability].filter(Boolean).join(" / ") || "未返回")}</td>
-                <td>${formatTime(row.last_seen_at)}</td>
+                ${tableCell("地区", escapeHTML(row.region))}
+                ${tableCell("轮次", String(row.count))}
+                ${tableCell("去重用户", String(row.user_count))}
+                ${tableCell("来源", escapeHTML([row.source, row.reliability].filter(Boolean).join(" / ") || "未返回"))}
+                ${tableCell("最近出现", formatTime(row.last_seen_at))}
               </tr>
             `,
           )
@@ -3952,6 +4165,7 @@ function monitoringHero(report: AdminMonitoring): string {
   const readinessBlocked = readiness.blocked;
   const readinessAttention = readiness.programAttention + readiness.manualAttention;
   const heroLevel = worst === "bad" || readinessBlocked > 0 ? "bad" : worst === "warn" || readinessAttention > 0 ? "warn" : "ok";
+  const heroRoute = primaryMonitoringHeroRoute(report, worst);
   const title =
     worst === "bad"
       ? "需要马上处理"
@@ -3980,6 +4194,7 @@ function monitoringHero(report: AdminMonitoring): string {
       <div class="monitor-hero-meta">
         <span>${statusPill(heroLevel === "ok" ? "正常" : readinessBlocked > 0 ? "上架阻塞" : heroLevel === "warn" ? "关注" : "处理", heroLevel)}</span>
         <span class="small muted">更新时间 ${formatTime(report.now_ms)}</span>
+        ${routeActionButton(heroRoute, heroLevel === "ok" ? "继续查看" : "打开重点项")}
       </div>
     </section>
   `;
@@ -4395,6 +4610,16 @@ function primaryMonitoringActionRoute(report: AdminMonitoring, level: "ok" | "wa
   if (level === "ok") return undefined;
   const item = (report.action_items || []).find((entry) => normalizeLevel(entry.level) === level && isKnownRoute(entry.route));
   return item?.route;
+}
+
+function primaryMonitoringHeroRoute(report: AdminMonitoring, level: "ok" | "warn" | "bad"): RouteKey | undefined {
+  const actionRoute =
+    primaryMonitoringActionRoute(report, level) ||
+    (report.action_items || []).find((entry) => normalizeLevel(entry.level) !== "ok" && isKnownRoute(entry.route))?.route;
+  if (isRouteVisible(actionRoute) && actionRoute !== "monitoring") return actionRoute;
+  const launchRoute = (report.launch_readiness || [])
+    .find((row) => row.status !== "ready" && isKnownRoute(row.route) && row.route !== "monitoring")?.route;
+  return isRouteVisible(launchRoute) ? launchRoute : undefined;
 }
 
 function loginHealthOK(health: AdminOverview["health"]): boolean {

@@ -382,6 +382,48 @@ button {
   overflow-wrap: anywhere;
 }
 
+.mobile-quick-actions {
+  display: none;
+}
+
+.global-search-form,
+.quick-filter-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.global-search-form {
+  min-width: min(280px, 100%);
+}
+
+.global-search-form .input {
+  width: 180px;
+}
+
+.quick-filter-strip {
+  margin: -2px 0 12px;
+}
+
+.privacy-mask .sensitive-text,
+.privacy-mask .sensitive-body,
+.privacy-mask .round-text,
+.privacy-mask .code-cell {
+  filter: blur(5px);
+  user-select: none;
+}
+
+.privacy-mask .message img {
+  filter: blur(10px);
+  opacity: 0.18;
+}
+
+.privacy-mask .support-row-message {
+  color: transparent;
+  text-shadow: 0 0 8px rgba(104, 113, 125, 0.45);
+}
+
 .row-actions {
   flex-wrap: wrap;
 }
@@ -490,6 +532,13 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.overview-action-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
 .card {
   border: 1px solid #d9dee5;
   border-radius: 8px;
@@ -514,6 +563,23 @@ button {
 
 .card-body {
   padding: 12px;
+}
+
+.support-detail-actions,
+.template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.template-row {
+  margin-bottom: 0;
+}
+
+.template-button {
+  min-height: 34px;
+  white-space: normal;
 }
 
 .kpi-card {
@@ -2020,7 +2086,7 @@ button {
 
   #user-detail-drawer,
   #support-detail-card {
-    scroll-margin-top: 72px;
+    scroll-margin-top: 124px;
   }
 
   .topbar,
@@ -2038,6 +2104,32 @@ button {
   .topbar-right {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .global-search-form {
+    width: 100%;
+  }
+
+  .global-search-form .input {
+    flex: 1 1 160px;
+    width: auto;
+  }
+
+  .mobile-quick-actions {
+    display: flex;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .quick-button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .quick-button:first-child {
+    border-color: #2f7d57;
+    background: #2f7d57;
+    color: #fff;
   }
 
   .filters {
@@ -2072,6 +2164,23 @@ button {
     overflow-x: auto;
   }
 
+  .card-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .card-head .button,
+  .card-head .row-actions .button {
+    width: 100%;
+  }
+
+  .input,
+  .select,
+  .filter-form input,
+  .filter-form select {
+    height: 44px;
+  }
+
   .list-pane {
     max-height: 42vh;
   }
@@ -2097,8 +2206,14 @@ button {
 
   .link-button {
     display: inline-flex;
-    min-height: 32px;
+    min-height: 40px;
     align-items: center;
+    padding: 0 6px;
+  }
+
+  .support-detail-actions .button,
+  .template-row .button {
+    flex: 1 1 180px;
   }
 }
 
@@ -2184,6 +2299,67 @@ button {
 
   .users-table td:nth-child(8) .button {
     width: 100%;
+  }
+
+  .mobile-card-table {
+    min-width: 0;
+  }
+
+  .mobile-card-table thead {
+    display: none;
+  }
+
+  .mobile-card-table,
+  .mobile-card-table tbody,
+  .mobile-card-table tr,
+  .mobile-card-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .mobile-card-table tr {
+    border: 1px solid #edf0f3;
+    border-radius: 8px;
+    background: #fff;
+    padding: 10px;
+    margin-bottom: 10px;
+  }
+
+  .mobile-card-table td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 8px;
+    border-bottom: 0;
+    padding: 7px 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .mobile-card-table td::before {
+    content: attr(data-label);
+    color: #697380;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .mobile-card-table td[data-label="操作"] {
+    grid-template-columns: 1fr;
+    padding-top: 10px;
+  }
+
+  .mobile-card-table td[data-label="操作"]::before {
+    content: "";
+    display: none;
+  }
+
+  .mobile-card-table td[data-label="操作"] .button,
+  .mobile-card-table .row-actions .button {
+    width: 100%;
+  }
+
+  .mobile-card-table .row-actions {
+    align-items: stretch;
   }
 }
 
