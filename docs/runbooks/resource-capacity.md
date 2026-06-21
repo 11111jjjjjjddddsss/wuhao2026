@@ -1,6 +1,6 @@
 # 云资源容量与续费巡检
 
-最后更新：2026-06-20
+最后更新：2026-06-21
 
 ## 目的
 
@@ -21,7 +21,7 @@
 - OSS：Bucket `nongjiqiancha-prod` ACL private、Standard、LRS；生命周期为 `uploads/` 3 天、`support/` 30 天、`test-apks/` 3 天、未完成分片 1 天。2026-06-12 已开启 Bucket 默认服务端加密，`SSEAlgorithm=AES256`；2026-06-17 起 `check-resource-capacity.ps1` 会解析生命周期 XML 并逐前缀输出 `lifecycle prefix=... status=... expiration_days=... abort_multipart_days=...`
 - DNS / 域名 / HTTPS：`@ / www / api / admin` A 记录均指向 `39.106.1.151` 且 ENABLE；`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`，用于 OSS 低成本 APK 下载；域名到期 `2027-05-24 19:23:07`；ECS 上 Let’s Encrypt 证书由 `certbot.timer` 自动续期，`download.nongjiqiancha.cn` 的 OSS 自定义域名证书已绑定。2026-06-17 已重签下载域名证书并加密同步到 OSS，当前到期日 `2026-09-15 07:03:04 UTC`；证书续期后需用 `scripts/sync-oss-download-certificate.ps1` 同步到 OSS CNAME 配置，该脚本不再让 Cloud Assistant 输出明文私钥
 - 云监控：联系人 `NongjiOwner` 的邮件通道已激活，联系人组 `NongjiQianchaOps` 已创建；已配置 9 条资源水位规则，覆盖 ECS CPU / 内存、RDS CPU / 内存 / 磁盘 / 连接、Redis CPU / 内存 / 连接，均挂到该联系人组。ECS 已补装 CloudMonitor C++ 插件，ECS 上 `cloudmonitor.service` / `argusagent` 已 running；本轮严格巡检里 ECS 内存规则已回到 `OK`。若未来云监控返回 `INSUFFICIENT_DATA`，严格巡检会以 warning / attention 提醒；若规则返回 `ALARM`，普通巡检会提示 attention，`-Strict` 直接失败。该组用于资源不足提前邮件提醒，不走短信 / 电话
-- ARMS / 云监控系统事件：2026-06-18 阿里云 App 里出现 `InstanceStatus:ArmsStopped` 警告，事件内容指向默认 CMS 工作空间 `default-cms-1159547719787456-cn-beijing` 且原因为 `user_stop`。只读核对后结论是：这不是 ECS 服务器停机，不是 Go 后端 / RDS / Redis / OSS 故障，也不是农技千查主业务告警；ARMS 当前无活跃告警、通知策略或用户自建事件规则。默认 CMS 工作空间下仍有 CloudMonitor 2.0 底层免费指标容器在运行，不能为了清红点贸然删除工作空间，也不能关闭 `NongjiQianchaOps`、SLS 应用告警或 9 条资源水位规则。该系统事件历史本身不像云安全中心事件那样可手工“处理”；如果未来每天继续新增同类噪音，再只针对 ARMS stopped 消息订阅 / 事件通知流做静音评估，不动主业务监控。
+- ARMS / 云监控系统事件：2026-06-18 和 2026-06-21 阿里云 App 里出现 `InstanceStatus:ArmsStopped` 警告，事件内容指向默认 CMS 工作空间 `default-cms-1159547719787456-cn-beijing` 且原因为 `user_stop`。只读核对后结论是：这不是 ECS 服务器停机，不是 Go 后端 / RDS / Redis / OSS 故障，也不是农技千查主业务告警；2026-06-21 复现后再次执行生产 readiness，API healthz、Nginx、Redis、短信、模型和 OSS 上传链路均正常。ARMS 当前无活跃告警、通知策略或用户自建事件规则。默认 CMS 工作空间下仍有 CloudMonitor 2.0 底层免费指标容器在运行，不能为了清红点贸然删除工作空间，也不能关闭 `NongjiQianchaOps`、SLS 应用告警或 9 条资源水位规则。该系统事件历史本身不像云安全中心事件那样可手工“处理”；如果未来每天继续新增同类噪音，再只针对 ARMS stopped 消息订阅 / 事件通知流做静音评估，不动主业务监控。
 - SLS：仓库期望的最小 AlertHub 告警均应存在并启用，告警查询、触发条件、重复提醒按脚本期望校验；业务 Logstore 只保留 `server-go` / `nginx-error` 两个，TTL 为 180 天，其中热存储 7 天、低频存储 173 天，1 shard，不采完整 Nginx access、聊天正文、图片 URL、手机号、token 或密钥；应用日志邮件行动策略 `nongji-prod-email` 和 dashboard `nongji-prod-ops` 绑定应全部覆盖，`check-sls-alert-readiness.ps1 -RequireExternalNotification -RequireDashboard -FailOnWarning` 与 `check-sls-cost-guard.ps1 -FailOnWarning` 应返回 `status=ready`
 - 云安全中心：2026-06-18 已把 1 条提醒级 `云产品威胁检测-OSS可疑访问行为` 事件按“我已手工处理”收口，待处理列表和风险等级计数均为 0；该事件不是资源水位告警，核对后与本项目近期 OSS CNAME / 证书 / 配置巡检运维行为一致。本轮未创建长期白名单，后续同类事件仍逐条核对。聊天和仓库文档不记录 AK、IP、UserAgent 或其它敏感字段；后续若出现来源不明、写操作、删除操作、失败调用或越权类告警，不能静默忽略，应按安全事件处理并优先轮换相关凭证。
 - 普通短信服务：已购买国内通用短信套餐包，新 Android 登录消耗普通短信余量；DYPNS / 融合认证统计只作为历史兼容观察。`check-sms-usage.ps1` 会额外调用费用中心有效资源包 API 做交叉检查，但 2026-06-15 当前只返回百炼推理资源包和 OSS 存储包，没有返回短信类套餐包；因此短信套餐包余额、到期、余量预警和自动复购仍需以短信服务控制台为准
