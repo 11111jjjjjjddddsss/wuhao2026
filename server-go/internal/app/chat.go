@@ -981,14 +981,54 @@ func shouldForceSearchForChatText(text string) bool {
 		"价格",
 		"报价",
 		"多少钱",
+		"查价",
+		"查报价",
 		"行情",
+		"查行情",
 		"最新价格",
 		"最新报价",
 		"最新行情",
+		"市场价",
+		"网购",
+		"淘宝",
+		"京东",
+		"拼多多",
+		"1688",
 	}
 	for _, marker := range searchIntentMarkers {
 		if strings.Contains(normalized, marker) {
 			return true
+		}
+	}
+	searchVerbMarkers := []string{
+		"查一下",
+		"查一查",
+		"查查",
+		"帮我查",
+	}
+	searchTargetMarkers := []string{
+		"产品",
+		"牌子",
+		"品牌",
+		"厂家",
+		"渠道",
+		"网购",
+		"网店",
+		"电商",
+		"淘宝",
+		"京东",
+		"拼多多",
+		"1688",
+		"市场价",
+	}
+	for _, verb := range searchVerbMarkers {
+		if !strings.Contains(normalized, verb) {
+			continue
+		}
+		for _, target := range searchTargetMarkers {
+			if strings.Contains(normalized, target) {
+				return true
+			}
 		}
 	}
 	return false

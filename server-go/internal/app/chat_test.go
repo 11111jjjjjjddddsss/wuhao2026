@@ -140,6 +140,10 @@ func TestShouldForceSearchForExplicitSearchIntent(t *testing.T) {
 		"查一下最新价格和购买渠道",
 		"河南小麦行情怎么样",
 		"这个产品最新报价是多少",
+		"帮我查一下这个牌子",
+		"查查这个产品有没有渠道",
+		"查价这个肥料",
+		"淘宝上有没有同款",
 	} {
 		if !shouldForceSearchForChatText(text) {
 			t.Fatalf("expected force search for %q", text)
@@ -151,6 +155,8 @@ func TestShouldForceSearchForExplicitSearchIntent(t *testing.T) {
 		"帮我看看怎么用肥",
 		"葡萄叶子发黄怎么办",
 		"最新这片地苗情咋样",
+		"查一下这张叶片是什么病",
+		"查查这个葡萄叶子咋回事",
 	} {
 		if shouldForceSearchForChatText(text) {
 			t.Fatalf("did not expect force search for %q", text)
