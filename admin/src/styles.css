@@ -329,6 +329,58 @@ button {
   white-space: nowrap;
 }
 
+.nav-more {
+  margin: 8px 10px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.nav-more summary {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-radius: 6px;
+  color: #dfe5ea;
+  cursor: pointer;
+  list-style: none;
+  padding: 8px 9px;
+  font-weight: 700;
+}
+
+.nav-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.nav-more summary:hover,
+.nav-more[open] summary {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.nav-more-body {
+  display: grid;
+  gap: 6px;
+  padding-top: 6px;
+}
+
+.nav-more-row {
+  display: grid;
+  gap: 3px;
+}
+
+.nav-more-row .nav-item {
+  padding-left: 11px;
+}
+
+.nav-more-section {
+  color: #86919d;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 10px 0;
+}
+
 .workspace {
   min-width: 0;
 }
@@ -537,6 +589,101 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   margin: 12px 0;
+}
+
+.simple-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.simple-action-card {
+  display: grid;
+  min-height: 132px;
+  align-content: space-between;
+  gap: 12px;
+  border: 1px solid #d9dee5;
+  border-radius: 8px;
+  background: #fff;
+  padding: 13px;
+}
+
+.simple-action-card.ok {
+  border-color: #badbc5;
+  background: #f7fcf8;
+}
+
+.simple-action-card.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+}
+
+.simple-action-card.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+}
+
+.simple-action-card strong {
+  display: block;
+  color: #111827;
+  font-size: 15px;
+  line-height: 1.35;
+}
+
+.simple-action-card p {
+  margin: 7px 0 0;
+  color: #4a5562;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.simple-action-card .button {
+  justify-self: start;
+}
+
+.advanced-panel {
+  border: 1px solid #d9dee5;
+  border-radius: 8px;
+  background: #fff;
+  margin-top: 12px;
+}
+
+.advanced-panel > summary {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 14px;
+  color: #1f2933;
+  font-weight: 800;
+}
+
+.advanced-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.advanced-panel > summary::after {
+  content: "展开";
+  color: #68717d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.advanced-panel[open] > summary {
+  border-bottom: 1px solid #edf0f3;
+}
+
+.advanced-panel[open] > summary::after {
+  content: "收起";
+}
+
+.advanced-panel-body {
+  background: #f7f8fa;
+  padding: 12px;
 }
 
 .card {
@@ -1989,6 +2136,10 @@ button {
     grid-template-columns: repeat(3, minmax(128px, 1fr));
   }
 
+  .simple-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .decision-grid {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
@@ -2061,6 +2212,10 @@ button {
     padding: 8px 10px;
   }
 
+  .simple-sidebar .nav-section {
+    flex-wrap: nowrap;
+  }
+
   .nav-section-title {
     flex: 0 0 auto;
     padding: 0 4px;
@@ -2084,6 +2239,22 @@ button {
     display: none;
   }
 
+  .nav-more {
+    margin: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 0 10px 8px;
+  }
+
+  .nav-more summary {
+    min-height: 40px;
+  }
+
+  .nav-more-body {
+    max-height: 42vh;
+    overflow: auto;
+    padding-bottom: 4px;
+  }
+
   #user-detail-drawer,
   #support-detail-card {
     scroll-margin-top: 124px;
@@ -2104,6 +2275,13 @@ button {
   .topbar-right {
     width: 100%;
     justify-content: flex-start;
+  }
+
+  .topbar-api,
+  .role-badge,
+  .topbar-right > .small,
+  .topbar-account-button {
+    display: none;
   }
 
   .global-search-form {
@@ -2148,6 +2326,7 @@ button {
   .operator-guide,
   .operator-guide-steps,
   .decision-grid,
+  .simple-actions,
   .regression-grid,
   .manual-check-list,
   .capability-grid,
@@ -2167,6 +2346,20 @@ button {
   .card-head {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .advanced-panel > summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .advanced-panel > summary::after {
+    align-self: stretch;
+    border: 1px solid #d7dce2;
+    border-radius: 6px;
+    background: #fff;
+    padding: 8px 10px;
+    text-align: center;
   }
 
   .card-head .button,

@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-06-21
+最后更新：2026-06-22
 
 ## 项目概况
 
@@ -10,6 +10,7 @@
 
 ## 当前代码真相
 
+- 2026-06-22 后台管理页已按“先简单好用，再按需展开”继续收口并部署到 `admin.nongjiqiancha.cn`：参考渐进披露、后台导航层级和手机端少入口原则，默认进入“简单后台”模式，侧栏只露出常用入口 `首页 · 今天先看 / 用户管理 / 帮助反馈 / App日志 / 礼品卡`，其余 `数据总览 / 产品洞察 / 会员额度 / 订单 / 注销申请 / 今日农情 / 检查更新 / 审计 / 账号安全 / 服务健康` 保留在“更多工具”折叠区；真实 `AdminRouteKey`、`routeContent()`、后端授权矩阵、后台 API 和所有页面功能未删除。首页默认只展示当前结论、就绪摘要、今天先处理、常用操作卡和核心决策卡，智能问诊链路、手机实测清单、上线前检查、趋势、地区、功能接入情况等高级监控折叠到“更多监控和上线检查”。顶栏保留账号ID / 手机号搜索、手机常用入口、简单 / 全部功能切换、截图模式、刷新和退出；手机端隐藏当前页小字、角色名、账号名和重复的账号安全按钮。该改动只改后台前端显示层，不改 Android、Go 后端业务接口、官网、检查更新配置、正式包或任何提示词；owner 主账号仍可直接看完整手机号，低权限巡检脱敏、CSRF、审计和高风险二次确认不变。后台静态包 SHA-256 为 `b5e883b5aac34b58969b004df3df69553c3b62da18249214e668f8e49bee36b7`，部署脚本验证 HTTPS 首页 / 首个 JS / 未登录 auth 401 通过；部署后 `scripts/check-public-blackbox.ps1` 返回 `warnings=0 / errors=0 / status=ready`，`scripts/check-admin-authenticated-smoke.ps1` 登录后只读 smoke 返回 `failed=0 / status=ready`。`scripts/check-admin-monitoring-actions.ps1` 仍因最近 24 小时旧检查更新 / 安装权限类 App 日志报 `bad=1 / warn=1`，这是 App 更新回归提醒，不是本轮后台静态页不可用。
 - 2026-06-21 后台管理页继续按“一个主账号、手机上也能直接用”的傻瓜工作台优化并已部署到 `admin.nongjiqiancha.cn`：默认工作台导航改为“首页 · 今天先看 / 数据总览”，监控页把“先处理事项”前移，顶部在手机端提供“看监控 / 查用户 / 看反馈”快捷入口，并新增账号ID / 手机号全局搜索；帮助反馈详情新增“返回会话队列”“下一条待回复”“打开用户详情”和三条常用回复模板；App 日志新增常用筛选按钮和一键清空，审计筛选也可一键清空；用户、反馈、礼品卡、注销申请、会员/订单明细、App 日志、审计、今日农情、检查更新历史等宽表在窄屏下按字段卡片展示，按钮和输入框触摸面积加大；顶栏“截图模式”可临时遮罩完整手机号、礼品卡完整码、反馈正文、问诊全文和图片缩略图，方便录屏 / 截图时少泄露敏感信息。该改动只改后台前端，不改 Android、Go 后端业务接口、官网、检查更新配置、正式包或任何提示词；底层后台登录、CSRF、角色权限、审计、礼品卡 / 检查更新 / 今日农情二次确认和低权限脱敏兜底不变。后台静态包 SHA-256 为 `b8175e995f71cab73d87b9fcbc7253cb4ac39982ae4f75cb8be26f8ff0bf41fe`，部署脚本验证 HTTPS 首页 / 首个 JS / 未登录 auth 401 通过；部署后 `scripts/check-public-blackbox.ps1` 返回 `warnings=0 / errors=0 / status=ready`，`scripts/check-admin-authenticated-smoke.ps1` 登录后只读 smoke 返回 `failed=0 / status=ready`。`scripts/check-admin-monitoring-actions.ps1` 仍因最近 24 小时旧检查更新 / 安装权限类 App 日志报 `bad=1 / warn=1`，这是 App 更新回归提醒，不是本轮后台静态页不可用。
 - 2026-06-21 生产后端已部署到 `cc11b284`，线上 `/healthz` 返回 `revision=cc11b284`，`scripts/check-ecs-readiness.ps1 -ExpectedRevision cc11b284` 和 `scripts/check-public-blackbox.ps1` 均通过，公网黑盒 `warnings=0 / errors=0 / status=ready`。本次线上实际后端差异为 `04e3a6d5..cc11b284` 中的 `d542e362`：`/upload` 超过 1MiB 的文件会明确返回 `413 body_too_large`；support 图片保存成功但 `support_upload_ownership` 归属登记失败时，会 best-effort 删除刚保存的对象，减少孤儿 support 图片；`scripts/deploy-ecs-server.ps1` 在迁移风险扫描前会优先读取线上 `/opt/nongjiqiancha/server/REVISION`，扫描 `线上 revision..待部署 commit`。本次无迁移 SQL，不改 Android、官网、检查更新、正式包、主对话锚点、今日农情提示词或记忆文档提示词。
 - 2026-06-21 后端主聊天流结束后的尾段收口已补超时边界：模型上游返回 `[DONE]` 后，归档 / 扣次 / outbox 标记统一在短超时上下文内完成，失败时继续走现有 `STREAM_ARCHIVE_FAILED` / 后台扣次重试兜底；聊天 inflight 释放也加了独立短超时，避免 RDS / MySQL 极端卡顿时用户已看到正文但请求长期不收尾、后续重发 / 新发被占用。Android 切后台或进程回收时，现有带图 pending 链仍按“前台已开始远端流就不重复发、后端继续归档、回前台拉远端 snapshot / remote completion 恢复”的口径处理；`REMOTE_STARTED_GRACE_MS=10 分钟` 只是防重复远端流保护窗，不是用户主动发送或重试的等待时间。本轮不改 Android UI、滚动链、输入框或模型提示词。

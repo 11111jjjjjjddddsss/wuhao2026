@@ -47,6 +47,9 @@ interface RouteItem {
   roles?: AdminRole[];
 }
 
+const simpleRouteKeys: RouteKey[] = ["monitoring", "users", "support", "app-logs", "gift-cards"];
+const adminModeStorageKey = "nongji_admin_simple_mode";
+
 const routes: RouteItem[] = [
   { key: "monitoring", label: "首页 · 今天先看", section: "工作台", hint: "先看" },
   { key: "overview", label: "数据总览", section: "工作台", hint: "指标" },
@@ -75,6 +78,7 @@ let lastGiftCardCodes: AdminGiftCardCreatedCode[] = [];
 let sidebarScrollTop = 0;
 let pendingScrollTarget = "";
 let privacyMaskEnabled = false;
+let adminSimpleMode = loadAdminSimpleMode();
 const pageState = {
   userQuery: "",
   userDetailID: "",
@@ -104,6 +108,22 @@ window.addEventListener("hashchange", () => {
 
 function clearSensitiveAdminState(): void {
   lastGiftCardCodes = [];
+}
+
+function loadAdminSimpleMode(): boolean {
+  try {
+    return localStorage.getItem(adminModeStorageKey) !== "full";
+  } catch {
+    return true;
+  }
+}
+
+function saveAdminSimpleMode(enabled: boolean): void {
+  try {
+    localStorage.setItem(adminModeStorageKey, enabled ? "simple" : "full");
+  } catch {
+    // Browser storage can be disabled; the current session still switches mode.
+  }
 }
 
 window.addEventListener("admin:unauthorized", () => {
@@ -239,6 +259,46 @@ function renderShell(content: string): void {
 
 function sidebarHTML(): string {
   const navRoutes = visibleRoutes();
+  const primaryRoutes = simpleSidebarRoutes(navRoutes);
+  const advancedRoutes = navRoutes.filter((route) => !primaryRoutes.includes(route));
+  const advancedActive = advancedRoutes.some((route) => route.key === activeRoute);
+  if (adminSimpleMode) {
+    return `
+      <aside class="sidebar simple-sidebar">
+        <div class="sidebar-head">
+          <div class="brand-row">
+            ${brandMarkHTML()}
+            <div>
+              <div class="sidebar-title">农技千查</div>
+              <div class="small" style="color:#9ba6b2">简单后台</div>
+            </div>
+          </div>
+        </div>
+        <div class="nav-section">
+          <div class="nav-section-title">常用</div>
+          ${primaryRoutes.map((route) => sidebarRouteButton(route)).join("")}
+        </div>
+        <details class="nav-more" ${advancedActive ? "open" : ""}>
+          <summary>
+            <span>更多工具</span>
+            <span class="small">${advancedRoutes.length} 项</span>
+          </summary>
+          <div class="nav-more-body">
+            ${advancedRoutes
+              .map(
+                (route) => `
+                  <div class="nav-more-row">
+                    <span class="nav-more-section">${escapeHTML(route.section)}</span>
+                    ${sidebarRouteButton(route)}
+                  </div>
+                `,
+              )
+              .join("")}
+          </div>
+        </details>
+      </aside>
+    `;
+  }
   const sections = [...new Set(navRoutes.map((route) => route.section))];
   return `
     <aside class="sidebar">
@@ -258,14 +318,7 @@ function sidebarHTML(): string {
               <div class="nav-section-title">${escapeHTML(section)}</div>
               ${navRoutes
                 .filter((route) => route.section === section)
-                .map(
-                  (route) => `
-                    <button class="nav-item ${route.key === activeRoute ? "active" : ""}" data-action="route" data-route="${route.key}">
-                      <span class="nav-label">${escapeHTML(route.label)}</span>
-                      <span class="small">${escapeHTML(route.hint)}</span>
-                    </button>
-                  `,
-                )
+                .map((route) => sidebarRouteButton(route))
                 .join("")}
             </div>
           `,
@@ -275,6 +328,22 @@ function sidebarHTML(): string {
   `;
 }
 
+function sidebarRouteButton(route: RouteItem): string {
+  return `
+    <button class="nav-item ${route.key === activeRoute ? "active" : ""}" data-action="route" data-route="${route.key}">
+      <span class="nav-label">${escapeHTML(route.label)}</span>
+      <span class="small">${escapeHTML(route.hint)}</span>
+    </button>
+  `;
+}
+
+function simpleSidebarRoutes(navRoutes: RouteItem[]): RouteItem[] {
+  const selected = simpleRouteKeys
+    .map((key) => navRoutes.find((route) => route.key === key))
+    .filter((route): route is RouteItem => Boolean(route));
+  return selected.length ? selected : navRoutes.slice(0, 5);
+}
+
 function topbarHTML(): string {
   const user = auth?.admin_user;
   const currentRoute = routes.find((item) => item.key === activeRoute);
@@ -282,7 +351,7 @@ function topbarHTML(): string {
     <header class="topbar">
       <div class="topbar-left">
         <span class="env-badge">生产后台</span>
-        <span class="muted small topbar-api">当前页面：${escapeHTML(currentRoute?.label || "总览")}</span>
+        <span class="muted small topbar-api">${escapeHTML(currentRoute?.label || "总览")}</span>
       </div>
       <div class="topbar-right">
         <form id="global-search-form" class="global-search-form">
@@ -297,8 +366,9 @@ function topbarHTML(): string {
         <span class="role-badge">${escapeHTML(roleLabel(user?.role))}</span>
         <span class="small">${escapeHTML(user?.display_name || user?.username || "")}</span>
         ${user?.must_change_password ? `<span class="pill warn">需要改密</span>` : ""}
+        <button class="button mode-toggle" type="button" data-action="toggle-admin-mode">${adminSimpleMode ? "全部功能" : "简单模式"}</button>
         <button class="button" type="button" data-action="toggle-privacy-mask">${privacyMaskEnabled ? "显示敏感" : "截图模式"}</button>
-        <button class="button" data-action="route" data-route="account">账号安全</button>
+        <button class="button topbar-account-button" data-action="route" data-route="account">账号安全</button>
         <button class="button" data-action="refresh">刷新</button>
         <button class="button" data-action="logout">退出</button>
       </div>
@@ -430,10 +500,149 @@ function overviewActionStrip(): string {
   `;
 }
 
+function monitoringSimpleActions(report: AdminMonitoring): string {
+  const supportCount = report.queues.support_needs_reply || 0;
+  const appErrorCount = report.queues.app_errors || 0;
+  const giftFailures = report.queues.gift_card_failed_attempts || 0;
+  const updateTrouble =
+    (report.app_update_logs?.check_failures || 0) +
+    (report.app_update_logs?.download_failures || 0) +
+    (report.app_update_logs?.install_failures || 0);
+  const healthTrouble = report.queues.unready_dependency_count || 0;
+  const cards = [
+    { route: "users" as RouteKey, title: "查用户", body: "输入手机号或账号ID，直接看手机号、会员、问诊、反馈和 App 日志。", level: "info" as const },
+    { route: "support" as RouteKey, title: "回反馈", body: supportCount > 0 ? `还有 ${supportCount} 条待回复，先处理这里。` : "当前没有待回复，也可以查看历史会话。", level: supportCount > 0 ? "warn" as const : "ok" as const },
+    { route: "app-logs" as RouteKey, title: "看异常", body: appErrorCount > 0 ? `最近有 ${appErrorCount} 条 App 异常，点进去看阶段。` : "最近 App 异常不多，排障时从这里查。", level: appErrorCount > 0 ? "warn" as const : "ok" as const },
+    { route: "gift-cards" as RouteKey, title: "礼品卡", body: giftFailures > 0 ? `兑换失败 ${giftFailures} 次，先看尾号和账号。` : "生成、复制、追溯和作废礼品卡都在这里。", level: giftFailures > 0 ? "warn" as const : "info" as const },
+    { route: "app-update" as RouteKey, title: "检查更新", body: updateTrouble > 0 ? `更新链路有 ${updateTrouble} 条异常日志。` : "查看正式包配置、停更和发布记录。", level: updateTrouble > 0 ? "warn" as const : "info" as const },
+    { route: "health" as RouteKey, title: "系统状态", body: healthTrouble > 0 ? `有 ${healthTrouble} 个关键依赖需要看。` : "API、短信、Redis、OSS 等关键项。", level: healthTrouble > 0 ? "bad" as const : "ok" as const },
+  ];
+  return `
+    <section class="simple-actions" aria-label="常用操作">
+      ${cards
+        .filter((card) => isRouteVisible(card.route))
+        .map(
+          (card) => `
+            <article class="simple-action-card ${card.level}">
+              <div>
+                <strong>${escapeHTML(card.title)}</strong>
+                <p>${escapeHTML(card.body)}</p>
+              </div>
+              ${routeActionButton(card.route, "打开")}
+            </article>
+          `,
+        )
+        .join("")}
+    </section>
+  `;
+}
+
+function monitoringAdvancedDetails(
+  report: AdminMonitoring,
+  today: AdminMonitoring["windows"][number] | undefined,
+  day24: AdminMonitoring["windows"][number] | undefined,
+): string {
+  return `
+    <details class="advanced-panel">
+      <summary>
+        <span>更多监控和上线检查</span>
+        <span class="small">高级排障、趋势、地区、能力接入</span>
+      </summary>
+      <div class="advanced-panel-body">
+        ${monitoringOperatorGuide(report)}
+        ${monitoringProgramCheckStrip(report)}
+        ${monitoringManualCheckStrip(report)}
+        <section class="card" style="margin-bottom:12px">
+          <div class="card-head"><div class="card-title">AI 问诊状态</div><span class="small muted">当前后台服务调用智能分析能力的规则</span></div>
+          <div class="card-body">${modelUsagePolicyBlock(report.model_usage_policy || [])}</div>
+        </section>
+        <section class="card" style="margin-bottom:12px">
+          <div class="card-head"><div class="card-title">手机实测清单</div><span class="small muted">登录、问诊、图片、礼品卡、更新和反馈</span></div>
+          <div class="card-body">${monitoringRegressionChecklist(report)}</div>
+        </section>
+        <section class="card" style="margin-bottom:12px">
+          <div class="card-head"><div class="card-title">上线前检查</div><span class="small muted">可继续 / 需确认 / 暂缓上架</span></div>
+          <div class="card-body">${launchReadinessGrid(report.launch_readiness || [])}</div>
+        </section>
+        ${monitoringShortcutBar()}
+        <section class="grid kpi">
+          ${kpi("核心服务问题", report.queues.unready_dependency_count, "AI 问诊 / 登录 / 缓存 / 图片存储")}
+          ${kpi("App异常", day24?.app_errors ?? 0, `最近24小时，警告 ${day24?.app_warns ?? 0} 条`)}
+          ${kpi("登录问题", report.queues.auth_failures ?? 0, `最近24小时，闪退补报 ${report.queues.crash_reports ?? 0} 条`)}
+          ${kpi("待回复反馈", report.queues.support_needs_reply, report.queues.support_oldest_pending_at ? `最早 ${formatTime(report.queues.support_oldest_pending_at)}` : "当前无等待")}
+          ${kpi("今日问诊", today?.chat_rounds ?? 0, `${today?.chat_users ?? 0} 位去重用户`)}
+          ${kpi("礼品卡异常", report.queues.gift_card_failed_attempts, "最近24小时兑换失败")}
+          ${kpi("今日农情", dailyAgriStatusText(report.queues.daily_agri_status), report.queues.daily_agri_updated_at ? formatTime(report.queues.daily_agri_updated_at) : "未返回更新时间")}
+        </section>
+        <section class="card" style="margin-top:12px">
+          <div class="card-head"><div class="card-title">运营队列</div><span class="small muted">反馈、注销、农情、更新、礼品卡</span></div>
+          <div class="card-body">${monitoringQueueCards(report)}</div>
+        </section>
+        <section class="card" style="margin-top:12px">
+          <div class="card-head"><div class="card-title">登录排障</div><span class="small muted">短信验证码 / 登录 / 闪退补报</span></div>
+          <div class="card-body">${authTroubleshootingBlock(report.auth_logs)}</div>
+        </section>
+        <section class="card" style="margin-top:12px">
+          <div class="card-head"><div class="card-title">检查更新排障</div><span class="small muted">请求 / 下载 / 校验 / 安装权限</span></div>
+          <div class="card-body">${appUpdateTroubleshootingBlock(report.app_update_logs)}</div>
+        </section>
+        <div class="grid two" style="margin-top:12px">
+          <section class="card">
+            <div class="card-head"><div class="card-title">核心服务状态</div></div>
+            <div class="card-body">${healthChipGrid(report.health)}</div>
+          </section>
+          <section class="card">
+            <div class="card-head"><div class="card-title">使用量趋势</div><span class="small muted">${formatTime(report.now_ms)}</span></div>
+            <div class="table-wrap">${monitoringWindowTable(report.windows)}</div>
+          </section>
+        </div>
+        <div class="grid two" style="margin-top:12px">
+          <section class="card">
+            <div class="card-head"><div class="card-title">App异常 Top</div><span class="small muted">最近24小时</span></div>
+            <div class="card-body">${appErrorTopTable(report.top_app_errors)}</div>
+          </section>
+          <section class="card">
+            <div class="card-head"><div class="card-title">问诊地区分布</div><span class="small muted">最近30天问诊</span></div>
+            <div class="table-wrap">${regionMetricsTable(report.top_regions)}</div>
+          </section>
+        </div>
+        <section class="card" style="margin-top:12px">
+          <div class="card-head"><div class="card-title">用户地区概览</div><span class="small muted">按账号最近已识别地区，大概看注册和会员分布</span></div>
+          <div class="card-body">${userRegionOverviewBlock(report.user_regions)}</div>
+        </section>
+        <section class="card" style="margin-top:12px">
+          <div class="card-head"><div class="card-title">隐私边界</div></div>
+          <div class="card-body stack">
+            ${report.notes?.length ? report.notes.map((note) => notice(note.title, note.body, note.level)).join("") : emptyState("没有备注", "暂无监控备注。")}
+          </div>
+        </section>
+        <section class="card" style="margin-top:12px">
+          <div class="card-head"><div class="card-title">后台功能接入情况</div><span class="small muted">哪些已能真实使用，哪些还只是规划</span></div>
+          <div class="card-body">${capabilityGrid(report.capabilities || [])}</div>
+        </section>
+      </div>
+    </details>
+  `;
+}
+
 async function monitoringPage(): Promise<string> {
   const report = await apiFetch<AdminMonitoring>("/admin-api/v1/monitoring");
   const today = report.windows.find((item) => item.key === "today") || report.windows[0];
   const day24 = report.windows.find((item) => item.key === "24h") || report.windows[0];
+  if (adminSimpleMode) {
+    return `
+      ${pageHead("首页", "先看今天有没有事，再点入口处理。", "monitoring")}
+      ${monitoringHero(report)}
+      ${monitoringReadinessSummary(report)}
+      <section class="card" style="margin-bottom:12px">
+        <div class="card-head"><div class="card-title">今天先处理</div><span class="small muted">${report.action_items?.length || 0} 项</span></div>
+        <div class="card-body">${actionItemList(report.action_items || [])}</div>
+      </section>
+      ${monitoringSimpleActions(report)}
+      ${monitoringDecisionGrid(report, today, day24)}
+      ${monitoringAdvancedDetails(report, today, day24)}
+    `;
+  }
   return `
     ${pageHead("监控面板", "查看上线准备状态、待处理事项和对应处理入口。", "monitoring")}
     ${monitoringHero(report)}
@@ -1262,6 +1471,13 @@ async function handleAction(button: HTMLElement): Promise<void> {
     privacyMaskEnabled = !privacyMaskEnabled;
     await render();
     showTransientNotice(privacyMaskEnabled ? "已隐藏敏感信息" : "已显示敏感信息");
+    return;
+  }
+  if (action === "toggle-admin-mode") {
+    adminSimpleMode = !adminSimpleMode;
+    saveAdminSimpleMode(adminSimpleMode);
+    await render();
+    showTransientNotice(adminSimpleMode ? "已切换到简单模式" : "已显示全部功能");
     return;
   }
   if (action === "load-user-detail") {
