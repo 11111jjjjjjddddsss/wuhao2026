@@ -133,6 +133,31 @@ func TestResolveChatThinkingOptionsCanDisableAndKeepsFixedBudget(t *testing.T) {
 	}
 }
 
+func TestShouldForceSearchForExplicitSearchIntent(t *testing.T) {
+	for _, text := range []string{
+		"你全网搜索一下，网上有没有销售？",
+		"这个肥料多少钱",
+		"查一下最新价格和购买渠道",
+		"河南小麦行情怎么样",
+		"这个产品最新报价是多少",
+	} {
+		if !shouldForceSearchForChatText(text) {
+			t.Fatalf("expected force search for %q", text)
+		}
+	}
+
+	for _, text := range []string{
+		"这张叶片是什么病",
+		"帮我看看怎么用肥",
+		"葡萄叶子发黄怎么办",
+		"最新这片地苗情咋样",
+	} {
+		if shouldForceSearchForChatText(text) {
+			t.Fatalf("did not expect force search for %q", text)
+		}
+	}
+}
+
 func TestPromptIncludesImageContextUsesCurrentOrPreviousRoundImage(t *testing.T) {
 	if !promptIncludesImageContext(nil, 6, []string{"https://img/current.jpg"}) {
 		t.Fatalf("current images should mark prompt as image context")

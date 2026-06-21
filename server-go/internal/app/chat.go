@@ -386,6 +386,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	promptChars := countBailianMessageContentRunes(promptMessages)
 	promptHasImages := promptIncludesImageContext(snapshot, aWindowRounds, images)
 	thinkingOptions := resolveChatThinkingOptionsForImageContext(promptHasImages)
+	forceSearch := shouldForceSearchForChatText(text)
+	thinkingOptions.ForceSearch = forceSearch
 
 	if err := s.store.TouchSessionContext(ctx, auth.UserID, region.Region, region.Source, region.Reliability, time.Now().UnixMilli()); err != nil {
 		s.logger.Warn("touch session context failed", "userId", auth.UserID, "error", err)
@@ -409,6 +411,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"has_today_agri_context", todayAgriContext != "",
 		"thinking_enabled", thinkingOptions.EnableThinking,
 		"thinking_budget", thinkingOptions.ThinkingBudget,
+		"forced_search", forceSearch,
 	)
 
 	upstreamCtx, cancelUpstream := context.WithTimeout(context.Background(), resolveChatStreamMaxDuration())
@@ -426,6 +429,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			"current_image_count", len(images),
 			"thinking_enabled", thinkingOptions.EnableThinking,
 			"thinking_budget", thinkingOptions.ThinkingBudget,
+			"forced_search", forceSearch,
 		)
 		return
 	}
@@ -442,7 +446,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"request_id", upstreamRequestID,
 		"enable_search", true,
 		"strategy", "turbo",
-		"forced_search", false,
+		"forced_search", forceSearch,
 		"single_call_search", true,
 	)
 
@@ -641,7 +645,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"request_id", upstreamRequestID,
 		"enable_search", true,
 		"strategy", "turbo",
-		"forced_search", false,
+		"forced_search", forceSearch,
 		"current_image_count", len(images),
 		"prompt_has_images", promptHasImages,
 		"thinking_enabled", thinkingOptions.EnableThinking,
@@ -950,6 +954,44 @@ func resolveChatThinkingOptionsForImageContext(hasImageContext bool) BailianStre
 		return BailianStreamOptions{EnableThinking: true, ThinkingBudget: resolveChatThinkingBudget()}
 	}
 	return BailianStreamOptions{}
+}
+
+func shouldForceSearchForChatText(text string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(text))
+	if normalized == "" {
+		return false
+	}
+	searchIntentMarkers := []string{
+		"联网",
+		"全网",
+		"搜索",
+		"搜一下",
+		"搜搜",
+		"网上",
+		"网店",
+		"电商",
+		"有售",
+		"有卖",
+		"网上销售",
+		"有没有销售",
+		"购买渠道",
+		"哪里买",
+		"在哪买",
+		"哪里有卖",
+		"价格",
+		"报价",
+		"多少钱",
+		"行情",
+		"最新价格",
+		"最新报价",
+		"最新行情",
+	}
+	for _, marker := range searchIntentMarkers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func promptIncludesImageContext(snapshot *SessionSnapshot, aWindowRounds int, currentImages []string) bool {

@@ -63,6 +63,7 @@ type bailianAutoTokenUsage struct {
 type BailianStreamOptions struct {
 	EnableThinking bool
 	ThinkingBudget int
+	ForceSearch    bool
 }
 
 var errResponseBodyTooLarge = errors.New("response body too large")
@@ -114,7 +115,7 @@ func (c *BailianClient) OpenStream(ctx context.Context, messages []BailianMessag
 		"enable_search": true,
 		"search_options": map[string]any{
 			"search_strategy": mainChatSearchStrategy,
-			"forced_search":   false,
+			"forced_search":   streamOptions.ForceSearch,
 		},
 		"messages": messages,
 	}

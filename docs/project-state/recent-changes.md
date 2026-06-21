@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- 后端主聊天补显式联网搜索强制路径：用户明确说联网、全网、搜索、价格、报价、购买渠道、有售、行情等意图时，该轮百炼请求会把 `forced_search=true` 传给 OpenAI 兼容 Chat `search_options`；普通病虫害 / 用肥 / 图片问诊仍不强制联网，只保持原有 `enable_search=true / search_strategy=turbo`。本轮问题定位为模型把“已触发联网搜索，稍后整理”当作最终回答并归档，后端当时未强制搜索且兼容 Chat 链路不返回结构化来源列表；新日志会记录 `forced_search`、`enable_search`、`search_strategy` 和完成状态，便于确认是否真走强制联网。该修复不改 Android、不新增内容拦截、不改变主对话锚点、今日农情提示词或记忆文档提示词。
+
 - 后端主聊天诊断约束补默认中文表达边界：默认用中文，避免夹杂不必要英文；只有农药 / 肥料成分、品种名、病原拉丁学名、登记标签、品牌商品名或用户原文确需保留时才用英文并尽量配中文解释。上一轮历史图片上下文按普通问诊图 72 小时生命周期收口，只有最近 72 小时内的上一轮图片会继续带给模型，过期或无时间戳的历史图降级为文字上下文，避免隔几天追问时上游拉取已过期 `/uploads/*.jpg` 失败。检查更新巡检也同步修正：公网黑盒默认只验证更新接口可用，不再因正式更新已启用误报；正式发布匹配脚本会同时验证旧 `versionCode=1` 能看到更新、当前 `versionCode=2` 不再提示自己更新，并可自动读取本机私密后台巡检账号。该轮不改 Android UI、不打新包、不改官网文案、不改主对话锚点、今日农情提示词或记忆文档提示词。
 
 - 按用户明确口令完成首个正式 Android 下载 / 检查更新发布：`app/build.gradle.kts` 将 release 版本升为 `1.0.1(2)`，用固定 release 签名构建 `com.nongjiqiancha` 正式 APK；`check-android-release-artifact.ps1` 确认 release 不可调试、权限白名单、签名指纹、包名和版本号均 ready，APK 大小 `14,193,280` 字节，SHA-256 为 `a65e2e8665532ba2a8635940733d4cdad6244f348ccfda0462dccd643764399d`。APK 已上传 OSS `android/releases/2/nongjiqiancha-1.0.1-v2-ad9fa71c.apk`，并通过 `download.nongjiqiancha.cn` 公网裸 URL 下载验证大小 / SHA 一致；官网已部署，下载按钮指向该正式包；生产 `app_release_configs` 已启用 Android 检查更新，旧 `versionCode=1` 返回 `has_update=true`，当前 `versionCode=2` 返回无更新，`force_update=false`，`check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload -PreviousVersionCode 1 -ProbePreviousVersionUpdate` 通过。为支持长期裸 URL，OSS Bucket 只对 `android/releases/*` 配匿名 `GetObject`，普通问诊图、support 图和内部测试包前缀不公开；`check-app-update-release-match.ps1` 同步显式加载 `System.Net.Http`，避免被 `check-launch-readiness.ps1` 的新 Windows PowerShell 子进程调用时因程序集未加载误失败。用户截图中的 3 张 Pro 礼品卡已只读核对，均为 active / 未兑换 / 30 天 Pro，不执行兑换。

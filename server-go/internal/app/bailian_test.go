@@ -118,6 +118,39 @@ func TestOpenStreamCanEnableThinkingBudget(t *testing.T) {
 	}
 }
 
+func TestOpenStreamCanForceSearch(t *testing.T) {
+	var captured map[string]any
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "test-key")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	response, err := NewBailianClient().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "全网搜索一下价格"}},
+		BailianStreamOptions{ForceSearch: true},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer response.Body.Close()
+
+	searchOptions, ok := captured["search_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing search_options: %#v", captured["search_options"])
+	}
+	if got := searchOptions["forced_search"]; got != true {
+		t.Fatalf("forced_search mismatch: %#v", got)
+	}
+}
+
 func TestBailianKeysSupportDedicatedSlotsAndDeduplicate(t *testing.T) {
 	t.Setenv("DASHSCOPE_API_KEY", "legacy")
 	t.Setenv("DASHSCOPE_API_KEY_1", "primary")
