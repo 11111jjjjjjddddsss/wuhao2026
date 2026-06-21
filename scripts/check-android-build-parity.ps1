@@ -662,6 +662,16 @@ if ($failures.Count -eq 0) {
         "Hamburger menu short notices must not keep a separate bottom notice layer."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("正在检查更新\.\.\.",\s*"设置 / 反馈 / 礼品卡等菜单短提示统一到这里",\s*UiCopyPreviewKind\.MenuNoticeHint\)(?s:.*?)UiCopyPreviewKind\.MenuNoticeHint\s*->\s*UiCopyPreviewHint\("正在检查更新\.\.\."\)' `
         "Debug preview panel must expose the unified middle hint sample for menu short notices."
+    Require-Match $failures $chatScreen 'title\s*=\s*"主界面中部浮层"(?s:.*?)UiCopyPreviewItem\("正在检查更新\.\.\.",\s*"设置 / 反馈 / 礼品卡等菜单短提示统一到这里",\s*UiCopyPreviewKind\.MenuNoticeHint\)(?s:.*?)UiCopyPreviewItem\("更新未完成提示",\s*"系统安装取消后可继续安装",\s*UiCopyPreviewKind\.AppUpdateInstallNotCompletedHint\)(?s:.*?)UiCopyPreviewItem\("已复制",\s*"正文 / 表格复制成功中部短提示",\s*UiCopyPreviewKind\.CopySuccessHint\)(?s:.*?)UiCopyPreviewItem\("链接打开失败，请复制后打开",\s*"AI / 反馈链接失败中部短提示",\s*UiCopyPreviewKind\.LinkOpenFailedHint\)' `
+        "Debug preview panel must keep app-update, copy, and link-failure notices with the unified middle floating hint samples."
+    Require-Match $failures $chatScreen 'ChatStreamingRenderer\((?s:.*?)onStatusHint\s*=\s*::showComposerStatusHint' `
+        "Main chat assistant renderer copy/link notices must route into the middle floating hint layer."
+    Require-Match $failures $chatStreamingRenderer 'onStatusHint:\s*\(\(String\)\s*->\s*Unit\)\?(?s:.*?)rememberRendererLinkInteractionListener\(onStatusHint\)(?s:.*?)currentOnStatusHint\.value\?\.invoke\("链接打开失败，请复制后打开"\)(?s:.*?)currentOnStatusHint\.value\?\.invoke\("已复制"\)' `
+        "Assistant renderer link failures and table-copy success must prefer the injected middle hint callback."
+    Require-Match $failures $hamburgerMenuSheet 'HamburgerSupportMessageBubble\((?s:.*?)onStatusHint\s*=\s*onStatusHint(?s:.*?)private\s+fun\s+HamburgerSupportMessageBubble\((?s:.*?)onStatusHint:\s*\(String\)\s*->\s*Unit(?s:.*?)onStatusHint\("链接打开失败，请复制后打开"\)' `
+        "Support feedback message link failures must route into the shared middle hint callback instead of a Toast."
+    Require-NoMatch $failures $hamburgerMenuSheet 'Toast\.makeText|android\.widget\.Toast' `
+        "Hamburger menu and support feedback short notices must not fall back to Android Toast."
     Require-Match $failures $chatStreamingRenderer 'StreamingLineModel\.Bullet(?s:.*?)paragraphStyle\.copy\(fontSize\s*=\s*17\.5\.sp\)(?s:.*?)Text\((?s:.*?)text\s*=\s*"\\u2022"(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*model\.text' `
         "Assistant bullet lists must keep visible dot markers so Markdown list hierarchy remains clear."
     Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Bullet\s*->\s*\{(?s:.*?)"(?s:.*?)\\u2022 \$\{plainRendererInlineText\(model\.text\)\}"' `

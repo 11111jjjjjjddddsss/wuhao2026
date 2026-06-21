@@ -40,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
@@ -1515,6 +1516,7 @@ internal fun ChatStreamingRenderer(
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)?,
     expandToFullWidth: Boolean = true,
     tableCopyEnabled: Boolean = true,
+    onStatusHint: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     RendererAssistantMessageContentImpl(
@@ -1528,6 +1530,7 @@ internal fun ChatStreamingRenderer(
         onStreamingContentBoundsChanged = onStreamingContentBoundsChanged,
         expandToFullWidth = expandToFullWidth,
         tableCopyEnabled = tableCopyEnabled,
+        onStatusHint = onStatusHint,
         modifier = modifier
     )
 }
@@ -1544,6 +1547,7 @@ private fun RendererAssistantMessageContentImpl(
     onStreamingContentBoundsChanged: ((Rect?) -> Unit)? = null,
     expandToFullWidth: Boolean = true,
     tableCopyEnabled: Boolean = true,
+    onStatusHint: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val displayContent = remember(content) {
@@ -1581,6 +1585,7 @@ private fun RendererAssistantMessageContentImpl(
                     showWaitingBall = showWaitingBall,
                     showThinkingLabel = showThinkingLabel,
                     showLeadingSectionDivider = showLeadingSectionDivider,
+                    onStatusHint = onStatusHint,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1596,14 +1601,16 @@ private fun RendererAssistantMessageContentImpl(
                     RendererAssistantMarkdownContentImpl(
                         content = displayContent,
                         showLeadingSectionDivider = showLeadingSectionDivider,
-                        tableCopyEnabled = tableCopyEnabled
+                        tableCopyEnabled = tableCopyEnabled,
+                        onStatusHint = onStatusHint
                     )
                 }
             } else {
                 RendererAssistantMarkdownContentImpl(
                     content = displayContent,
                     showLeadingSectionDivider = showLeadingSectionDivider,
-                    tableCopyEnabled = tableCopyEnabled
+                    tableCopyEnabled = tableCopyEnabled,
+                    onStatusHint = onStatusHint
                 )
             }
             if (shouldRenderDisclaimer) {
@@ -1790,6 +1797,7 @@ private fun RendererAssistantStreamingContentImpl(
     showWaitingBall: Boolean,
     showThinkingLabel: Boolean,
     showLeadingSectionDivider: Boolean,
+    onStatusHint: ((String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     val blockState = remember(content) { splitStreamingBlockState(content) }
@@ -1845,6 +1853,7 @@ private fun RendererAssistantStreamingContentImpl(
                     ),
                     tableCopyEnabled = false,
                     showLeadingSectionDivider = blockLeadingDivider,
+                    onStatusHint = onStatusHint,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -1967,6 +1976,7 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
     inlineMode: RendererInlineMode,
     tableCopyEnabled: Boolean,
     showLeadingSectionDivider: Boolean,
+    onStatusHint: ((String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(0.dp)) {
@@ -1979,6 +1989,7 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
             linksEnabled = false,
             tableCopyEnabled = tableCopyEnabled,
             showLeadingSectionDivider = false,
+            onStatusHint = onStatusHint,
             modifier = Modifier.fillMaxWidth()
         )
     }
@@ -1992,13 +2003,14 @@ private fun RendererStreamingActiveTextImpl(
     inlineMode: RendererInlineMode,
     linksEnabled: Boolean,
     emphasisEnabled: Boolean = true,
+    onStatusHint: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     if (text.isEmpty()) {
         Spacer(modifier = modifier.height(minLineHeight))
         return
     }
-    val rememberedLinkInteractionListener = rememberRendererLinkInteractionListener()
+    val rememberedLinkInteractionListener = rememberRendererLinkInteractionListener(onStatusHint)
     val linkInteractionListener = rememberedLinkInteractionListener.takeIf { linksEnabled }
     val renderedText = remember(text, inlineMode, linkInteractionListener, emphasisEnabled) {
         buildRendererInlineAnnotatedString(
@@ -2019,15 +2031,17 @@ private fun RendererStreamingActiveTextImpl(
 }
 
 @Composable
-private fun rememberRendererLinkInteractionListener(): LinkInteractionListener {
+private fun rememberRendererLinkInteractionListener(onStatusHint: ((String) -> Unit)?): LinkInteractionListener {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
+    val currentOnStatusHint = rememberUpdatedState(onStatusHint)
     return remember(context, uriHandler) {
         LinkInteractionListener { link ->
             val url = (link as? LinkAnnotation.Url)?.url ?: return@LinkInteractionListener
             runCatching { uriHandler.openUri(url) }
                 .onFailure { error ->
-                    Toast.makeText(context, "链接打开失败，请复制后打开", Toast.LENGTH_SHORT).show()
+                    currentOnStatusHint.value?.invoke("链接打开失败，请复制后打开")
+                        ?: Toast.makeText(context, "链接打开失败，请复制后打开", Toast.LENGTH_SHORT).show()
                     SessionApi.reportClientLog(
                         level = "warn",
                         event = "ui.link_open_failed",
@@ -2511,6 +2525,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
     linksEnabled: Boolean,
     tableCopyEnabled: Boolean,
     showLeadingSectionDivider: Boolean = false,
+    onStatusHint: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
@@ -2529,7 +2544,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                         style = headingStyle,
                         minLineHeight = with(density) { headingStyle.lineHeight.toDp() },
                         inlineMode = inlineMode,
-                        linksEnabled = linksEnabled
+                        linksEnabled = linksEnabled,
+                        onStatusHint = onStatusHint
                     )
                 }
             }
@@ -2557,7 +2573,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                         style = bodyStyle,
                         minLineHeight = paragraphLineHeight,
                         inlineMode = inlineMode,
-                        linksEnabled = linksEnabled
+                        linksEnabled = linksEnabled,
+                        onStatusHint = onStatusHint
                     )
                 }
             }
@@ -2610,7 +2627,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                         style = bodyStyle,
                         minLineHeight = bodyLineHeight,
                         inlineMode = inlineMode,
-                        linksEnabled = linksEnabled
+                        linksEnabled = linksEnabled,
+                        onStatusHint = onStatusHint
                     )
                 }
             }
@@ -2622,7 +2640,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     style = quoteStyle,
                     minLineHeight = paragraphLineHeight,
                     inlineMode = inlineMode,
-                    linksEnabled = linksEnabled
+                    linksEnabled = linksEnabled,
+                    onStatusHint = onStatusHint
                 )
             }
             is StreamingLineModel.Table -> {
@@ -2634,6 +2653,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                         messageSettled = tableCopyEnabled,
                         inlineMode = inlineMode
                     ),
+                    onStatusHint = onStatusHint,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -2644,7 +2664,8 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                     style = paragraphStyle,
                     minLineHeight = paragraphLineHeight,
                     inlineMode = inlineMode,
-                    linksEnabled = linksEnabled
+                    linksEnabled = linksEnabled,
+                    onStatusHint = onStatusHint
                 )
             }
         }
@@ -2657,14 +2678,17 @@ private fun RendererMarkdownTableImpl(
     inlineMode: RendererInlineMode,
     linksEnabled: Boolean,
     copyEnabled: Boolean,
+    onStatusHint: ((String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
     if (table.rows.isEmpty()) return
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+    val currentOnStatusHint = rememberUpdatedState(onStatusHint)
     val copyTable = {
         clipboardManager.setText(AnnotatedString(buildRendererMarkdownTableCopyText(table)))
-        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+        currentOnStatusHint.value?.invoke("已复制")
+            ?: Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
     }
     Column(
         modifier = modifier
@@ -2688,6 +2712,7 @@ private fun RendererMarkdownTableImpl(
                 inlineMode = inlineMode,
                 linksEnabled = linksEnabled,
                 copyEnabled = copyEnabled && rowIndex == 0,
+                onStatusHint = onStatusHint,
                 onCopy = copyTable
             )
         }
@@ -2702,6 +2727,7 @@ private fun RendererMarkdownTableRowImpl(
     inlineMode: RendererInlineMode,
     linksEnabled: Boolean,
     copyEnabled: Boolean,
+    onStatusHint: ((String) -> Unit)?,
     onCopy: () -> Unit
 ) {
     val titleStyle = remember {
@@ -2758,6 +2784,7 @@ private fun RendererMarkdownTableRowImpl(
                 minLineHeight = 24.dp,
                 inlineMode = inlineMode,
                 linksEnabled = linksEnabled,
+                onStatusHint = onStatusHint,
                 modifier = Modifier.weight(1f)
             )
             if (copyEnabled) {
@@ -2787,6 +2814,7 @@ private fun RendererMarkdownTableRowImpl(
                     inlineMode = inlineMode,
                     linksEnabled = linksEnabled,
                     emphasisEnabled = false,
+                    onStatusHint = onStatusHint,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -2863,7 +2891,8 @@ private fun RendererAssistantMarkdownContentImpl(
     content: String,
     modifier: Modifier = Modifier,
     showLeadingSectionDivider: Boolean = false,
-    tableCopyEnabled: Boolean = true
+    tableCopyEnabled: Boolean = true,
+    onStatusHint: ((String) -> Unit)? = null
 ) {
     val blockState = remember(content) {
         splitStreamingBlockState(
@@ -2898,6 +2927,7 @@ private fun RendererAssistantMarkdownContentImpl(
                     linksEnabled = true,
                     tableCopyEnabled = tableCopyEnabled,
                     showLeadingSectionDivider = blockLeadingDivider,
+                    onStatusHint = onStatusHint,
                     modifier = blockModifier
                 )
             }

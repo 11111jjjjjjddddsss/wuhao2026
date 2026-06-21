@@ -7478,6 +7478,7 @@ fun ChatScreen() {
                                                 !isActiveStreamingAssistant,
                                         showDisclaimer = true,
                                         tableCopyEnabled = failedAssistantState == null,
+                                        onStatusHint = ::showComposerStatusHint,
                                         onStreamingContentBoundsChanged = { bounds ->
                                             if (failedAssistantState == null) {
                                                 if (bounds != null) {
@@ -8749,7 +8750,6 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
                     UiCopyPreviewItem("更新失败原因", "校验、地址、大小、网络和缓存失败文案", UiCopyPreviewKind.AppUpdateFailureReasons),
                     UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
-                    UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
                     UiCopyPreviewItem("更新权限大字体", "1.6x 字体下真实更新弹窗", UiCopyPreviewKind.AppUpdatePermissionLargeFont),
                     UiCopyPreviewItem("账号管理大字体", "1.6x 字体下账号和危险操作", UiCopyPreviewKind.HamburgerAccountLargeFont),
                     UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
@@ -8834,6 +8834,9 @@ private fun UiCopyPreviewOverlay(
                 title = "主界面中部浮层",
                 items = listOf(
                     UiCopyPreviewItem("正在检查更新...", "设置 / 反馈 / 礼品卡等菜单短提示统一到这里", UiCopyPreviewKind.MenuNoticeHint),
+                    UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
+                    UiCopyPreviewItem("已复制", "正文 / 表格复制成功中部短提示", UiCopyPreviewKind.CopySuccessHint),
+                    UiCopyPreviewItem("链接打开失败，请复制后打开", "AI / 反馈链接失败中部短提示", UiCopyPreviewKind.LinkOpenFailedHint),
                     UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽中部短提示", UiCopyPreviewKind.Quota),
                     UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网 / 门户 Wi-Fi；可联网先放行", UiCopyPreviewKind.Network),
                     UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
@@ -9138,6 +9141,8 @@ private enum class UiCopyPreviewKind {
     InterruptedFallback,
     InputTooLong,
     MenuNoticeHint,
+    CopySuccessHint,
+    LinkOpenFailedHint,
     MessageMenu,
     InputMenu,
     ImageReadFailure,
@@ -9850,6 +9855,8 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.InterruptedFallback -> UiCopyPreviewHint(INTERRUPTED_FALLBACK_HINT_TEXT)
                 UiCopyPreviewKind.InputTooLong -> UiCopyPreviewHint(INPUT_TOO_LONG_HINT_TEXT)
                 UiCopyPreviewKind.MenuNoticeHint -> UiCopyPreviewHint("正在检查更新...")
+                UiCopyPreviewKind.CopySuccessHint -> UiCopyPreviewHint("已复制")
+                UiCopyPreviewKind.LinkOpenFailedHint -> UiCopyPreviewHint("链接打开失败，请复制后打开")
                 UiCopyPreviewKind.MessageMenu -> {
                     MessageActionMenuCardContent(onCopy = {}, onCopyFull = {})
                 }

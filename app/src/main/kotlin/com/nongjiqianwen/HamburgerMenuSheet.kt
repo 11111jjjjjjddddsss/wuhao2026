@@ -5,7 +5,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.view.HapticFeedbackConstants
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -3165,6 +3164,7 @@ private fun HamburgerSupportFeedbackPage(
             },
             onSend = ::sendMessage,
             onRetry = { loadTick += 1 },
+            onStatusHint = onPendingAction,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(start = 18.dp, end = 18.dp, top = 24.dp, bottom = 18.dp)
@@ -3196,6 +3196,7 @@ private fun HamburgerSupportFeedbackContent(
     onRemoveImage: (ComposerImageAttachment) -> Unit,
     onSend: () -> Unit,
     onRetry: () -> Unit,
+    onStatusHint: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState(
@@ -3292,7 +3293,10 @@ private fun HamburgerSupportFeedbackContent(
                                     ?: "local-$index-${message.createdAt}-${message.senderType}"
                             }
                         ) { _, message ->
-                            HamburgerSupportMessageBubble(message = message)
+                            HamburgerSupportMessageBubble(
+                                message = message,
+                                onStatusHint = onStatusHint
+                            )
                         }
                     }
                     loading -> {
@@ -3559,7 +3563,10 @@ private fun HamburgerSupportStatusText(text: String) {
 }
 
 @Composable
-private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
+private fun HamburgerSupportMessageBubble(
+    message: SessionApi.SupportMessage,
+    onStatusHint: (String) -> Unit
+) {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val isUser = message.senderType == "user"
@@ -3578,7 +3585,7 @@ private fun HamburgerSupportMessageBubble(message: SessionApi.SupportMessage) {
             val url = (link as? LinkAnnotation.Url)?.url ?: return@LinkInteractionListener
             runCatching { uriHandler.openUri(url) }
                 .onFailure { error ->
-                    Toast.makeText(context, "链接打开失败，请复制后打开", Toast.LENGTH_SHORT).show()
+                    onStatusHint("链接打开失败，请复制后打开")
                     SessionApi.reportClientLog(
                         level = "warn",
                         event = "ui.link_open_failed",
@@ -3911,6 +3918,7 @@ internal fun HamburgerSupportFeedbackPagePreview(
             onRemoveImage = {},
             onSend = {},
             onRetry = {},
+            onStatusHint = {},
             modifier = Modifier
                 .padding(14.dp)
                 .heightIn(min = 520.dp, max = 620.dp)
