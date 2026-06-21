@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,7 @@ type UploadStore interface {
 	Name() string
 	Save(ctx context.Context, filename string, contentType string, data []byte) error
 	Open(ctx context.Context, filename string) (io.ReadCloser, string, int64, error)
+	Delete(ctx context.Context, filename string) error
 }
 
 func NewUploadStoreFromEnv(localDir string) (UploadStore, error) {
@@ -88,6 +90,14 @@ func (s LocalUploadStore) Open(_ context.Context, filename string) (io.ReadClose
 	return file, "", stat.Size(), nil
 }
 
+func (s LocalUploadStore) Delete(_ context.Context, filename string) error {
+	err := os.Remove(filepath.Join(s.dir, filepath.FromSlash(filename)))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return err
+}
+
 type OSSUploadStore struct {
 	bucket *oss.Bucket
 	prefix string
@@ -118,6 +128,10 @@ func (s *OSSUploadStore) Open(_ context.Context, filename string) (io.ReadCloser
 		}
 	}
 	return reader, meta.Get("Content-Type"), size, nil
+}
+
+func (s *OSSUploadStore) Delete(_ context.Context, filename string) error {
+	return s.bucket.DeleteObject(s.objectKey(filename))
 }
 
 func (s *OSSUploadStore) objectKey(filename string) string {

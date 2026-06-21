@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- 后端 / 运维脚本按多代理巡检结果做小范围收口：ECS 部署脚本在迁移风险扫描前会优先读取线上 `/opt/nongjiqiancha/server/REVISION`，扫描 `线上 revision..待部署 commit` 范围，读不到或本地不存在时才回退默认 base 并打印 `migration_diff_base=default`；上传文件超过 1MiB 时返回 `413 body_too_large`；support 图片保存成功但归属登记失败时会 best-effort 删除刚保存的对象，减少孤儿 support 图片。同步补 Go 单测和部署 runbook；本轮未部署线上、不改 Android、不改官网 / 检查更新 / 正式包，也不改主对话锚点、今日农情提示词或记忆文档提示词。
+
 - 后端主聊天尾段和后台列表隐私做最小稳态修复：模型上游 `[DONE]` 后的 session 归档、扣次、outbox 标记改用短超时上下文，inflight 释放也加独立短超时，避免数据库极端卡顿时请求长期挂住、后续重发 / 新发被占用；失败仍沿用现有 `STREAM_ARCHIVE_FAILED`、扣次后台重试和远端 snapshot 恢复链，不改 Android。后台用户列表和帮助反馈会话列表不再批量返回完整手机号，完整手机号只保留在授权且有审计的详情入口；新增单测锁住列表不批量泄露手机号，Android pending / remote completion 单测继续通过。
 
 - 后台用户详情补完整问诊查看和返回列表：`/admin-api/v1/users/detail` 在现有后台角色权限下为最近问诊返回完整 `user_text / assistant_text`，用户详情页最多展示最近 12 轮并支持展开查看完整用户问题和 AI 回复；用户管理页内点击用户行、账号ID或“详情”都可打开详情，不再覆盖当前查询筛选，详情卡增加“返回列表”。该改动只改后台和 admin API，不影响 Android App、不新增聊天正文导出，也不把完整聊天放进总览、产品洞察或日志。

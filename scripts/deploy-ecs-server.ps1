@@ -139,6 +139,47 @@ function Wait-RunCommand {
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $serverDir = Join-Path $repoRoot "server-go"
+
+function Test-GitCommitRef {
+    param([string]$Ref)
+    if ([string]::IsNullOrWhiteSpace($Ref)) {
+        return $false
+    }
+    & git -C $repoRoot rev-parse --verify "$Ref^{commit}" *> $null
+    return $LASTEXITCODE -eq 0
+}
+
+function Get-CurrentDeployedServerRevision {
+    try {
+        $run = Invoke-JsonCommand @(
+            "aliyun", "ecs", "RunCommand",
+            "--RegionId", $RegionId,
+            "--Type", "RunShellScript",
+            "--InstanceId.1", $InstanceId,
+            "--CommandContent", "if [ -f /opt/nongjiqiancha/server/REVISION ]; then tr -d '\r\n' < /opt/nongjiqiancha/server/REVISION | head -c 64; fi",
+            "--Timeout", "30"
+        )
+        $final = Wait-RunCommand $run.InvokeId
+        if ($final.Status -ne "Success" -or $final.ExitCode -ne 0) {
+            Write-Warning "Could not read current deployed server revision; migration guard will use its local default base."
+            return ""
+        }
+        $revision = (($final.Output -split "`n") | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1).Trim()
+        if ([string]::IsNullOrWhiteSpace($revision)) {
+            Write-Warning "Current deployed server revision is empty; migration guard will use its local default base."
+            return ""
+        }
+        if (-not (Test-GitCommitRef $revision)) {
+            Write-Warning "Current deployed server revision '$revision' is not present in this worktree; migration guard will use its local default base."
+            return ""
+        }
+        return $revision
+    } catch {
+        Write-Warning "Could not detect current deployed server revision: $($_.Exception.Message). Migration guard will use its local default base."
+        return ""
+    }
+}
+
 $headCommit = (& git -C $repoRoot rev-parse --short HEAD).Trim()
 if ([string]::IsNullOrWhiteSpace($Commit)) {
     $Commit = $headCommit
@@ -166,6 +207,10 @@ if ($RemoteTempRetentionDays -lt 1 -or $RemoteTempRetentionDays -gt 30) {
 
 $migrationRiskScript = Join-Path $PSScriptRoot "check-server-migration-risk.ps1"
 if (Test-Path -LiteralPath $migrationRiskScript) {
+    $effectiveMigrationDiffBase = $MigrationDiffBase.Trim()
+    if ([string]::IsNullOrWhiteSpace($effectiveMigrationDiffBase) -and -not $PackageOnly) {
+        $effectiveMigrationDiffBase = Get-CurrentDeployedServerRevision
+    }
     $migrationRiskArgs = @(
         "-NoProfile",
         "-ExecutionPolicy",
@@ -175,8 +220,11 @@ if (Test-Path -LiteralPath $migrationRiskScript) {
         "-HeadRef",
         $Commit
     )
-    if (-not [string]::IsNullOrWhiteSpace($MigrationDiffBase)) {
-        $migrationRiskArgs += @("-BaseRef", $MigrationDiffBase)
+    if (-not [string]::IsNullOrWhiteSpace($effectiveMigrationDiffBase)) {
+        Write-Host "migration_diff_base=$effectiveMigrationDiffBase"
+        $migrationRiskArgs += @("-BaseRef", $effectiveMigrationDiffBase)
+    } else {
+        Write-Host "migration_diff_base=default"
     }
     if ($AllowHighRiskMigrations) {
         $migrationRiskArgs += "-AllowHighRiskMigrations"

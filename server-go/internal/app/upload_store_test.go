@@ -76,6 +76,25 @@ func TestLocalUploadStoreSaveAndOpenSupportObject(t *testing.T) {
 	}
 }
 
+func TestLocalUploadStoreDelete(t *testing.T) {
+	store := LocalUploadStore{dir: t.TempDir()}
+	const filename = "support/delete-me.jpg"
+
+	if err := store.Save(context.Background(), filename, "image/jpeg", []byte("jpeg-bytes")); err != nil {
+		t.Fatalf("Save returned error: %v", err)
+	}
+	if err := store.Delete(context.Background(), filename); err != nil {
+		t.Fatalf("Delete returned error: %v", err)
+	}
+	if reader, _, _, err := store.Open(context.Background(), filename); err == nil {
+		_ = reader.Close()
+		t.Fatal("Open after Delete returned nil error")
+	}
+	if err := store.Delete(context.Background(), filename); err != nil {
+		t.Fatalf("Delete missing object returned error: %v", err)
+	}
+}
+
 func TestNewUploadStoreRejectsIncompleteOSSConfig(t *testing.T) {
 	t.Setenv("UPLOAD_STORAGE_BACKEND", "oss")
 	t.Setenv("OSS_BUCKET", "")

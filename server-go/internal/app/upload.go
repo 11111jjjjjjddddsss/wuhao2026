@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -23,6 +24,8 @@ const (
 	defaultUploadRateLimitPruneInterval = 10 * time.Minute
 	uploadPurposeSupport                = "support"
 )
+
+var errUploadTooLarge = errors.New("upload file too large")
 
 var uploadExtensions = map[string]string{
 	"image/jpeg": ".jpg",
@@ -64,6 +67,10 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	contentType, data, err := readUpload(file)
 	if err != nil {
+		if errors.Is(err, errUploadTooLarge) {
+			s.writeError(w, http.StatusRequestEntityTooLarge, "body_too_large")
+			return
+		}
 		s.writeError(w, http.StatusBadRequest, "upload failed")
 		return
 	}
@@ -93,10 +100,12 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.HasPrefix(objectName, uploadPurposeSupport+"/") {
 		if s.store == nil {
+			s.deleteUploadObjectBestEffort(objectName)
 			s.writeError(w, http.StatusInternalServerError, "internal_error")
 			return
 		}
 		if err := s.store.RecordSupportUploadOwnership(r.Context(), auth.UserID, objectName, time.Now().UnixMilli()); err != nil {
+			s.deleteUploadObjectBestEffort(objectName)
 			s.logger.Error("record support upload ownership failed", "userId", auth.UserID, "object", objectName, "error", err)
 			s.writeError(w, http.StatusInternalServerError, "upload failed")
 			return
@@ -106,6 +115,19 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"url": strings.TrimRight(publicBaseURL, "/") + "/uploads/" + objectName,
 	})
+}
+
+func (s *Server) deleteUploadObjectBestEffort(objectName string) {
+	if s.uploadStore == nil || strings.TrimSpace(objectName) == "" {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := s.uploadStore.Delete(ctx, objectName); err != nil {
+		if s.logger != nil {
+			s.logger.Warn("delete uploaded object after failed ownership record failed", "object", objectName, "backend", s.uploadStore.Name(), "error", err)
+		}
+	}
 }
 
 func (s *Server) handleUploadsStatic(w http.ResponseWriter, r *http.Request) {
@@ -154,6 +176,9 @@ func readUpload(file multipart.File) (string, []byte, error) {
 		return "", nil, err
 	}
 	if len(data) == 0 || len(data) > maxUploadFileSize {
+		if len(data) > maxUploadFileSize {
+			return "", nil, errUploadTooLarge
+		}
 		return "", nil, io.ErrUnexpectedEOF
 	}
 	contentType := http.DetectContentType(data)
