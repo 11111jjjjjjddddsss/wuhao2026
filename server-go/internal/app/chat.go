@@ -32,10 +32,13 @@ const (
 	defaultChatThinkingMode         = "always"
 	defaultChatThinkingBudget       = 1024
 	todayAgriContextRoundLimit      = 2
+	chatHistoricalImageContextTTL   = 72 * time.Hour
 )
 
 const chatDiagnosticConstraint = `【诊断约束】
 所有回答禁止表格。排版尽量简洁，多用短段落和适当空行；不要使用多级列表和项目符号列表，避免长段堆叠。
+
+默认使用中文表达，避免夹杂不必要的英文术语；只有农药/肥料成分、品种名、病原拉丁学名、登记标签、品牌商品名或用户原文确实需要保留时，才使用英文，并尽量配中文解释。
 
 涉及病虫害、药害肥害、生理异常或农技判断时，以本轮图片和客观信息为准。时间、地点、天气、历史对话和记忆摘要只作风险背景，不能盖过本轮证据。
 
@@ -1234,8 +1237,9 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 	}
 
 	previousRoundIndex := len(rounds) - 1
+	now := time.Now()
 	for index, round := range rounds {
-		messages = append(messages, BailianMessage{Role: "user", Content: s.roundToUserContent(round, index == previousRoundIndex)})
+		messages = append(messages, BailianMessage{Role: "user", Content: s.roundToUserContent(round, index == previousRoundIndex, now)})
 		messages = append(messages, BailianMessage{Role: "assistant", Content: round.Assistant})
 	}
 	messages = append(messages, BailianMessage{Role: "system", Content: chatDiagnosticConstraint})
@@ -1345,12 +1349,26 @@ func buildVisionUserContent(text string, images []string) any {
 	return content
 }
 
-func (s *Server) roundToUserContent(round SessionRound, includeImages bool) any {
+func (s *Server) roundToUserContent(round SessionRound, includeImages bool, now time.Time) any {
 	userText := round.userTextWithContextTime(s.shanghai)
 	if !includeImages {
 		return userText
 	}
+	if len(round.UserImages) == 0 || !historicalImagesWithinContextTTL(round.CreatedAt, now) {
+		return userText
+	}
 	return buildVisionUserContent(userText, round.UserImages)
+}
+
+func historicalImagesWithinContextTTL(createdAt int64, now time.Time) bool {
+	if createdAt <= 0 {
+		return false
+	}
+	created := time.UnixMilli(createdAt)
+	if now.IsZero() || now.Before(created) {
+		return true
+	}
+	return now.Sub(created) <= chatHistoricalImageContextTTL
 }
 
 func (round SessionRound) userTextWithContextTime(loc *time.Location) string {

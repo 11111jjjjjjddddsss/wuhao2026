@@ -204,8 +204,8 @@ function Invoke-AppUpdatePublicProbe {
             if ($json.has_update -ne $true) {
                 Add-ErrorItem "api_app_update_public_probe expected_has_update=true"
             }
-        } elseif ($json.has_update -ne $false) {
-            Add-ErrorItem "api_app_update_public_probe expected_has_update=false"
+        } else {
+            Write-Host "api_app_update_public_probe_has_update=$($json.has_update)"
         }
     } catch {
         Add-ErrorItem "api_app_update_public_probe request_failed=$($_.Exception.Message)"

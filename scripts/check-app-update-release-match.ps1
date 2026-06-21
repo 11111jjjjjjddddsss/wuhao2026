@@ -18,6 +18,33 @@ $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.Net.Http
 
+function Get-LocalAdminSmokeSecret {
+    param([string[]]$Names)
+    $secretPath = Join-Path $env:USERPROFILE ".nongjiqiancha\prod-secrets.json"
+    if (-not (Test-Path $secretPath)) {
+        return ""
+    }
+    try {
+        $secrets = Get-Content -Raw -Path $secretPath | ConvertFrom-Json
+        foreach ($name in $Names) {
+            $property = $secrets.PSObject.Properties[$name]
+            if ($null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+                return [string]$property.Value
+            }
+        }
+    } catch {
+        return ""
+    }
+    return ""
+}
+
+if ([string]::IsNullOrWhiteSpace($Username)) {
+    $Username = Get-LocalAdminSmokeSecret @("admin_smoke_username", "nongji_admin_username")
+}
+if ([string]::IsNullOrWhiteSpace($Password)) {
+    $Password = Get-LocalAdminSmokeSecret @("admin_smoke_password", "nongji_admin_password")
+}
+
 function Add-Failure {
     param(
         [System.Collections.Generic.List[string]]$Failures,
@@ -409,6 +436,15 @@ if ($ProbePreviousVersionUpdate -and $failures.Count -eq 0) {
         }
         if ($probeForceUpdate) {
             Add-Failure $failures "public /api/app/update force_update must stay false for the current ordinary-update release flow"
+        }
+
+        $currentProbeUrl = Join-PublicApiUrl ("/api/app/update?platform=android&version_code={0}&version_name={1}" -f $artifact.VersionCode, [uri]::EscapeDataString($artifact.VersionName))
+        Write-Host ("public_current_update_probe_url_host={0}" -f ([System.Uri]$currentProbeUrl).Host)
+        $currentProbe = Invoke-RestMethod -Method Get -Uri $currentProbeUrl -TimeoutSec $TimeoutSec
+        $currentProbeHasUpdate = [bool]$currentProbe.has_update
+        Write-Host ("public_current_update_probe_has_update={0}" -f $currentProbeHasUpdate)
+        if ($currentProbeHasUpdate) {
+            Add-Failure $failures "public /api/app/update must not report an update for the current APK VersionCode=$($artifact.VersionCode)"
         }
     }
 }

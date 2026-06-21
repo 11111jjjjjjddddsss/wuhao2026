@@ -43,6 +43,10 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 		"排版尽量简洁",
 		"多用短段落和适当空行；不要使用多级列表和项目符号列表",
 		"避免长段堆叠",
+		"默认使用中文表达",
+		"避免夹杂不必要的英文术语",
+		"只有农药/肥料成分、品种名、病原拉丁学名、登记标签、品牌商品名或用户原文确实需要保留时",
+		"才使用英文，并尽量配中文解释",
 		"证据不足要明确说“不确定”",
 		"不要把单张图片或单轮描述写成确诊",
 		"候选判断要说明支持点、反证和验证方法",
@@ -190,6 +194,7 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	server := &Server{
 		systemAnchor: "anchor",
 	}
+	recent := time.Now().Add(-1 * time.Hour).UnixMilli()
 
 	snapshot := &SessionSnapshot{
 		UserID: "u1",
@@ -205,6 +210,7 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 				User:        "old-2",
 				UserImages:  []string{"https://img/old-2.jpg"},
 				Assistant:   "a2",
+				CreatedAt:   recent,
 			},
 		},
 	}
@@ -258,6 +264,50 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	}
 	if got := currentContent[1]["image_url"].(map[string]any)["url"]; got != "https://img/current.jpg" {
 		t.Fatalf("expected current image preserved, got %#v", got)
+	}
+}
+
+func TestBuildPromptMessagesDropsExpiredPreviousRoundImages(t *testing.T) {
+	server := &Server{
+		systemAnchor: "anchor",
+	}
+	expired := time.Now().Add(-chatHistoricalImageContextTTL - time.Hour).UnixMilli()
+
+	snapshot := &SessionSnapshot{
+		UserID: "u1",
+		ARoundsFull: []SessionRound{
+			{
+				ClientMsgID: "r1",
+				User:        "old image",
+				UserImages:  []string{"https://img/expired.jpg"},
+				Assistant:   "a1",
+				CreatedAt:   expired,
+			},
+		},
+	}
+
+	messages, usedCount, _ := server.buildPromptMessages(
+		snapshot,
+		6,
+		"current",
+		nil,
+		"context",
+		"",
+	)
+
+	if usedCount != 1 {
+		t.Fatalf("expected 1 historical round, got %d", usedCount)
+	}
+	historicalUser := messages[2]
+	if historicalUser.Role != "user" {
+		t.Fatalf("expected historical message to be user, got %q", historicalUser.Role)
+	}
+	if _, ok := historicalUser.Content.(string); !ok {
+		t.Fatalf("expected expired previous image to be dropped to text-only, got %#v", historicalUser.Content)
+	}
+	payload, _ := json.Marshal(historicalUser.Content)
+	if strings.Contains(string(payload), "expired.jpg") {
+		t.Fatalf("expired image URL leaked into prompt content: %#v", historicalUser.Content)
 	}
 }
 
