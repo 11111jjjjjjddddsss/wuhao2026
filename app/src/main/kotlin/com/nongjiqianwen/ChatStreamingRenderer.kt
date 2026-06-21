@@ -598,6 +598,23 @@ internal fun stripRendererStandaloneHorizontalRules(text: String): String {
         .joinToString("\n")
 }
 
+internal fun normalizeRendererTerminalDanglingColon(text: String): String {
+    if (text.isEmpty()) return text
+    val trimmedEnd = text.trimEnd()
+    if (trimmedEnd.isEmpty()) return text
+    val trailingWhitespace = text.substring(trimmedEnd.length)
+    if (trimmedEnd.endsWith("**")) {
+        val beforeClosingBold = trimmedEnd.dropLast(2)
+        val terminalBeforeBold = beforeClosingBold.lastOrNull()
+        if (terminalBeforeBold == '：' || terminalBeforeBold == ':') {
+            return beforeClosingBold.dropLast(1) + "。**" + trailingWhitespace
+        }
+    }
+    val terminal = trimmedEnd.last()
+    if (terminal != '：' && terminal != ':') return text
+    return trimmedEnd.dropLast(1) + "。" + trailingWhitespace
+}
+
 private fun rendererMarkdownIndentLevel(line: String): Int {
     var columns = 0
     for (ch in line) {
@@ -957,11 +974,15 @@ internal fun buildRendererStructureStats(content: String): RendererStructureStat
     )
 }
 
-private fun plainRendererInlineText(text: String): String =
+private fun plainRendererInlineText(
+    text: String,
+    normalizeTerminalColon: Boolean = true
+): String =
     buildRendererInlineAnnotatedString(
         text = text,
         mode = RendererInlineMode.Settled,
-        linksEnabled = false
+        linksEnabled = false,
+        normalizeTerminalColon = normalizeTerminalColon
     ).text.trim()
 
 internal fun isRendererCompactNumberedSection(model: StreamingLineModel.Numbered): Boolean =
@@ -974,7 +995,7 @@ internal fun shouldUseRendererCompactNumberedSection(
     isRendererCompactNumberedSection(model)
 
 private fun isRendererCompactNumberedSectionText(text: String): Boolean {
-    val plain = plainRendererInlineText(text)
+    val plain = plainRendererInlineText(text, normalizeTerminalColon = false)
         .replace(Regex("\\s+"), "")
     if (plain.length !in 2..28) return false
     if (!plain.endsWith("：") && !plain.endsWith(":")) return false
@@ -2047,10 +2068,16 @@ internal fun buildRendererInlineAnnotatedString(
     mode: RendererInlineMode,
     linkInteractionListener: LinkInteractionListener? = null,
     linksEnabled: Boolean = true,
-    emphasisEnabled: Boolean = true
+    emphasisEnabled: Boolean = true,
+    normalizeTerminalColon: Boolean = mode == RendererInlineMode.Settled
 ): AnnotatedString {
+    val cleanedText = stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(text))
     val displayText = normalizeRendererLooseBoldDelimiterSpacing(
-        stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(text))
+        if (normalizeTerminalColon) {
+            normalizeRendererTerminalDanglingColon(cleanedText)
+        } else {
+            cleanedText
+        }
     )
     val canUseCache =
         mode == RendererInlineMode.Settled && linkInteractionListener == null && linksEnabled && emphasisEnabled

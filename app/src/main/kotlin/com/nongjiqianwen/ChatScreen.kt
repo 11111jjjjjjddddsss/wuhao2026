@@ -8794,7 +8794,7 @@ private fun UiCopyPreviewOverlay(
                 title = "文本渲染",
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
-                    UiCopyPreviewItem("AI Markdown 兜底", "列表左齐、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
+                    UiCopyPreviewItem("AI Markdown 兜底", "列表左齐、横杠、emoji 和孤冒号清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
                     UiCopyPreviewItem("AI 表格", "无摘要表头、正文不加粗、单表复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
@@ -9017,6 +9017,7 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
 private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE =
     "## Markdown 兜底检查\n" +
         "📌 建议下一步操作：\n" +
+        "这种天气对夏茬作物影响明显：\n" +
         "---\n" +
         "✅ 关键鉴别点：如果有白色霉层 → 优先考虑霜霉病。\n" +
         "- **农业场景：**\n" +

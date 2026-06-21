@@ -65,6 +65,41 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun settledTerminalColonRendersAsPeriodWhenLineHasNoBody() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "这种天气对夏茬作物影响明显：",
+            mode = RendererInlineMode.Settled
+        )
+        val boldOnly = buildRendererInlineAnnotatedString(
+            text = "**管理建议：**",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("这种天气对夏茬作物影响明显。", rendered.text)
+        assertEquals("管理建议。", boldOnly.text)
+    }
+
+    @Test
+    fun colonWithBodyKeepsColon() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "病害风险：高温高湿是真菌性病害的爆发温床。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("病害风险：高温高湿是真菌性病害的爆发温床。", rendered.text)
+    }
+
+    @Test
+    fun activeStreamingTerminalColonWaitsForLineToSettle() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "温度：",
+            mode = RendererInlineMode.Streaming
+        )
+
+        assertEquals("温度：", rendered.text)
+    }
+
+    @Test
     fun emphasisDisabledHidesBoldMarkersWithoutBoldWeight() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "**高**。开袋即用。",
@@ -810,7 +845,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals(
-            "不认命：\n\n通过技术手段对抗气候风险。\n\n  1. 通过持续学习对抗行业变革。",
+            "不认命。\n\n通过技术手段对抗气候风险。\n\n  1. 通过持续学习对抗行业变革。",
             copy
         )
     }
@@ -1126,7 +1161,7 @@ class ChatStreamingRendererTest {
         assertEquals(2, models.size)
         assertTrue(models.none { it is StreamingLineModel.Blank })
         assertEquals(
-            "液积聚处。\n\n建议下一步操作：",
+            "液积聚处。\n\n建议下一步操作。",
             buildRendererPlainCopyText("液积聚处。\n\n---\n\n建议下一步操作：")
         )
         assertFalse(buildRendererPlainCopyText("液积聚处。\n\n---\n\n建议下一步操作：").contains("---"))
