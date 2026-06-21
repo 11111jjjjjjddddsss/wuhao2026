@@ -261,7 +261,6 @@ function sidebarHTML(): string {
   const navRoutes = visibleRoutes();
   const primaryRoutes = simpleSidebarRoutes(navRoutes);
   const advancedRoutes = navRoutes.filter((route) => !primaryRoutes.includes(route));
-  const advancedActive = advancedRoutes.some((route) => route.key === activeRoute);
   if (adminSimpleMode) {
     return `
       <aside class="sidebar simple-sidebar">
@@ -278,11 +277,11 @@ function sidebarHTML(): string {
           <div class="nav-section-title">常用</div>
           ${primaryRoutes.map((route) => sidebarRouteButton(route)).join("")}
         </div>
-        <details class="nav-more" ${advancedActive ? "open" : ""}>
-          <summary>
+        <div class="nav-more">
+          <div class="nav-more-title">
             <span>更多工具</span>
             <span class="small">${advancedRoutes.length} 项</span>
-          </summary>
+          </div>
           <div class="nav-more-body">
             ${advancedRoutes
               .map(
@@ -295,7 +294,7 @@ function sidebarHTML(): string {
               )
               .join("")}
           </div>
-        </details>
+        </div>
       </aside>
     `;
   }

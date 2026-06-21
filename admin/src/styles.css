@@ -335,28 +335,15 @@ button {
   padding-top: 10px;
 }
 
-.nav-more summary {
+.nav-more-title {
   display: flex;
   min-height: 38px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  border-radius: 6px;
   color: #dfe5ea;
-  cursor: pointer;
-  list-style: none;
   padding: 8px 9px;
   font-weight: 700;
-}
-
-.nav-more summary::-webkit-details-marker {
-  display: none;
-}
-
-.nav-more summary:hover,
-.nav-more[open] summary {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
 }
 
 .nav-more-body {
@@ -2245,13 +2232,11 @@ button {
     padding: 0 10px 8px;
   }
 
-  .nav-more summary {
+  .nav-more-title {
     min-height: 40px;
   }
 
   .nav-more-body {
-    max-height: 42vh;
-    overflow: auto;
     padding-bottom: 4px;
   }
 
