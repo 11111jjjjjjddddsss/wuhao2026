@@ -134,15 +134,26 @@ func TestAdminOwnerInheritsSensitiveVisibility(t *testing.T) {
 	}
 }
 
-func TestAdminListEndpointsNeverExposeFullPhoneNumbers(t *testing.T) {
-	roles := []string{"", "viewer", "ops_readonly", "auditor", "support", "finance_ops", "owner"}
-	for _, role := range roles {
+func TestAdminListEndpointsExposeFullPhoneNumbersForOperatorRoles(t *testing.T) {
+	maskedRoles := []string{"", "viewer", "ops_readonly", "auditor", "content_ops", "release_ops"}
+	for _, role := range maskedRoles {
 		t.Run(role, func(t *testing.T) {
 			if adminCanViewAccountPhoneInUserList(role) {
 				t.Fatalf("user list should not expose full phone for role %q", role)
 			}
 			if adminCanViewAccountPhoneInSupportConversationList(role) {
 				t.Fatalf("support conversation list should not expose full phone for role %q", role)
+			}
+		})
+	}
+	operatorRoles := []string{"support", "finance_ops", "owner"}
+	for _, role := range operatorRoles {
+		t.Run(role, func(t *testing.T) {
+			if !adminCanViewAccountPhoneInUserList(role) {
+				t.Fatalf("user list should expose full phone for operator role %q", role)
+			}
+			if !adminCanViewAccountPhoneInSupportConversationList(role) {
+				t.Fatalf("support conversation list should expose full phone for operator role %q", role)
 			}
 		})
 	}

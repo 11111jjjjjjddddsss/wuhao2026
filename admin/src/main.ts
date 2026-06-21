@@ -48,21 +48,21 @@ interface RouteItem {
 }
 
 const routes: RouteItem[] = [
-  { key: "overview", label: "总览", section: "工作台", hint: "可用" },
   { key: "monitoring", label: "监控面板", section: "工作台", hint: "可用" },
+  { key: "overview", label: "总览", section: "工作台", hint: "可用" },
   { key: "users", label: "用户管理", section: "用户与增长", hint: "可查", roles: ["ops_readonly", "support", "finance_ops"] },
+  { key: "insights", label: "产品洞察", section: "用户与增长", hint: "聚合报表" },
   { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops", "auditor"] },
   { key: "orders", label: "订单", section: "权益与交易", hint: "只读核查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "发卡/追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
   { key: "account-deletion", label: "注销申请", section: "运营工作台", hint: "待处理/核验", roles: ["support", "ops_readonly", "auditor", "finance_ops"] },
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "回复/查看", roles: ["support", "ops_readonly", "auditor"] },
-  { key: "app-logs", label: "App日志", section: "运营工作台", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
   { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "人工/补跑", roles: ["content_ops", "ops_readonly", "auditor"] },
   { key: "app-update", label: "检查更新", section: "运营工作台", hint: "发布/停更", roles: ["release_ops", "ops_readonly", "auditor"] },
-  { key: "audit", label: "审计", section: "安全与系统", hint: "可查", roles: ["auditor", "ops_readonly"] },
-  { key: "account", label: "账号安全", section: "安全与系统", hint: "改密" },
-  { key: "insights", label: "产品洞察", section: "安全与系统", hint: "聚合报表" },
-  { key: "health", label: "服务健康", section: "安全与系统", hint: "可查" },
+  { key: "app-logs", label: "App日志", section: "排障与安全", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
+  { key: "audit", label: "审计", section: "排障与安全", hint: "可查", roles: ["auditor", "ops_readonly"] },
+  { key: "account", label: "账号安全", section: "排障与安全", hint: "改密" },
+  { key: "health", label: "服务健康", section: "排障与安全", hint: "可查" },
 ];
 
 const appNode = document.querySelector<HTMLDivElement>("#app");
@@ -240,7 +240,7 @@ function sidebarHTML(): string {
           ${brandMarkHTML()}
           <div>
             <div class="sidebar-title">农技千查</div>
-            <div class="small" style="color:#9ba6b2">Admin Console</div>
+            <div class="small" style="color:#9ba6b2">管理后台</div>
           </div>
         </div>
       </div>
@@ -270,14 +270,15 @@ function sidebarHTML(): string {
 
 function topbarHTML(): string {
   const user = auth?.admin_user;
+  const currentRoute = routes.find((item) => item.key === activeRoute);
   return `
     <header class="topbar">
       <div class="topbar-left">
-        <span class="env-badge">Production</span>
-        <span class="muted small topbar-api">管理 API：/admin-api/v1</span>
+        <span class="env-badge">生产后台</span>
+        <span class="muted small topbar-api">当前页面：${escapeHTML(currentRoute?.label || "总览")}</span>
       </div>
       <div class="topbar-right">
-        <span class="role-badge">${escapeHTML(user?.role || "unknown")}</span>
+        <span class="role-badge">${escapeHTML(roleLabel(user?.role))}</span>
         <span class="small">${escapeHTML(user?.display_name || user?.username || "")}</span>
         ${user?.must_change_password ? `<span class="pill warn">需要改密</span>` : ""}
         <button class="button" data-action="route" data-route="account">账号安全</button>
@@ -348,7 +349,7 @@ async function overviewPage(): Promise<string> {
       ${kpi("服务健康", healthSummary(overview.health), `API ${overview.health.api || "unknown"}`)}
       ${kpi("今日问诊", today.chat_rounds, `${today.chat_users} 位去重用户`)}
       ${kpi("图片问诊", today.image_chat_rounds, "本日包含图片轮次")}
-      ${kpi("App错误", today.app_errors, "自动日志 error")}
+      ${kpi("App异常", today.app_errors, "用户端错误日志")}
       ${kpi("未回复反馈", today.support_needs_reply, `近30天 ${today.support_conversations} 个会话`)}
       ${kpi("今日农情", today.daily_agri_status || "unknown", "当天内容状态")}
     </section>
@@ -362,10 +363,10 @@ async function overviewPage(): Promise<string> {
           <table class="table">
             <tbody>
               ${metricRow("注册用户", today.registered_users)}
-              ${metricRow("活跃 App 登录 session", today.active_auth_sessions)}
+              ${metricRow("活跃登录设备/会话", today.active_auth_sessions)}
               ${metricRow("问诊去重用户", today.chat_users)}
               ${metricRow("额度扣减", today.quota_deductions)}
-              ${metricRow("自动追账", today.quota_consume_pending ?? 0)}
+              ${metricRow("系统补扣中", today.quota_consume_pending ?? 0)}
               ${metricRow("近30天反馈会话", today.support_conversations)}
             </tbody>
           </table>
@@ -490,7 +491,7 @@ async function usersPage(): Promise<string> {
     `/admin-api/v1/users${toQuery({ query, limit: 50 })}`,
   );
   return `
-    ${pageHead("用户管理", "按账号ID或手机号查询用户，只展示后端返回的运营字段。", "users")}
+    ${pageHead("用户管理", "按账号ID查询用户；主账号也可用完整手机号精确查询。", "users")}
     <form class="filters" id="users-filter-form">
       <label class="field wide">
         <span>账号查询</span>
@@ -639,7 +640,7 @@ async function giftCardsPage(): Promise<string> {
   const cards = cardsResult.status === "fulfilled" ? (cardsResult.value.cards ?? []) : [];
   const attempts = attemptsResult.status === "fulfilled" ? (attemptsResult.value.attempts ?? []) : [];
   return `
-    ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；完整卡码仅 owner / finance_ops 可见。", "gift-cards")}
+    ${pageHead("礼品卡", "礼品卡以后端批次、卡、兑换流水和审计为真相；主账号可查看和复制完整卡码。", "gift-cards")}
     ${loadErrors.length ? notice("部分数据暂时不可用", `以下区块加载失败：${loadErrors.join("、")}。页面已先展示可用数据，稍后刷新即可。`, "warn") : ""}
     <section class="grid kpi">
       ${kpi("可兑换卡", summary.redeemable_count, "当前可兑换")}
@@ -647,7 +648,7 @@ async function giftCardsPage(): Promise<string> {
       ${kpi("已作废", summary.void_count, "全量")}
       ${kpi("失败尝试", summary.failed_attempts_24h, "最近24小时")}
       ${kpi("批次数", summary.batch_count, "全量批次")}
-      ${kpi("完整卡码", canViewCodes ? "授权角色可见" : "仅授权角色可见", lastGiftCardCodes.length ? "本次新生成在下方" : canViewCodes ? "列表可直接复制" : "当前角色只看尾号/脱敏码")}
+      ${kpi("完整卡码", canViewCodes ? "可直接复制" : "未显示", lastGiftCardCodes.length ? "本次新生成在下方" : canViewCodes ? "列表可直接复制" : "当前账号只看尾号")}
     </section>
     <div class="grid two" style="margin-top:12px">
       ${notice("正式权益提醒", "生成后将产生真实可兑换权益。测试时请仅生成 1 张，并在 Android 设置里的“礼品卡”入口兑换后回到本页追溯。", "warn")}
@@ -677,7 +678,7 @@ async function giftCardsPage(): Promise<string> {
               </form>
               ${createdGiftCardCodesBlock(lastGiftCardCodes)}
             `
-            : notice("只读追溯", "当前角色只能查看批次、卡尾号/脱敏码、兑换账号和失败原因，不开放生成或作废操作。", "info")
+            : notice("只读追溯", "当前账号只能查看批次、卡尾号、兑换账号和失败原因，不开放生成或作废操作。", "info")
         }
       </div>
     </section>
@@ -796,7 +797,7 @@ async function supportPage(): Promise<string> {
         <div class="card-head"><div class="card-title">会话队列</div><span class="small muted">${response.conversations.length} 条</span></div>
         ${supportConversationList(response.conversations)}
       </section>
-      <section class="card">
+      <section id="support-detail-card" class="card">
         <div class="card-head">
           <div class="card-title">会话详情</div>
           <span class="small muted">${escapeHTML(pageState.supportUserID || "未选择")}</span>
@@ -843,7 +844,7 @@ async function todayAgriPage(): Promise<string> {
         <div class="card-title">最近卡片</div>
         ${canManageTodayAgri()
           ? `<button class="button primary" type="button" data-action="generate-today-agri">补跑今天</button>`
-          : `<button class="button" type="button" disabled>只读角色</button>`}
+          : `<button class="button" type="button" disabled>只能查看</button>`}
       </div>
       <div class="table-wrap">${todayAgriTable(response.cards)}</div>
     </section>
@@ -884,7 +885,7 @@ async function appUpdatePage(): Promise<string> {
       <section class="card">
         <div class="card-head"><div class="card-title">发布操作</div></div>
         <div class="card-body">
-          ${canManageAppUpdate() ? appUpdateEditForm(config) : notice("只读配置", "当前角色只能看更新配置和物料状态，不开放发布或停更。", "info")}
+          ${canManageAppUpdate() ? appUpdateEditForm(config) : notice("只读配置", "当前账号只能看更新配置和物料状态，不开放发布或停更。", "info")}
         </div>
       </section>
     </div>
@@ -1059,7 +1060,7 @@ async function accountSecurityPage(): Promise<string> {
             <tbody>
               ${metricRow("账号", user.username)}
               ${metricRow("显示名", user.display_name || user.username)}
-              ${metricRow("角色", user.role)}
+              ${metricRow("后台身份", roleLabel(user.role))}
               ${metricRow("状态", user.enabled ? "启用" : "停用")}
               ${metricRow("需要改密", user.must_change_password ? "是" : "否")}
               ${metricRow("上次登录", user.last_login_at ? formatTime(user.last_login_at) : "未返回")}
@@ -1212,6 +1213,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
       location.hash = "users";
     } else {
       await render();
+      scrollElementIntoViewOnMobile("user-detail-drawer");
     }
     return;
   }
@@ -1223,6 +1225,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
   if (action === "support-select") {
     pageState.supportUserID = button.dataset.userId || "";
     await render();
+    scrollElementIntoViewOnMobile("support-detail-card");
     return;
   }
   if (action === "support-status") {
@@ -1338,6 +1341,13 @@ async function logout(): Promise<void> {
   setStoredAuth(null);
   clearSensitiveAdminState();
   renderLogin();
+}
+
+function scrollElementIntoViewOnMobile(elementID: string): void {
+  if (!window.matchMedia("(max-width: 900px)").matches) return;
+  requestAnimationFrame(() => {
+    document.getElementById(elementID)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
 }
 
 async function submitSupportReply(form: HTMLFormElement): Promise<void> {
@@ -1806,13 +1816,117 @@ function pageHead(title: string, desc: string, route: RouteKey): string {
         <span class="pill info">${escapeHTML(routes.find((item) => item.key === route)?.section || "")}</span>
       </div>
     </div>
+    ${pageGuide(route)}
+  `;
+}
+
+interface PageGuideItem {
+  label: string;
+  value: string;
+  level?: "ok" | "warn" | "bad" | "info";
+}
+
+const pageGuides: Partial<Record<RouteKey, PageGuideItem[]>> = {
+  overview: [
+    { label: "先看", value: "服务健康、未回复反馈、今日农情" },
+    { label: "异常时", value: "去监控面板看当前结论和处理入口", level: "warn" },
+    { label: "边界", value: "这里只做总览，不展示敏感明细" },
+  ],
+  monitoring: [
+    { label: "先看", value: "当前结论、程序需处理项、人工确认项" },
+    { label: "下一步", value: "程序问题交给技术处理，人工项按确认方式核验", level: "warn" },
+    { label: "注意", value: "真机回归和告警邮件仍要线下确认" },
+  ],
+  users: [
+    { label: "先查", value: "账号ID或手机号，列表里直接显示手机号" },
+    { label: "详情里看", value: "会员、额度、问诊、反馈、App日志" },
+    { label: "手机号", value: "能复制就直接复制；没有完整号才显示脱敏号", level: "warn" },
+  ],
+  entitlements: [
+    { label: "先看", value: "会员总盘子和到期/额度分布" },
+    { label: "单人排查", value: "输入账号ID看权益、加油包、扣次流水" },
+    { label: "扣次", value: "自动对账为主，不要求人工天天盯" },
+  ],
+  orders: [
+    { label: "当前用途", value: "只读核查开发期订单和权益变更记录" },
+    { label: "不要误读", value: "金额不代表真实收入", level: "warn" },
+    { label: "后续", value: "支付接入后再补回调、对账、退款" },
+  ],
+  "gift-cards": [
+    { label: "先看", value: "可兑换卡、失败尝试、按尾号/账号追溯" },
+    { label: "高风险", value: "生成后是真实可兑换权益", level: "bad" },
+    { label: "隐私", value: "完整卡码不要写进备注、审计或文档", level: "warn" },
+  ],
+  "account-deletion": [
+    { label: "先看", value: "待处理和超期申请" },
+    { label: "处理口径", value: "线下完成不等于自动物理删除", level: "warn" },
+    { label: "备注", value: "只写必要处理信息，不写密钥或内部细节" },
+  ],
+  support: [
+    { label: "先处理", value: "待回复队列，点击会话看详情" },
+    { label: "回复", value: "发送会进用户 App，已处理/关闭要写备注", level: "warn" },
+    { label: "详情", value: "点会话看正文、图片、手机号和处理按钮" },
+  ],
+  "app-logs": [
+    { label: "先筛", value: "账号ID、事件名、事件前缀、时间范围" },
+    { label: "常用入口", value: "监控页可一键带入登录/更新排障筛选" },
+    { label: "隐私", value: "日志展示层会再次脱敏" },
+  ],
+  "today-agri": [
+    { label: "先看", value: "最新 ready 卡片和失败原因" },
+    { label: "人工发布", value: "发布后会锁定当天内容", level: "warn" },
+    { label: "兜底", value: "清晨自动生成仍作为兜底" },
+  ],
+  "app-update": [
+    { label: "先确认", value: "这不是应用商店，只控制 App 检查更新" },
+    { label: "高风险", value: "启用后旧包会拿到更新配置", level: "bad" },
+    { label: "门禁", value: "必须先有正式发版口令和 APK 对账" },
+  ],
+  audit: [
+    { label: "用途", value: "追后台登录、查询、回复和系统动作" },
+    { label: "查法", value: "按 action、目标账号ID、成功/失败过滤" },
+    { label: "边界", value: "后端不写敏感原文，前端展示再兜底" },
+  ],
+  account: [
+    { label: "用途", value: "查看当前后台账号并修改密码" },
+    { label: "强制改密", value: "完成改密后其它页面恢复访问", level: "warn" },
+    { label: "安全", value: "明文密码不写入日志、审计或前端存储" },
+  ],
+  insights: [
+    { label: "先看", value: "7天/30天增长、问诊、反馈和异常趋势" },
+    { label: "边界", value: "只看脱敏聚合，不展示正文和手机号" },
+    { label: "后续", value: "日报、人工标签和处理状态还未接入" },
+  ],
+  health: [
+    { label: "先看", value: "API、短信、Redis、上传存储、严格鉴权" },
+    { label: "注意", value: "告警规则以 SLS/巡检脚本为准，本页不实时读云控制台", level: "warn" },
+    { label: "异常时", value: "先跑 readiness，再查后端和 Nginx 日志" },
+  ],
+};
+
+function pageGuide(route: RouteKey): string {
+  const items = pageGuides[route] || [];
+  if (!items.length) return "";
+  return `
+    <section class="page-guide" aria-label="页面操作重点">
+      ${items
+        .map(
+          (item) => `
+            <div class="guide-item ${item.level || "info"}">
+              <span>${escapeHTML(item.label)}</span>
+              <strong>${escapeHTML(item.value)}</strong>
+            </div>
+          `,
+        )
+        .join("")}
+    </section>
   `;
 }
 
 function usersTable(users: AdminUserListEntry[]): string {
   if (!users.length) return emptyState("没有用户数据", "当前筛选条件下暂无匹配用户。");
   return `
-    <table class="table">
+    <table class="table users-table">
       <thead>
         <tr>
           <th>账号ID</th><th>会员</th><th>今日额度</th><th>最近问诊</th><th>地区</th><th>错误</th><th>反馈</th><th>操作</th>
@@ -1825,7 +1939,7 @@ function usersTable(users: AdminUserListEntry[]): string {
               <tr class="clickable-row ${pageState.userDetailID === user.user_id ? "active" : ""}" data-action="load-user-detail" data-user-id="${escapeAttr(user.user_id)}">
                 <td>
                   <button class="link-button truncate" style="max-width:220px" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(user.user_id)}">${escapeHTML(user.user_id)}</button>
-                  <div class="small muted">${accountPhoneDisplay(user)}</div>
+                  <div class="small muted">${accountPhoneDisplay(user, "list")}</div>
                 </td>
                 <td>${statusPill(user.tier || "free")}</td>
                 <td>${quotaText(user.daily)}</td>
@@ -1843,30 +1957,35 @@ function usersTable(users: AdminUserListEntry[]): string {
   `;
 }
 
-function accountPhoneDisplay(user: AdminUserListEntry): string {
-  return phoneDisplay(user.phone_number, user.phone_mask);
+function accountPhoneDisplay(user: AdminUserListEntry, context: "list" | "detail" = "detail"): string {
+  return phoneDisplay(user.phone_number, user.phone_mask, context);
 }
 
-function phoneDisplay(phoneNumber?: string, phoneMask?: string): string {
+function phoneDisplay(phoneNumber?: string, phoneMask?: string, context: "list" | "detail" = "detail"): string {
   const fullPhone = (phoneNumber || "").trim();
   if (fullPhone && canViewAccountPhone()) {
     return `${escapeHTML(fullPhone)} <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(fullPhone)}">复制</button>`;
   }
   if (fullPhone) {
     const masked = phoneMask ? escapeHTML(phoneMask) : "已绑定手机号";
-    return `${masked} <span class="small muted">仅授权角色可见</span>`;
+    return `${masked} <span class="small muted">完整号未显示</span>`;
   }
   if (phoneMask) {
+    if (context === "list" && canViewAccountPhone()) return escapeHTML(phoneMask);
     return `${escapeHTML(phoneMask)} <span class="small muted">完整号待下次登录补齐</span>`;
   }
   return "未返回";
 }
 
 function phoneDisplayMaskedInline(phoneNumber?: string, phoneMask?: string): string {
+  const fullPhone = (phoneNumber || "").trim();
+  if (fullPhone && canViewAccountPhone()) {
+    return escapeHTML(fullPhone);
+  }
   if (phoneMask) {
     return escapeHTML(phoneMask);
   }
-  if ((phoneNumber || "").trim()) {
+  if (fullPhone) {
     return "已绑定手机号";
   }
   return "暂无手机号";
@@ -2208,7 +2327,7 @@ function createdGiftCardCodesBlock(rows: AdminGiftCardCreatedCode[]): string {
   return `
     <div class="notice warn" style="margin-top:12px">
       <strong>新生成卡码</strong>
-      <div class="muted" style="margin-top:6px">完整卡码已加密保存；当前授权角色可以直接复制，下方“卡与兑换”列表刷新后也能查看。不要写入备注、作废原因或公开文档。</div>
+      <div class="muted" style="margin-top:6px">完整卡码已加密保存；本页可以直接复制，下方“卡与兑换”列表刷新后也能查看。不要写入备注、作废原因或公开文档。</div>
       <button class="button" type="button" data-action="clear-gift-card-codes" style="margin-top:10px">清除本次卡码</button>
       <div class="table-wrap" style="margin-top:10px">
         <table class="table">
@@ -2525,7 +2644,7 @@ function giftCardTable(rows: AdminGiftCardEntry[]): string {
             (row) => `
               <tr>
                 <td><div class="mono">${escapeHTML(row.code_mask)}</div><div class="small muted">${escapeHTML(row.card_id)} / 尾号 ${escapeHTML(row.code_suffix || "")}</div><div class="small muted">${escapeHTML(row.batch_id)}</div></td>
-                <td><div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "仅授权角色可见"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
+                <td><div class="mono code-cell">${canViewCodes && row.code ? escapeHTML(row.code) : canViewCodes ? "旧卡无完整码" : "未显示完整码"}</div>${canViewCodes && row.code ? `<button class="button small-button" type="button" data-action="copy-text" data-copy="${escapeAttr(row.code)}">复制</button>` : ""}</td>
                 <td>${statusPill(row.tier)}</td><td>${giftCardStatusPill(row.status)}</td>
                 <td>${row.redeemed_user_id ? `<button class="link-button" data-action="load-user-detail" data-user-id="${escapeAttr(row.redeemed_user_id)}">${escapeHTML(row.redeemed_user_id)}</button>` : ""}<div class="small muted">${escapeHTML(row.redeemed_phone_mask || "")}</div></td>
                 <td>${formatTime(row.redeemed_at)}</td><td>${formatTime(row.membership_expire_at)}</td>
@@ -2606,8 +2725,8 @@ function supportFilterForm(): string {
       </label>
       <label class="field wide">
         <span>搜索</span>
-        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 会话消息（按权限）" />
-        <span class="small muted">按当前角色权限搜索账号ID、手机号或会话消息；输入搜索词后自动查全部队列和全部历史。</span>
+        <input class="input" name="query" value="${escapeAttr(pageState.supportQuery)}" placeholder="账号ID / 手机号 / 会话消息" />
+        <span class="small muted">输入账号ID、手机号或会话消息；有搜索词时自动查全部队列和全部历史。</span>
       </label>
       <button class="button primary" type="submit">筛选</button>
     </form>
@@ -2626,11 +2745,11 @@ function supportConversationList(conversations: AdminSupportConversation[]): str
   return conversations
     .map(
       (item) => `
-        <button class="selectable-row ${item.user_id === pageState.supportUserID ? "active" : ""}" data-action="support-select" data-user-id="${escapeAttr(item.user_id)}">
+        <button class="selectable-row support-conversation-row ${item.user_id === pageState.supportUserID ? "active" : ""}" data-action="support-select" data-user-id="${escapeAttr(item.user_id)}">
           <strong class="truncate">${escapeHTML(item.user_id)}</strong>
-          <span class="small muted truncate">${phoneDisplayMaskedInline(item.phone_number, item.phone_mask)} · ${formatTime(item.latest_message.created_at)}</span>
-          <span class="small muted truncate">${escapeHTML(supportMessageText(item.latest_message))}</span>
-          <span>${supportStatusPill(item)} <span class="small muted">${item.message_count} 条</span></span>
+          <span class="small muted support-row-meta">${phoneDisplayMaskedInline(item.phone_number, item.phone_mask)} · ${formatTime(item.latest_message.created_at)}</span>
+          <span class="small muted support-row-message">${escapeHTML(supportMessageText(item.latest_message))}</span>
+          <span class="support-row-foot">${supportStatusPill(item)} <span class="small muted">${item.message_count} 条</span></span>
         </button>
       `,
     )
@@ -2663,7 +2782,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
                       <span>${formatTime(message.created_at)}</span>
                     </div>
                     <div>${escapeHTML(supportMessageText(message))}</div>
-                    ${message.body_redacted ? `<div class="small muted" style="margin-top:6px">当前角色仅显示反馈摘要，完整正文只对客服处理角色开放。</div>` : ""}
+                    ${message.body_redacted ? `<div class="small muted" style="margin-top:6px">这条正文未在当前后台显示。</div>` : ""}
                     ${supportMessageImages(message)}
                   </article>
                 `,
@@ -2693,7 +2812,7 @@ function supportMessagesBlock(userID: string, messages: AdminSupportMessage[], c
           </div>
           <p class="small muted">无需给用户回复时，再使用“已处理/无需回复”或“关闭”，并填写处理备注。</p>
         `
-        : notice("只读会话", "当前角色只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
+        : notice("只读会话", "当前账号只能查看反馈队列和消息，不开放回复、关闭或重开。", "info")
     }
   `;
 }
@@ -2713,7 +2832,7 @@ function supportSenderLabel(senderType?: string): string {
 function supportMessageImages(message: AdminSupportMessage): string {
   const urls = (message.image_urls ?? []).map((url) => safeAdminURL(url, true)).filter(Boolean);
   if (message.images_redacted) {
-    return `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片，原图只对客服处理角色开放。</div>`;
+    return `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片，图片未在当前后台显示。</div>`;
   }
   if (!message.has_images || !urls.length) {
     return message.has_images ? `<div class="small muted" style="margin-top:6px">包含 ${message.image_count} 张图片，图片地址未通过后台安全展示校验。</div>` : "";
@@ -3634,7 +3753,7 @@ function latestCrashText(authLogs: AdminMonitoring["auth_logs"] | undefined): st
 
 function filterButton(label: string, filter: { userID?: string; event?: string; eventPrefix?: string; level?: string; window?: string }): string {
   if (!isRouteVisible("app-logs")) {
-    return `<span class="action-muted">${escapeHTML(label)} · 无日志权限</span>`;
+    return `<span class="action-muted">${escapeHTML(label)} · 日志入口未开放</span>`;
   }
   return `<button class="button" data-action="open-app-log-filter" data-user-id="${escapeAttr(filter.userID || "")}" data-event="${escapeAttr(filter.event || "")}" data-event-prefix="${escapeAttr(filter.eventPrefix || "")}" data-level="${escapeAttr(filter.level || "")}" data-window="${escapeAttr(filter.window || "24h")}">${escapeHTML(label)}</button>`;
 }
@@ -4389,6 +4508,19 @@ function defaultRoute(): RouteKey {
   return visibleRoutes()[0]?.key || "overview";
 }
 
+function roleLabel(role: AdminRole | undefined): string {
+  const labels: Record<AdminRole, string> = {
+    owner: "主账号",
+    ops_readonly: "运维只读",
+    support: "客服",
+    content_ops: "内容运营",
+    release_ops: "发布运营",
+    finance_ops: "财务运营",
+    auditor: "审计只读",
+  };
+  return role ? labels[role] || role : "未知角色";
+}
+
 function normalizeLevel(level: string): "ok" | "warn" | "bad" | "info" {
   if (level === "bad" || level === "error") return "bad";
   if (level === "warn") return "warn";
@@ -4569,7 +4701,7 @@ function actionErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === "csrf_required") return "安全校验已过期，请刷新页面或重新登录。";
     if (error.status === 401) return "登录状态已失效，请重新登录后台。";
-    if (error.status === 403) return "当前账号没有权限执行这个操作。";
+    if (error.status === 403) return "当前账号不能执行这个操作。";
     if (error.status === 429) return "操作太频繁，请稍等一会儿再试。";
   }
   return errorMessage(error);
@@ -4608,7 +4740,7 @@ function friendlyError(error: unknown): { title: string; body: string } {
       return { title: "安全校验已过期", body: "请刷新页面；如果仍然出现，请重新登录后台。" };
     }
     if (error.status === 403) {
-      return { title: "当前账号没有权限", body: "这个模块或操作不对当前角色开放，需要换有权限的后台账号。" };
+      return { title: "当前账号不能访问", body: "请用主账号登录后台；如果已经是主账号，请刷新后再试。" };
     }
     if (error.status === 428) {
       return { title: "需要先更新后台密码", body: "请打开账号安全页修改密码，再继续使用其他后台页面。" };

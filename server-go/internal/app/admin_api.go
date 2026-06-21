@@ -1478,15 +1478,14 @@ func adminCanViewAccountPhone(role string) bool {
 }
 
 func adminCanViewAccountPhoneInUserList(role string) bool {
-	// List endpoints may return many rows. Keep full phone numbers on audited detail
-	// endpoints only; list search can still use phone_hash for authorized roles.
-	return false
+	// The production backend currently has a single owner-operated admin account.
+	// Keep low-privilege roles masked, but let authorized operators see phone
+	// numbers directly in admin lists for faster support and callback work.
+	return adminCanViewAccountPhone(role)
 }
 
 func adminCanViewAccountPhoneInSupportConversationList(role string) bool {
-	// Support conversation lists are summaries. Full phone numbers remain available
-	// through audited user detail, not in batch list responses.
-	return false
+	return adminCanViewAccountPhone(role)
 }
 
 func adminCanSearchAccountPhone(role string) bool {
@@ -2728,7 +2727,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "App 日志", Status: "ready", Body: "自动日志明细和事件 Top 已接入，不展示聊天正文或图片 URL。", Route: "app-logs"},
 		{Title: "帮助反馈", Status: "partial", Body: "站内反馈队列、回复、关闭和重开已可用；support / owner 可按完整手机号和正文排障，只读 / 审计角色仅查看脱敏队列和状态。完整客服运营规则仍未闭环。", Route: "support"},
 		{Title: "注销申请", Status: "partial", Body: "App 内可提交注销申请并退出当前设备；后台可按待处理 / 处理中 / 线下处理完成标记，物理删除 / 匿名化规则仍待合规收口。", Route: "account-deletion"},
-		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；完整卡码仅 owner / finance_ops 等授权角色可见。", Route: "gift-cards"},
+		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；主账号后台可查看并复制完整卡码。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
 		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},

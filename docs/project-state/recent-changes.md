@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- 后台管理页按“一个主账号、傻瓜式操作”继续收口：用户列表和帮助反馈会话列表改为对主账号直接展示完整手机号，列表里能看、能复制，没完整号时才退回脱敏号；页面顶部操作提示、顶栏、错误文案、礼品卡 / 检查更新 / 反馈等文案去掉面向多人角色的绕口说明，默认按主账号后台理解；用户列表在窄屏下改成卡片式展示，帮助反馈会话列表更容易点击，手机端选择用户或会话后会自动滚到详情。后端相应放开已允许手机号查看的后台列表返回，并保留登录、CSRF、审计和低权限巡检账号脱敏兜底；不改 Android、官网、检查更新、正式包或三份保护提示词。
+
 - 生产后端已部署 `cc11b284` 到 ECS。部署前确认线上 revision `04e3a6d5` 到待部署代码的后端 / 脚本差异仅为 `d542e362` 上传和部署门禁小修，迁移风险扫描 `checked_files=0 / ready`；ECS 上 `go test ./...` 和编译通过，Nginx 从 `3000` 切到 `3001`，旧 slot 进入 drain。部署后 `scripts/check-ecs-readiness.ps1 -ExpectedRevision cc11b284`、`scripts/check-public-blackbox.ps1` 均通过，公网黑盒 `warnings=0 / errors=0 / status=ready`。该部署不改 Android、官网、检查更新、正式包或三份保护提示词。
 
 - 后端 / 运维脚本按多代理巡检结果做小范围收口：ECS 部署脚本在迁移风险扫描前会优先读取线上 `/opt/nongjiqiancha/server/REVISION`，扫描 `线上 revision..待部署 commit` 范围，读不到或本地不存在时才回退默认 base 并打印 `migration_diff_base=default`；上传文件超过 1MiB 时返回 `413 body_too_large`；support 图片保存成功但归属登记失败时会 best-effort 删除刚保存的对象，减少孤儿 support 图片。同步补 Go 单测和部署 runbook；提交当时未部署线上，后续部署见上条记录；不改 Android、不改官网 / 检查更新 / 正式包，也不改主对话锚点、今日农情提示词或记忆文档提示词。

@@ -392,6 +392,50 @@ button {
   margin: 0;
 }
 
+.page-guide {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: -4px 0 14px;
+}
+
+.guide-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid #d7dce2;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.guide-item span {
+  color: #66717f;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.guide-item strong {
+  color: #1f2933;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.guide-item.warn {
+  border-color: #e7c891;
+  background: #fff9ef;
+}
+
+.guide-item.bad {
+  border-color: #e4b2b2;
+  background: #fff5f5;
+}
+
+.guide-item.ok {
+  border-color: #badbc5;
+  background: #f7fcf8;
+}
+
 .grid {
   display: grid;
   gap: 12px;
@@ -1771,16 +1815,41 @@ button {
   display: grid;
   gap: 5px;
   width: 100%;
+  min-height: 64px;
   border: 0;
   border-bottom: 1px solid #edf0f3;
   background: transparent;
-  padding: 10px 12px;
+  padding: 12px;
   text-align: left;
 }
 
 .selectable-row:hover,
 .selectable-row.active {
   background: #f6f8f9;
+}
+
+.support-conversation-row {
+  align-content: start;
+}
+
+.support-row-meta,
+.support-row-message {
+  overflow-wrap: anywhere;
+}
+
+.support-row-message {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 1.45;
+}
+
+.support-row-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
 }
 
 .truncate {
@@ -1841,6 +1910,10 @@ button {
     grid-template-columns: repeat(2, minmax(220px, 1fr));
   }
 
+  .page-guide {
+    grid-template-columns: 1fr;
+  }
+
   .grid.two,
   .detail-grid,
   .split,
@@ -1874,7 +1947,45 @@ button {
   .sidebar {
     position: static;
     height: auto;
-    max-height: 34vh;
+    max-height: none;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 1px solid #d9dee5;
+  }
+
+  .sidebar-head {
+    padding: 11px 14px;
+  }
+
+  .nav-section {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    overflow-x: auto;
+    padding: 8px 10px;
+  }
+
+  .nav-section-title {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    white-space: nowrap;
+  }
+
+  .nav-item {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 38px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 8px 11px;
+    white-space: nowrap;
+  }
+
+  .nav-item.active {
+    box-shadow: inset 0 -3px 0 #7fcf8d;
+  }
+
+  .nav-item .small {
+    display: none;
   }
 
   .topbar,
@@ -1906,7 +2017,6 @@ button {
     padding: 14px;
   }
 
-  .grid.kpi,
   .grid.three,
   .operator-guide,
   .operator-guide-steps,
@@ -1919,7 +2029,131 @@ button {
     grid-template-columns: 1fr;
   }
 
+  .grid.kpi {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .table-wrap {
     overflow-x: auto;
+  }
+
+  .list-pane {
+    max-height: 42vh;
+  }
+
+  .selectable-row {
+    min-height: 72px;
+    padding: 13px 14px;
+  }
+
+  .support-row-meta,
+  .support-row-message {
+    white-space: normal;
+  }
+
+  .button {
+    min-height: 40px;
+    padding: 0 13px;
+  }
+
+  .button.small-button {
+    min-height: 36px;
+  }
+
+  .link-button {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+  }
+}
+
+@media (max-width: 720px) {
+  .users-table {
+    min-width: 0;
+  }
+
+  .users-table thead {
+    display: none;
+  }
+
+  .users-table,
+  .users-table tbody,
+  .users-table tr,
+  .users-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .users-table tr {
+    border-bottom: 1px solid #edf0f3;
+    padding: 9px 10px;
+  }
+
+  .users-table tr.clickable-row.active td,
+  .users-table tr.clickable-row:focus-within td,
+  .users-table tr:hover td {
+    background: transparent;
+  }
+
+  .users-table td {
+    display: grid;
+    grid-template-columns: 86px minmax(0, 1fr);
+    gap: 8px;
+    border-bottom: 0;
+    padding: 6px 0;
+    white-space: normal;
+  }
+
+  .users-table td::before {
+    color: #697380;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .users-table td:nth-child(1)::before {
+    content: "账号";
+  }
+
+  .users-table td:nth-child(2)::before {
+    content: "会员";
+  }
+
+  .users-table td:nth-child(3)::before {
+    content: "额度";
+  }
+
+  .users-table td:nth-child(4)::before {
+    content: "问诊";
+  }
+
+  .users-table td:nth-child(5)::before {
+    content: "地区";
+  }
+
+  .users-table td:nth-child(6)::before {
+    content: "错误";
+  }
+
+  .users-table td:nth-child(7)::before {
+    content: "反馈";
+  }
+
+  .users-table td:nth-child(8) {
+    grid-template-columns: 1fr;
+    padding-top: 9px;
+  }
+
+  .users-table td:nth-child(8)::before {
+    content: "";
+  }
+
+  .users-table td:nth-child(8) .button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 520px) {
+  .grid.kpi {
+    grid-template-columns: 1fr;
   }
 }

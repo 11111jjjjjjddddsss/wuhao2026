@@ -181,8 +181,8 @@ expectAdminPattern("support handled and closed actions require note", /\(status 
 rejectAdminPattern("support action must not say 标已回复", /标已回复/);
 expectServerPattern("support handled status has note-required API guard", /support_status_note_required/);
 expectServerPattern("readonly support message details are redacted by role", /adminCanViewSupportMessageBody/);
-expectAdminPattern("readonly support messages explain body redaction", /完整正文只对客服处理角色开放/);
-expectAdminPattern("readonly support images explain image redaction", /原图只对客服处理角色开放/);
+expectAdminPattern("readonly support messages explain body redaction", /这条正文未在当前后台显示/);
+expectAdminPattern("readonly support images explain image redaction", /图片未在当前后台显示/);
 rejectAdminPattern("admin auth storage must not persist CSRF token", /localStorage\.setItem\(AUTH_STORAGE_KEY,\s*JSON\.stringify\(payload\)\)/);
 rejectAdminPattern("admin csrf header must not read token from stored auth", /getStoredAuth\(\)\?\.csrf_token/);
 expectAdminPattern("gift card generation emphasizes real entitlement", /生成后将产生真实可兑换权益/);
