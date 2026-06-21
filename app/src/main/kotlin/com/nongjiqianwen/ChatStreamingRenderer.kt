@@ -1354,11 +1354,11 @@ private fun resolveRendererTypewriterDelay(token: String, nextHasStructuralMarkd
         lastChar == '\n' -> if (nextHasStructuralMarkdownPrefix) 86L else 66L
         lastChar.isRendererStrongPausePunctuation() -> 54L
         lastChar.isRendererWeakPausePunctuation() -> 30L
-        lastCodePoint.isRendererCjkUnifiedIdeographCodePoint() -> 19L
+        lastCodePoint.isRendererCjkUnifiedIdeographCodePoint() -> 18L
         token.length >= 7 -> 23L
         token.length >= 5 -> 21L
-        token.length >= 3 -> 19L
-        token.length == 2 -> 19L
+        token.length >= 3 -> 18L
+        token.length == 2 -> 18L
         else -> 18L
     }
     return scaleRendererStreamingDelay(baseDelay)

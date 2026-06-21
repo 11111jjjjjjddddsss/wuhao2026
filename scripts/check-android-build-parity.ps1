@@ -822,8 +822,8 @@ if ($failures.Count -eq 0) {
         "ChatRecyclerViewHost must not opt into reverseLayout."
     Require-Match $failures $chatScreen 'shouldAnchorStreamingBottomThisFrame(?s:.*?)SideEffect\s*\{\s*requestProgrammaticForwardListBottomAnchor\s*\(\s*\)\s*\}' `
         "Streaming content must keep the same-frame bottom-anchor SideEffect that prevents the tail from flashing below the workline."
-    Require-Match $failures $chatScreen 'STREAM_TYPEWRITER_IDLE_POLL_MS\s*=\s*20L' `
-        "Streaming typewriter idle polling must keep the calmer 20ms rhythm."
+    Require-Match $failures $chatScreen 'STREAM_TYPEWRITER_IDLE_POLL_MS\s*=\s*18L' `
+        "Streaming typewriter idle polling must keep the slightly faster 18ms rhythm."
     Require-Match $failures $chatScreen 'STREAM_REVEAL_FRAME_BUDGET_MS\s*=\s*40L' `
         "Streaming reveal frame budget must keep the normal faster drain."
     Require-Match $failures $chatScreen 'REMOTE_STREAM_MIN_BALL_MS\s*=\s*1800L' `
@@ -876,8 +876,8 @@ if ($failures.Count -eq 0) {
         "The membership leaf graphic itself must stay decorative and avoid duplicating the outer button label."
     Require-Match $failures $chatStreamingRenderer "lastChar\s*==\s*'\\n'\s*->\s*if\s*\(\s*nextHasStructuralMarkdownPrefix\s*\)\s*86L\s*else\s*66L" `
         "Streaming newlines must keep a short readable pause to reduce heading/list reflow popping."
-    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*19L' `
-        "Streaming Chinese text must keep one visible character per normal-paced step."
+    Require-Match $failures $chatStreamingRenderer 'lastCodePoint\.isRendererCjkUnifiedIdeographCodePoint\(\)\s*->\s*18L' `
+        "Streaming Chinese text must keep one visible character per slightly faster step."
     $onAdvanceMatch = [regex]::Match(
         $chatScreen,
         'onAdvance\s*=\s*\{\s*advance\s*->(?s:.*?streamingMessageId\s*=\s*advance\.messageId(?s:.*?)streamingRevealBuffer\s*=\s*advance\.revealBuffer(?s:.*?)streamingMessageContent\s*=\s*advance\.content.*?)\}'
