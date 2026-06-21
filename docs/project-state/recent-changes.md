@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- 已为当前 `82769ccb4a2f` 生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-100135-82769ccb4a2f.apk`，SHA-256 为 `ecaaedad03fe28610d7c168bf97d154a4ce368574aed70c66bf67a08ef2d3838`，大小 `20,956,662` 字节；脚本确认包名 `com.nongjiqiancha`、debuggable、签名匹配、OSS `test-apks/` 3 天生命周期、下载域名 200 / 206 探针均 ready，并清理上一版内部测试 APK `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-050206-5817cd0d2a88.apk`。该包包含“正在思考”高光扫动等待态和 debug-only 预览面板同步，继续保留撤掉预锚点后的滚动版本、SideEffect 同帧锚点、程序滚动标记、低频滚动抖动日志和现有渲染 / 表格 / 分割线 / 提示词口径；未发布正式包、未写官网正式下载、未配置检查更新。
+
 - 只做内部逻辑 / 文档门禁收口：今日农情 active runbook 的临时上下文窗口从旧“三轮 / 第四轮”修正为当前“两轮 / 第三轮起不带”，Android parity 的相关失败提示同步改为 two-send，并把 `ChatScrollCoordinatorTest`、`SecurityBoundaryTest` 纳入必读护栏，防止滚动和安全边界测试被删改却未被 parity 发现。该改动不改变 App 可见 UI 文案、今日农情提示词、主聊天滚动方案、后端运行逻辑或模型输出边界。
 
 - Android 主聊天“正在思考”等待态从动态省略号改成文字高光扫动：仍保留先显示呼吸小球、约 2.6 秒后淡切到思考文字、正文开始后恢复正常流式渲染的逻辑；高光使用 Compose `Brush.linearGradient` 和 `rememberInfiniteTransition` 在“正在思考”文字上从左往右扫过，debug-only 预览面板“等待思考态”直接渲染同一个真实组件。Android parity 同步锁住该口径，避免回退成静态文字或旧省略号。该改动只影响等待视觉，不改滚动锚点、发送 / 重发 / 重试、Markdown、表格、后端接口、诊断约束或三份保护提示词。
