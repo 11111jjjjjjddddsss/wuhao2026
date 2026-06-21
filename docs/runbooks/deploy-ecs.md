@@ -153,7 +153,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\rollback-ec
   - 普通 API：`60r/m`，burst 80
   - 主聊天流：`60r/m`，burst 80
   - 上传：`20r/m`，burst 8
-  - 单 IP 连接数：上传 4，普通 API 20；2026-06-13 已移除主聊天流 `limit_conn`，不再限制同一公网 IP 只能同时 2 条聊天流
+  - 单 IP 连接数：上传提交 `/upload` 4，普通 API 20；2026-06-13 已移除主聊天流 `limit_conn`，2026-06-21 已为图片读取 `/uploads/` 单独去掉 `limit_conn`，避免模型供应商共享出口 IP 拉图被误伤
 - 当前 App / Nginx / Go / Android 各层限流、大小、超时和 UI 窗口边界统一记录在 [app-traffic-limits.md](D:/wuhao/docs/runbooks/app-traffic-limits.md)。2026-06-13 已把线上主聊天流 Nginx IP 级限制调宽到 `60r/m`、burst 80，并移除聊天 `limit_conn`；若真机仍出现 429，先结合响应体和日志确认来源，不新增全局主聊天并发硬闸、不通过模型输出上限解决流量问题。
 - 未命中 `api.nongjiqiancha.cn` 的 Host 默认返回 444；公网直连 IP 不作为稳定验证入口
 - 已写入全局 Nginx 安全头配置 `/etc/nginx/conf.d/nongjiqiancha-security.conf`：`server_tokens off`、`X-Content-Type-Options`、`X-Frame-Options`、`Referrer-Policy` 和 HSTS

@@ -304,6 +304,7 @@ require_nginx_pattern "$nginx_site" "nginx_client_max_body_2m" 'client_max_body_
 require_nginx_pattern "$nginx_site" "nginx_chat_limit_req" 'limit_req[[:space:]]+zone=nongji_chat[[:space:]]+burst=80[[:space:]]+nodelay;'
 require_nginx_pattern "$nginx_site" "nginx_upload_limit_req" 'limit_req[[:space:]]+zone=nongji_upload[[:space:]]+burst=8[[:space:]]+nodelay;'
 require_nginx_pattern "$nginx_site" "nginx_upload_limit_conn" 'limit_conn[[:space:]]+nongji_conn[[:space:]]+4;'
+require_nginx_pattern "$nginx_site" "nginx_uploads_location" 'location[[:space:]]+\/uploads\/[[:space:]]*\{'
 require_nginx_pattern "$nginx_site" "nginx_api_limit_req" 'limit_req[[:space:]]+zone=nongji_api[[:space:]]+burst=80[[:space:]]+nodelay;'
 require_nginx_pattern "$nginx_site" "nginx_api_limit_conn" 'limit_conn[[:space:]]+nongji_conn[[:space:]]+20;'
 require_nginx_pattern "$nginx_site" "nginx_chat_proxy_buffering_off" 'proxy_buffering[[:space:]]+off;'
@@ -313,6 +314,13 @@ chat_limit_conn_count=$(printf '%s\n' "$chat_block" | grep -Ec 'limit_conn[[:spa
 echo "nginx_chat_limit_conn_count=$chat_limit_conn_count"
 if [ "$chat_limit_conn_count" -ne 0 ]; then
   echo 'chat stream location must not use limit_conn in current shared-network friendly policy' >&2
+  exit 19
+fi
+uploads_block=$(awk '/^[[:space:]]*location[[:space:]]+\/uploads\/[[:space:]]*\{/{flag=1} flag{print} flag && /^[[:space:]]*\}/{exit}' "$nginx_site" 2>/dev/null || true)
+uploads_limit_conn_count=$(printf '%s\n' "$uploads_block" | grep -Ec 'limit_conn[[:space:]]+' || true)
+echo "nginx_uploads_limit_conn_count=$uploads_limit_conn_count"
+if [ "$uploads_limit_conn_count" -ne 0 ]; then
+  echo 'uploads image proxy must not use limit_conn; model image fetches can share provider egress IPs' >&2
   exit 19
 fi
 

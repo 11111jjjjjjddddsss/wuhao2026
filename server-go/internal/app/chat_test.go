@@ -166,6 +166,29 @@ func TestShouldForceSearchForExplicitSearchIntent(t *testing.T) {
 	}
 }
 
+func TestResolveChatStreamWatchdogTimeouts(t *testing.T) {
+	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "5")
+	t.Setenv("CHAT_STREAM_FIRST_VISIBLE_TIMEOUT_SECONDS", "10")
+	t.Setenv("CHAT_STREAM_IDLE_TIMEOUT_SECONDS", "8")
+
+	if got := resolveChatStreamFirstVisibleTimeout(); got != 5*time.Second {
+		t.Fatalf("first visible timeout should clamp to max duration, got %s", got)
+	}
+	if got := resolveChatStreamIdleTimeout(); got != 5*time.Second {
+		t.Fatalf("idle timeout should clamp to max duration, got %s", got)
+	}
+
+	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "1800")
+	t.Setenv("CHAT_STREAM_FIRST_VISIBLE_TIMEOUT_SECONDS", "0")
+	t.Setenv("CHAT_STREAM_IDLE_TIMEOUT_SECONDS", "0")
+	if got := resolveChatStreamFirstVisibleTimeout(); got != chatStreamFirstVisibleTimeout {
+		t.Fatalf("non-positive first visible timeout should use default, got %s", got)
+	}
+	if got := resolveChatStreamIdleTimeout(); got != chatStreamIdleTimeout {
+		t.Fatalf("non-positive idle timeout should use default, got %s", got)
+	}
+}
+
 func TestPromptIncludesImageContextUsesCurrentOrPreviousRoundImage(t *testing.T) {
 	if !promptIncludesImageContext(nil, 6, []string{"https://img/current.jpg"}) {
 		t.Fatalf("current images should mark prompt as image context")
@@ -220,6 +243,13 @@ func TestFilterBailianStreamDataForClientRedactsReasoningWhenContentExists(t *te
 	}
 	if !strings.Contains(filtered, "可见正文") {
 		t.Fatalf("filtered chunk dropped visible content: %q", filtered)
+	}
+}
+
+func TestFilterBailianStreamDataForClientDropsInvalidData(t *testing.T) {
+	filtered, ok := filterBailianStreamDataForClient("not-json")
+	if ok || filtered != "" {
+		t.Fatalf("invalid upstream data should be dropped, got ok=%v data=%q", ok, filtered)
 	}
 }
 

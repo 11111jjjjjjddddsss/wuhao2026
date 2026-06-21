@@ -24,6 +24,8 @@ const (
 	upstreamMaxAttempts             = 1
 	upstreamRetryBaseWait           = 350 * time.Millisecond
 	chatStreamMaxDuration           = 30 * time.Minute
+	chatStreamFirstVisibleTimeout   = 3 * time.Minute
+	chatStreamIdleTimeout           = 4 * time.Minute
 	maxClientMsgIDLength            = 128
 	maxChatTextRunes                = 6000
 	maxBailianSSELineBytes          = 256 * 1024
@@ -491,9 +493,99 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
+	type sseReadResult struct {
+		line string
+		err  error
+	}
 	reader := bufio.NewReader(upstream.Body)
+	readResults := make(chan sseReadResult, 1)
+	stopRead := make(chan struct{})
+	var stopReadOnce sync.Once
+	stopReadLoop := func() {
+		stopReadOnce.Do(func() { close(stopRead) })
+	}
+	defer stopReadLoop()
+	go func() {
+		for {
+			line, err := readLimitedSSELine(reader, maxBailianSSELineBytes)
+			select {
+			case readResults <- sseReadResult{line: line, err: err}:
+			case <-stopRead:
+				return
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	firstVisibleTimeout := resolveChatStreamFirstVisibleTimeout()
+	firstVisibleTimer := time.NewTimer(firstVisibleTimeout)
+	defer firstVisibleTimer.Stop()
+	idleTimeout := resolveChatStreamIdleTimeout()
+	var idleTimer *time.Timer
+	var idleTimerC <-chan time.Time
+	if idleTimeout > 0 {
+		idleTimer = time.NewTimer(idleTimeout)
+		if !idleTimer.Stop() {
+			<-idleTimer.C
+		}
+		defer idleTimer.Stop()
+	}
+	streamTimeoutKind := ""
 	for {
-		line, readErr := readLimitedSSELine(reader, maxBailianSSELineBytes)
+		var line string
+		var readErr error
+		select {
+		case result := <-readResults:
+			line = result.line
+			readErr = result.err
+		case <-firstVisibleTimer.C:
+			streamTimeoutKind = "first_visible"
+			cancelUpstream()
+			_ = upstream.Body.Close()
+			stopReadLoop()
+			if !clientDisconnected.Load() {
+				writeMu.Lock()
+				s.writeSSEData(w, map[string]any{"error": "UPSTREAM_STREAM_TIMEOUT", "kind": streamTimeoutKind, "client_msg_id": clientMsgID})
+				writeMu.Unlock()
+			}
+			s.logger.Error(
+				"bailian stream watchdog timeout",
+				"userId", auth.UserID,
+				"clientMsgId", clientMsgID,
+				"request_id", upstreamRequestID,
+				"kind", streamTimeoutKind,
+				"timeout_seconds", int(firstVisibleTimeout.Seconds()),
+				"forced_search", forceSearch,
+				"thinking_enabled", thinkingOptions.EnableThinking,
+				"thinking_budget", thinkingOptions.ThinkingBudget,
+				"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
+			)
+			readErr = context.DeadlineExceeded
+		case <-idleTimerC:
+			streamTimeoutKind = "idle"
+			cancelUpstream()
+			_ = upstream.Body.Close()
+			stopReadLoop()
+			if !clientDisconnected.Load() {
+				writeMu.Lock()
+				s.writeSSEData(w, map[string]any{"error": "UPSTREAM_IDLE_TIMEOUT", "kind": streamTimeoutKind, "client_msg_id": clientMsgID})
+				writeMu.Unlock()
+			}
+			s.logger.Error(
+				"bailian stream watchdog timeout",
+				"userId", auth.UserID,
+				"clientMsgId", clientMsgID,
+				"request_id", upstreamRequestID,
+				"kind", streamTimeoutKind,
+				"timeout_seconds", int(idleTimeout.Seconds()),
+				"forced_search", forceSearch,
+				"thinking_enabled", thinkingOptions.EnableThinking,
+				"thinking_budget", thinkingOptions.ThinkingBudget,
+				"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
+			)
+			readErr = context.DeadlineExceeded
+		}
 		if line != "" {
 			trimmedLine := strings.TrimRight(line, "\r\n")
 			if trimmedLine != "" && !strings.HasPrefix(trimmedLine, ":") && !strings.HasPrefix(trimmedLine, "event:") && strings.HasPrefix(trimmedLine, "data:") {
@@ -502,7 +594,20 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					doneReceived.Store(true)
 					break
 				}
+				beforeAssistantLen := assistantText.Len()
 				updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources, &modelUsage)
+				if assistantText.Len() > beforeAssistantLen {
+					if firstVisibleTimeout > 0 && !firstVisibleTimer.Stop() {
+						select {
+						case <-firstVisibleTimer.C:
+						default:
+						}
+					}
+					if idleTimer != nil {
+						idleTimer.Reset(idleTimeout)
+						idleTimerC = idleTimer.C
+					}
+				}
 				if !clientDisconnected.Load() {
 					clientData, shouldForward := filterBailianStreamDataForClient(data)
 					if !shouldForward {
@@ -522,6 +627,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if readErr != nil {
+			if streamTimeoutKind != "" {
+				break
+			}
 			if errors.Is(readErr, errSSELineTooLarge) {
 				s.logger.Error("sse relay line too large", "userId", auth.UserID, "clientMsgId", clientMsgID, "limit_bytes", maxBailianSSELineBytes)
 			} else if readErr != io.EOF {
@@ -533,6 +641,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+
+	stopReadLoop()
+	_ = upstream.Body.Close()
 
 	sendDoneAfterArchive := false
 	if doneReceived.Load() {
@@ -655,6 +766,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"done_received", doneReceived.Load(),
 		"send_done_after_archive", sendDoneAfterArchive,
 		"client_disconnected", clientDisconnected.Load(),
+		"stream_timeout_kind", streamTimeoutKind,
 		"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
 	}
 	s.bailian.ObserveUsage(modelUsage)
@@ -889,6 +1001,28 @@ func resolveChatStreamMaxDuration() time.Duration {
 	return duration
 }
 
+func resolveChatStreamFirstVisibleTimeout() time.Duration {
+	duration := envDurationWithDefault("CHAT_STREAM_FIRST_VISIBLE_TIMEOUT_SECONDS", chatStreamFirstVisibleTimeout)
+	if duration <= 0 {
+		return chatStreamFirstVisibleTimeout
+	}
+	if maxDuration := resolveChatStreamMaxDuration(); duration > maxDuration {
+		return maxDuration
+	}
+	return duration
+}
+
+func resolveChatStreamIdleTimeout() time.Duration {
+	duration := envDurationWithDefault("CHAT_STREAM_IDLE_TIMEOUT_SECONDS", chatStreamIdleTimeout)
+	if duration <= 0 {
+		return chatStreamIdleTimeout
+	}
+	if maxDuration := resolveChatStreamMaxDuration(); duration > maxDuration {
+		return maxDuration
+	}
+	return duration
+}
+
 func resolveChatStreamInflightLeaseDuration() time.Duration {
 	duration := resolveChatStreamMaxDuration() + chatStreamInflightLeaseGrace
 	minimum := chatStreamInflightLease + chatStreamInflightLeaseGrace
@@ -1077,7 +1211,7 @@ func sanitizeUpstreamErrorPreview(raw string) string {
 func filterBailianStreamDataForClient(data string) (string, bool) {
 	payload := map[string]any{}
 	if err := json.Unmarshal([]byte(data), &payload); err != nil {
-		return data, true
+		return "", false
 	}
 
 	changed := false
