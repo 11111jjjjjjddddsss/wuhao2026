@@ -16,6 +16,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+Add-Type -AssemblyName System.Net.Http
+
 function Add-Failure {
     param(
         [System.Collections.Generic.List[string]]$Failures,

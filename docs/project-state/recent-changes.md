@@ -5,6 +5,8 @@
 
 ## 2026-06-21
 
+- 按用户明确口令完成首个正式 Android 下载 / 检查更新发布：`app/build.gradle.kts` 将 release 版本升为 `1.0.1(2)`，用固定 release 签名构建 `com.nongjiqiancha` 正式 APK；`check-android-release-artifact.ps1` 确认 release 不可调试、权限白名单、签名指纹、包名和版本号均 ready，APK 大小 `14,193,280` 字节，SHA-256 为 `a65e2e8665532ba2a8635940733d4cdad6244f348ccfda0462dccd643764399d`。APK 已上传 OSS `android/releases/2/nongjiqiancha-1.0.1-v2-ad9fa71c.apk`，并通过 `download.nongjiqiancha.cn` 公网裸 URL 下载验证大小 / SHA 一致；官网已部署，下载按钮指向该正式包；生产 `app_release_configs` 已启用 Android 检查更新，旧 `versionCode=1` 返回 `has_update=true`，当前 `versionCode=2` 返回无更新，`force_update=false`，`check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload -PreviousVersionCode 1 -ProbePreviousVersionUpdate` 通过。为支持长期裸 URL，OSS Bucket 只对 `android/releases/*` 配匿名 `GetObject`，普通问诊图、support 图和内部测试包前缀不公开；`check-app-update-release-match.ps1` 同步显式加载 `System.Net.Http`，避免被 `check-launch-readiness.ps1` 的新 Windows PowerShell 子进程调用时因程序集未加载误失败。用户截图中的 3 张 Pro 礼品卡已只读核对，均为 active / 未兑换 / 30 天 Pro，不执行兑换。
+
 - Android 主聊天流式吐字节奏按“稍微加快一丢丢，别太快”小幅调整：空闲轮询、普通中文和普通短 token 步进统一收口到 `18ms`，标点停顿、换行停顿、每批最多 1 个 token、`40ms` 帧预算、滚动锚点链和等待态都不变。该改动只让已收到的最终正文显示得稍快一点，不展示供应商 `reasoning_content`，不改后端 `thinking_budget=1024`、诊断约束、主聊天滚动主方案或模型输出边界。
 
 - 已为当前 `fd0c29d324df` 生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-124453-fd0c29d324df.apk`，SHA-256 为 `ee3276ad7678d7d994cecceaa1e4eb0372209ae04d4c1e0de6e9ac61929bf0cc`，大小 `19,584,879` 字节；脚本确认包名、签名、debug 属性、下载域名 200 / 206 探针均 ready，并清理上一版内部测试 APK `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-114927-b9ea2ce303a0.apk`。该包包含主聊天流式吐字节奏小幅加快和此前中部浮层预览集中展示、AI 表格复制成功 / AI 链接失败 / 帮助反馈链接失败优先走中部浮层；未发布正式包、未写官网正式下载、未配置检查更新。

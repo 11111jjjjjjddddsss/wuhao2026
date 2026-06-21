@@ -1,6 +1,6 @@
 # Android 下载分发 Runbook
 
-最后更新：2026-06-20
+最后更新：2026-06-21
 
 本 runbook 记录 Android APK 的低成本下载方案。它只解决“安装包从哪里下载、如何校验、如何控制成本”，不等于正式发布口令。
 
@@ -34,10 +34,10 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 
 ## 当前状态
 
-截至 2026-06-17，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包的推荐低成本下载主链：
+截至 2026-06-21，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包和正式包的低成本下载主链：
 
 - DNS：`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`。
-- OSS：Bucket 仍保持 private，不开放公共读；测试包通过签名 URL 下载。
+- OSS：Bucket 仍保持 private 主口径；为支持正式检查更新和官网下载长期裸 URL，Bucket 级 Block Public Access 已关闭，并配置 Bucket Policy 仅允许匿名 `oss:GetObject` 访问 `android/releases/*`。不要把策略扩大到 `uploads/*`、`support/*`、`test-apks/*` 或整个 Bucket。内部测试包仍通过签名 URL 下载，不走公开读。
 - HTTPS：下载域名已绑定免费 Let’s Encrypt 证书，当前证书到期日为 `2026-09-15 07:03:04 UTC`；2026-06-17 已因旧同步脚本曾把私钥放进 Cloud Assistant 输出而强制重签该证书，并用加固后的脚本重新同步到 OSS。ECS 上 `certbot.timer` 负责后续免费证书续期。
 - 验证：`scripts/check-android-download-domain.ps1` 会检查 DNS、OSS CNAME、HTTPS 证书可见性、公网 TLS 证书到期时间，并用自有域名签名 HEAD 探针验证访问；证书临期时会提示同步 OSS CNAME 证书。2026-06-18 起，`scripts/check-resource-capacity.ps1 -Strict` 也会调用这条下载域名检查；正式发布前资源门禁不能漏掉下载域名。
 - 发布：`scripts/publish-android-test-apk.ps1` 默认会上传 debug/internal APK 到 OSS `test-apks/debug/...`，生成 `https://download.nongjiqiancha.cn/...` 签名链接，默认 72 小时有效；新包 HEAD / range 下载探针通过后，脚本会删除同前缀旧 `nongjiqiancha-debug-internal-*.apk`，只保留最新 1 个。发布脚本会在上传前只读校验 OSS `test-apks/` 生命周期规则仍启用；该 3 天生命周期是兜底，不再作为主要清理策略。脚本不写本机 / ECS 清理 cron；`-UseEcsDownloadFallback` 已退役并会被脚本拒绝，不能再临时回退旧 ECS `/test-apks/` 路径。
@@ -95,6 +95,15 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 - 文件大小
 - commit
 - 签名证书指纹
+
+当前首个正式包记录：
+
+- `versionName=1.0.1`
+- `versionCode=2`
+- APK URL：`https://download.nongjiqiancha.cn/android/releases/2/nongjiqiancha-1.0.1-v2-ad9fa71c.apk`
+- SHA-256：`a65e2e8665532ba2a8635940733d4cdad6244f348ccfda0462dccd643764399d`
+- 文件大小：`14,193,280` 字节
+- 发布提交：`ad9fa71c`
 
 注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
