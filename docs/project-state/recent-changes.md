@@ -9,6 +9,8 @@
 
 - 生产后端已部署提交 `376c5f60`，`scripts/check-ecs-readiness.ps1 -ExpectedRevision 376c5f60` 通过，线上 healthz 返回 `revision=376c5f60` 且关键依赖 ready；这版只让每轮主聊天独立“【诊断约束】”使用“禁止表格 + 简洁排版 + 少用多级列表 / 密集项目符号 / 长段堆叠”的最新口径。Android 测试包不需要重装即可吃到新后端组装词；本轮未发布正式包、未配置检查更新。
 
+- 已为当前 `b9ea2ce303a0` 生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-114927-b9ea2ce303a0.apk`，SHA-256 为 `a4f86ee44c7bb8baa7e87395ba5143c17d1e5007ae2597f534084e4aa6a92d9d`，大小 `20,961,785` 字节；脚本确认包名、签名、debug 属性、下载域名 200 / 206 探针均 ready，并清理上一版内部测试 APK `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-112848-852f31e6b0ee.apk`。该包包含中部浮层预览集中展示、AI 表格复制成功 / AI 链接失败 / 帮助反馈链接失败优先走中部浮层；未发布正式包、未写官网正式下载、未配置检查更新。
+
 - Android 主界面中部浮层和 debug-only 预览面板继续收口：把“更新未完成提示”从汉堡菜单预览挪到“主界面中部浮层”分组，并补充“已复制”“链接打开失败，请复制后打开”两个浮层样例，方便测试时集中查看；真实主聊天里 AI 表格复制成功、AI 正文链接打开失败会优先走 `showComposerStatusHint` 中部浮层，帮助反馈消息链接打开失败也通过菜单 `onPendingAction` 上抛到同一层。确认弹窗、登录页内错误、会员 / 礼品卡页内状态仍保留在原页面位置；本次不改提示文案、不改更新安装逻辑、不改后端、不改滚动主链、不发布正式包。
 
 - 已为当前 `852f31e6b0ee` 生成最新内部 debug 测试包 `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-112848-852f31e6b0ee.apk`，SHA-256 为 `a4f86ee44c7bb8baa7e87395ba5143c17d1e5007ae2597f534084e4aa6a92d9d`，大小 `20,961,785` 字节；脚本确认包名、签名、debug 属性、下载域名 200 / 206 探针均 ready，并清理上一版内部测试 APK `test-apks/debug/20260621/nongjiqiancha-debug-internal-20260621-105725-a1b36221002f.apk`。该包包含中部浮层预览集中展示、AI 表格复制成功 / AI 链接失败 / 帮助反馈链接失败优先走中部浮层；未发布正式包、未写官网正式下载、未配置检查更新。
