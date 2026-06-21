@@ -498,6 +498,7 @@ async function usersPage(): Promise<string> {
         <input class="input" name="query" value="${escapeAttr(query)}" placeholder="账号ID / 手机号" />
       </label>
       <button class="button primary" type="submit">查询</button>
+      ${query ? `<button class="button" type="button" data-action="clear-user-filter">清空</button>` : ""}
     </form>
     <div class="detail-grid">
       <section class="card">
@@ -1222,10 +1223,38 @@ async function handleAction(button: HTMLElement): Promise<void> {
     await render();
     return;
   }
+  if (action === "clear-user-filter") {
+    pageState.userQuery = "";
+    pageState.userDetailID = "";
+    await render();
+    return;
+  }
   if (action === "support-select") {
     pageState.supportUserID = button.dataset.userId || "";
     await render();
     scrollElementIntoViewOnMobile("support-detail-card");
+    return;
+  }
+  if (action === "open-support-user") {
+    const userID = button.dataset.userId || "";
+    if (!userID) return;
+    pageState.supportUserID = userID;
+    pageState.supportQuery = userID;
+    pageState.supportStatus = "";
+    if (activeRoute === "support") {
+      await render();
+      scrollElementIntoViewOnMobile("support-detail-card");
+    } else {
+      location.hash = "support";
+    }
+    return;
+  }
+  if (action === "clear-support-filter") {
+    pageState.supportStatus = "open";
+    pageState.supportQuery = "";
+    pageState.supportSinceRange = "30d";
+    pageState.supportUserID = "";
+    await render();
     return;
   }
   if (action === "support-status") {
@@ -1688,10 +1717,23 @@ async function copyText(text: string): Promise<void> {
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
-    window.alert("已复制");
+    showTransientNotice("已复制");
   } catch {
     window.prompt("复制失败，请手动复制：", text);
   }
+}
+
+function showTransientNotice(message: string): void {
+  const id = "admin-transient-notice";
+  const existing = document.getElementById(id);
+  if (existing) existing.remove();
+  const node = document.createElement("div");
+  node.id = id;
+  node.className = "transient-notice";
+  node.setAttribute("role", "status");
+  node.textContent = message;
+  document.body.appendChild(node);
+  window.setTimeout(() => node.remove(), 1600);
 }
 
 async function withButtonBusy(
@@ -1769,7 +1811,14 @@ async function userDetailCard(userID: string): Promise<string> {
             ${userOpsSummary(detail)}
           </div>
           <div>
-            <div class="card-title" style="margin-bottom:8px">最近反馈</div>
+            <div class="section-title-row" style="margin-bottom:8px">
+              <div class="card-title">最近反馈</div>
+              ${
+                detail.support_messages.length
+                  ? `<button class="button small-button" type="button" data-action="open-support-user" data-user-id="${escapeAttr(detail.user.user_id)}">打开反馈会话</button>`
+                  : ""
+              }
+            </div>
             ${supportMessagesMiniList(detail.support_messages)}
           </div>
           <div>
@@ -1938,7 +1987,7 @@ function usersTable(users: AdminUserListEntry[]): string {
             (user) => `
               <tr class="clickable-row ${pageState.userDetailID === user.user_id ? "active" : ""}" data-action="load-user-detail" data-user-id="${escapeAttr(user.user_id)}">
                 <td>
-                  <button class="link-button truncate" style="max-width:220px" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(user.user_id)}">${escapeHTML(user.user_id)}</button>
+                  ${accountIDLink(user.user_id, true)}
                   <div class="small muted">${accountPhoneDisplay(user, "list")}</div>
                 </td>
                 <td>${statusPill(user.tier || "free")}</td>
@@ -1946,7 +1995,7 @@ function usersTable(users: AdminUserListEntry[]): string {
                 <td>${formatTime(user.last_seen_at)}<div class="small muted">${user.round_total} 轮</div></td>
                 <td>${escapeHTML(user.last_region || "未知")}<div class="small muted">${escapeHTML([user.last_region_source, user.last_region_reliability].filter(Boolean).join(" / "))}</div></td>
                 <td>${user.error_count_24h ? statusPill(String(user.error_count_24h), "bad") : statusPill("0", "ok")}</td>
-                <td>${user.support_needs_reply ? statusPill("待回复", "warn") : `${user.support_message_count || 0} 条`}</td>
+                <td>${supportUserCell(user)}</td>
                 <td><button class="button" data-action="load-user-detail" data-user-id="${escapeAttr(user.user_id)}">详情</button></td>
               </tr>
             `,
@@ -1961,10 +2010,31 @@ function accountPhoneDisplay(user: AdminUserListEntry, context: "list" | "detail
   return phoneDisplay(user.phone_number, user.phone_mask, context);
 }
 
+function accountIDLink(userID: string, includeCopy = false): string {
+  if (!userID) return "未返回";
+  return `
+    <span class="inline-actions">
+      <button class="link-button truncate" style="max-width:220px" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(userID)}">${escapeHTML(userID)}</button>
+      ${includeCopy ? `<button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(userID)}">复制</button>` : ""}
+    </span>
+  `;
+}
+
+function accountIDText(userID: string): string {
+  if (!userID) return "未返回";
+  return `${escapeHTML(userID)} <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(userID)}">复制</button>`;
+}
+
 function phoneDisplay(phoneNumber?: string, phoneMask?: string, context: "list" | "detail" = "detail"): string {
   const fullPhone = (phoneNumber || "").trim();
   if (fullPhone && canViewAccountPhone()) {
-    return `${escapeHTML(fullPhone)} <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(fullPhone)}">复制</button>`;
+    return `
+      <span class="inline-actions">
+        <span>${escapeHTML(fullPhone)}</span>
+        <button class="link-button" type="button" data-action="copy-text" data-copy="${escapeAttr(fullPhone)}">复制</button>
+        ${phoneDialLink(fullPhone)}
+      </span>
+    `;
   }
   if (fullPhone) {
     const masked = phoneMask ? escapeHTML(phoneMask) : "已绑定手机号";
@@ -1975,6 +2045,12 @@ function phoneDisplay(phoneNumber?: string, phoneMask?: string, context: "list" 
     return `${escapeHTML(phoneMask)} <span class="small muted">完整号待下次登录补齐</span>`;
   }
   return "未返回";
+}
+
+function phoneDialLink(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  if (!digits) return "";
+  return `<a class="link-button" href="tel:${escapeAttr(digits)}">拨打</a>`;
 }
 
 function phoneDisplayMaskedInline(phoneNumber?: string, phoneMask?: string): string {
@@ -1991,10 +2067,17 @@ function phoneDisplayMaskedInline(phoneNumber?: string, phoneMask?: string): str
   return "暂无手机号";
 }
 
+function supportUserCell(user: AdminUserListEntry): string {
+  const count = user.support_message_count || 0;
+  if (!count && !user.support_needs_reply) return "0 条";
+  const state = user.support_needs_reply ? statusPill("待回复", "warn") : `${count} 条`;
+  return `${state}<div class="small-action-line"><button class="link-button" type="button" data-action="open-support-user" data-user-id="${escapeAttr(user.user_id)}">看反馈</button></div>`;
+}
+
 function userKV(user: AdminUserListEntry): string {
   return `
     <dl class="kv">
-      <dt>账号ID</dt><dd>${escapeHTML(user.user_id)}</dd>
+      <dt>账号ID</dt><dd>${accountIDText(user.user_id)}</dd>
       <dt>手机号</dt><dd>${accountPhoneDisplay(user)}</dd>
       <dt>创建时间</dt><dd>${formatTime(user.created_at)}</dd>
       <dt>最近登录</dt><dd>${formatTime(user.last_login_at)}</dd>
@@ -2068,7 +2151,7 @@ function entitlementSummary(detail: AdminUserDetail): string {
   const user = detail.user;
   return `
     <dl class="kv">
-      <dt>账号ID</dt><dd>${escapeHTML(user.user_id)}</dd>
+      <dt>账号ID</dt><dd>${accountIDText(user.user_id)}</dd>
       <dt>会员档位</dt><dd>${statusPill(user.tier || "free")}</dd>
       <dt>会员到期</dt><dd>${formatTime(user.tier_expire_at)}</dd>
       <dt>今日额度</dt><dd>${quotaText(user.daily)}</dd>
@@ -2713,6 +2796,8 @@ function giftCardAttemptsTable(rows: AdminGiftCardAttempt[]): string {
 }
 
 function supportFilterForm(): string {
+  const hasFilter =
+    pageState.supportStatus !== "open" || pageState.supportQuery.trim() !== "" || pageState.supportSinceRange !== "30d";
   return `
     <form id="support-filter-form" class="filters support-filters">
       <label class="field">
@@ -2729,6 +2814,7 @@ function supportFilterForm(): string {
         <span class="small muted">输入账号ID、手机号或会话消息；有搜索词时自动查全部队列和全部历史。</span>
       </label>
       <button class="button primary" type="submit">筛选</button>
+      ${hasFilter ? `<button class="button" type="button" data-action="clear-support-filter">清空</button>` : ""}
     </form>
   `;
 }
@@ -2863,7 +2949,7 @@ function supportConversationMeta(conversation: AdminSupportConversation): string
   return `
     <dl class="kv support-meta">
       <dt>状态</dt><dd>${supportStatusPill(conversation)}</dd>
-      <dt>账号ID</dt><dd><button class="link-button" type="button" data-action="load-user-detail" data-user-id="${escapeAttr(conversation.user_id)}">${escapeHTML(conversation.user_id)}</button></dd>
+      <dt>账号ID</dt><dd>${accountIDLink(conversation.user_id, true)}</dd>
       <dt>手机号</dt><dd>${phoneDisplay(conversation.phone_number, conversation.phone_mask)}</dd>
       <dt>处理人</dt><dd>${escapeHTML(conversation.assigned_to || "未分配")}</dd>
       <dt>最新用户消息</dt><dd>${formatTime(conversation.latest_user_message_at)}</dd>
