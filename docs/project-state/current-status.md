@@ -10,6 +10,7 @@
 
 ## 当前代码真相
 
+- 2026-06-21 提交 `d542e362` 仅做后端上传和 ECS 部署门禁小范围收口，尚未部署线上。`/upload` 超过 1MiB 的文件会明确返回 `413 body_too_large`；support 图片保存成功但 `support_upload_ownership` 归属登记失败时，会 best-effort 删除刚保存的对象，减少孤儿 support 图片。`scripts/deploy-ecs-server.ps1` 在迁移风险扫描前会优先读取线上 `/opt/nongjiqiancha/server/REVISION`，扫描 `线上 revision..待部署 commit`，读不到或本地不存在时才回退默认 base 并打印 `migration_diff_base=default`。本轮不改 Android、官网、检查更新、正式包、主对话锚点、今日农情提示词或记忆文档提示词。
 - 2026-06-21 后端主聊天流结束后的尾段收口已补超时边界：模型上游返回 `[DONE]` 后，归档 / 扣次 / outbox 标记统一在短超时上下文内完成，失败时继续走现有 `STREAM_ARCHIVE_FAILED` / 后台扣次重试兜底；聊天 inflight 释放也加了独立短超时，避免 RDS / MySQL 极端卡顿时用户已看到正文但请求长期不收尾、后续重发 / 新发被占用。Android 切后台或进程回收时，现有带图 pending 链仍按“前台已开始远端流就不重复发、后端继续归档、回前台拉远端 snapshot / remote completion 恢复”的口径处理；`REMOTE_STARTED_GRACE_MS=10 分钟` 只是防重复远端流保护窗，不是用户主动发送或重试的等待时间。本轮不改 Android UI、滚动链、输入框或模型提示词。
 - 2026-06-21 后台列表页批量隐私继续收口：用户列表和帮助反馈会话列表不再向任何角色批量返回完整手机号，完整手机号仅保留在已有授权和审计的详情 / 搜索链路中；owner 仍可在详情类入口查看完整手机号并按手机号 hash 搜索。该改动降低手机浏览器截图、横向列表和批量接口泄露完整手机号的风险，不影响 Android App、用户登录、客服正文、聊天记录查看或手机号搜索权限。
 - 2026-06-21 后台用户详情的“最近问诊”已从只读 96 字摘录升级为可展开查看完整本轮用户问题和 AI 回复：后端 `/admin-api/v1/users/detail` 在授权角色可看问诊摘录时同步返回 `user_text` / `assistant_text` 完整字段，前端用户详情最多展示最近 12 轮并用折叠块查看全文；用户管理页内点击用户行、账号ID或“详情”都可打开详情，且不再覆盖当前列表筛选，详情卡右上角新增“返回列表”。该能力只面向已登录后台、沿用 `support/owner` 等现有问诊查看权限和审计记录，不把聊天全文放进总览、产品洞察、App 日志或导出，不影响 Android App。
