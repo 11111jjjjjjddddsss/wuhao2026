@@ -16,7 +16,7 @@
 
 正式 release APK 不按测试包 3 天生命周期删除。已经对外发布过的正式包属于回滚、审计和问题定位材料，云端 / 发布记录至少要保留“当前正在下发的正式包 + 最近若干个可回滚正式包 + 对应 `versionCode / versionName / SHA-256 / 文件大小 / commit / 签名指纹`”。APK 体积很小，早期不建议为了省极低的 OSS 存储费删除最近正式物料；后续如果版本很多，再按“保留最近 10 个或最近 12 个月正式包，老包只保留发布记录和 SHA”的口径单独清理。
 
-当前正在下发的正式包为 `1.0.3(4)`，APK URL 是 `https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.3-v4-849e8283.apk`，SHA-256 为 `cd26be1da35b339019f86d1c7d33322b98f4840f8d42127840ddda0e7b0d1f9d`，文件大小 `14,193,276` 字节，`force_update=false`。后台检查更新、官网正式下载按钮和 `download.nongjiqiancha.cn` 公网下载都已对齐该物料；旧正式包 `1.0.2(3)` / `1.0.1(2)` 分别保留在 `android/releases/3/` / `android/releases/2/` 和发布历史里，不再作为当前下发目标。
+当前正在下发的正式包为 `1.0.4(5)`，APK URL 是 `https://download.nongjiqiancha.cn/android/releases/5/nongjiqiancha-1.0.4-v5-97a34e88.apk`，SHA-256 为 `6186c9bd7ce2ad40d1b137ac447a696a2892515ca72e493347030f2ad2db072d`，文件大小 `14,193,280` 字节，`force_update=false`。后台检查更新、官网正式下载按钮和 `download.nongjiqiancha.cn` 公网下载都已对齐该物料；旧正式包 `1.0.3(4)` / `1.0.2(3)` / `1.0.1(2)` 分别保留在 `android/releases/4/` / `android/releases/3/` / `android/releases/2/` 和发布历史里，不再作为当前下发目标。
 
 本机不作为正式包仓库，不需要长期堆 APK。仓库不再保留本机 APK 清理脚本，也不做后台自动清理；需要整理本机 APK 构建产物时，由用户明确提出后，Codex 再先列出目标路径和体积，确认只涉及生成物后单次人工处理。任何清理都不得删除源码、签名配置、Git 记录、云端正式包或后台发布历史。
 
@@ -27,11 +27,11 @@
 - App 请求 `GET /api/app/update?platform=android&version_code=<当前versionCode>&version_name=<当前versionName>`
 - 无更新：提示“当前没有可用更新”
 - 有更新：弹“发现新版本”卡片，按钮为“稍后 / 立即更新”
-- 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，并通过 FileProvider 调起 Android 系统安装页；Android 侧优先使用系统包安装器 action，失败时保留通用 APK `ACTION_VIEW` 兜底，降低不同 ROM 安装页兼容风险
+- 点“立即更新”：App 下载后端返回的 `apk_url` 到本地 cache，下载中会显示百分比进度和进度条；网络慢时点“稍后”会取消本次下载、清理临时 APK，并提示用户可稍后再更新。下载完成后通过 FileProvider 调起 Android 系统安装页；Android 侧优先使用系统包安装器 action，失败时保留通用 APK `ACTION_VIEW` 兜底，降低不同 ROM 安装页兼容风险
 - 客户端也会 fail closed：只有更高 `versionCode`、`download.nongjiqiancha.cn/android/releases/` 下的 HTTPS APK 裸地址、合法 SHA-256 和正数文件大小都齐全时，才会把服务端响应当成可用更新；APK URL 若带 userinfo、query string、fragment、测试包标记或非正式路径，会按物料非法处理。下载入口若遇到物料缺失 / 非法，也会直接失败并上报 `MissingReleaseMetadata`，用户侧统一提示“当前没有可用更新”
 - Android 8+ 如果用户还没允许本 App 安装未知应用，会先打开系统授权页；用户授权后返回 App，会自动继续本次下载 / 安装流程
 - App 会把检查更新关键阶段通过自动日志上报到后台：检查开始、有新版本、手动检查无新版本、检查失败、需要安装未知应用权限、开始下载、下载失败、安装页打开失败、已拉起系统安装页、安装完成和安装未完成。日志只包含阶段、版本号、是否强更、是否配置 APK / SHA / 文件大小、失败原因、HTTP 状态和已安装版本号，不上传 APK URL、SHA-256、手机号、token 或其他敏感内容。
-- 用户点“稍后”会记录该版本已经提示过，避免同一个版本在每次启动时反复弹窗；用户仍可在设置页手动点“检查更新”再次打开同一版本的更新卡片。
+- 用户在未开始下载时点“稍后”会记录该版本已经提示过，避免同一个版本在每次启动时反复弹窗；用户仍可在设置页手动点“检查更新”再次打开同一版本的更新卡片。用户在下载中点“稍后”表示取消本次下载，不记录成安装失败。
 - 用户点“立即更新”并成功拉起系统安装页后，App 会把正在安装的目标版本落到本地偏好里；如果用户取消安装、返回 App、安装页期间进程被杀或重启后版本仍没变化，客户端会清掉该版本的提示抑制，让后续自动检查仍能再次提醒。同一版本安装成功后才继续保留已提示记录。
 - 如果多次测试更新后本机 cache 里残留旧下载文件，可在设置页“账号管理”点“清理临时缓存”。该入口只清理检查更新下载残留和相机临时文件，不删除登录态、聊天历史、会员权益、礼品卡、帮助反馈或待发送图片。
 
@@ -125,7 +125,7 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 - 后端只会在文件大小和 SHA-256 都已配置时下发更新；客户端也要求文件大小为正且不超过 200MB，下载后文件大小必须一致。
 - 后端只会在 SHA-256 合法时下发更新；客户端也要求 SHA-256 合法，下载后文件哈希必须一致。
 - APK 包名必须等于当前 App 包名，APK `versionCode` 必须等于后端下发的最新版本号，且大于当前已安装版本。
-- 安装包必须来自 App 自己的 `cacheDir/app_updates` 并通过 `${applicationId}.fileprovider` 授予临时读取权限，不能把裸文件路径暴露给其它应用。`scripts/check-android-build-parity.ps1` 会锁住 `REQUEST_INSTALL_PACKAGES`、FileProvider `app_updates` 路径、未知来源授权返回续下、下载中防重复点击、官方包安装 action 和 `ACTION_VIEW` 兜底。
+- 安装包必须来自 App 自己的 `cacheDir/app_updates` 并通过 `${applicationId}.fileprovider` 授予临时读取权限，不能把裸文件路径暴露给其它应用。`scripts/check-android-build-parity.ps1` 会锁住 `REQUEST_INSTALL_PACKAGES`、FileProvider `app_updates` 路径、未知来源授权返回续下、下载进度百分比、下载中可取消、下载中防重复点击、官方包安装 action 和 `ACTION_VIEW` 兜底。
 
 ## 发布流程
 
