@@ -67,7 +67,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\get-today-a
 - 名称：`运维自动化`
 - 工作目录：`D:\wuhao`
 - 运行环境：本地
-- 时间：每天北京时间 `23:00`
+- 时间：每天北京时间 `23:20`，避开今日农情 `23:00` 补跑窗口
 
 核心命令：
 
@@ -90,7 +90,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-admin
 - 名称：`农技千查续费与证书巡检`
 - 工作目录：`D:\wuhao`
 - 运行环境：本地
-- 时间：每周一次即可
+- 时间：每周一北京时间 `09:30`
 
 建议只读命令：
 
@@ -99,9 +99,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-resou
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-aliyun-costs.ps1
 ```
 
-条件动作：
+证书同步处理：
 
-- 如果 `check-resource-capacity.ps1 -Strict` 或 `scripts/check-android-download-domain.ps1` 明确提示 `download.nongjiqiancha.cn` 的 ECS / Let’s Encrypt 证书已续期但 OSS CNAME 证书仍是旧证书，才运行：
+- 自动化只报告证书、续费、余额和成本问题，不自动修改云资源或证书配置。
+- 如果 `check-resource-capacity.ps1 -Strict` 或 `scripts/check-android-download-domain.ps1` 明确提示 `download.nongjiqiancha.cn` 的 ECS / Let’s Encrypt 证书已续期但 OSS CNAME 证书仍是旧证书，自动化应报告需要同步；只有用户明确要求处理时，Codex 才手动运行：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\sync-oss-download-certificate.ps1
@@ -111,7 +112,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-andro
 边界：
 
 - 能查就查，能提醒就提醒；不能自动续费、自动购买资源包、自动关闭云服务或自动删除告警。
-- 下载域名证书同步只做“证书已续期但 OSS 仍未同步”的修复闭环，不作为每天常规动作；脚本不得打印私钥、AccessKey 或证书私密内容。
+- 下载域名证书同步只做“证书已续期但 OSS 仍未同步”的人工确认后修复闭环，不作为自动化常规动作；脚本不得打印私钥、AccessKey 或证书私密内容。
 
 ## 核查方式
 
