@@ -329,10 +329,14 @@ if ($failures.Count -eq 0) {
         "Android app update flow must resume the same update after the user returns from unknown-app-source settings."
     Require-Match $failures $hamburgerMenuSheet 'pendingInstallPermissionUpdate\s*=\s*null(?s:.*?)updateDialogInfo\s*=\s*null' `
         "Dismissing the ordinary app update dialog must clear pending install-permission resume state."
-    Require-Match $failures $hamburgerMenuSheet 'onDismissRequest\s*=\s*\{\s*if\s*\(\s*!downloading\s*\)\s*onDismiss\(\)\s*\}' `
-        "Ordinary app update dialogs must stay dismissible whenever an APK download is not actively running."
+    Require-Match $failures $hamburgerMenuSheet 'onDismissRequest\s*=\s*onDismiss' `
+        "Ordinary app update dialogs must allow the user to dismiss/cancel the dialog, including during slow APK downloads."
+    Require-Match $failures $hamburgerMenuSheet 'updateDownloadJob\?\.cancel\(\)(?s:.*?)event\s*=\s*"app_update\.download_cancelled"' `
+        "App update downloads must be cancellable from the Later action and report a safe cancellation event."
     Require-Match $failures $hamburgerMenuSheet 'Text\(\s*text\s*=\s*"稍后"' `
         "Ordinary app update dialogs must always keep a visible later button."
+    Require-Match $failures $hamburgerMenuSheet '正在下载\s+\$percent%(?s:.*?)AppUpdateDownloadProgressBar' `
+        "App update dialogs must show visible progress while downloading APKs."
     Require-Match $failures $hamburgerMenuSheet 'if\s*\(\s*updateChecking\s*\|\|\s*updateDownloading\s*\)\s*return(?s:.*?)clickable\s*\((?s:.*?)enabled\s*=\s*!downloading' `
         "Android app update UI must prevent duplicate checks/downloads while a package is being prepared."
     Require-Match $failures $loginScreen 'SessionApi\.sendSmsCode' `

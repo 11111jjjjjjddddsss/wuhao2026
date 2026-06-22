@@ -37,9 +37,6 @@ func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
 		"【输出约束】",
 		"所有回答禁止表格",
-		"排版尽量简洁",
-		"多用短段落和适当空行；不要使用多级列表和项目符号列表",
-		"避免长段堆叠",
 		"回答不要刻意套固定模板",
 		"不限固定格式",
 		"根据本轮问题自然组织",
@@ -68,6 +65,10 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"以本轮图片和客观信息为准",
 		"时间、地点、天气、历史对话和记忆摘要只作风险背景",
 		"不能盖过本轮证据",
+		"排版尽量简洁",
+		"多用短段落和适当空行",
+		"不要使用多级列表和项目符号列表",
+		"避免长段堆叠",
 	} {
 		if strings.Contains(chatOutputConstraint, blocked) {
 			t.Fatalf("output constraint should not include template phrase %q: %q", blocked, chatOutputConstraint)

@@ -10,6 +10,10 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -63,6 +67,21 @@ object AppUpdateInstaller {
         val httpStatus: Int? = null
     )
 
+    data class DownloadProgress(
+        val downloadedBytes: Long,
+        val totalBytes: Long?
+    ) {
+        val fraction: Float?
+            get() {
+                val total = totalBytes ?: return null
+                if (total <= 0L) return null
+                return (downloadedBytes.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+            }
+
+        val percent: Int?
+            get() = fraction?.let { (it * 100f).toInt().coerceIn(0, 100) }
+    }
+
     enum class InstallFailureReason {
         FileMissing,
         IntentFailed
@@ -95,6 +114,13 @@ object AppUpdateInstaller {
         downloadApkDetailed(context, update).file
 
     suspend fun downloadApkDetailed(context: Context, update: SessionApi.AppUpdateInfo): DownloadResult =
+        downloadApkDetailed(context, update, onProgress = null)
+
+    suspend fun downloadApkDetailed(
+        context: Context,
+        update: SessionApi.AppUpdateInfo,
+        onProgress: (suspend (DownloadProgress) -> Unit)?
+    ): DownloadResult =
         withContext(Dispatchers.IO) {
             val apkUrl = update.apkUrl?.trim().orEmpty()
             if (!isAllowedReleaseApkUrl(apkUrl)) {
@@ -118,7 +144,14 @@ object AppUpdateInstaller {
             val tempFile = File(outputDir, "${outputFile.name}.tmp")
             try {
                 val request = Request.Builder().url(apkUrl).get().build()
-                client.newCall(request).execute().use { response ->
+                val call = client.newCall(request)
+                val cancellationHandle = currentCoroutineContext().job.invokeOnCompletion { cause ->
+                    if (cause != null) {
+                        call.cancel()
+                    }
+                }
+                try {
+                    call.execute().use { response ->
                     if (!response.isSuccessful) {
                         return@withContext DownloadResult(
                             reason = DownloadFailureReason.HttpStatus,
@@ -146,9 +179,10 @@ object AppUpdateInstaller {
                     if (contentLength > 0L && contentLength != expectedSizeBytes) {
                         return@withContext DownloadResult(reason = DownloadFailureReason.ContentLengthMismatch)
                     }
+                    onProgress?.invoke(DownloadProgress(downloadedBytes = 0L, totalBytes = expectedSizeBytes))
                     tempFile.outputStream().use { output ->
                         body.byteStream().use { input ->
-                            if (!copyToWithLimit(input, output, maxDownloadBytes)) {
+                            if (!copyToWithLimit(input, output, maxDownloadBytes, expectedSizeBytes, onProgress)) {
                                 tempFile.delete()
                                 return@withContext DownloadResult(reason = DownloadFailureReason.CopyTooLarge)
                             }
@@ -165,14 +199,23 @@ object AppUpdateInstaller {
                     }
                     DownloadResult(file = outputFile)
                 }
+                } finally {
+                    cancellationHandle.dispose()
+                }
             } catch (_: IOException) {
                 tempFile.delete()
+                currentCoroutineContext().ensureActive()
                 DownloadResult(reason = DownloadFailureReason.Network)
             } catch (_: IllegalArgumentException) {
                 tempFile.delete()
+                currentCoroutineContext().ensureActive()
                 DownloadResult(reason = DownloadFailureReason.InvalidUrl)
+            } catch (exception: CancellationException) {
+                tempFile.delete()
+                throw exception
             } catch (_: Exception) {
                 tempFile.delete()
+                currentCoroutineContext().ensureActive()
                 DownloadResult(reason = DownloadFailureReason.Unexpected)
             }
         }
@@ -339,16 +382,36 @@ object AppUpdateInstaller {
         return digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
     }
 
-    private fun copyToWithLimit(input: InputStream, output: OutputStream, maxBytes: Long): Boolean {
+    private suspend fun copyToWithLimit(
+        input: InputStream,
+        output: OutputStream,
+        maxBytes: Long,
+        expectedSizeBytes: Long,
+        onProgress: (suspend (DownloadProgress) -> Unit)?
+    ): Boolean {
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         var total = 0L
+        var lastProgressAt = 0L
+        var lastProgressPercent = -1
         while (true) {
+            currentCoroutineContext().ensureActive()
             val read = input.read(buffer)
             if (read <= 0) break
             total += read.toLong()
             if (total > maxBytes) return false
             output.write(buffer, 0, read)
+            val percent = if (expectedSizeBytes > 0L) {
+                ((total * 100L) / expectedSizeBytes).toInt().coerceIn(0, 100)
+            } else {
+                -1
+            }
+            if (onProgress != null && (percent != lastProgressPercent || total - lastProgressAt >= 512L * 1024L)) {
+                lastProgressAt = total
+                lastProgressPercent = percent
+                onProgress(DownloadProgress(downloadedBytes = total, totalBytes = expectedSizeBytes.takeIf { it > 0L }))
+            }
         }
+        onProgress?.invoke(DownloadProgress(downloadedBytes = total, totalBytes = expectedSizeBytes.takeIf { it > 0L }))
         return true
     }
 }

@@ -114,8 +114,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -342,6 +344,8 @@ internal fun HamburgerMenuSheet(
     var updateChecking by remember(userId) { mutableStateOf(false) }
     var updateDialogInfo by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var updateDownloading by remember(userId) { mutableStateOf(false) }
+    var updateDownloadProgress by remember(userId) { mutableStateOf<AppUpdateInstaller.DownloadProgress?>(null) }
+    var updateDownloadJob by remember(userId) { mutableStateOf<Job?>(null) }
     var pendingInstallPermissionUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var pendingInstallAttemptUpdate by remember(userId) { mutableStateOf<SessionApi.AppUpdateInfo?>(null) }
     var settingsMainOpenLogged by remember(visible, userId) { mutableStateOf(false) }
@@ -409,6 +413,27 @@ internal fun HamburgerMenuSheet(
             }
         }
     }
+    fun dismissAppUpdateDialog(info: SessionApi.AppUpdateInfo) {
+        info.latestVersionCode
+            ?.takeIf { it > 0 }
+            ?.let { context.saveLastPromptedUpdateVersionCode(it) }
+        val activeDownload = updateDownloading || updateDownloadJob?.isActive == true
+        if (activeDownload) {
+            updateDownloadJob?.cancel()
+            SessionApi.reportClientLog(
+                level = "info",
+                event = "app_update.download_cancelled",
+                message = "App update download cancelled by user",
+                attrs = appUpdateLogAttrs(info, true)
+            )
+            showNotice("已取消下载，可稍后再更新")
+        }
+        updateDownloading = false
+        updateDownloadProgress = null
+        updateDownloadJob = null
+        pendingInstallPermissionUpdate = null
+        updateDialogInfo = null
+    }
     fun startAppUpdate(update: SessionApi.AppUpdateInfo) {
         if (updateDownloading) return
         val appContext = context.applicationContext
@@ -426,58 +451,80 @@ internal fun HamburgerMenuSheet(
         }
         pendingInstallPermissionUpdate = null
         updateDownloading = true
+        updateDownloadProgress = AppUpdateInstaller.DownloadProgress(
+            downloadedBytes = 0L,
+            totalBytes = update.fileSizeBytes
+        )
         showNotice("正在下载更新...")
-        scope.launch {
-            SessionApi.reportClientLog(
-                level = "info",
-                event = "app_update.download_started",
-                message = "App update download started",
-                attrs = appUpdateLogAttrs(update, true)
-            )
-            val download = AppUpdateInstaller.downloadApkDetailed(appContext, update)
-            updateDownloading = false
-            val apkFile = download.file
-            if (apkFile == null) {
-                SessionApi.reportClientLog(
-                    level = "warn",
-                    event = "app_update.download_failed",
-                    message = "App update download failed",
-                    attrs = appUpdateLogAttrs(update, true) + mapOf(
-                        "reason" to (download.reason?.name ?: "unknown"),
-                        "http_status" to (download.httpStatus ?: 0)
-                    )
-                )
-                showNotice(appUpdateDownloadFailureText(download.reason))
-                return@launch
-            }
-            updateDialogInfo = null
-            val install = AppUpdateInstaller.installApkDetailed(appContext, apkFile)
-            if (!install.started) {
-                SessionApi.reportClientLog(
-                    level = "warn",
-                    event = "app_update.install_intent_failed",
-                    message = "App update install intent failed",
-                    attrs = appUpdateLogAttrs(update, true) + mapOf(
-                        "reason" to (install.reason?.name ?: "unknown")
-                    )
-                )
-                showNotice("系统安装页面打开失败，请稍后再试")
-            } else {
-                pendingInstallAttemptUpdate = update
-                update.latestVersionCode
-                    ?.takeIf { it > 0 }
-                    ?.let {
-                        context.savePendingInstallAttemptVersionCode(it)
-                        context.saveLastPromptedUpdateVersionCode(it)
-                    }
+        val job = scope.launch {
+            try {
                 SessionApi.reportClientLog(
                     level = "info",
-                    event = "app_update.install_started",
-                    message = "App update install started",
+                    event = "app_update.download_started",
+                    message = "App update download started",
                     attrs = appUpdateLogAttrs(update, true)
                 )
+                val download = AppUpdateInstaller.downloadApkDetailed(appContext, update) { progress ->
+                    withContext(Dispatchers.Main) {
+                        updateDownloadProgress = progress
+                    }
+                }
+                updateDownloading = false
+                updateDownloadJob = null
+                val apkFile = download.file
+                if (apkFile == null) {
+                    updateDownloadProgress = null
+                    SessionApi.reportClientLog(
+                        level = "warn",
+                        event = "app_update.download_failed",
+                        message = "App update download failed",
+                        attrs = appUpdateLogAttrs(update, true) + mapOf(
+                            "reason" to (download.reason?.name ?: "unknown"),
+                            "http_status" to (download.httpStatus ?: 0)
+                        )
+                    )
+                    showNotice(appUpdateDownloadFailureText(download.reason))
+                    return@launch
+                }
+                updateDownloadProgress = AppUpdateInstaller.DownloadProgress(
+                    downloadedBytes = update.fileSizeBytes ?: apkFile.length(),
+                    totalBytes = update.fileSizeBytes ?: apkFile.length()
+                )
+                updateDialogInfo = null
+                updateDownloadProgress = null
+                val install = AppUpdateInstaller.installApkDetailed(appContext, apkFile)
+                if (!install.started) {
+                    SessionApi.reportClientLog(
+                        level = "warn",
+                        event = "app_update.install_intent_failed",
+                        message = "App update install intent failed",
+                        attrs = appUpdateLogAttrs(update, true) + mapOf(
+                            "reason" to (install.reason?.name ?: "unknown")
+                        )
+                    )
+                    showNotice("系统安装页面打开失败，请稍后再试")
+                } else {
+                    pendingInstallAttemptUpdate = update
+                    update.latestVersionCode
+                        ?.takeIf { it > 0 }
+                        ?.let {
+                            context.savePendingInstallAttemptVersionCode(it)
+                            context.saveLastPromptedUpdateVersionCode(it)
+                        }
+                    SessionApi.reportClientLog(
+                        level = "info",
+                        event = "app_update.install_started",
+                        message = "App update install started",
+                        attrs = appUpdateLogAttrs(update, true)
+                    )
+                }
+            } catch (_: CancellationException) {
+                updateDownloading = false
+                updateDownloadProgress = null
+                updateDownloadJob = null
             }
         }
+        updateDownloadJob = job
     }
     fun reconcilePendingInstallAttempt(showIncompleteNotice: Boolean) {
         val inMemoryAttempt = pendingInstallAttemptUpdate
@@ -872,15 +919,10 @@ internal fun HamburgerMenuSheet(
         HamburgerAppUpdateDialog(
             update = info,
             downloading = updateDownloading,
+            downloadProgress = updateDownloadProgress,
             installPermissionPending = pendingInstallPermissionUpdate != null,
             onDismiss = {
-                if (!updateDownloading) {
-                    info.latestVersionCode
-                        ?.takeIf { it > 0 }
-                        ?.let { context.saveLastPromptedUpdateVersionCode(it) }
-                    pendingInstallPermissionUpdate = null
-                    updateDialogInfo = null
-                }
+                dismissAppUpdateDialog(info)
             },
             onInstall = {
                 performButtonHaptic()
@@ -894,6 +936,7 @@ internal fun HamburgerMenuSheet(
 private fun HamburgerAppUpdateDialog(
     update: SessionApi.AppUpdateInfo,
     downloading: Boolean,
+    downloadProgress: AppUpdateInstaller.DownloadProgress?,
     installPermissionPending: Boolean,
     onDismiss: () -> Unit,
     onInstall: () -> Unit
@@ -909,9 +952,7 @@ private fun HamburgerAppUpdateDialog(
     val sizeText = formatAppUpdateSize(update.fileSizeBytes)
     val notes = update.releaseNotes?.trim().orEmpty()
     Dialog(
-        onDismissRequest = {
-            if (!downloading) onDismiss()
-        },
+        onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
@@ -927,6 +968,7 @@ private fun HamburgerAppUpdateDialog(
                 sizeText = sizeText,
                 notes = notes,
                 downloading = downloading,
+                downloadProgress = downloadProgress,
                 installPermissionPending = installPermissionPending,
                 onDismiss = onDismiss,
                 onInstall = onInstall,
@@ -942,6 +984,7 @@ private fun HamburgerAppUpdateCard(
     sizeText: String?,
     notes: String,
     downloading: Boolean,
+    downloadProgress: AppUpdateInstaller.DownloadProgress?,
     installPermissionPending: Boolean,
     onDismiss: () -> Unit,
     onInstall: () -> Unit,
@@ -979,11 +1022,24 @@ private fun HamburgerAppUpdateCard(
                 lineHeight = 22.sp
             )
             if (downloading) {
+                val progressText = downloadProgress?.percent?.let { percent ->
+                    "正在下载 $percent%"
+                } ?: "正在下载更新包..."
                 Text(
-                    text = "正在准备安装包。",
+                    text = progressText,
                     color = Color(0xFF6D7178),
                     fontSize = 13.sp,
                     lineHeight = 18.sp
+                )
+                AppUpdateDownloadProgressBar(
+                    fraction = downloadProgress?.fraction ?: 0f,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "网络较慢时可以点“稍后”取消，之后再更新。",
+                    color = Color(0xFF8A8F98),
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
                 )
             } else if (installPermissionPending) {
                 Text(
@@ -1011,7 +1067,6 @@ private fun HamburgerAppUpdateCard(
                         .weight(1f)
                         .heightIn(min = 44.dp)
                         .clickable(
-                            enabled = !downloading,
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
                             onClick = onDismiss
@@ -1056,6 +1111,33 @@ private fun HamburgerAppUpdateCard(
 }
 
 @Composable
+private fun AppUpdateDownloadProgressBar(
+    fraction: Float,
+    modifier: Modifier = Modifier
+) {
+    val progress = fraction.coerceIn(0f, 1f)
+    Canvas(
+        modifier = modifier.heightIn(min = 6.dp, max = 6.dp)
+    ) {
+        val radius = CornerRadius(size.height / 2f, size.height / 2f)
+        drawRoundRect(
+            color = Color(0xFFE8EAED),
+            topLeft = Offset.Zero,
+            size = size,
+            cornerRadius = radius
+        )
+        if (progress > 0f) {
+            drawRoundRect(
+                color = Color(0xFF111111),
+                topLeft = Offset.Zero,
+                size = Size(width = size.width * progress, height = size.height),
+                cornerRadius = radius
+            )
+        }
+    }
+}
+
+@Composable
 internal fun HamburgerAppUpdateDialogPreview(
     downloading: Boolean = false,
     installPermissionPending: Boolean = false
@@ -1065,6 +1147,14 @@ internal fun HamburgerAppUpdateDialogPreview(
         sizeText = "38.5MB",
         notes = "优化使用体验。",
         downloading = downloading,
+        downloadProgress = if (downloading) {
+            AppUpdateInstaller.DownloadProgress(
+                downloadedBytes = 12L * 1024L * 1024L,
+                totalBytes = 38L * 1024L * 1024L
+            )
+        } else {
+            null
+        },
         installPermissionPending = installPermissionPending,
         onDismiss = {},
         onInstall = {},
