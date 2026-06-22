@@ -12,6 +12,12 @@ import org.junit.Test
 
 class ChatStreamingRendererTest {
     @Test
+    fun disclaimerRefinedCatchesGramPerMuDosage() {
+        assertTrue(shouldShowAiDisclaimerRefined("建议按 10g/亩 先小面积试用。"))
+        assertTrue(shouldShowAiDisclaimerRefined("每亩用 20g 兑 15 升水喷施。"))
+    }
+
+    @Test
     fun streamingBoldStartsImmediatelyWithoutRawMarkers() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "建议**控水",

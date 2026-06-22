@@ -40,8 +40,15 @@ const isValidApkUrl = (value: string): boolean => {
     if (url.username || url.password || url.search || url.hash) {
       return false;
     }
-    const normalized = `${value}\n${decodeUrlText(value)}\n${url.pathname}\n${decodeUrlText(url.pathname)}`.toLowerCase();
+    if (url.port && url.port !== '443') {
+      return false;
+    }
+    const rawPath = url.pathname.toLowerCase();
+    const decodedPath = decodeUrlText(url.pathname).toLowerCase();
+    const normalized = `${value}\n${decodeUrlText(value)}\n${rawPath}\n${decodedPath}`.toLowerCase();
     if (
+      rawPath.includes('..') ||
+      decodedPath.includes('..') ||
       normalized.includes('test-apks') ||
       normalized.includes('debug') ||
       normalized.includes('internal') ||
@@ -51,8 +58,10 @@ const isValidApkUrl = (value: string): boolean => {
     }
     return url.protocol === 'https:' &&
       url.hostname.toLowerCase() === 'download.nongjiqiancha.cn' &&
-      url.pathname.toLowerCase().startsWith('/android/releases/') &&
-      url.pathname.toLowerCase().endsWith('.apk');
+      rawPath.startsWith('/android/releases/') &&
+      decodedPath.startsWith('/android/releases/') &&
+      rawPath.endsWith('.apk') &&
+      decodedPath.endsWith('.apk');
   } catch {
     return false;
   }

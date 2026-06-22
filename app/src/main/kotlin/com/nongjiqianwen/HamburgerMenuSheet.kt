@@ -3818,7 +3818,7 @@ private fun HamburgerSupportMessageImageThumb(
             )
         } else {
             Text(
-                text = if (loadUnavailable) "已过期" else "图片",
+                text = if (loadUnavailable) "暂时不可用" else "图片",
                 color = if (isUser) Color(0xFFD8DADF) else Color(0xFF777C85),
                 fontSize = if (loadUnavailable) 11.sp else 13.sp,
                 lineHeight = 16.sp,

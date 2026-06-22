@@ -1051,10 +1051,10 @@ internal fun shouldShowAiDisclaimerRefined(content: String): Boolean {
         "间隔期", "安全期", "停药期", "采收期"
     )
     val dosageRegexes = listOf(
-        Regex("\\d+(\\.\\d+)?\\s*(克|kg|公斤)\\s*/\\s*(亩|升|l)"),
+        Regex("\\d+(\\.\\d+)?\\s*(克|g|kg|公斤)\\s*/\\s*(亩|升|l)"),
         Regex("\\d+(\\.\\d+)?\\s*(毫升|ml|升|l)\\s*/\\s*(亩|升|l)"),
-        Regex("\\d+(\\.\\d+)?\\s*(克|毫升|ml|升|l|公斤|kg)\\s*(每亩|/亩)"),
-        Regex("\\d+(\\.\\d+)?\\s*(克|毫升|ml|升|l)\\s*兑\\s*\\d+(\\.\\d+)?\\s*(升|l)?\\s*水"),
+        Regex("\\d+(\\.\\d+)?\\s*(克|g|毫升|ml|升|l|公斤|kg)\\s*(每亩|/亩)"),
+        Regex("\\d+(\\.\\d+)?\\s*(克|g|毫升|ml|升|l)\\s*兑\\s*\\d+(\\.\\d+)?\\s*(升|l)?\\s*水"),
         Regex("\\d+(\\.\\d+)?\\s*ppm"),
         Regex("\\d+(\\.\\d+)?\\s*倍液")
     )

@@ -180,6 +180,9 @@ function Test-OfficialAndroidApkUrl {
     if ($parsed.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
         return $false
     }
+    if (-not ($parsed.IsDefaultPort -or $parsed.Port -eq 443)) {
+        return $false
+    }
     $path = $parsed.AbsolutePath.ToLowerInvariant()
     try {
         $decodedPath = [System.Uri]::UnescapeDataString($parsed.AbsolutePath).ToLowerInvariant()

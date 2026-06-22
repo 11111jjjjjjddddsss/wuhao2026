@@ -3656,10 +3656,22 @@ function appUpdateConfig(config: AdminAppUpdateConfig): string {
 }
 
 function appUpdateEditForm(config: AdminAppUpdateConfig): string {
+  const disableButton = config.enabled ? `
+        <button
+          class="button"
+          type="button"
+          data-action="disable-app-update"
+          data-latest-version-code="${escapeAttr(String(config.latest_version_code || 0))}"
+          data-latest-version-name="${escapeAttr(config.latest_version_name || "")}"
+          data-apk-url="${escapeAttr(config.apk_url || "")}"
+          data-apk-sha256="${escapeAttr(config.apk_sha256 || "")}"
+          data-release-notes="${escapeAttr(config.release_notes || "")}"
+          data-file-size-bytes="${escapeAttr(String(config.file_size_bytes || 0))}"
+        >停用当前更新</button>` : "";
   return `
     <form id="app-update-form" class="stack">
       ${notice("怎么发新包", "填内部版本号、安装包下载链接、安装包校验码和文件大小；勾上“对外启用更新”后保存，旧版 App 启动后会静默检查，用户也可手动检查。取消勾选并保存，就是停更。", "info")}
-      ${notice("不是系统推送", "当前没有通知权限和推送服务；默认只做普通更新，每个版本最多自动提醒一次。更新说明可以留空，App 会显示默认文案。", "warn")}
+      ${notice("不是系统推送", "当前没有通知权限和推送服务；默认只做普通更新，每个版本最多自动提醒一次，不强制用户安装。更新说明可以留空，App 会显示默认文案。", "warn")}
       <label class="field">
         <span>内部版本号（versionCode）</span>
         <input class="input" name="latest_version_code" type="number" min="0" step="1" value="${escapeAttr(String(config.latest_version_code || ""))}" placeholder="例如 10023" />
@@ -3686,18 +3698,8 @@ function appUpdateEditForm(config: AdminAppUpdateConfig): string {
       </label>
       <label class="checkline"><input type="checkbox" name="enabled" ${config.enabled ? "checked" : ""} /> 对外启用更新</label>
       <div class="row-actions">
-        <button class="button primary" type="submit">${config.enabled ? "保存并启用更新" : "保存更新配置"}</button>
-        <button
-          class="button"
-          type="button"
-          data-action="disable-app-update"
-          data-latest-version-code="${escapeAttr(String(config.latest_version_code || 0))}"
-          data-latest-version-name="${escapeAttr(config.latest_version_name || "")}"
-          data-apk-url="${escapeAttr(config.apk_url || "")}"
-          data-apk-sha256="${escapeAttr(config.apk_sha256 || "")}"
-          data-release-notes="${escapeAttr(config.release_notes || "")}"
-          data-file-size-bytes="${escapeAttr(String(config.file_size_bytes || 0))}"
-        >立即停更</button>
+        <button class="button primary" type="submit">${config.enabled ? "保存并启用普通更新" : "保存更新配置"}</button>
+        ${disableButton}
       </div>
     </form>
   `;
@@ -3872,13 +3874,24 @@ function formValue(form: HTMLFormElement, key: string): string {
   return String(new FormData(form).get(key) || "").trim();
 }
 
-function isInternalTestApkURL(value: string): boolean {
-  let normalized = value.trim().toLowerCase();
-  try {
-    normalized = `${normalized} ${decodeURIComponent(value).toLowerCase()}`;
-  } catch {
-    // Keep the raw-string check if the URL is not safely decodable.
+function decodeURLText(value: string): string {
+  let current = value;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) {
+        break;
+      }
+      current = decoded;
+    } catch {
+      break;
+    }
   }
+  return current;
+}
+
+function isInternalTestApkURL(value: string): boolean {
+  const normalized = `${value.trim()} ${decodeURLText(value)}`.toLowerCase();
   return normalized.includes("test-apks") ||
     normalized.includes("debug") ||
     normalized.includes("internal") ||
@@ -3888,14 +3901,26 @@ function isInternalTestApkURL(value: string): boolean {
 function isOfficialApkURL(value: string): boolean {
   try {
     const url = new URL(value.trim());
+    const rawPath = url.pathname.toLowerCase();
+    const decodedPath = decodeURLText(url.pathname).toLowerCase();
+    const normalized = `${value}\n${decodeURLText(value)}\n${rawPath}\n${decodedPath}`.toLowerCase();
     return url.protocol === "https:" &&
       url.username === "" &&
       url.password === "" &&
       url.search === "" &&
       url.hash === "" &&
+      (url.port === "" || url.port === "443") &&
       url.hostname.toLowerCase() === "download.nongjiqiancha.cn" &&
-      url.pathname.toLowerCase().startsWith("/android/releases/") &&
-      url.pathname.toLowerCase().endsWith(".apk");
+      rawPath.startsWith("/android/releases/") &&
+      decodedPath.startsWith("/android/releases/") &&
+      rawPath.endsWith(".apk") &&
+      decodedPath.endsWith(".apk") &&
+      !rawPath.includes("..") &&
+      !decodedPath.includes("..") &&
+      !normalized.includes("test-apks") &&
+      !normalized.includes("debug") &&
+      !normalized.includes("internal") &&
+      !normalized.includes("staging");
   } catch {
     return false;
   }

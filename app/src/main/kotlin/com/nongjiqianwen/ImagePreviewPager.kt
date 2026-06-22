@@ -41,8 +41,8 @@ import java.net.URI
 import java.net.URLDecoder
 import java.util.Locale
 
-internal const val IMAGE_EXPIRED_THUMB_TEXT = "图片已过期"
-internal const val IMAGE_EXPIRED_PREVIEW_TEXT = "图片已过期，仅保留文字记录"
+internal const val IMAGE_EXPIRED_THUMB_TEXT = "暂时不可用"
+internal const val IMAGE_EXPIRED_PREVIEW_TEXT = "图片暂时无法加载或已过期，仅保留文字记录"
 
 internal fun String.isRemoteImageSource(): Boolean =
     startsWith("http://", ignoreCase = true) || startsWith("https://", ignoreCase = true)
