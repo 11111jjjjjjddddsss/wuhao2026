@@ -103,6 +103,7 @@ try {
         @{ Name = "audit_logs"; Path = "/admin-api/v1/audit-logs?limit=1" },
         @{ Name = "today_agri_cards"; Path = "/admin-api/v1/today-agri/cards?limit=1" },
         @{ Name = "app_update_android"; Path = "/admin-api/v1/app-update/android" },
+        @{ Name = "app_update_events"; Path = "/admin-api/v1/app-update/android/events?limit=1" },
         @{ Name = "gift_card_summary"; Path = "/admin-api/v1/gift-cards/summary" },
         @{ Name = "gift_card_batches"; Path = "/admin-api/v1/gift-cards/batches?limit=1" },
         @{ Name = "gift_cards"; Path = "/admin-api/v1/gift-cards/cards?limit=1" },

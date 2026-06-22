@@ -127,6 +127,9 @@ function Test-AllowedReleaseApkUri {
     if ($Uri.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn") {
         Add-Failure $failures "$Label URL host must be download.nongjiqiancha.cn"
     }
+    if (-not ($Uri.IsDefaultPort -or $Uri.Port -eq 443)) {
+        Add-Failure $failures "$Label URL must use default HTTPS port 443"
+    }
     if (-not [string]::IsNullOrWhiteSpace($Uri.UserInfo) -or
         -not [string]::IsNullOrWhiteSpace($Uri.Query) -or
         -not [string]::IsNullOrWhiteSpace($Uri.Fragment)) {

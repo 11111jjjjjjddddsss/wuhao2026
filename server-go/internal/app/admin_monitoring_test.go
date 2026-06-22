@@ -262,6 +262,33 @@ func TestAdminSupportStatusNoteDoesNotReuseDeletionSensitiveValidation(t *testin
 	}
 }
 
+func TestAdminSupportWriteValidationFailuresAreAudited(t *testing.T) {
+	source := mustReadFileForTest(t, "admin_api.go")
+	replyBlock := functionBlockForTest(source, "func (s *Server) handleAdminCreateSupportMessage")
+	assertContainsAll(t, replyBlock,
+		`"admin.support.reply"`,
+		`jsonDecodeErrorStatusAndCode(err)`,
+		`"user_id_required"`,
+		`"support_conversation_not_found"`,
+	)
+	statusBlock := functionBlockForTest(source, "func (s *Server) handleAdminUpdateSupportConversationStatus")
+	assertContainsAll(t, statusBlock,
+		`"admin.support.status"`,
+		`jsonDecodeErrorStatusAndCode(err)`,
+		`"user_id_required"`,
+		`"invalid_status"`,
+	)
+}
+
+func TestAdminAppUpdateWriteUsesDecodeErrorHelper(t *testing.T) {
+	source := mustReadFileForTest(t, "admin_api.go")
+	block := functionBlockForTest(source, "func (s *Server) handleAdminAppUpdateAndroidWrite")
+	assertContainsAll(t, block, `jsonDecodeErrorStatusAndCode(err)`, `s.writeJSONDecodeError(w, err)`)
+	if strings.Contains(block, `s.writeError(w, http.StatusBadRequest, "invalid_json")`) {
+		t.Fatalf("admin app update write should not collapse all JSON decode errors to 400 invalid_json")
+	}
+}
+
 func TestAdminMonitoringLegacyFusionCopyMatchesCurrentLoginPolicy(t *testing.T) {
 	report := AdminMonitoring{
 		AuthLogs: AdminMonitoringAuthLogs{

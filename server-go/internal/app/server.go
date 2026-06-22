@@ -786,11 +786,15 @@ func decodeJSONBodyLimited[T any](r *http.Request, dst *T, maxBytes int64) error
 }
 
 func (s *Server) writeJSONDecodeError(w http.ResponseWriter, err error) {
+	status, code := jsonDecodeErrorStatusAndCode(err)
+	s.writeError(w, status, code)
+}
+
+func jsonDecodeErrorStatusAndCode(err error) (int, string) {
 	if errors.Is(err, errJSONBodyTooLarge) || isJSONBodyTooLargeError(err) {
-		s.writeError(w, http.StatusRequestEntityTooLarge, "body_too_large")
-		return
+		return http.StatusRequestEntityTooLarge, "body_too_large"
 	}
-	s.writeError(w, http.StatusBadRequest, "invalid_json")
+	return http.StatusBadRequest, "invalid_json"
 }
 
 func isJSONBodyTooLargeError(err error) bool {

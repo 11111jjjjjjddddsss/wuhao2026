@@ -352,6 +352,30 @@ func TestBuildAndroidUpdateInfoRejectsExternalAPKHost(t *testing.T) {
 	}
 }
 
+func TestBuildAndroidUpdateInfoRejectsNonDefaultAPKPort(t *testing.T) {
+	cfg := androidUpdateConfig{
+		Enabled:           true,
+		LatestVersionCode: 4,
+		LatestVersionName: "1.0.4",
+		APKURL:            "https://download.nongjiqiancha.cn:4443/android/releases/4/nongjiqiancha-1.0.4.apk",
+		APKChecksumSHA256: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		FileSizeBytes:     12_345,
+	}
+	info := buildAndroidUpdateInfo(3, "1.0.3", cfg)
+	if info.HasUpdate {
+		t.Fatalf("expected non-default apk port to disable update, got %#v", info)
+	}
+	if got := androidUpdateIgnoredReason(cfg); got != "invalid_apk_url" {
+		t.Fatalf("ignored reason = %q, want invalid_apk_url", got)
+	}
+	if androidUpdateConfigValid(cfg) {
+		t.Fatalf("non-default apk port config must be invalid")
+	}
+	if androidUpdateDownloadArtifactsComplete(cfg) {
+		t.Fatalf("non-default apk port must not count as complete release artifact")
+	}
+}
+
 func TestBuildAndroidUpdateInfoRejectsNonAPKOfficialURL(t *testing.T) {
 	cfg := androidUpdateConfig{
 		Enabled:           true,

@@ -139,6 +139,7 @@ function Test-OfficialAndroidApkUrl {
     }
     if ($parsed.Scheme -ne "https" -or
         $parsed.Host.ToLowerInvariant() -ne "download.nongjiqiancha.cn" -or
+        -not ($parsed.IsDefaultPort -or $parsed.Port -eq 443) -or
         -not [string]::IsNullOrWhiteSpace($parsed.UserInfo) -or
         -not [string]::IsNullOrWhiteSpace($parsed.Query) -or
         -not [string]::IsNullOrWhiteSpace($parsed.Fragment)) {
@@ -328,6 +329,9 @@ Invoke-HttpProbe `
         '"upload_storage":"oss"'
     )
 $appUpdateProbeVersionCode = [Math]::Max(0, $PreviousAndroidVersionCode)
+if ($ExpectedAndroidUpdateVersionCode -gt 0 -and $appUpdateProbeVersionCode -le 0) {
+    Add-WarningItem "ExpectedAndroidUpdateVersionCode was set without PreviousAndroidVersionCode; app update probe uses version_code=0 and does not prove a real old installed version will see the update"
+}
 Invoke-AppUpdatePublicProbe -ProbeVersionCode $appUpdateProbeVersionCode -ExpectedVersionCode $ExpectedAndroidUpdateVersionCode
 Invoke-AndroidDownloadDomainProbe
 $internalPublicProbes = @(

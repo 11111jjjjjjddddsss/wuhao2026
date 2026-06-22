@@ -925,11 +925,14 @@ func (s *Server) handleAdminCreateSupportMessage(w http.ResponseWriter, r *http.
 	}
 	var body supportAdminMessageRequest
 	if err := decodeJSONBody(r, &body); err != nil {
+		status, code := jsonDecodeErrorStatusAndCode(err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", "", false, status, map[string]any{"error_code": code})
 		s.writeJSONDecodeError(w, err)
 		return
 	}
 	userID := normalizeUserID(body.UserID)
 	if userID == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "user_id_required", "has_images": len(body.Images) > 0})
 		s.writeError(w, http.StatusBadRequest, "user_id_required")
 		return
 	}
@@ -947,10 +950,12 @@ func (s *Server) handleAdminCreateSupportMessage(w http.ResponseWriter, r *http.
 	existing, err := s.store.ListSupportMessages(r.Context(), userID, 1)
 	if err != nil {
 		s.logger.Error("admin check support conversation failed", "userId", userID, "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", userID, false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
 	if len(existing) == 0 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.reply", "support_messages", "", userID, false, http.StatusNotFound, map[string]any{"error_code": "support_conversation_not_found"})
 		s.writeError(w, http.StatusNotFound, "support_conversation_not_found")
 		return
 	}
@@ -975,16 +980,20 @@ func (s *Server) handleAdminUpdateSupportConversationStatus(w http.ResponseWrite
 	}
 	var body supportConversationStatusRequest
 	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		status, code := jsonDecodeErrorStatusAndCode(err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.status", "support_conversations", "", "", false, status, map[string]any{"error_code": code})
 		s.writeJSONDecodeError(w, err)
 		return
 	}
 	userID := normalizeUserID(body.UserID)
 	status := normalizeSupportConversationStatus(body.Status)
 	if userID == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.status", "support_conversations", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "user_id_required", "status": status})
 		s.writeError(w, http.StatusBadRequest, "user_id_required")
 		return
 	}
 	if status == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.support.status", "support_conversations", "", userID, false, http.StatusBadRequest, map[string]any{"error_code": "invalid_status"})
 		s.writeError(w, http.StatusBadRequest, "invalid_status")
 		return
 	}
@@ -1339,8 +1348,9 @@ func (s *Server) handleAdminAppUpdateAndroidWrite(w http.ResponseWriter, r *http
 	}
 	var body adminAppUpdateWriteRequest
 	if err := decodeJSONBodyLimited(r, &body, 8*1024); err != nil {
-		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.write", "app_update", "android", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
-		s.writeError(w, http.StatusBadRequest, "invalid_json")
+		status, code := jsonDecodeErrorStatusAndCode(err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.app_update.write", "app_update", "android", "", false, status, map[string]any{"error_code": code})
+		s.writeJSONDecodeError(w, err)
 		return
 	}
 	cfg := androidUpdateConfig{
@@ -3154,7 +3164,19 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	   (SELECT COUNT(*) FROM auth_sessions auth WHERE auth.user_id = a.user_id AND auth.revoked_at IS NULL AND auth.token_expires_at > ?) AS active_sessions,
 	   (SELECT COUNT(*) FROM client_app_logs logs WHERE logs.user_id = a.user_id AND logs.created_at >= ? AND logs.level = 'error') AS error_count_24h,
 	   (SELECT COUNT(*) FROM support_messages sm WHERE sm.user_id = a.user_id) AS support_message_count,
-	   (SELECT sm.sender_type FROM support_messages sm WHERE sm.user_id = a.user_id AND sm.sender_type <> 'system' ORDER BY sm.id DESC LIMIT 1) AS latest_support_sender
+	   (SELECT sm.sender_type FROM support_messages sm WHERE sm.user_id = a.user_id AND sm.sender_type <> 'system' ORDER BY sm.id DESC LIMIT 1) AS latest_support_sender,
+	   (SELECT CASE
+	         WHEN sc.status = 'closed'
+	          AND (SELECT MAX(sm_user.created_at)
+	                 FROM support_messages sm_user
+	                WHERE sm_user.user_id = a.user_id
+	                  AND sm_user.sender_type = 'user') > COALESCE(sc.closed_at, 0) THEN 'open'
+	         WHEN sc.status IN ('open', 'replied', 'closed') THEN sc.status
+	         ELSE NULL
+	       END
+	      FROM support_conversations sc
+	     WHERE sc.user_id = a.user_id
+	     LIMIT 1) AS support_conversation_status
 	 FROM app_accounts a
 	LEFT JOIN user_entitlement e ON e.user_id = a.user_id
 	 LEFT JOIN session_ab sa ON sa.user_id = a.user_id`
@@ -3669,6 +3691,7 @@ func scanAdminUserListEntry(rows *sql.Rows, dayCN string, includePhoneNumber boo
 	var tierRaw, phoneCiphertext sql.NullString
 	var region, regionSource, regionReliability sql.NullString
 	var latestSupportSender sql.NullString
+	var supportConversationStatus sql.NullString
 	var activeSessions, errorCount, supportMessageCount sql.NullInt64
 	var roundTotal sql.NullInt64
 	if err := rows.Scan(
@@ -3689,6 +3712,7 @@ func scanAdminUserListEntry(rows *sql.Rows, dayCN string, includePhoneNumber boo
 		&errorCount,
 		&supportMessageCount,
 		&latestSupportSender,
+		&supportConversationStatus,
 	); err != nil {
 		return user, err
 	}
@@ -3699,7 +3723,11 @@ func scanAdminUserListEntry(rows *sql.Rows, dayCN string, includePhoneNumber boo
 	user.ActiveSessions = activeSessions.Int64
 	user.ErrorCount24h = errorCount.Int64
 	user.SupportMessageCount = supportMessageCount.Int64
-	user.SupportNeedsReply = latestSupportSender.Valid && latestSupportSender.String == "user"
+	conversationStatus := normalizeSupportConversationStatus(nullStringValue(supportConversationStatus))
+	if conversationStatus == "" {
+		conversationStatus = ternary(latestSupportSender.Valid && latestSupportSender.String == "user", "open", "replied")
+	}
+	user.SupportNeedsReply = conversationStatus == "open" && latestSupportSender.Valid && latestSupportSender.String == "user"
 	if includePhoneNumber && phoneCiphertext.Valid {
 		if phone, err := decryptAccountPhoneNumber(phoneCiphertext.String); err == nil {
 			user.PhoneNumber = phone

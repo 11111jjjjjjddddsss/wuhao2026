@@ -156,6 +156,12 @@ try {
         } catch {
             $isManual = $false
         }
+        $isLaunchOnly = $false
+        try {
+            $isLaunchOnly = [bool]$item.launch_only
+        } catch {
+            $isLaunchOnly = $false
+        }
         $isBad = $status -in @("blocked", "bad", "failed")
         $isWarn = $status -in @("attention", "warn", "warning")
         if ($isManual -and -not $IncludeManualChecklist) {
@@ -165,6 +171,13 @@ try {
             } elseif ($isWarn) {
                 $manualWarn += 1
                 Write-Host ("manual status={0} title={1}" -f $status, (Shorten-Text ([string]$item.title) 72))
+            }
+            continue
+        }
+        if ($isLaunchOnly -and -not $IncludeLaunchReadiness) {
+            if ($isBad -or $isWarn) {
+                $launchWarn += 1
+                Write-Host ("launch_check status={0} title={1}" -f $status, (Shorten-Text ([string]$item.title) 72))
             }
             continue
         }

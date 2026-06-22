@@ -85,6 +85,7 @@ const pageState = {
   supportUserID: "",
   supportStatus: "open",
   supportQuery: "",
+  supportMessageQuery: "",
   supportSinceRange: "30d",
   entitlementUserID: "",
   orderUserID: "",
@@ -1409,6 +1410,7 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
   }
   if (form.id === "support-filter-form") {
     pageState.supportQuery = formValue(form, "query");
+    pageState.supportMessageQuery = pageState.supportQuery;
     pageState.supportStatus = pageState.supportQuery.trim() ? "" : formValue(form, "status");
     pageState.supportSinceRange = pageState.supportQuery.trim() ? "all" : formValue(form, "since_range") || "30d";
     pageState.supportUserID = "";
@@ -1523,6 +1525,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
     if (!userID) return;
     pageState.supportUserID = userID;
     pageState.supportQuery = userID;
+    pageState.supportMessageQuery = "";
     pageState.supportStatus = "";
     pageState.supportSinceRange = "all";
     if (activeRoute === "support") {
@@ -1567,6 +1570,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
   if (action === "clear-support-filter") {
     pageState.supportStatus = "open";
     pageState.supportQuery = "";
+    pageState.supportMessageQuery = "";
     pageState.supportSinceRange = "30d";
     pageState.supportUserID = "";
     await render();
@@ -2159,7 +2163,7 @@ async function userDetailCard(userID: string): Promise<string> {
 
 async function fetchSupportMessages(userID: string): Promise<AdminSupportMessagesResponse> {
   const response = await apiFetch<AdminSupportMessagesResponse>(
-    `/admin-api/v1/support/messages${toQuery({ user_id: userID, query: pageState.supportQuery })}`,
+    `/admin-api/v1/support/messages${toQuery({ user_id: userID, query: pageState.supportMessageQuery })}`,
   );
   return { messages: response.messages ?? [], search_matched_messages: response.search_matched_messages ?? 0 };
 }
@@ -3419,7 +3423,7 @@ function appLogQuickFilters(): string {
       ${filterButton("检查更新失败", { event: "app_update.check_failed", window: "24h" })}
       ${filterButton("下载失败", { event: "app_update.download_failed", window: "24h" })}
       ${filterButton("安装未完成", { event: "app_update.install_not_completed", window: "24h" })}
-      ${filterButton("图片上传失败", { eventPrefix: "upload.", level: "error", window: "24h" })}
+      ${filterButton("图片上传失败", { event: "image.upload_failed", level: "error", window: "24h" })}
     </div>
   `;
 }

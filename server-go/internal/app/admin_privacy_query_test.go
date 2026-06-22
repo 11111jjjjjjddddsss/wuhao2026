@@ -165,6 +165,96 @@ func TestAdminListEndpointsExposeFullPhoneNumbersForOperatorRoles(t *testing.T) 
 	}
 }
 
+func TestScanAdminUserListEntryNeedsReplyRequiresOpenConversation(t *testing.T) {
+	cases := []struct {
+		name               string
+		latestSender       any
+		conversationStatus any
+		wantNeedsReply     bool
+	}{
+		{name: "open user latest", latestSender: "user", conversationStatus: "open", wantNeedsReply: true},
+		{name: "closed user latest", latestSender: "user", conversationStatus: "closed", wantNeedsReply: false},
+		{name: "replied user latest", latestSender: "user", conversationStatus: "replied", wantNeedsReply: false},
+		{name: "legacy missing status falls back to user latest", latestSender: "user", conversationStatus: nil, wantNeedsReply: true},
+		{name: "open admin latest", latestSender: "admin", conversationStatus: "open", wantNeedsReply: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("sqlmock.New failed: %v", err)
+			}
+			rows := sqlmock.NewRows([]string{
+				"user_id",
+				"phone_mask",
+				"phone_ciphertext",
+				"created_at",
+				"updated_at",
+				"last_login_at",
+				"tier",
+				"tier_expire_at",
+				"round_total",
+				"last_seen_at",
+				"last_region",
+				"last_region_source",
+				"last_region_reliability",
+				"active_sessions",
+				"error_count_24h",
+				"support_message_count",
+				"latest_support_sender",
+				"support_conversation_status",
+			}).AddRow(
+				"acct_demo",
+				"138****8000",
+				nil,
+				int64(1700000000000),
+				int64(1700000000000),
+				nil,
+				nil,
+				nil,
+				int64(0),
+				nil,
+				nil,
+				nil,
+				nil,
+				int64(0),
+				int64(0),
+				int64(1),
+				tc.latestSender,
+				tc.conversationStatus,
+			)
+			mock.ExpectQuery("SELECT").WillReturnRows(rows)
+			rawRows, err := db.Query("SELECT")
+			if err != nil {
+				t.Fatalf("query rows: %v", err)
+			}
+			if !rawRows.Next() {
+				t.Fatal("expected one row")
+			}
+			user, err := scanAdminUserListEntry(rawRows, "20260622", false)
+			if err != nil {
+				t.Fatalf("scanAdminUserListEntry failed: %v", err)
+			}
+			if user.SupportNeedsReply != tc.wantNeedsReply {
+				t.Fatalf("SupportNeedsReply = %v, want %v", user.SupportNeedsReply, tc.wantNeedsReply)
+			}
+			if err := rawRows.Err(); err != nil {
+				t.Fatalf("rows err: %v", err)
+			}
+			if err := rawRows.Close(); err != nil {
+				t.Fatalf("close rows: %v", err)
+			}
+			mock.ExpectClose()
+			if err := db.Close(); err != nil {
+				t.Fatalf("close db: %v", err)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unmet sql expectations: %v", err)
+			}
+		})
+	}
+}
+
 func TestAdminSupportSummaryFromSupportRedactsBodyAndImages(t *testing.T) {
 	summary := &SupportSummary{
 		UnreadCount: 2,

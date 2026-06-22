@@ -267,6 +267,9 @@ func isOfficialAndroidAPKURL(raw string) bool {
 		if !strings.EqualFold(parsed.Hostname(), officialAndroidAPKHost) {
 			return false
 		}
+		if parsed.Port() != "" && parsed.Port() != "443" {
+			return false
+		}
 		if !strings.HasPrefix(strings.ToLower(parsed.EscapedPath()), officialAndroidAPKPathPrefix) {
 			return false
 		}

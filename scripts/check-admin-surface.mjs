@@ -254,6 +254,7 @@ expectAppLogPrefixFilter("app_update.");
   "app_update.install_started",
   "app_update.install_completed",
   "app_update.install_not_completed",
+  "image.upload_failed",
 ].forEach(expectAppLogEventFilter);
 
 if (fail.length) {

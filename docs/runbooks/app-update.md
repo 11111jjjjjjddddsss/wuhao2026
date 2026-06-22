@@ -108,7 +108,7 @@ Android 普通 App 不能静默安装 APK，最终一定要经过系统安装确
 
 管理后台“检查更新”页和监控面板把两个口径分开展示：`config_valid` 表示版本号 / APK URL / 文件大小上限这组配置是否合法；`download_artifacts_complete` 表示正式下载物料是否齐全，只有自有下载域名下的 HTTPS release APK、SHA-256 和 1 到 200MB 的文件大小都配置时才为 true。上线或发包前以后者判断“正式包物料是否已经齐”；公开 `/api/app/update` 也按这条口径下发，物料不齐时返回无更新并在服务端记录 `missing_release_artifacts` 或 `apk_too_large`。
 
-日常 readiness / 公网黑盒按“没有用户口令就不下发新版本”的口径运行：`check-ecs-readiness.ps1` 会拦截 `APP_ANDROID_UPDATE_ENABLED=true` 和 `APP_UPDATE_ALLOW_FORCE_UPDATE=true` 这类误开的环境变量开关；`check-public-blackbox.ps1` 默认要求旧版本探针返回 `has_update=false`，并会顺手跑下载域名 / OSS CNAME 探针，避免检查更新关闭但下载链路证书或 CNAME 已坏。只有用户明确说“发布新版本 / 对外下发 / 配置检查更新”后，才走 `check-app-update-release-match.ps1 -ProbePreviousVersionUpdate` 证明旧包会看到 `has_update=true`。
+日常 readiness / 公网黑盒按“先证明入口可达，再按发版口令验证旧包更新”的口径运行：`check-ecs-readiness.ps1` 会拦截 `APP_ANDROID_UPDATE_ENABLED=true` 和 `APP_UPDATE_ALLOW_FORCE_UPDATE=true` 这类误开的环境变量开关；`check-public-blackbox.ps1` 默认只验证 `/api/app/update` 可达并打印当前探针结果，也会顺手跑下载域名 / OSS CNAME 探针，避免检查更新接口或下载链路证书 / CNAME 已坏。正式发版或下发验证必须走 `check-app-update-release-match.ps1 -PreviousVersionCode <旧包versionCode> -ProbePreviousVersionUpdate`，或在公网黑盒中同时显式传 `-PreviousAndroidVersionCode` 和 `-ExpectedAndroidUpdateVersionCode`，证明真实旧包会看到 `has_update=true`。
 
 管理后台“监控面板”已新增“检查更新排障”卡，聚合最近 24 小时 `app_update.*` 自动日志，并提供直达 App 日志筛选按钮。若真机测试更新失败，优先按下面顺序看：
 
