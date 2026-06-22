@@ -16,7 +16,7 @@
 
 正式 release APK 不按测试包 3 天生命周期删除。已经对外发布过的正式包属于回滚、审计和问题定位材料，云端 / 发布记录至少要保留“当前正在下发的正式包 + 最近若干个可回滚正式包 + 对应 `versionCode / versionName / SHA-256 / 文件大小 / commit / 签名指纹`”。APK 体积很小，早期不建议为了省极低的 OSS 存储费删除最近正式物料；后续如果版本很多，再按“保留最近 10 个或最近 12 个月正式包，老包只保留发布记录和 SHA”的口径单独清理。
 
-当前正在下发的正式包为 `1.0.4(5)`，APK URL 是 `https://download.nongjiqiancha.cn/android/releases/5/nongjiqiancha-1.0.4-v5-97a34e88.apk`，SHA-256 为 `6186c9bd7ce2ad40d1b137ac447a696a2892515ca72e493347030f2ad2db072d`，文件大小 `14,193,280` 字节，`force_update=false`。后台检查更新、官网正式下载按钮和 `download.nongjiqiancha.cn` 公网下载都已对齐该物料；旧正式包 `1.0.3(4)` / `1.0.2(3)` / `1.0.1(2)` 分别保留在 `android/releases/4/` / `android/releases/3/` / `android/releases/2/` 和发布历史里，不再作为当前下发目标。
+当前正在下发的正式包为 `1.0.5(6)`，APK URL 是 `https://download.nongjiqiancha.cn/android/releases/6/nongjiqiancha-1.0.5-v6-30d98e7b.apk`，SHA-256 为 `289b5f7057af6bb7e3178d7c00e4b4f79aad4a08f21bd8dac7d370038369b159`，文件大小 `14,193,280` 字节，`force_update=false`。后台检查更新、官网正式下载按钮和 `download.nongjiqiancha.cn` 公网下载都已对齐该物料；旧正式包 `1.0.4(5)` / `1.0.3(4)` / `1.0.2(3)` / `1.0.1(2)` 分别保留在 `android/releases/5/` / `android/releases/4/` / `android/releases/3/` / `android/releases/2/` 和发布历史里，不再作为当前下发目标。
 
 本机不作为正式包仓库，不需要长期堆 APK。仓库不再保留本机 APK 清理脚本，也不做后台自动清理；需要整理本机 APK 构建产物时，由用户明确提出后，Codex 再先列出目标路径和体积，确认只涉及生成物后单次人工处理。任何清理都不得删除源码、签名配置、Git 记录、云端正式包或后台发布历史。
 
