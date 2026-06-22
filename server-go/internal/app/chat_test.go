@@ -55,12 +55,19 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 		"才使用英文，并尽量先给中文解释",
 		"证据不足要明确说“不确定”",
 		"不要把单张图片或单轮描述写成确诊",
-		"候选判断要说明支持点、反证和验证方法",
-		"处理建议要说明适用前提和主要风险",
-		"避免说成唯一答案",
 	} {
 		if !strings.Contains(chatDiagnosticConstraint, want) {
 			t.Fatalf("diagnostic constraint missing %q: %q", want, chatDiagnosticConstraint)
+		}
+	}
+	for _, blocked := range []string{
+		"候选判断要说明支持点",
+		"反证和验证方法",
+		"处理建议要说明适用前提",
+		"唯一答案",
+	} {
+		if strings.Contains(chatDiagnosticConstraint, blocked) {
+			t.Fatalf("diagnostic constraint should not include template phrase %q: %q", blocked, chatDiagnosticConstraint)
 		}
 	}
 }
