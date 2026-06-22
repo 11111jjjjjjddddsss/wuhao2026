@@ -22,6 +22,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.exifinterface.media.ExifInterface
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -8390,6 +8394,10 @@ private fun GlobalStatusHint(
 ) {
     AnimatedVisibility(
         visible = visible && text.isNotBlank(),
+        enter = fadeIn(animationSpec = tween(durationMillis = 90)) +
+            scaleIn(animationSpec = tween(durationMillis = 120), initialScale = 0.98f),
+        exit = fadeOut(animationSpec = tween(durationMillis = 110)) +
+            scaleOut(animationSpec = tween(durationMillis = 120), targetScale = 0.96f),
         modifier = modifier
     ) {
         Surface(
