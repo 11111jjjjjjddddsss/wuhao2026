@@ -5,6 +5,8 @@
 
 ## 2026-06-22
 
+- 主对话系统前置锚点按用户明确口令继续减法并部署生产：删除普通问候 / 寒暄 / 非农业闲聊处理提醒、地点可信度为 unreliable 或未知时的确定性提醒、以及“安全提醒短而必要，不反复免责声明，不输出冗长安全废话”三条额外规则；输出约束不变，今日农情提示词和记忆文档提示词不变。生产后端已部署到 `fdcc48b0`，验证通过 `go test ./...`、`go build ./...`、ECS 远端测试 / 编译 / 部署、`check-ecs-readiness.ps1 -ExpectedRevision fdcc48b0` 和 `check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 4 -PreviousAndroidVersionCode 3`，公网黑盒 `warnings=0 / errors=0 / status=ready`。本轮不改 Android 正式包、官网、检查更新配置，也不新增内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
+
 - 主对话系统前置锚点按用户明确口令继续精简并部署生产：从 B 段删除两句重复历史承接提醒，即“历史和记忆摘要不是定论。涉及诊断、用药、用肥、产品判断等关键结论时，要结合当前信息重新判断。”以及“若明显是同一作物、同一地块、同一批问题，可承接历史中仍有效的信息；若像是新问题，不要把旧判断直接套用过去。”；B 段仍保留当前轮输入优先、历史 / 记忆 / 联网 / 后台时间地点仅参考、参考冲突以当前输入 / 当前图片 / 最新纠正为准、后台背景静默参考和地点可信度边界。生产后端已部署到 `caba92e1`，验证通过 `go test ./...`、`go build ./...`、ECS 远端测试 / 编译 / 部署、`check-ecs-readiness.ps1 -ExpectedRevision caba92e1` 和 `check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 4 -PreviousAndroidVersionCode 3`，公网黑盒 `warnings=0 / errors=0 / status=ready`。本轮不改 Android 正式包、官网、检查更新配置、今日农情提示词、记忆文档提示词或独立“输出约束”，也不新增内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
 
 - 后端“【输出约束】”按用户最新拍板继续精简并部署生产：删除输出约束中的“涉及病虫害、药害肥害、生理异常或农技判断时，以本轮图片和客观信息为准。时间、地点、天气、历史对话和记忆摘要只作风险背景，不能盖过本轮证据。”，因为主对话锚点已有对应证据优先和背景信息边界；输出约束现在只保留禁止表格、移动端简洁排版、不要刻意套固定模板 / 不限固定格式、默认中文表达和必要英文例外。生产后端已部署到 `3d3b03d4`，验证通过 `go test ./...`、ECS 远端测试 / 编译 / 部署、`check-ecs-readiness.ps1 -ExpectedRevision 3d3b03d4` 和 `check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 4 -PreviousAndroidVersionCode 3`，公网黑盒 `warnings=0 / errors=0 / status=ready`。本轮不改主对话锚点、今日农情提示词、记忆文档提示词、Android 正式包、官网或检查更新配置。
