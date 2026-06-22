@@ -9008,6 +9008,7 @@ private data class UiCopyPreviewItem(
 private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
     "# 叶片发黄排查\n" +
         "建议先看 **叶背虫体**、`pH` 和近期浇水。\n" +
+        "这是一段较长的普通正文，用来检查 AI 回答一边生成一边分段的显示效果。前面已经说完整的内容应该先排得松一点，后面仍在生成的尾巴继续正常显示。这样切回页面时已有正文也会马上按当前规则排好，不需要用户额外等待。\n" +
         "**处理建议**\n" +
         "先停用高浓度叶面肥，补拍根系和土壤湿度。\n" +
         "**注意事项：**\n" +

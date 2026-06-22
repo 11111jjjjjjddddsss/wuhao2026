@@ -1140,6 +1140,114 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun streamingReadableLongParagraphSplitsStablePrefixWhileTailStreams() {
+        val state = splitStreamingBlockState(
+            "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
+                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。" +
+                "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化"
+        )
+
+        assertEquals(
+            listOf(
+                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
+                    "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。"
+            ),
+            state.completedBlocks
+        )
+        assertEquals(
+            "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化",
+            state.activeBlock
+        )
+    }
+
+    @Test
+    fun settledReadableLongParagraphSplitsHistoricalContentImmediately() {
+        val state = splitStreamingBlockState(
+            "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
+                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。" +
+                "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化。",
+            treatTrailingLineAsComplete = true
+        )
+        val blocks = state.completedBlocks + listOfNotNull(state.activeBlock)
+
+        assertEquals(
+            listOf(
+                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
+                    "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。",
+                "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化。"
+            ),
+            blocks
+        )
+    }
+
+    @Test
+    fun readableParagraphSplitsDoNotCrossStandaloneHorizontalRule() {
+        val content =
+            "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。\n\n" +
+                "---\n\n" +
+                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。"
+
+        val state = splitStreamingBlockState(
+            content,
+            treatTrailingLineAsComplete = true
+        )
+        val blocks = state.completedBlocks + listOfNotNull(state.activeBlock)
+
+        assertEquals(
+            listOf(
+                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。",
+                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。"
+            ),
+            blocks
+        )
+        assertFalse(buildRendererPlainCopyText(content).contains("---"))
+        assertEquals(0, buildRendererStructureStats(content).dividerHeadingCount)
+    }
+
+    @Test
+    fun readableLongParagraphDoesNotSplitEverySentence() {
+        val state = splitStreamingBlockState(
+            "叶片偏黄。先观察。不要急用药。",
+            treatTrailingLineAsComplete = true
+        )
+
+        val blocks = state.completedBlocks + listOfNotNull(state.activeBlock)
+        assertEquals(
+            listOf("叶片偏黄。先观察。不要急用药。"),
+            blocks
+        )
+    }
+
+    @Test
+    fun readableLongParagraphDoesNotSplitCommaSemicolonOrColon() {
+        val state = splitStreamingBlockState(
+            "这种情况可以先这样处理：先控水排湿，观察叶背；如果没有继续扩展，先不要急着用药，后续再看根系和新叶变化。",
+            treatTrailingLineAsComplete = true
+        )
+
+        val blocks = state.completedBlocks + listOfNotNull(state.activeBlock)
+        assertEquals(
+            listOf(
+                "这种情况可以先这样处理：先控水排湿，观察叶背；如果没有继续扩展，先不要急着用药，后续再看根系和新叶变化。"
+            ),
+            blocks
+        )
+    }
+
+    @Test
+    fun readableLongParagraphDoesNotSplitMarkdownListLine() {
+        val state = splitStreamingBlockState(
+            "- 叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。建议先看老叶和新叶差异。",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(1, models.size)
+        assertTrue(models.single() is StreamingLineModel.Bullet)
+    }
+
+    @Test
     fun decorativeEmojiAreHiddenButSemanticSymbolsRemain() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "📌 建议：✅ 叶背检查 → 若有白霉，25~30°C，0.2%。😀",

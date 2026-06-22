@@ -576,6 +576,11 @@ internal data class StreamingBlockState(
     val activeBlock: String?
 )
 
+private data class RendererReadableParagraphProjection(
+    val stableBlocks: List<String>,
+    val tailBlock: String?
+)
+
 internal sealed interface StreamingLineModel {
     data object Blank : StreamingLineModel
     data class Heading(val level: Int, val text: String) : StreamingLineModel
@@ -744,7 +749,10 @@ internal fun splitStreamingBlockState(
     fun flushParagraphBlock() {
         val text = paragraph.toString().trim()
         if (text.isNotEmpty()) {
-            completedBlocks += text
+            completedBlocks += projectRendererReadableParagraph(
+                text = text,
+                treatTailAsComplete = true
+            ).allBlocks()
         }
         paragraph.clear()
     }
@@ -785,9 +793,21 @@ internal fun splitStreamingBlockState(
         }
     } ?: paragraph.toString().trim().ifEmpty { null }
 
+    val activeProjection = activeBlock?.let { block ->
+        if (isStructuralRendererStreamingLine(block.trim())) {
+            RendererReadableParagraphProjection(emptyList(), block)
+        } else {
+            projectRendererReadableParagraph(
+                text = block,
+                treatTailAsComplete = false
+            )
+        }
+    }
+    activeProjection?.stableBlocks?.let { completedBlocks += it }
+
     return StreamingBlockState(
         completedBlocks = completedBlocks,
-        activeBlock = activeBlock
+        activeBlock = activeProjection?.tailBlock
     )
 }
 
@@ -1503,6 +1523,73 @@ private fun StringBuilder.appendRendererActiveParagraphLine(line: String) {
     }
     appendRendererParagraphLine(line)
 }
+
+private fun RendererReadableParagraphProjection.allBlocks(): List<String> =
+    buildList {
+        addAll(stableBlocks)
+        tailBlock?.let { add(it) }
+    }
+
+private fun projectRendererReadableParagraph(
+    text: String,
+    treatTailAsComplete: Boolean
+): RendererReadableParagraphProjection {
+    val normalized = text.trim()
+    if (!shouldProjectRendererReadableParagraph(normalized)) {
+        return RendererReadableParagraphProjection(emptyList(), normalized.ifEmpty { null })
+    }
+
+    val stableBlocks = mutableListOf<String>()
+    var blockStart = 0
+    var index = 0
+    while (index < normalized.length) {
+        val current = normalized[index]
+        if (current.isRendererReadableSentenceEnd()) {
+            val blockEnd = index + 1
+            val candidate = normalized.substring(blockStart, blockEnd).trim()
+            val hasFollowingText = normalized
+                .substring(blockEnd)
+                .any { !it.isWhitespace() }
+            if (
+                hasFollowingText &&
+                candidate.rendererReadableTextLength() >= RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS
+            ) {
+                stableBlocks += candidate
+                blockStart = blockEnd
+            }
+        }
+        index++
+    }
+
+    val tail = normalized.substring(blockStart).trim()
+    if (treatTailAsComplete && tail.isNotEmpty()) {
+        stableBlocks += tail
+        return RendererReadableParagraphProjection(
+            stableBlocks = stableBlocks,
+            tailBlock = null
+        )
+    }
+    return RendererReadableParagraphProjection(
+        stableBlocks = stableBlocks,
+        tailBlock = tail.ifEmpty { null }
+    )
+}
+
+private const val RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS = 45
+
+private fun shouldProjectRendererReadableParagraph(text: String): Boolean {
+    if (text.length < RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS) return false
+    if (!text.any { it.isRendererReadableSentenceEnd() }) return false
+    if (text.contains("```") || text.contains("~~~")) return false
+    if (text.lineSequence().any { line -> isRendererIndentedCodeLine(line) }) return false
+    return true
+}
+
+private fun Char.isRendererReadableSentenceEnd(): Boolean =
+    this == '。' || this == '！' || this == '？'
+
+private fun String.rendererReadableTextLength(): Int =
+    count { !it.isWhitespace() }
 
 @Composable
 internal fun ChatStreamingRenderer(
