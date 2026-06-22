@@ -16,7 +16,7 @@
    - 正式包：`android/releases/<versionCode>/...apk`，长期保留当前版本和最近若干可回滚版本。
 5. 早期不默认上 CDN，不买高防。下载量或管理层集中下载造成明显卡顿时，再把 CDN 放在 OSS 前面。
 
-这套方案的成本主要是 OSS 下行流量和请求费，没有固定高防或 CDN 月费；当前 APK 约 20MB，早期几十到几百次下载成本很低。OSS 已有 100GB 标准存储包，覆盖的是存储容量，不覆盖所有下行流量。
+这套方案的成本主要是 OSS 下行流量和请求费，没有固定高防或 CDN 月费；当前正式 APK 约 14MB，早期几十到几百次下载成本很低。OSS 已有 100GB 标准存储包，覆盖的是存储容量，不覆盖所有下行流量。
 
 ## 为什么不直接用 OSS 默认链接
 
@@ -98,14 +98,14 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 
 当前正在下发的正式包记录：
 
-- `versionName=1.0.2`
-- `versionCode=3`
-- APK URL：`https://download.nongjiqiancha.cn/android/releases/3/nongjiqiancha-1.0.2-v3-87b0963d.apk`
-- SHA-256：`706c07765a52bd5aa76ab2b077bd3e63bc7340835ec8fa7a490d2740e3aae1e9`
-- 文件大小：`14,193,280` 字节
-- 发布提交：`87b0963d`
+- `versionName=1.0.3`
+- `versionCode=4`
+- APK URL：`https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.3-v4-849e8283.apk`
+- SHA-256：`cd26be1da35b339019f86d1c7d33322b98f4840f8d42127840ddda0e7b0d1f9d`
+- 文件大小：`14,193,276` 字节
+- 发布提交：`849e8283`
 
-上一版 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=3` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
+上一版 `1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=4` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
 
 注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
