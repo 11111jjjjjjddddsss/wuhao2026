@@ -1,6 +1,6 @@
 # Android 下载分发 Runbook
 
-最后更新：2026-06-21
+最后更新：2026-06-22
 
 本 runbook 记录 Android APK 的低成本下载方案。它只解决“安装包从哪里下载、如何校验、如何控制成本”，不等于正式发布口令。
 
@@ -34,7 +34,7 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 
 ## 当前状态
 
-截至 2026-06-21，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包和正式包的低成本下载主链：
+截至 2026-06-22，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包和正式包的低成本下载主链：
 
 - DNS：`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`。
 - OSS：Bucket 仍保持 private 主口径；为支持正式检查更新和官网下载长期裸 URL，Bucket 级 Block Public Access 已关闭，并配置 Bucket Policy 仅允许匿名 `oss:GetObject` 访问 `android/releases/*`。不要把策略扩大到 `uploads/*`、`support/*`、`test-apks/*` 或整个 Bucket。内部测试包仍通过签名 URL 下载，不走公开读。
@@ -96,14 +96,16 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 - commit
 - 签名证书指纹
 
-当前首个正式包记录：
+当前正在下发的正式包记录：
 
-- `versionName=1.0.1`
-- `versionCode=2`
-- APK URL：`https://download.nongjiqiancha.cn/android/releases/2/nongjiqiancha-1.0.1-v2-ad9fa71c.apk`
-- SHA-256：`a65e2e8665532ba2a8635940733d4cdad6244f348ccfda0462dccd643764399d`
+- `versionName=1.0.2`
+- `versionCode=3`
+- APK URL：`https://download.nongjiqiancha.cn/android/releases/3/nongjiqiancha-1.0.2-v3-87b0963d.apk`
+- SHA-256：`706c07765a52bd5aa76ab2b077bd3e63bc7340835ec8fa7a490d2740e3aae1e9`
 - 文件大小：`14,193,280` 字节
-- 发布提交：`ad9fa71c`
+- 发布提交：`87b0963d`
+
+上一版 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=3` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
 
 注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
