@@ -36,9 +36,6 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
 		"【输出约束】",
-		"以本轮图片和客观信息为准",
-		"时间、地点、天气、历史对话和记忆摘要只作风险背景",
-		"不能盖过本轮证据",
 		"所有回答禁止表格",
 		"排版尽量简洁",
 		"多用短段落和适当空行；不要使用多级列表和项目符号列表",
@@ -67,6 +64,10 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"带图时先详细描述",
 		"证据不足要明确",
 		"单张图片或单轮描述写成确诊",
+		"涉及病虫害、药害肥害、生理异常或农技判断时",
+		"以本轮图片和客观信息为准",
+		"时间、地点、天气、历史对话和记忆摘要只作风险背景",
+		"不能盖过本轮证据",
 	} {
 		if strings.Contains(chatOutputConstraint, blocked) {
 			t.Fatalf("output constraint should not include template phrase %q: %q", blocked, chatOutputConstraint)
