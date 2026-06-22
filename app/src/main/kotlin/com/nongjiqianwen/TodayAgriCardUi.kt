@@ -46,18 +46,18 @@ fun TodayAgriNewsText(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = 8.dp),
+            .padding(horizontal = horizontalPadding, vertical = 10.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .widthIn(max = maxContentWidth)
                 .fillMaxWidth()
-                .padding(horizontal = 2.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+                .padding(horizontal = 2.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             val content: @Composable () -> Unit = {
-                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(
                             text = buildString {
@@ -143,7 +143,7 @@ private fun TodayAgriNewsItem(
     source: String
 ) {
     Column(
-        verticalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
         if (title.isNotBlank()) {
