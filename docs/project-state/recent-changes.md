@@ -5,6 +5,8 @@
 
 ## 2026-06-22
 
+- 主对话系统前置锚点按用户明确口令继续减法并部署生产：删除“无记忆摘要、无历史对话、无联网信息时：直接基于当前输入处理，不解释缺少上下文、记忆或联网信息等内部原因。”这条重复提醒，并顺调 B 段编号；输出约束不变，今日农情提示词和记忆文档提示词不变。生产后端已部署到 `85b11b3f`，验证通过 `go test ./...`、`go build ./...`、ECS 远端测试 / 编译 / 部署、`check-ecs-readiness.ps1 -ExpectedRevision 85b11b3f` 和 `check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 4 -PreviousAndroidVersionCode 3`，公网黑盒 `warnings=0 / errors=0 / status=ready`。本轮不改 Android 正式包、官网、检查更新配置，也不新增内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
+
 - 主对话系统前置锚点按用户明确口令继续减法并部署生产：删除普通问候 / 寒暄 / 非农业闲聊处理提醒、地点可信度为 unreliable 或未知时的确定性提醒、以及“安全提醒短而必要，不反复免责声明，不输出冗长安全废话”三条额外规则；输出约束不变，今日农情提示词和记忆文档提示词不变。生产后端已部署到 `fdcc48b0`，验证通过 `go test ./...`、`go build ./...`、ECS 远端测试 / 编译 / 部署、`check-ecs-readiness.ps1 -ExpectedRevision fdcc48b0` 和 `check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 4 -PreviousAndroidVersionCode 3`，公网黑盒 `warnings=0 / errors=0 / status=ready`。本轮不改 Android 正式包、官网、检查更新配置，也不新增内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
 
 - 主对话系统前置锚点按用户明确口令继续精简并部署生产：从 B 段删除两句重复历史承接提醒，即“历史和记忆摘要不是定论。涉及诊断、用药、用肥、产品判断等关键结论时，要结合当前信息重新判断。”以及“若明显是同一作物、同一地块、同一批问题，可承接历史中仍有效的信息；若像是新问题，不要把旧判断直接套用过去。”；B 段仍保留当前轮输入优先、历史 / 记忆 / 联网 / 后台时间地点仅参考、参考冲突以当前输入 / 当前图片 / 最新纠正为准、后台背景静默参考和地点可信度边界。生产后端已部署到 `caba92e1`，验证通过 `go test ./...`、`go build ./...`、ECS 远端测试 / 编译 / 部署、`check-ecs-readiness.ps1 -ExpectedRevision caba92e1` 和 `check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 4 -PreviousAndroidVersionCode 3`，公网黑盒 `warnings=0 / errors=0 / status=ready`。本轮不改 Android 正式包、官网、检查更新配置、今日农情提示词、记忆文档提示词或独立“输出约束”，也不新增内容过滤、关键词拦截、字数硬卡或 `max_tokens`。
