@@ -16,6 +16,8 @@ const (
 	defaultAdminAuditLogListLimit = 100
 	maxAdminAuditLogListLimit     = 200
 	adminAuditDetailsMaxBytes     = 2048
+	defaultAdminAuditLogRetention = 180 * 24 * time.Hour
+	adminAuditLogPruneBatchLimit  = 1000
 )
 
 type AdminAuditLogInput struct {
@@ -299,6 +301,31 @@ func (s *Store) CreateAdminAuditLog(ctx context.Context, input AdminAuditLogInpu
 		input.CreatedAt,
 	)
 	return err
+}
+
+func (s *Store) PruneExpiredAdminAuditLogs(ctx context.Context, nowMs int64) (int64, error) {
+	retention := envDurationWithDefault("ADMIN_AUDIT_LOG_RETENTION_SECONDS", defaultAdminAuditLogRetention)
+	if retention <= 0 {
+		return 0, nil
+	}
+	cutoffMs := nowMs - int64(retention/time.Millisecond)
+	if cutoffMs <= 0 {
+		return 0, nil
+	}
+	result, err := s.db.ExecContext(
+		ctx,
+		"DELETE FROM admin_audit_logs WHERE created_at < ? LIMIT ?",
+		cutoffMs,
+		adminAuditLogPruneBatchLimit,
+	)
+	if err != nil {
+		return 0, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return rows, nil
 }
 
 func (s *Store) ListAdminAuditLogs(ctx context.Context, filter AdminAuditLogQuery) ([]AdminAuditLogEntry, error) {

@@ -33,8 +33,9 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 	}
 }
 
-func TestChatDiagnosticConstraintText(t *testing.T) {
+func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
+		"【输出约束】",
 		"以本轮图片和客观信息为准",
 		"时间、地点、天气、历史对话和记忆摘要只作风险背景",
 		"不能盖过本轮证据",
@@ -53,11 +54,12 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 		"只有农药/肥料成分、品种名、病原拉丁学名、登记标签、品牌商品名或用户原文确实需要保留时",
 		"才使用英文，并尽量先给中文解释",
 	} {
-		if !strings.Contains(chatDiagnosticConstraint, want) {
-			t.Fatalf("diagnostic constraint missing %q: %q", want, chatDiagnosticConstraint)
+		if !strings.Contains(chatOutputConstraint, want) {
+			t.Fatalf("output constraint missing %q: %q", want, chatOutputConstraint)
 		}
 	}
 	for _, blocked := range []string{
+		"【诊断约束】",
 		"候选判断要说明支持点",
 		"反证和验证方法",
 		"处理建议要说明适用前提",
@@ -66,8 +68,8 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 		"证据不足要明确",
 		"单张图片或单轮描述写成确诊",
 	} {
-		if strings.Contains(chatDiagnosticConstraint, blocked) {
-			t.Fatalf("diagnostic constraint should not include template phrase %q: %q", blocked, chatDiagnosticConstraint)
+		if strings.Contains(chatOutputConstraint, blocked) {
+			t.Fatalf("output constraint should not include template phrase %q: %q", blocked, chatOutputConstraint)
 		}
 	}
 }
@@ -330,8 +332,8 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		t.Fatalf("expected previous round image preserved, got %#v", got)
 	}
 
-	if messages[6].Role != "system" || messages[6].Content != chatDiagnosticConstraint {
-		t.Fatalf("expected diagnostic constraint immediately before current user input, got %#v", messages[6])
+	if messages[6].Role != "system" || messages[6].Content != chatOutputConstraint {
+		t.Fatalf("expected output constraint immediately before current user input, got %#v", messages[6])
 	}
 	currentUser := messages[7]
 	currentContent, ok := currentUser.Content.([]map[string]any)
@@ -579,8 +581,8 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 			t.Fatalf("memory document prompt should not expose legacy label %q: %#v", forbidden, messages[2].Content)
 		}
 	}
-	if messages[3].Role != "system" || messages[3].Content != chatDiagnosticConstraint {
-		t.Fatalf("expected diagnostic constraint before current user input, got %#v", messages[3])
+	if messages[3].Role != "system" || messages[3].Content != chatOutputConstraint {
+		t.Fatalf("expected output constraint before current user input, got %#v", messages[3])
 	}
 	if messages[4].Content != "hello" {
 		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
@@ -832,13 +834,13 @@ func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 		t.Fatalf("expected 5 messages, got %d", len(messages))
 	}
 	if messages[2].Role != "system" || messages[2].Content != todayAgriContext {
-		t.Fatalf("expected today agri context before diagnostic constraint, got %#v", messages[2])
+		t.Fatalf("expected today agri context before output constraint, got %#v", messages[2])
 	}
-	if messages[3].Role != "system" || messages[3].Content != chatDiagnosticConstraint {
-		t.Fatalf("expected diagnostic constraint as the last system message before user input, got %#v", messages[3])
+	if messages[3].Role != "system" || messages[3].Content != chatOutputConstraint {
+		t.Fatalf("expected output constraint as the last system message before user input, got %#v", messages[3])
 	}
 	if messages[4].Role != "user" || messages[4].Content != "刚才第二条什么意思" {
-		t.Fatalf("expected current user message after diagnostic constraint, got %#v", messages[4])
+		t.Fatalf("expected current user message after output constraint, got %#v", messages[4])
 	}
 }
 

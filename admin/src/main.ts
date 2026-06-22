@@ -741,14 +741,14 @@ async function usersPage(): Promise<string> {
       <button class="button primary" type="submit">查询</button>
       ${query ? `<button class="button" type="button" data-action="clear-user-filter">清空</button>` : ""}
     </form>
-    <div class="detail-grid">
+    <div class="users-workspace">
       <section id="users-list-card" class="card">
         <div class="card-head"><div class="card-title">用户列表</div><span class="small muted">${response.users.length} 条</span></div>
         <div class="table-wrap">${usersTable(response.users)}</div>
       </section>
-      <aside id="user-detail-drawer" class="drawer">
+      <section id="user-detail-drawer" class="user-detail-panel">
         ${pageState.userDetailID ? await userDetailCard(pageState.userDetailID) : emptyState("选择用户", "点击用户行或“详情”查看会员、额度、日志、反馈和订单。")}
-      </aside>
+      </section>
     </div>
   `;
 }
@@ -2114,7 +2114,7 @@ async function userDetailCard(userID: string): Promise<string> {
   try {
     const detail = await fetchUserDetail(userID);
     return `
-      <section class="card">
+      <section class="card user-detail-card">
         <div class="card-head">
           <div class="card-title">用户详情</div>
           <div style="display:flex;gap:8px;align-items:center">
@@ -2122,14 +2122,15 @@ async function userDetailCard(userID: string): Promise<string> {
             ${statusPill(detail.user.tier || "free")}
           </div>
         </div>
-        <div class="card-body stack">
-          ${userKV(detail.user)}
-          <div class="divider"></div>
-          <div>
+        <div class="card-body user-detail-layout">
+          <div class="user-detail-section">
+            ${userKV(detail.user)}
+          </div>
+          <div class="user-detail-section">
             <div class="card-title" style="margin-bottom:8px">权益、礼品卡和反馈</div>
             ${userOpsSummary(detail)}
           </div>
-          <div>
+          <div class="user-detail-section">
             <div class="section-title-row" style="margin-bottom:8px">
               <div class="card-title">最近反馈</div>
               ${
@@ -2140,16 +2141,15 @@ async function userDetailCard(userID: string): Promise<string> {
             </div>
             ${supportMessagesMiniList(detail.support_messages)}
           </div>
-          <div>
+          <div class="user-detail-section">
             <div class="card-title" style="margin-bottom:8px">订单 / 礼品卡兑换</div>
             ${userTradeSnapshot(detail)}
           </div>
-          <div class="divider"></div>
-          <div>
+          <div class="user-detail-section user-detail-wide">
             <div class="card-title" style="margin-bottom:8px">最近问诊</div>
             ${roundExcerptList(detail.recent_rounds)}
           </div>
-          <div>
+          <div class="user-detail-section user-detail-wide">
             <div class="card-title" style="margin-bottom:8px">最近 App 日志</div>
             ${compactLogs(detail.recent_app_logs)}
           </div>

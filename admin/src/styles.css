@@ -1907,6 +1907,38 @@ button {
   align-items: start;
 }
 
+.users-workspace {
+  display: grid;
+  gap: 12px;
+  align-items: start;
+}
+
+.user-detail-panel,
+.user-detail-card,
+.user-detail-section {
+  min-width: 0;
+}
+
+.user-detail-panel {
+  scroll-margin-top: 84px;
+}
+
+.user-detail-layout {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 1180px) {
+  .user-detail-layout {
+    grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+  }
+
+  .user-detail-wide {
+    grid-column: 1 / -1;
+  }
+}
+
 .drawer {
   position: sticky;
   top: 72px;

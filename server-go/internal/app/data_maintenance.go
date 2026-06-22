@@ -51,4 +51,11 @@ func (s *Server) runDataMaintenance() {
 	} else if logRows > 0 {
 		s.logger.Info("data maintenance pruned client app logs", "rows", logRows)
 	}
+
+	auditRows, err := s.store.PruneExpiredAdminAuditLogs(ctx, nowMs)
+	if err != nil {
+		s.logger.Warn("data maintenance prune admin audit logs failed", "error", err)
+	} else if auditRows > 0 {
+		s.logger.Info("data maintenance pruned admin audit logs", "rows", auditRows)
+	}
 }

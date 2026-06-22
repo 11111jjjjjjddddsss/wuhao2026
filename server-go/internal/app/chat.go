@@ -39,7 +39,7 @@ const (
 	chatHistoricalImageContextTTL    = 72 * time.Hour
 )
 
-const chatDiagnosticConstraint = `【诊断约束】
+const chatOutputConstraint = `【输出约束】
 所有回答禁止表格。排版尽量简洁，多用短段落和适当空行；不要使用多级列表和项目符号列表，避免长段堆叠。回答不要刻意套固定模板；不限固定格式，根据本轮问题自然组织，避免呆板机械。
 
 默认必须使用中文表达，禁止中英混写；普通英文词和英文短语必须改成中文说法，不得直接夹在中文句子里。只有农药/肥料成分、品种名、病原拉丁学名、登记标签、品牌商品名或用户原文确实需要保留时，才使用英文，并尽量先给中文解释。
@@ -1437,7 +1437,7 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		messages = append(messages, BailianMessage{Role: "user", Content: s.roundToUserContent(round, index == previousRoundIndex, now)})
 		messages = append(messages, BailianMessage{Role: "assistant", Content: round.Assistant})
 	}
-	messages = append(messages, BailianMessage{Role: "system", Content: chatDiagnosticConstraint})
+	messages = append(messages, BailianMessage{Role: "system", Content: chatOutputConstraint})
 	messages = append(messages, BailianMessage{Role: "user", Content: buildVisionUserContent(currentText, currentImages)})
 	return messages, len(rounds), hasMemoryDocument
 }
