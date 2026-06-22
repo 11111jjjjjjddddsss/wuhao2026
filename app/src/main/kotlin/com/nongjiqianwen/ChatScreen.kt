@@ -8839,7 +8839,7 @@ private fun UiCopyPreviewOverlay(
                 )
             ),
             UiCopyPreviewGroup(
-                title = "主界面中部浮层",
+                title = "手机中部浮层",
                 items = listOf(
                     UiCopyPreviewItem("正在检查更新...", "设置 / 反馈 / 礼品卡等菜单短提示统一到这里", UiCopyPreviewKind.MenuNoticeHint),
                     UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
