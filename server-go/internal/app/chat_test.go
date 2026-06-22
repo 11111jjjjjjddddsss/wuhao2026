@@ -38,7 +38,6 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 		"以本轮图片和客观信息为准",
 		"时间、地点、天气、历史对话和记忆摘要只作风险背景",
 		"不能盖过本轮证据",
-		"带图时先详细描述图片里的关键信息",
 		"所有回答禁止表格",
 		"排版尽量简洁",
 		"多用短段落和适当空行；不要使用多级列表和项目符号列表",
@@ -53,8 +52,6 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 		"不得直接夹在中文句子里",
 		"只有农药/肥料成分、品种名、病原拉丁学名、登记标签、品牌商品名或用户原文确实需要保留时",
 		"才使用英文，并尽量先给中文解释",
-		"证据不足要明确说“不确定”",
-		"不要把单张图片或单轮描述写成确诊",
 	} {
 		if !strings.Contains(chatDiagnosticConstraint, want) {
 			t.Fatalf("diagnostic constraint missing %q: %q", want, chatDiagnosticConstraint)
@@ -65,6 +62,9 @@ func TestChatDiagnosticConstraintText(t *testing.T) {
 		"反证和验证方法",
 		"处理建议要说明适用前提",
 		"唯一答案",
+		"带图时先详细描述",
+		"证据不足要明确",
+		"单张图片或单轮描述写成确诊",
 	} {
 		if strings.Contains(chatDiagnosticConstraint, blocked) {
 			t.Fatalf("diagnostic constraint should not include template phrase %q: %q", blocked, chatDiagnosticConstraint)
