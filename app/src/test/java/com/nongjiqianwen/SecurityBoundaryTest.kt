@@ -8,8 +8,10 @@ class SecurityBoundaryTest {
     @Test
     fun stableAppUpdateApkUrlRejectsDecoratedReleaseUrls() {
         assertTrue(isStableAppUpdateApkUrlValue("https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk"))
+        assertTrue(isStableAppUpdateApkUrlValue("https://download.nongjiqiancha.cn:443/android/releases/4/nongjiqiancha-1.0.4.apk"))
 
         listOf(
+            "https://download.nongjiqiancha.cn:4443/android/releases/4/nongjiqiancha-1.0.4.apk",
             "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk?token=ordinary",
             "https://user:pass@download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk",
             "https://download.nongjiqiancha.cn/android/releases/4/nongjiqiancha-1.0.4.apk#fragment",
@@ -23,10 +25,12 @@ class SecurityBoundaryTest {
     @Test
     fun remoteImagePreviewOnlyTrustsBackendUploadUrls() {
         assertTrue("https://api.nongjiqiancha.cn/uploads/abc_123.jpg".isTrustedRemoteImageSource())
+        assertTrue("https://api.nongjiqiancha.cn:443/uploads/abc_123.jpg".isTrustedRemoteImageSource())
         assertTrue("https://api.nongjiqiancha.cn/uploads/support/feedback-1.jpg".isTrustedRemoteImageSource())
 
         listOf(
             "http://api.nongjiqiancha.cn/uploads/abc_123.jpg",
+            "https://api.nongjiqiancha.cn:4443/uploads/abc_123.jpg",
             "https://api.nongjiqiancha.cn/uploads/abc_123.jpg?token=ordinary",
             "https://api.nongjiqiancha.cn/uploads/abc_123.jpg#fragment",
             "https://user:pass@api.nongjiqiancha.cn/uploads/abc_123.jpg",

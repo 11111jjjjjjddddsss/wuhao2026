@@ -353,10 +353,10 @@ function topbarHTML(): string {
         <span class="muted small topbar-api">${escapeHTML(currentRoute?.label || "总览")}</span>
       </div>
       <div class="topbar-right">
-        <form id="global-search-form" class="global-search-form">
+        ${isRouteVisible("users") ? `<form id="global-search-form" class="global-search-form">
           <input class="input" name="query" value="" placeholder="账号ID / 手机号" aria-label="账号ID或手机号" />
           <button class="button" type="submit">查</button>
-        </form>
+        </form>` : ""}
         <div class="mobile-quick-actions" aria-label="常用入口">
           ${quickRouteButton("monitoring", "看监控")}
           ${quickRouteButton("users", "查用户")}
@@ -1515,11 +1515,16 @@ async function handleAction(button: HTMLElement): Promise<void> {
     return;
   }
   if (action === "open-support-user") {
+    if (!isRouteVisible("support")) {
+      showTransientNotice("当前账号不能查看帮助反馈");
+      return;
+    }
     const userID = button.dataset.userId || "";
     if (!userID) return;
     pageState.supportUserID = userID;
     pageState.supportQuery = userID;
     pageState.supportStatus = "";
+    pageState.supportSinceRange = "all";
     if (activeRoute === "support") {
       await render();
       scrollElementIntoViewOnMobile("support-detail-card");
@@ -2124,7 +2129,7 @@ async function userDetailCard(userID: string): Promise<string> {
             <div class="section-title-row" style="margin-bottom:8px">
               <div class="card-title">最近反馈</div>
               ${
-                detail.support_messages.length
+                detail.support_messages.length && isRouteVisible("support")
                   ? `<button class="button small-button" type="button" data-action="open-support-user" data-user-id="${escapeAttr(detail.user.user_id)}">打开反馈会话</button>`
                   : ""
               }
@@ -2385,6 +2390,7 @@ function supportUserCell(user: AdminUserListEntry): string {
   const count = user.support_message_count || 0;
   if (!count && !user.support_needs_reply) return "0 条";
   const state = user.support_needs_reply ? statusPill("待回复", "warn") : `${count} 条`;
+  if (!isRouteVisible("support")) return state;
   return `${state}<div class="small-action-line"><button class="link-button" type="button" data-action="open-support-user" data-user-id="${escapeAttr(user.user_id)}">看反馈</button></div>`;
 }
 

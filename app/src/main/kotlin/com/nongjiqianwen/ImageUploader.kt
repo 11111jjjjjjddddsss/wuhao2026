@@ -73,6 +73,27 @@ object ImageUploader {
         val authExpired: Boolean = false
     )
 
+    fun canUseOriginalJpegForUpload(imageBytes: ByteArray): Boolean {
+        if (!imageBytes.hasJpegStartMarkerForUpload() || imageBytes.size > MAX_SIZE_BYTES) return false
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
+        if (maxOf(bounds.outWidth, bounds.outHeight) > MAX_LONG_EDGE) return false
+        val orientation = runCatching {
+            ByteArrayInputStream(imageBytes).use { input ->
+                ExifInterface(input).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL
+                )
+            }
+        }.getOrNull() ?: return false
+        return orientation == ExifInterface.ORIENTATION_NORMAL ||
+            orientation == ExifInterface.ORIENTATION_UNDEFINED
+    }
+
+    private fun ByteArray.hasJpegStartMarkerForUpload(): Boolean =
+        size >= 2 && this[0] == 0xFF.toByte() && this[1] == 0xD8.toByte()
+
     /**
      * 压缩图片：
      * 固定降级序列（直到 ≤1MB）：1024@85 -> 1024@80 -> 896@80 -> 896@70 -> 768@70 -> 640@60 -> 512@60。

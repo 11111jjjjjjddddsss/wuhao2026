@@ -47,9 +47,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,16 +129,16 @@ private fun LoginScreen(
         LaunchUiGate.chatReady = true
     }
 
-    var phone by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var code by rememberSaveable { mutableStateOf("") }
     val context = LocalContext.current
     var agreed by remember(context) { mutableStateOf(PrivacyConsentStore.isAccepted(context)) }
     var busyAction by remember { mutableStateOf<LoginBusyAction?>(null) }
     val busy = busyAction != null
-    var message by remember { mutableStateOf(initialMessage) }
-    var countdown by remember { mutableIntStateOf(0) }
-    var countdownPhone by remember { mutableStateOf<String?>(null) }
-    var legalPage by remember { mutableStateOf<LoginLegalPage?>(null) }
+    var message by rememberSaveable { mutableStateOf(initialMessage) }
+    var countdown by rememberSaveable { mutableStateOf(0) }
+    var countdownPhone by rememberSaveable { mutableStateOf<String?>(null) }
+    var legalPage by rememberSaveable { mutableStateOf<LoginLegalPage?>(null) }
     val agreementText = remember { buildLoginAgreementText() }
     val activeCountdown = if (phone == countdownPhone) countdown else 0
     val loginTextFieldColors = OutlinedTextFieldDefaults.colors(

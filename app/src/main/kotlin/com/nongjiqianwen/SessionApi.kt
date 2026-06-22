@@ -32,6 +32,7 @@ internal fun isStableAppUpdateApkUrlValue(raw: String): Boolean {
     if (raw.contains("#")) return false
     val parsed = raw.toHttpUrlOrNull() ?: return false
     if (parsed.scheme != "https") return false
+    if (parsed.port != 443) return false
     if (parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return false
     if (parsed.queryParameterNames.isNotEmpty()) return false
     if (!parsed.host.equals(APP_UPDATE_OFFICIAL_APK_HOST, ignoreCase = true)) return false

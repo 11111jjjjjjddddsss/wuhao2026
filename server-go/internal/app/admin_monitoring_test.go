@@ -74,6 +74,13 @@ func TestAdminMonitoringDisabledAppUpdateMissingArtifactsIsNotDailyAction(t *tes
 	}
 }
 
+func TestAdminMonitoringInstallNotCompletedIsNotAppUpdateFailure(t *testing.T) {
+	source := mustReadFileForTest(t, "admin_api.go")
+	block := functionBlockForTest(source, "func (s *Store) buildAdminMonitoringAppUpdateLogs")
+	assertContainsAll(t, block, "event = 'app_update.install_intent_failed'")
+	assertNotContains(t, block, "event IN ('app_update.install_intent_failed','app_update.install_not_completed')")
+}
+
 func TestAdminMonitoringCapabilitiesContract(t *testing.T) {
 	capabilities := buildAdminMonitoringCapabilities()
 	if len(capabilities) == 0 {

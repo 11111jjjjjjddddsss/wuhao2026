@@ -530,7 +530,9 @@ internal fun HamburgerMenuSheet(
                     pendingInstallPermissionUpdate = null
                     showNotice("已允许安装，继续下载更新...")
                     startAppUpdate(pendingUpdate)
+                    return@LifecycleEventObserver
                 }
+                return@LifecycleEventObserver
             }
             reconcilePendingInstallAttempt(showIncompleteNotice = true)
         }
@@ -2929,9 +2931,13 @@ private fun HamburgerSupportFeedbackPage(
             for (image in images) {
                 val bytes = context.readImageBytes(Uri.parse(image.uri))
                     ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                val compressed = ImageUploader.compressImage(bytes)
-                    ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
-                uploadBytes.add(compressed.bytes)
+                val bytesForUpload = if (ImageUploader.canUseOriginalJpegForUpload(bytes)) {
+                    bytes
+                } else {
+                    ImageUploader.compressImage(bytes)?.bytes
+                        ?: return@withContext null to ImageUploader.DECODE_FAIL_MESSAGE
+                }
+                uploadBytes.add(bytesForUpload)
             }
             val result = ImageUploader.uploadImagesWithResult(
                 uploadBytes,

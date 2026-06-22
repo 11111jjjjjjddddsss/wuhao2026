@@ -2269,7 +2269,7 @@ func (s *Store) buildAdminMonitoringAppUpdateLogs(ctx context.Context, sinceMs i
 		   COALESCE(SUM(CASE WHEN level = 'error' THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'app_update.check_failed' THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'app_update.download_failed' THEN 1 ELSE 0 END), 0),
-		   COALESCE(SUM(CASE WHEN event IN ('app_update.install_intent_failed','app_update.install_not_completed') THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN event = 'app_update.install_intent_failed' THEN 1 ELSE 0 END), 0),
 		   COALESCE(SUM(CASE WHEN event = 'app_update.install_permission_required' THEN 1 ELSE 0 END), 0),
 		   MAX(created_at)
 		 FROM client_app_logs
@@ -2346,7 +2346,7 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 		}
 		items = append(items, AdminMonitoringActionItem{
 			Title: "检查更新链路失败",
-			Body:  "最近 24 小时检查更新、下载 APK 或打开安装页失败；先看 App 日志里的 app_update.* 事件定位阶段。",
+			Body:  "最近 24 小时检查更新、下载 APK 或打开系统安装页失败；用户取消安装只留在 App 日志事件里，不按链路故障处理。",
 			Level: level,
 			Route: "app-logs",
 			Count: failures,

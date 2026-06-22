@@ -51,6 +51,7 @@ internal fun String.isTrustedRemoteImageSource(): Boolean {
     val source = trim()
     val uri = runCatching { URI(source) }.getOrNull() ?: return false
     if (!uri.scheme.equals("https", ignoreCase = true)) return false
+    if (uri.port != -1 && uri.port != 443) return false
     if (uri.userInfo != null || uri.rawQuery != null || uri.rawFragment != null) return false
     val baseUri = runCatching { URI(BuildConfig.UPLOAD_BASE_URL.trim().trimEnd('/')) }.getOrNull()
         ?: return false
