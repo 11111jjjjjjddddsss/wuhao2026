@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-19
+最后更新：2026-06-22
 
 ## 当前定位
 
@@ -15,7 +15,7 @@
 - Android 端和后端都会按敏感 attr key 和敏感 value 过滤，丢弃 `phone / token / url / uri / body / message / content` 等字段名对应的值，也会丢弃包含 URL、token、AccessKey、手机号等敏感文本的普通字段值；Android 图片上传 DEBUG 日志也只打印脱敏 URL 和响应长度
 - 后端已提供只读内部查询入口 `GET /internal/app/logs`，暂复用 `SUPPORT_ADMIN_SECRET` 保护，并要求调用来源是 loopback / 私网地址；第一版网页后台另提供 `GET /admin-api/v1/app-logs`，走后台账号 session / CSRF / 角色校验。日常浏览器后台和本机公网排障优先走 `/admin-api/` 或 Cloud Assistant 内部脚本，不把 `SUPPORT_ADMIN_SECRET` 放进前端。两个查询入口都支持按精确 `event`、事件前缀 `event_prefix`、平台、包类型 `build_type`、App 版本号 / 版本名、Android 系统版本、设备型号和等级过滤，精确事件名优先于前缀筛选
 - `client_app_logs` 已补面向后台监控和排障的 `level + created_at`、`event + level + created_at` 索引，便于最近 24 小时错误、登录整组事件、检查更新整组事件和按版本 / 机型筛选；索引只优化查询，不改变日志脱敏和保留边界
-- SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 AlertHub 最小告警；应用告警已绑定邮件行动策略和最小仪表盘；当前按控成本口径使用：只保留 `server-go` / `nginx-error` 两个 Logstore，TTL 180 天，其中热存储 7 天、低频存储 173 天，不采完整 Nginx access，不启用短信 / 电话告警，App 自动日志有 8KiB body 上限、脱敏和短期限流。`client_app_logs` 当前按 30 天内低成本排障窗口控制：服务端写入 App 自动日志成功后会限频清理 30 天前记录，同时服务启动后的低频数据维护 worker 也会默认每 6 小时限量清理一次，避免低流量时只靠写入触发导致旧日志滞留；每次默认最多删除 1000 条，可用 `CLIENT_APP_LOG_RETENTION_SECONDS` 和 `CLIENT_APP_LOG_PRUNE_INTERVAL_SECONDS` 调整。`scripts/check-data-retention-cost.ps1` 继续在最早日志超过窗口或体量异常时提示 attention，作为自动清理的只读核验。后续仍要补更细的版本 / 设备 / 地区聚合趋势，以及每天写入量 / 索引量 / 存储量 / 账单阈值提醒，用户量上来后优先考虑采样、缩短保留期或购买 SLS 资源包
+- SLS 已接入 Go 服务 JSON 日志、Nginx error log 和 AlertHub 最小告警；应用告警已绑定邮件行动策略和最小仪表盘；当前按控成本口径使用：只保留 `server-go` / `nginx-error` 两个 Logstore，TTL 180 天，其中热存储 7 天、低频存储 173 天，不采完整 Nginx access，不启用短信 / 电话告警，App 自动日志有 8KiB body 上限、脱敏和短期限流。`client_app_logs` 当前按 30 天内低成本排障窗口控制：服务端写入 App 自动日志成功后会限频清理 30 天前记录，同时服务启动后的低频数据维护 worker 也会默认每 6 小时限量清理一次，避免低流量时只靠写入触发导致旧日志滞留；每次默认最多删除 1000 条，可用 `CLIENT_APP_LOG_RETENTION_SECONDS` 和 `CLIENT_APP_LOG_PRUNE_INTERVAL_SECONDS` 调整。后台审计日志 `admin_audit_logs` 不保存正文、手机号、token 或密钥，默认保留 180 天用于排障和操作追溯，超过后同样由数据维护 worker 每 6 小时限量删除，可用 `ADMIN_AUDIT_LOG_RETENTION_SECONDS` 调整。`scripts/check-data-retention-cost.ps1` 会按 App 日志 30 天、后台审计 180 天、问诊归档 31 天巡检最早记录和表体量，作为自动清理的只读核验。后续仍要补更细的版本 / 设备 / 地区聚合趋势，以及每天写入量 / 索引量 / 存储量 / 账单阈值提醒，用户量上来后优先考虑采样、缩短保留期或购买 SLS 资源包
 
 ## 当前自动上报事件
 
