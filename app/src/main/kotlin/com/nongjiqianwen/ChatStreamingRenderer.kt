@@ -2054,7 +2054,7 @@ private fun rendererMarkdownBlockSpacingAfter(
         isRendererCompactNumberedSection(previousBlock) &&
         currentBlock !is StreamingLineModel.Blank
     ) {
-        6.dp
+        8.dp
     } else {
         MARKDOWN_BLOCK_SPACING
     }
