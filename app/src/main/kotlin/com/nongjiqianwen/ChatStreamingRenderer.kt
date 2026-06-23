@@ -1009,8 +1009,10 @@ private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     if (plain.length !in 2..28) return false
     if (plain.any { it in "。！？!?；;" }) return false
     if (plain.endsWith("：") || plain.endsWith(":")) return true
-    if (plain.any { it in "：:，,、" }) return false
-    return true
+    if (plain.any { it in "：:" }) return false
+    val commaLikeCount = plain.count { it in "，,、" }
+    if (commaLikeCount == 0) return true
+    return commaLikeCount == 1 && plain.length <= 12
 }
 
 private fun parseRendererStandaloneBoldHeading(line: String): String? {
@@ -2054,7 +2056,7 @@ private fun rendererMarkdownBlockSpacingAfter(
         isRendererCompactNumberedSection(previousBlock) &&
         currentBlock !is StreamingLineModel.Blank
     ) {
-        8.dp
+        10.dp
     } else {
         MARKDOWN_BLOCK_SPACING
     }

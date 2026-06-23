@@ -1089,6 +1089,26 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun shortNumberedTitleWithCommaUsesCompactSectionStyle() {
+        val model = classifyStreamingLine("1. 价格波动大，低位明显")
+
+        require(model is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(model))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Settled))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
+    }
+
+    @Test
+    fun shortNumberedTitleWithDunhaoUsesCompactSectionStyle() {
+        val model = classifyStreamingLine("2. 天气、采收影响品质")
+
+        require(model is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(model))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Settled))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
+    }
+
+    @Test
     fun activeShortNumberedTitleWithoutColonUsesCompactSectionStyle() {
         val model = classifyActiveStreamingLine("1. 紧急控病")
 
