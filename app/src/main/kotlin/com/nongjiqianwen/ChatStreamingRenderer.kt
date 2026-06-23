@@ -960,7 +960,7 @@ internal fun shouldShowStreamingSectionDivider(
     }
     val numbered = current as? StreamingLineModel.Numbered
     if (numbered != null) {
-        return numbered.number != "1" && isRendererCompactNumberedSection(numbered)
+        return isRendererCompactNumberedSection(numbered)
     }
     return false
 }
@@ -2079,7 +2079,9 @@ private fun rendererMarkdownBlockSpacingAfter(
             isRendererCompactNumberedSection(previousBlock) &&
             currentBlock !is StreamingLineModel.Blank -> 12.dp
         previousBlock is StreamingLineModel.Heading &&
-            currentBlock !is StreamingLineModel.Blank -> 12.dp
+            currentBlock !is StreamingLineModel.Blank -> {
+                if (previousBlock.source == StreamingHeadingSource.StandaloneBold) 14.dp else 12.dp
+            }
         currentBlock is StreamingLineModel.Numbered &&
             isRendererCompactNumberedSection(currentBlock) -> 18.dp
         else -> MARKDOWN_BLOCK_SPACING

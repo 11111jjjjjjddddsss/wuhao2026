@@ -726,13 +726,13 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun firstCompactNumberedSectionDoesNotCreateIntroDivider() {
+    fun firstCompactNumberedSectionCreatesDividerAfterIntro() {
         val previous = classifyStreamingLine("膨果期的管理核心是营养平衡、水分稳定、负载合理。")
         val numbered = classifyStreamingLine("1. 营养需求重点")
 
         assertTrue(numbered is StreamingLineModel.Numbered)
         assertTrue(isRendererCompactNumberedSection(numbered as StreamingLineModel.Numbered))
-        assertFalse(shouldShowStreamingSectionDivider(previous, numbered))
+        assertTrue(shouldShowStreamingSectionDivider(previous, numbered))
     }
 
     @Test

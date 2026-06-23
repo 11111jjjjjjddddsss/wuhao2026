@@ -939,12 +939,12 @@ if ($failures.Count -eq 0) {
         "Standalone bold headings must not create section dividers; they are subheadings inside the current section."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)previous\s+is\s+StreamingLineModel\.Numbered\s*&&\s*isRendererCompactNumberedSection\(previous\)(?s:.*?)return\s+false' `
         "Assistant section dividers must not split a compact numbered section title from its nested heading/body."
-    Require-Match $failures $chatStreamingRenderer 'val\s+numbered\s*=\s*current\s+as\?\s+StreamingLineModel\.Numbered(?s:.*?)numbered\.number\s*!=\s*"1"(?s:.*?)isRendererCompactNumberedSection\(numbered\)' `
-        "Assistant section dividers must be able to appear before compact numbered section titles such as '2. 水分管理' while skipping the opening '1.' section."
+    Require-Match $failures $chatStreamingRenderer 'val\s+numbered\s*=\s*current\s+as\?\s+StreamingLineModel\.Numbered(?s:.*?)isRendererCompactNumberedSection\(numbered\)' `
+        "Assistant section dividers must be able to appear before compact numbered section titles such as '1. 营养需求重点' and '2. 水分管理'."
     Require-Match $failures $chatStreamingRendererTest 'compactNumberedSectionKeepsDividerBeforeNumberWithoutSplittingNestedHeading' `
         "Assistant renderer tests must cover a compact numbered section title followed by a nested heading without a second divider."
-    Require-Match $failures $chatStreamingRendererTest 'firstCompactNumberedSectionDoesNotCreateIntroDivider' `
-        "Assistant renderer tests must prove the opening compact numbered section does not get a harsh divider after the intro."
+    Require-Match $failures $chatStreamingRendererTest 'firstCompactNumberedSectionCreatesDividerAfterIntro' `
+        "Assistant renderer tests must prove the opening compact numbered section can get a divider after the intro."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingsInsideNumberedSectionsDoNotCreateDividers' `
         "Assistant renderer tests must prove nested bold subheadings do not create dividers inside numbered sections."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
