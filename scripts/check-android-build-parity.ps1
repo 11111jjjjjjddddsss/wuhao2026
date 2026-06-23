@@ -965,8 +965,8 @@ if ($failures.Count -eq 0) {
         "Streaming assistant section divider decisions must skip blank spacer blocks and use the previous non-blank content block."
     Require-Match $failures $chatStreamingRenderer 'shouldShowStreamingSectionDivider\(completedModels,\s*index\)' `
         "Settled assistant section divider decisions must skip blank spacer blocks and use the previous non-blank content block."
-    Require-Match $failures $chatStreamingRenderer 'Color\(0xFFD8DEE8\)' `
-        "Assistant section divider lines must remain visible enough on white mobile backgrounds."
+    Require-Match $failures $chatStreamingRenderer 'Color\(0xFFE7E9ED\)' `
+        "Assistant section divider lines must keep the original light visual style."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingsInsideNumberedSectionsDoNotCreateDividers' `
         "Assistant renderer tests must prove nested standalone bold subheadings do not create dividers while inline bold text stays untouched."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `

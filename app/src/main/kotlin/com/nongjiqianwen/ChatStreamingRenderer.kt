@@ -2867,7 +2867,7 @@ private fun RendererMarkdownSectionDividerImpl() {
     HorizontalDivider(
         modifier = Modifier.fillMaxWidth(),
         thickness = 1.dp,
-        color = Color(0xFFD8DEE8)
+        color = Color(0xFFE7E9ED)
     )
     Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
 }
