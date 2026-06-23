@@ -1271,6 +1271,52 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun inlineBoldArabicNumberedItemsSplitAfterSentenceBoundary() {
+        val input =
+            "1. 含量与形态：七水硫酸镁含镁约 9.8%，无水硫酸镁含镁约 20%。" +
+                "无水产品价格通常更高，但用量省。 **2. 区域与运费：** 硫酸镁属于低值重货，运费占比高。"
+        val rendered = buildRendererPlainCopyText(input)
+
+        assertFalse(rendered.contains("省。 2."))
+        assertTrue(rendered.contains("省。\n\n2. 区域与运费："))
+    }
+
+    @Test
+    fun boldNumberedLinesFromBackendStaySeparateWithSingleNewlines() {
+        val input =
+            "**影响价格的关键因素**\n" +
+                "**1. 含量与形态**：七水硫酸镁含镁约 9.8%，无水硫酸镁含镁约 20%。无水产品价格通常更高，但用量省。\n" +
+                "**2. 区域与运费**：硫酸镁属于低值重货，运费占比高。产地附近价格便宜。\n" +
+                "**3. 纯度等级**：农业上用普通农业级即可。"
+        val rendered = buildRendererPlainCopyText(input)
+
+        assertFalse(rendered.contains("用量省。 2."))
+        assertTrue(rendered.contains("用量省。\n\n2. 区域与运费"))
+        assertTrue(rendered.contains("价格便宜。\n\n3. 纯度等级"))
+    }
+
+    @Test
+    fun inlineBoldFirstArabicNumberedItemSplitsAfterColonBoundary() {
+        val input =
+            "您是做肥料销售的，如果考虑搭配销售或自用： **1.核实证件：** 采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料。"
+        val rendered = buildRendererPlainCopyText(input)
+
+        assertFalse(rendered.contains("自用： 1."))
+        assertTrue(rendered.contains("自用：\n\n1. 核实证件："))
+    }
+
+    @Test
+    fun inlineBoldChineseNumberedItemsSplitAfterSentenceBoundary() {
+        val input =
+            "可以按三个方向看：**一、含量与形态：** 七水硫酸镁含镁约9.8%。" +
+                "无水产品价格通常更高。 **二、区域与运费：** 低值重货要看物流。"
+        val rendered = buildRendererPlainCopyText(input)
+
+        assertFalse(rendered.contains("高。 二、"))
+        assertTrue(rendered.contains("高。\n\n二、区域与运费："))
+    }
+
+    @Test
     fun readableLongParagraphDoesNotSplitMarkdownListLine() {
         val state = splitStreamingBlockState(
             "- 叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。建议先看老叶和新叶差异。",

@@ -821,6 +821,9 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
     if (isRendererHorizontalRuleLine(trimmed)) {
         return StreamingLineModel.Blank
     }
+    parseRendererBoldArabicNumberedLine(trimmed, indentLevel)?.let { model ->
+        return model
+    }
     parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(2, headingText)
     }
@@ -861,6 +864,9 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     }
     if (isRendererHorizontalRuleLine(trimmed)) {
         return StreamingLineModel.Blank
+    }
+    parseRendererBoldArabicNumberedLine(trimmed, indentLevel)?.let { model ->
+        return model
     }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(3, headingText)
@@ -1043,6 +1049,46 @@ private fun parseRendererLeadingBoldSectionTitle(line: String): String? {
     if (!isRendererLikelyCompleteActiveBoldHeadingTitle(title)) return null
     return title
 }
+
+private fun parseRendererBoldArabicNumberedLine(
+    line: String,
+    indentLevel: Int
+): StreamingLineModel.Numbered? {
+    val trimmed = line.trim()
+    if (!trimmed.startsWith("**")) return null
+    val closing = trimmed.indexOf("**", startIndex = 2)
+    if (closing <= 2) return null
+    val titleWithMarker = trimmed.substring(2, closing).trim()
+    val match = Regex("""^(\d{1,2})[.)．]\s*(.+)$""").matchEntire(titleWithMarker) ?: return null
+    val title = match.groupValues[2].trim()
+    if (title.isBlank()) return null
+    if (title.any { it == '\n' }) return null
+    val suffix = trimmed.drop(closing + 2)
+    val body = buildString {
+        append("**")
+        append(title)
+        append("**")
+        append(suffix)
+    }
+    return StreamingLineModel.Numbered(
+        number = match.groupValues[1],
+        text = normalizeRendererTaskListText(body.trim()),
+        indentLevel = indentLevel
+    )
+}
+
+private fun isRendererBoldChineseNumberedLine(line: String): Boolean {
+    val trimmed = line.trim()
+    if (!trimmed.startsWith("**")) return false
+    val closing = trimmed.indexOf("**", startIndex = 2)
+    if (closing <= 2) return false
+    val title = trimmed.substring(2, closing).trim()
+    return rendererChineseSectionHeadingRegex.matches(title)
+}
+
+private fun isRendererBoldNumberedLine(line: String): Boolean =
+    parseRendererBoldArabicNumberedLine(line, indentLevel = 0) != null ||
+        isRendererBoldChineseNumberedLine(line)
 
 private fun parseRendererChineseSectionHeading(line: String): String? {
     val trimmed = line.trim()
@@ -1455,9 +1501,30 @@ private fun normalizeRendererInlineListBreaks(text: String): String {
 private fun shouldBreakBeforeRendererInlineListMarker(text: String, index: Int): Boolean {
     if (index <= 0 || text[index - 1] == '\n') return false
     if (!hasRendererInlineListBoundaryBefore(text, index)) return false
-    val digitMarkerLength = rendererInlineDigitListMarkerLength(text, index)
+    val markerIndex = rendererInlineListMarkerStartIndex(text, index) ?: return false
+    val digitMarkerLength = rendererInlineDigitListMarkerLength(text, markerIndex)
     if (digitMarkerLength > 0) return true
-    return rendererInlineChineseListMarkerLength(text, index) > 0
+    return rendererInlineChineseListMarkerLength(text, markerIndex) > 0
+}
+
+private fun rendererInlineListMarkerStartIndex(text: String, index: Int): Int? {
+    if (rendererInlineDigitListMarkerLength(text, index) > 0 ||
+        rendererInlineChineseListMarkerLength(text, index) > 0
+    ) {
+        return index
+    }
+    if (text.startsWith("**", index)) {
+        val markerIndex = index + 2
+        if (markerIndex < text.length &&
+            (
+                rendererInlineDigitListMarkerLength(text, markerIndex) > 0 ||
+                    rendererInlineChineseListMarkerLength(text, markerIndex) > 0
+            )
+        ) {
+            return markerIndex
+        }
+    }
+    return null
 }
 
 private fun rendererInlineDigitListMarkerLength(text: String, index: Int): Int {
@@ -1531,6 +1598,7 @@ private fun String.nextRendererNonWhitespaceIndex(from: Int): Int? {
 private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
     return decodeRendererMarkdownTableBlock(trimmed) != null ||
         isRendererHorizontalRuleLine(trimmed) ||
+        isRendererBoldNumberedLine(trimmed) ||
         trimmed.matches(rendererHeadingRegex) ||
         parseRendererStandaloneBoldHeading(trimmed) != null ||
         parseRendererActiveStandaloneBoldHeading(trimmed) != null ||
@@ -1541,6 +1609,7 @@ private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
 }
 
 private fun isStructuralRendererActiveStreamingLine(line: String): Boolean {
+    if (isRendererBoldNumberedLine(line.trim())) return true
     return when (classifyActiveStreamingLine(line)) {
         StreamingLineModel.Blank,
         is StreamingLineModel.Paragraph -> false
