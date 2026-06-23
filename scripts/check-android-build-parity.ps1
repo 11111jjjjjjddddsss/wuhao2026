@@ -937,6 +937,12 @@ if ($failures.Count -eq 0) {
         "Active streaming closed bold heading tails must stay paragraph-shaped until the line is committed, avoiding height jumps."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)parseRendererLeadingBoldSectionTitle' `
         "Active streaming closed bold section prefixes should still show a stable divider as soon as the section signal is clear."
+    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)previous\s+is\s+StreamingLineModel\.Numbered\s*&&\s*isRendererCompactNumberedSection\(previous\)(?s:.*?)return\s+false' `
+        "Assistant section dividers must not split a compact numbered section title from its nested heading/body."
+    Require-Match $failures $chatStreamingRenderer 'val\s+numbered\s*=\s*current\s+as\?\s+StreamingLineModel\.Numbered(?s:.*?)isRendererCompactNumberedSection\(numbered\)' `
+        "Assistant section dividers must be able to appear before compact numbered section titles such as '2. 水分管理'."
+    Require-Match $failures $chatStreamingRendererTest 'compactNumberedSectionKeepsDividerBeforeNumberWithoutSplittingNestedHeading' `
+        "Assistant renderer tests must cover a compact numbered section title followed by a nested heading without a second divider."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
         "Active streaming Chinese section heading text should render immediately when it is clearly structural."
     Require-Match $failures $chatStreamingRenderer 'fun\s+currentTextStyle\(\)(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*&&\s*emphasisEnabled\s*\)\s*FontWeight\.Medium\s+else\s+null' `

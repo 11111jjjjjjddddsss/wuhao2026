@@ -696,6 +696,36 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun compactNumberedSectionKeepsDividerBeforeNumberWithoutSplittingNestedHeading() {
+        val state = splitStreamingBlockState(
+            "上一段处理建议。\n\n" +
+                "2. 水分管理\n\n" +
+                "**稳定供水**\n\n" +
+                "果实膨大需要大量水分。"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(4, models.size)
+        assertTrue(models[0] is StreamingLineModel.Paragraph)
+        assertTrue(models[1] is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(models[1] as StreamingLineModel.Numbered))
+        assertTrue(models[2] is StreamingLineModel.Heading)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = models[0],
+                current = models[1]
+            )
+        )
+        assertFalse(
+            shouldShowStreamingSectionDivider(
+                previous = models[1],
+                current = models[2]
+            )
+        )
+    }
+
+    @Test
     fun activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural() {
         val previous = classifyStreamingLine("先说清楚。")
         val active = classifyActiveStreamingLine("一、成品含腐植酸尿素 vs. 自配方案")

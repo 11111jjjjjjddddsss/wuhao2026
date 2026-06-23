@@ -921,12 +921,16 @@ internal fun shouldShowStreamingSectionDivider(
 ): Boolean {
     if (
         previous == null ||
-        previous is StreamingLineModel.Heading
+        previous is StreamingLineModel.Heading ||
+        previous is StreamingLineModel.Blank ||
+        (previous is StreamingLineModel.Numbered && isRendererCompactNumberedSection(previous))
     ) {
         return false
     }
     val heading = current as? StreamingLineModel.Heading
     if (heading != null) return heading.level <= 3
+    val numbered = current as? StreamingLineModel.Numbered
+    if (numbered != null) return isRendererCompactNumberedSection(numbered)
     val paragraph = current as? StreamingLineModel.Paragraph ?: return false
     return parseRendererLeadingBoldSectionTitle(paragraph.text) != null
 }
@@ -2056,7 +2060,7 @@ private fun rendererMarkdownBlockSpacingAfter(
         isRendererCompactNumberedSection(previousBlock) &&
         currentBlock !is StreamingLineModel.Blank
     ) {
-        10.dp
+        12.dp
     } else {
         MARKDOWN_BLOCK_SPACING
     }
@@ -2097,24 +2101,26 @@ private fun RendererAssistantStreamingContentImpl(
             )
         }
         unifiedModels.forEachIndexed { index, model ->
+            val blockLeadingDivider = shouldShowStreamingSectionDivider(
+                previous = unifiedModels.getOrNull(index - 1),
+                current = model
+            )
             if (index > 0) {
-                Spacer(
-                    modifier = Modifier.height(
-                        rendererMarkdownBlockSpacingAfter(
-                            previousBlock = unifiedModels[index - 1],
-                            currentBlock = model
+                if (!blockLeadingDivider) {
+                    Spacer(
+                        modifier = Modifier.height(
+                            rendererMarkdownBlockSpacingAfter(
+                                previousBlock = unifiedModels[index - 1],
+                                currentBlock = model
+                            )
                         )
                     )
-                )
+                }
             }
             // Streaming blocks are append-only in render order, so the absolute
             // block index is the stable shell key we want to preserve across
             // active -> committed transitions.
             key("streaming_unified_block_$index") {
-                val blockLeadingDivider = shouldShowStreamingSectionDivider(
-                    previous = unifiedModels.getOrNull(index - 1),
-                    current = model
-                )
                 RendererAssistantStreamingUnifiedBlockHost(
                     model = model,
                     inlineMode = rendererInlineModeForStreamingBlock(
@@ -3182,16 +3188,21 @@ private fun RendererAssistantMarkdownContentImpl(
             RendererMarkdownSectionDividerImpl()
         }
         completedModels.forEachIndexed { index, model ->
+            val blockLeadingDivider = shouldShowStreamingSectionDivider(
+                previous = completedModels.getOrNull(index - 1),
+                current = model
+            )
             key("markdown_completed_$index") {
-                val blockLeadingDivider = shouldShowStreamingSectionDivider(
-                    previous = completedModels.getOrNull(index - 1),
-                    current = model
-                )
-                val blockModifier = markdownBlockSpacingModifier(
-                    previousBlock = completedModels.getOrNull(index - 1),
-                    currentBlock = model,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                val blockModifier =
+                    if (blockLeadingDivider) {
+                        Modifier.fillMaxWidth()
+                    } else {
+                        markdownBlockSpacingModifier(
+                            previousBlock = completedModels.getOrNull(index - 1),
+                            currentBlock = model,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                 RendererAssistantStreamingActiveBlockImpl(
                     model = model,
                     inlineMode = RendererInlineMode.Settled,
