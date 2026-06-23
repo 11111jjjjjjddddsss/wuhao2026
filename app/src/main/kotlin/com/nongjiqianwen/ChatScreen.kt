@@ -9378,7 +9378,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             "远端 snapshot 返回 archive_unavailable=true 时，本次视为历史不完整",
                             "保留本地 pending、失败态和已经可见的时间线，不用短 A 窗口覆盖",
                             "待后续完整 snapshot 恢复后，再按平台记录合并",
-                            "避免用户看到历史和排版结构一会儿有、一会儿没"
+                            "避免用户看到历史和分割线一会儿有、一会儿没"
                         )
                     )
                 }

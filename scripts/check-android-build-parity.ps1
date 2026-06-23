@@ -914,29 +914,29 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*selectionEnabled\s*\)\s*\{\s*SelectionContainer\s*\{(?s:.*?)RendererAssistantMarkdownContentImpl' `
         "Assistant settled text must keep the message selection container even when content contains links, so copy/full-copy remains available."
     Require-Match $failures $chatStreamingRenderer 'parseRendererStandaloneBoldHeading(?s:.*?)StreamingLineModel\.Heading\(2,\s*headingText\)(?s:.*?)parseRendererStandaloneBoldHeading\(trimmed\)\s*!=\s*null' `
-        "Assistant headings must still recognize standalone bold heading lines, not only # markdown headings."
+        "Assistant text dividers must recognize standalone bold heading lines, not only # markdown headings."
     Require-Match $failures $chatStreamingRenderer 'isStructuralRendererStreamingLine(?s:.*?)parseRendererActiveStandaloneBoldHeading\(trimmed\)\s*!=\s*null' `
-        "Assistant heading detection must keep an unclosed standalone bold heading structural after the next line arrives."
+        "Assistant text dividers must keep an unclosed standalone bold heading structural after the next line arrives, so the divider does not disappear in settled/history rendering."
     Require-Match $failures $chatStreamingRenderer 'parseRendererActiveStandaloneBoldHeading(?s:.*?)title\.any\s*\{\s*it\.isWhitespace\(\)\s*\}' `
-        "Assistant heading detection must not treat active bold text with whitespace as a confirmed heading while the line continues as a sentence."
-    Require-Match $failures $chatStreamingRendererTest 'unclosedStandaloneBoldHeadingLineKeepsHeadingWithoutDividerAfterBodyArrives' `
-        "Assistant heading tests must cover an unclosed standalone bold heading followed by body text."
+        "Assistant text dividers must not treat active bold text with whitespace as a confirmed heading, reducing divider flicker when the line continues as a sentence."
+    Require-Match $failures $chatStreamingRendererTest 'unclosedStandaloneBoldHeadingLineKeepsDividerAfterBodyArrives' `
+        "Assistant text divider tests must cover an unclosed standalone bold heading followed by body text."
     Require-Match $failures $chatStreamingRendererTest 'activeBoldLineWithWhitespaceStaysParagraphUntilItIsClearlyAHeading' `
         "Assistant text divider tests must cover active bold text that continues as body text."
     Require-Match $failures $chatStreamingRendererTest 'activeBoldLineWithoutHeadingBoundaryStaysParagraphUntilSettled' `
-        "Assistant heading tests must cover active bold text without a heading boundary, so layout does not flash and disappear."
+        "Assistant text divider tests must cover active bold text without a heading boundary, so dividers do not flash and disappear."
     Require-Match $failures $chatStreamingRendererTest 'activeStandaloneBoldHeadingWaitsForLineBoundary' `
-        "Assistant heading tests must prove unclosed active bold heading text waits for a line boundary."
-    Require-Match $failures $chatStreamingRendererTest 'activeClosedStandaloneBoldHeadingDoesNotShowDividerWithoutCommittingHeading' `
-        "Assistant renderer tests must prove a closed active bold heading does not create a visual divider."
-    Require-Match $failures $chatStreamingRendererTest 'activeClosedBoldThenBodyKeepsSoftSectionWithoutDivider' `
-        "Assistant renderer tests must cover a closed active bold section prefix that continues as body text without creating a divider."
+        "Assistant text divider tests must prove unclosed active bold heading text waits for a line boundary before drawing a divider."
+    Require-Match $failures $chatStreamingRendererTest 'activeClosedStandaloneBoldHeadingShowsStableDividerWithoutCommittingHeading' `
+        "Assistant text divider tests must prove a closed active bold heading can show a stable divider without committing the tail line to a heading too early."
+    Require-Match $failures $chatStreamingRendererTest 'activeClosedBoldThenBodyKeepsStableDivider' `
+        "Assistant text divider tests must cover a closed active bold section prefix that continues as body text without making the divider disappear."
     Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererActiveStandaloneBoldHeading' `
         "Active streaming bold heading text must not draw dividers before the line is complete."
     Require-NoMatch $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererStandaloneBoldHeading' `
         "Active streaming closed bold heading tails must stay paragraph-shaped until the line is committed, avoiding height jumps."
-    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)return\s+false' `
-        "Assistant section dividers must stay disabled; section separation should use spacing and text hierarchy instead of horizontal lines."
+    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)parseRendererLeadingBoldSectionTitle' `
+        "Active streaming closed bold section prefixes should still show a stable divider as soon as the section signal is clear."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
         "Active streaming Chinese section heading text should render immediately when it is clearly structural."
     Require-Match $failures $chatStreamingRenderer 'fun\s+currentTextStyle\(\)(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*&&\s*emphasisEnabled\s*\)\s*FontWeight\.Medium\s+else\s+null' `
@@ -944,19 +944,19 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatStreamingRendererTest 'emphasisDisabledHidesBoldMarkersWithoutBoldWeight' `
         "Assistant renderer tests must prove table-cell emphasis can hide Markdown bold markers without applying bold weight."
     Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural' `
-        "Assistant heading tests must cover active Chinese section headings rendering immediately when clearly structural."
+        "Assistant text divider tests must cover active Chinese section headings rendering immediately when clearly structural."
     Require-Match $failures $chatStreamingRenderer 'is\s+StreamingLineModel\.Numbered(?s:.*?)Text\((?s:.*?)modifier\s*=\s*Modifier\.alignBy\(FirstBaseline\)(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)modifier\s*=\s*Modifier(?s:.*?)\.alignBy\(FirstBaseline\)(?s:.*?)\.weight\(1f\)' `
         "Assistant numbered list markers must align to the first text baseline so 1/2/3/4 labels do not sit visually higher than their titles."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableSeparatorDoesNotCreateSectionDivider' `
-        "Assistant renderer tests must prove Markdown table separators do not create section dividers."
+        "Assistant text divider tests must prove Markdown table separators do not create section dividers."
     Require-Match $failures $chatStreamingRenderer 'shouldEnableRendererMarkdownTableCopy(?s:.*?)messageSettled\s*&&\s*inlineMode\s*==\s*RendererInlineMode\.Settled' `
         "Markdown table copy must wait for the whole assistant message to be settled, not only an earlier table block."
     Require-Match $failures $chatStreamingRenderer 'RendererAssistantStreamingUnifiedBlockHost(?s:.*?)tableCopyEnabled\s*=\s*false' `
         "Markdown tables may render during streaming, but their copy action must wait until the whole message is settled."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableCopyWaitsForWholeMessageSettled' `
         "Markdown table copy must have a unit test proving streaming messages cannot copy an earlier settled table block."
-    Require-Match $failures $chatStreamingRendererTest 'thirdLevelMarkdownHeadingDoesNotUseDivider' `
-        "Assistant renderer tests must cover common level-3 Markdown headings without creating dividers."
+    Require-Match $failures $chatStreamingRenderer 'heading\.level\s*(<=\s*3|>\s*3\)\s*return\s+false)' `
+        "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `
         "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)val\s+copyTable\s*=\s*\{(?s:.*?)buildRendererMarkdownTableCopyText\(table\)(?s:.*?)Toast\.makeText\(context,\s*"已复制"(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)copyEnabled\s*=\s*copyEnabled\s*&&\s*rowIndex\s*==\s*0(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)' `
@@ -1029,8 +1029,8 @@ if ($failures.Count -eq 0) {
         "Assistant Markdown table rows must keep dividers between visible field groups so mobile comparison text does not collapse into one block."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
         "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."
-    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)return\s+false' `
-        "Assistant text dividers must not return through consecutive heading-line logic."
+    Require-Match $failures $chatStreamingRenderer 'previous\s*==\s*null\s*\|\|\s*previous\s+is\s+StreamingLineModel\.Heading' `
+        "Assistant text dividers must not stack between consecutive heading lines."
     Require-Match $failures $chatStreamingRenderer 'LinkInteractionListener(?s:.*?)uriHandler\.openUri\s*\(\s*url\s*\)(?s:.*?)withLink\s*\((?s:.*?)LinkAnnotation\.Url' `
         "Assistant Markdown links and bare URLs must keep real URL annotations that open through the system URI handler."
     Require-Match $failures $chatStreamingRenderer 'ui\.link_open_failed(?s:.*?)substringBefore\(":"(?s:.*?)exception' `
