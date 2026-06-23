@@ -1149,8 +1149,8 @@ class ChatStreamingRendererTest {
 
         assertEquals(
             listOf(
-                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
-                    "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。"
+                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。",
+                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。"
             ),
             state.completedBlocks
         )
@@ -1172,8 +1172,8 @@ class ChatStreamingRendererTest {
 
         assertEquals(
             listOf(
-                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
-                    "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。",
+                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。",
+                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。",
                 "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化。"
             ),
             blocks
@@ -1232,6 +1232,42 @@ class ChatStreamingRendererTest {
             ),
             blocks
         )
+    }
+
+    @Test
+    fun inlineArabicNumberedItemsSplitWithoutTouchingPercentages() {
+        val input =
+            "您是做肥料销售的，如果考虑搭配销售或自用：1.核实证件：采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料，防止烧根。 2.计算成本：按有效镁含量算账。无水硫酸镁含镁约 20%。 3. 纯度等级：农业上用普通农业级即可。"
+
+        assertEquals(
+            "您是做肥料销售的，如果考虑搭配销售或自用：\n\n" +
+                "1. 核实证件：采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料，防止烧根。\n\n" +
+                "2. 计算成本：按有效镁含量算账。无水硫酸镁含镁约 20%。\n\n" +
+                "3. 纯度等级：农业上用普通农业级即可。",
+            buildRendererPlainCopyText(input)
+        )
+    }
+
+    @Test
+    fun inlineChineseNumberedItemsSplitWithoutCreatingSectionDividers() {
+        val input =
+            "可以按三个方向看：一、含量与形态：七水硫酸镁含镁约9.8%。二、区域与运费：低值重货要看物流。三、纯度等级：农业级即可。"
+
+        assertEquals(
+            "可以按三个方向看：\n\n" +
+                "一、含量与形态：七水硫酸镁含镁约9.8%。\n\n" +
+                "二、区域与运费：低值重货要看物流。\n\n" +
+                "三、纯度等级：农业级即可。",
+            buildRendererPlainCopyText(input)
+        )
+        assertEquals(0, buildRendererStructureStats(input).dividerHeadingCount)
+    }
+
+    @Test
+    fun inlineListSplitDoesNotBreakDecimalsVersionsOrLooseNumbers() {
+        val input = "价格参考 9.8 元到 20.5 元，版本 1.0.6 不应拆开，数字 1左右也不拆，1、2、3 这种串也不拆。"
+
+        assertEquals(input, buildRendererPlainCopyText(input))
     }
 
     @Test

@@ -8789,7 +8789,7 @@ private fun UiCopyPreviewOverlay(
                 title = "今日农情",
                 items = listOf(
                     UiCopyPreviewItem("今日农情", "主聊天普通文本项，标题加粗、正文可复制", UiCopyPreviewKind.TodayAgriCard),
-                    UiCopyPreviewItem("今日农情长摘要", "接近正式提示词的 3-4 行摘要", UiCopyPreviewKind.TodayAgriLongSummaryCard),
+                    UiCopyPreviewItem("今日农情长摘要", "摘要按主聊天同款句尾分段", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
                     UiCopyPreviewItem("农情时间线组合", "历史提示、AI 回复、农情和后续用户消息同列表", UiCopyPreviewKind.TodayAgriTimelineComposite),
                     UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方两轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
@@ -8802,6 +8802,7 @@ private fun UiCopyPreviewOverlay(
                 title = "文本渲染",
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
+                    UiCopyPreviewItem("AI 长正文分段", "长段和行内编号自动放松", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
                     UiCopyPreviewItem("AI 表格", "无摘要表头、正文不加粗、单表复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
@@ -9043,6 +9044,11 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE =
         "图片语法只显示说明，不加载外部图片：![叶片病斑](https://example.com/leaf.jpg)。\n" +
         "公式原样可读：${'$'}K=N+P${'$'}，${'$'}${'$'}亩数=长度*宽度/666.7${'$'}${'$'}。"
 
+private const val UI_COPY_PREVIEW_ASSISTANT_READABLE_PARAGRAPH_SAMPLE =
+    "作基肥时，每亩地施用10至15公斤，结合整地撒施，能长效补充土壤镁含量。作追肥时，多用叶面喷施，浓度控制在1%至2%，每隔14天喷一次，连续2到3次，见效快，适合作物生长后期快速补肥。比如土豆块茎膨大期、果树着色期用效果明显。\n\n" +
+        "能显著矫正叶片黄化，改善光合作用，提高果实糖度和色泽。在土豆、烟草、果树上使用，能增加产量和改善品质。实际使用时仍要结合土壤检测、作物阶段和天气条件，不要盲目加大浓度。\n\n" +
+        "如果考虑搭配销售或自用：1.核实证件：采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料。2.计算成本：按有效镁含量算账，注意运费和用量。3.纯度等级：农业级通常够用，没必要盲目追高纯度。"
+
 private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
     "| 维度 | 成品含腐植酸尿素 | 普通尿素 + 矿源黄腐酸钾 |\n" +
         "| --- | --- | --- |\n" +
@@ -9129,6 +9135,7 @@ private enum class UiCopyPreviewKind {
     HamburgerTodayAgriHistoryPage,
     HamburgerTodayAgriHistoryFailed,
     AssistantMarkdownSample,
+    AssistantReadableParagraphSample,
     AssistantMarkdownFallbackSample,
     AssistantTableSample,
     UserLinkBubbleSample,
@@ -9755,6 +9762,17 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.AssistantMarkdownSample -> {
                     ChatStreamingRenderer(
                         content = UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE,
+                        renderMode = StreamingRenderMode.Settled,
+                        showWaitingBall = false,
+                        selectionEnabled = true,
+                        showDisclaimer = true,
+                        onStreamingContentBoundsChanged = null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                UiCopyPreviewKind.AssistantReadableParagraphSample -> {
+                    ChatStreamingRenderer(
+                        content = UI_COPY_PREVIEW_ASSISTANT_READABLE_PARAGRAPH_SAMPLE,
                         renderMode = StreamingRenderMode.Settled,
                         showWaitingBall = false,
                         selectionEnabled = true,

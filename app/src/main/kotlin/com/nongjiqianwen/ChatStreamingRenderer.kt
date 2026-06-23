@@ -191,7 +191,7 @@ internal fun appendAssistantChunk(
 
 private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
 private val rendererBulletRegex = Regex("^[-+*]\\s+.*$")
-private val rendererNumberedRegex = Regex("^\\d+[.)]\\s+.*$")
+private val rendererNumberedRegex = Regex("^\\d+[.)]\\s*[^\\d%.)）\\]】、].*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
 private val rendererHorizontalRuleRegex = Regex("""^([-*_])(?:\s*\1){2,}\s*$""")
 private val rendererChineseSectionHeadingRegex = Regex("^([一二三四五六七八九十]{1,3})([、.．])\\s*(.+)$")
@@ -839,7 +839,7 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
             text = normalizeRendererTaskListText(trimmed.drop(1).trimStart()),
             indentLevel = indentLevel
         )
-        trimmed.matches(rendererNumberedRegex) -> {
+        trimmed.matches(rendererNumberedRegex) && rendererNumberedMarkerEnd(trimmed) > 0 -> {
             val markerEnd = rendererNumberedMarkerEnd(trimmed)
             StreamingLineModel.Numbered(
                 number = trimmed.take(markerEnd),
@@ -891,16 +891,17 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
         }
     }
     val numberedPrefix = trimmed.takeWhile { it.isDigit() }
+    val numberedMarker = trimmed.getOrNull(numberedPrefix.length)
+    val numberedRemainder = trimmed.drop(numberedPrefix.length + 1)
     if (
         numberedPrefix.isNotEmpty() &&
-        (trimmed.drop(numberedPrefix.length).startsWith(". ") ||
-            trimmed.drop(numberedPrefix.length).startsWith(") "))
+        (numberedMarker == '.' || numberedMarker == ')') &&
+        numberedRemainder.trimStart().firstOrNull()?.isDigit() == false
     ) {
-        val remainder = trimmed.drop(numberedPrefix.length + 2)
-        if (remainder.trim().isNotEmpty()) {
+        if (numberedRemainder.trim().isNotEmpty()) {
             return StreamingLineModel.Numbered(
                 number = numberedPrefix,
-                text = normalizeRendererTaskListText(remainder.trimStart()),
+                text = normalizeRendererTaskListText(numberedRemainder.trimStart()),
                 indentLevel = indentLevel
             )
         }
@@ -1092,8 +1093,15 @@ private fun isRendererStandaloneSectionHeadingTitle(title: String): Boolean {
     if (title.isBlank()) return false
     if (title.length > 56) return false
     if (title.any { it in "。；;" }) return false
+    if (title.hasRendererColonWithBody()) return false
     if (title.count { it == '，' || it == ',' } > 1) return false
     return true
+}
+
+private fun String.hasRendererColonWithBody(): Boolean {
+    val colonIndex = indexOfFirst { it == '：' || it == ':' }
+    if (colonIndex < 0) return false
+    return drop(colonIndex + 1).trim().isNotEmpty()
 }
 
 private fun ensureStreamingMessageId(
@@ -1408,25 +1416,116 @@ private fun isRendererInvisibleStreamingMarkerToken(token: String): Boolean {
 private fun splitRendererStreamingLogicalLines(content: String): StreamingLogicalLines {
     val normalized = content.replace("\r\n", "\n")
     if (normalized.isEmpty()) return StreamingLogicalLines(emptyList(), null)
+    val normalizedLists = normalizeRendererInlineListBreaks(normalized)
 
     val lines = mutableListOf<String>()
     var start = 0
-    normalized.forEachIndexed { index, ch ->
+    normalizedLists.forEachIndexed { index, ch ->
         if (ch == '\n') {
-            lines += normalized.substring(start, index)
+            lines += normalizedLists.substring(start, index)
             start = index + 1
         }
     }
 
-    return if (normalized.last() == '\n') {
+    return if (normalizedLists.last() == '\n') {
         lines += ""
         StreamingLogicalLines(completedLines = lines, activeLine = null)
     } else {
         StreamingLogicalLines(
             completedLines = lines,
-            activeLine = normalized.substring(start)
+            activeLine = normalizedLists.substring(start)
         )
     }
+}
+
+private fun normalizeRendererInlineListBreaks(text: String): String {
+    if (text.isEmpty()) return text
+    val out = StringBuilder(text.length + 8)
+    var i = 0
+    while (i < text.length) {
+        if (i > 0 && shouldBreakBeforeRendererInlineListMarker(text, i)) {
+            out.append("\n\n")
+        }
+        out.append(text[i])
+        i++
+    }
+    return out.toString()
+}
+
+private fun shouldBreakBeforeRendererInlineListMarker(text: String, index: Int): Boolean {
+    if (index <= 0 || text[index - 1] == '\n') return false
+    if (!hasRendererInlineListBoundaryBefore(text, index)) return false
+    val digitMarkerLength = rendererInlineDigitListMarkerLength(text, index)
+    if (digitMarkerLength > 0) return true
+    return rendererInlineChineseListMarkerLength(text, index) > 0
+}
+
+private fun rendererInlineDigitListMarkerLength(text: String, index: Int): Int {
+    var cursor = index
+    var digits = 0
+    while (cursor < text.length && text[cursor].isDigit() && digits < 2) {
+        cursor++
+        digits++
+    }
+    if (digits == 0) return 0
+    if (cursor < text.length && text[cursor].isDigit()) return 0
+    val marker = text.getOrNull(cursor) ?: return 0
+    if (marker != '.' && marker != ')' && marker != '．') return 0
+    val firstAfterMarker = text.getOrNull(cursor + 1) ?: return 0
+    if (firstAfterMarker.isDigit() || firstAfterMarker in "%.)）]】") return 0
+    val nextNonSpace = text.nextRendererNonWhitespaceIndex(cursor + 1)
+        ?.let { text[it] }
+        ?: return 0
+    if (nextNonSpace.isDigit() || nextNonSpace in "%.)）]】") return 0
+    return cursor - index + 1
+}
+
+private fun rendererInlineChineseListMarkerLength(text: String, index: Int): Int {
+    var cursor = index
+    var count = 0
+    while (cursor < text.length && text[cursor] in "一二三四五六七八九十" && count < 3) {
+        cursor++
+        count++
+    }
+    if (count == 0) return 0
+    val marker = text.getOrNull(cursor) ?: return 0
+    if (marker != '、' && marker != '.' && marker != '．') return 0
+    return count + 2
+}
+
+private fun hasRendererInlineListBoundaryBefore(text: String, index: Int): Boolean {
+    val previous = text.getOrNull(index - 1) ?: return false
+    if (previous == '\n') return false
+    if (!previous.isWhitespace()) return isRendererInlineListBoundaryPunctuation(previous)
+    var cursor = index - 1
+    while (cursor >= 0) {
+        val current = text[cursor]
+        if (current == '\n') return false
+        if (!current.isWhitespace()) return isRendererInlineListBoundaryPunctuation(current)
+        cursor--
+    }
+    return false
+}
+
+private fun isRendererInlineListBoundaryPunctuation(ch: Char): Boolean =
+    ch in "。！？；;：:，,）)]】》」』”\"'"
+
+private fun String.previousRendererNonWhitespaceIndex(before: Int): Int? {
+    var cursor = before - 1
+    while (cursor >= 0) {
+        if (!this[cursor].isWhitespace()) return cursor
+        cursor--
+    }
+    return null
+}
+
+private fun String.nextRendererNonWhitespaceIndex(from: Int): Int? {
+    var cursor = from
+    while (cursor < length) {
+        if (!this[cursor].isWhitespace()) return cursor
+        cursor++
+    }
+    return null
 }
 
 private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
@@ -1530,6 +1629,19 @@ private fun RendererReadableParagraphProjection.allBlocks(): List<String> =
         tailBlock?.let { add(it) }
     }
 
+internal fun projectRendererReadableParagraphBlocks(
+    text: String,
+    treatTailAsComplete: Boolean = true
+): List<String> =
+    normalizeRendererInlineListBreaks(text)
+        .split(Regex("\n{2,}"))
+        .flatMap { block ->
+            projectRendererReadableParagraph(
+                text = block,
+                treatTailAsComplete = treatTailAsComplete
+            ).allBlocks()
+        }
+
 private fun projectRendererReadableParagraph(
     text: String,
     treatTailAsComplete: Boolean
@@ -1575,7 +1687,7 @@ private fun projectRendererReadableParagraph(
     )
 }
 
-private const val RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS = 45
+private const val RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS = 34
 
 private fun shouldProjectRendererReadableParagraph(text: String): Boolean {
     if (text.length < RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS) return false

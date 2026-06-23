@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-23
+
+- Android 主聊天展示层继续做内部测试版收口，尚未发布正式包、未更新官网、未改检查更新配置：长普通正文展示层拆分阈值从约 `45` 个非空白字降到约 `34` 个非空白字，今日农情摘要复用同一长段分段入口；行内编号项会在显示层自动放松为独立段落，覆盖 `1.核实`、`1. 核实`、`一、含量`、`二、区域` 这类模型常见输出，但不会按普通数字硬拆，`9.8%`、`1.0.6`、`1左右`、`1、2、3` 不拆。已有 Markdown 列表缩进、表格、代码、图片和裸 `---` 横线逻辑保持原口径，不新增分割线、不改模型原文、不改后端归档、不改主聊天滚动主链、不改主对话锚点、今日农情提示词或记忆文档提示词；debug-only 预览面板新增“AI 长正文分段”样例并加入行内编号样例。验证通过 Android `:app:compileDebugKotlin :app:testDebugUnitTest`、`scripts/check-android-build-parity.ps1` 和 `git diff --check`。
+
 ## 2026-06-22
 
 - 按用户明确口令发布 Android 普通更新版 `1.0.6(7)`，并同步官网和检查更新配置：正式 APK 已用固定 release 签名构建并上传 OSS `android/releases/7/nongjiqiancha-1.0.6-v7-0cb814eb.apk`，公网 URL 为 `https://download.nongjiqiancha.cn/android/releases/7/nongjiqiancha-1.0.6-v7-0cb814eb.apk`，大小 `14,193,276` 字节，SHA-256 为 `ee2957e3d313a034d68b1d67ff89d308d6301429b1ffaf2bfb7bf08f4c335aa0`；生产检查更新已启用普通更新，`force_update=false`，旧 `versionCode=6` 会收到 `has_update=true`，当前 `versionCode=7` 返回无更新。官网 `nongjiqiancha.cn` / `www.nongjiqiancha.cn` 下载按钮已部署到同一新版 APK，官网静态包 SHA-256 为 `591d602f06414e42e9b068e85d95627d6d754a7bcd21308c8475625b8a37018d`。本轮只改 Android 展示层：普通 Markdown / AI 正文块之间的竖向间距从 `12dp` 调到 `14dp`；今日农情仍走单独的 `TodayAgriNewsText` 渲染，不套用主聊天长文本拆分，只把卡片自身上下 padding、条目间距和标题 / 摘要 / 来源之间的竖向间距略放松。左右边距、气泡宽度、分割线规则、长文本拆分规则、滚动主链、后端、官网域名、检查更新协议、主对话锚点、今日农情提示词和记忆文档提示词都不变；主聊天长普通正文仍只按 `。`、`！`、`？` 三类句尾在展示层插入普通段间空白，不按顿号、逗号、分号、冒号或关键词硬拆。验证通过：Android `:app:compileDebugKotlin :app:testDebugUnitTest`、`scripts/check-android-build-parity.ps1`、release 构建和物料校验、下载域名检查和公网 APK SHA 回验、官网部署脚本、后台检查更新写入、`check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload -PreviousVersionCode 6 -ProbePreviousVersionUpdate`、后台登录后只读 smoke 和 `check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 7 -PreviousAndroidVersionCode 6`，公网黑盒 `warnings=0 / errors=0 / status=ready`。本轮不改后端，生产后端 revision 仍为 `97a34e88`，不新增内容过滤、关键词拦截、表格硬拦截、字数硬卡或 `max_tokens`。

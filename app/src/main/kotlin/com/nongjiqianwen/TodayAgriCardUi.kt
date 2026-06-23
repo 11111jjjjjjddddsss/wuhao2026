@@ -13,6 +13,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -142,6 +143,10 @@ private fun TodayAgriNewsItem(
     summary: String,
     source: String
 ) {
+    val summaryBlocks = remember(summary) {
+        projectRendererReadableParagraphBlocks(summary, treatTailAsComplete = true)
+            .ifEmpty { listOf(summary) }
+    }
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth()
@@ -155,10 +160,14 @@ private fun TodayAgriNewsItem(
             )
         }
         if (summary.isNotBlank()) {
-            Text(
-                text = summary,
-                style = assistantParagraphTextStyle()
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                summaryBlocks.forEach { block ->
+                    Text(
+                        text = block,
+                        style = assistantParagraphTextStyle()
+                    )
+                }
+            }
         }
         if (source.isNotBlank()) {
             Text(
