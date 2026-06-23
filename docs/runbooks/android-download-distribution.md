@@ -1,6 +1,6 @@
 # Android 下载分发 Runbook
 
-最后更新：2026-06-22
+最后更新：2026-06-23
 
 本 runbook 记录 Android APK 的低成本下载方案。它只解决“安装包从哪里下载、如何校验、如何控制成本”，不等于正式发布口令。
 
@@ -34,7 +34,7 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 
 ## 当前状态
 
-截至 2026-06-22，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包和正式包的低成本下载主链：
+截至 2026-06-23，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包和正式包的低成本下载主链：
 
 - DNS：`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`。
 - OSS：Bucket 仍保持 private 主口径；为支持正式检查更新和官网下载长期裸 URL，Bucket 级 Block Public Access 已关闭，并配置 Bucket Policy 仅允许匿名 `oss:GetObject` 访问 `android/releases/*`。不要把策略扩大到 `uploads/*`、`support/*`、`test-apks/*` 或整个 Bucket。内部测试包仍通过签名 URL 下载，不走公开读。
@@ -98,14 +98,14 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 
 当前正在下发的正式包记录：
 
-- `versionName=1.0.6`
-- `versionCode=7`
-- APK URL：`https://download.nongjiqiancha.cn/android/releases/7/nongjiqiancha-1.0.6-v7-0cb814eb.apk`
-- SHA-256：`ee2957e3d313a034d68b1d67ff89d308d6301429b1ffaf2bfb7bf08f4c335aa0`
-- 文件大小：`14,193,276` 字节
-- 发布提交：`0cb814eb`
+- `versionName=1.0.7`
+- `versionCode=8`
+- APK URL：`https://download.nongjiqiancha.cn/android/releases/8/nongjiqiancha-1.0.7-v8-9adcbf63.apk`
+- SHA-256：`1c71cf4b19f00eacb7eb01ad5133e0d80dc6ae97e942b867fe9137f2c7c1e184`
+- 文件大小：`14,209,660` 字节
+- 发布提交：`9adcbf63`
 
-上一版 `1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=7` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
+上一版 `1.0.6(7)`、`1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/7/`、`android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=8` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
 
 注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
