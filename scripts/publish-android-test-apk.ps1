@@ -135,7 +135,6 @@ function Test-PublicDownloadUrl {
     )
     try {
         if ($Method -eq "GetRange") {
-            Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
             $handler = [System.Net.Http.HttpClientHandler]::new()
             $handler.AllowAutoRedirect = $true
             $client = [System.Net.Http.HttpClient]::new($handler)
