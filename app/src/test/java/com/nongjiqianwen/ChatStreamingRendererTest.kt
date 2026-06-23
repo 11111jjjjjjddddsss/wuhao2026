@@ -1079,6 +1079,33 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun shortNumberedTitleWithoutColonUsesCompactSectionStyle() {
+        val model = classifyStreamingLine("2. 马铃薯早疫病（可能混发）")
+
+        require(model is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(model))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Settled))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
+    }
+
+    @Test
+    fun activeShortNumberedTitleWithoutColonUsesCompactSectionStyle() {
+        val model = classifyActiveStreamingLine("1. 紧急控病")
+
+        require(model is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(model))
+        assertTrue(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
+    }
+
+    @Test
+    fun boldShortNumberedTitleWithoutColonUsesCompactSectionStyle() {
+        val model = classifyStreamingLine("**3. 生理性早衰叠加病害**")
+
+        require(model is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(model))
+    }
+
+    @Test
     fun longNumberedSentenceDoesNotUseCompactSectionStyle() {
         val model = classifyStreamingLine("1. 先停用高浓度叶面肥，并在三天后观察新叶变化。")
 
@@ -1092,6 +1119,22 @@ class ChatStreamingRendererTest {
 
         require(model is StreamingLineModel.Numbered)
         assertFalse(shouldUseRendererCompactNumberedSection(model, RendererInlineMode.Streaming))
+        assertFalse(isRendererCompactNumberedSection(model))
+    }
+
+    @Test
+    fun numberedLineWithInlineBodyAfterColonDoesNotUseCompactSectionStyle() {
+        val model = classifyStreamingLine("1. 核实证件：采购时确认产品是否有肥料登记证")
+
+        require(model is StreamingLineModel.Numbered)
+        assertFalse(isRendererCompactNumberedSection(model))
+    }
+
+    @Test
+    fun numberedLineWithCommaLikeBodyDoesNotUseCompactSectionStyle() {
+        val model = classifyStreamingLine("2. 区域与运费，低值重货要看物流")
+
+        require(model is StreamingLineModel.Numbered)
         assertFalse(isRendererCompactNumberedSection(model))
     }
 

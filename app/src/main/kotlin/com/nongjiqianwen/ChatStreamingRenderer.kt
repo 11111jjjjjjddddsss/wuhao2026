@@ -1007,8 +1007,9 @@ private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     val plain = plainRendererInlineText(text)
         .replace(Regex("\\s+"), "")
     if (plain.length !in 2..28) return false
-    if (!plain.endsWith("：") && !plain.endsWith(":")) return false
     if (plain.any { it in "。！？!?；;" }) return false
+    if (plain.endsWith("：") || plain.endsWith(":")) return true
+    if (plain.any { it in "：:，,、" }) return false
     return true
 }
 
