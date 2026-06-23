@@ -833,7 +833,6 @@ private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
-private val bareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 
 private fun currentQuotaDayKey(): String {
     val calendar = java.util.Calendar.getInstance(
@@ -908,24 +907,6 @@ private fun chatLinkSpanStyle(
     )
 }
 
-private fun normalizeLinkTarget(raw: String): String {
-    val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
-    if (trimmed.isBlank()) return raw.trim()
-    return if (
-        trimmed.startsWith("http://", ignoreCase = true) ||
-        trimmed.startsWith("https://", ignoreCase = true)
-    ) {
-        trimmed
-    } else {
-        "https://$trimmed"
-    }
-}
-
-private fun trimBareUrlDisplayText(raw: String): String {
-    val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
-    return raw.trimEnd { it in trailingPunctuation }
-}
-
 private fun buildPlainLinkedAnnotatedString(
     text: String,
     linkColor: Color = Color(0xFF111111)
@@ -933,7 +914,7 @@ private fun buildPlainLinkedAnnotatedString(
     return buildAnnotatedString {
         var index = 0
         while (index < text.length) {
-            val bareUrl = bareUrlRegex.find(text, index)
+            val bareUrl = bareWebUrlRegex.find(text, index)
             if (bareUrl == null) {
                 append(text.substring(index))
                 break
@@ -941,13 +922,13 @@ private fun buildPlainLinkedAnnotatedString(
             if (bareUrl.range.first > index) {
                 append(text.substring(index, bareUrl.range.first))
             }
-            val displayText = trimBareUrlDisplayText(bareUrl.value)
+            val displayText = trimBareWebUrlDisplayText(bareUrl.value)
             if (displayText.isEmpty()) {
                 append(bareUrl.value)
                 index = bareUrl.range.last + 1
                 continue
             }
-            withLink(LinkAnnotation.Url(normalizeLinkTarget(displayText))) {
+            withLink(LinkAnnotation.Url(normalizeWebLinkTarget(displayText))) {
                 withStyle(chatLinkSpanStyle().copy(color = linkColor)) {
                     append(displayText)
                 }

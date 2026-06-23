@@ -136,7 +136,6 @@ private const val APP_UPDATE_PROMPT_PREFS = "app_update_prompt"
 private const val APP_UPDATE_LAST_PROMPTED_VERSION_CODE_KEY = "last_prompted_version_code"
 private const val APP_UPDATE_PENDING_INSTALL_VERSION_CODE_KEY = "pending_install_version_code"
 private const val APP_ICP_RECORD_NUMBER = "京ICP备2026031728号-2A"
-private val supportBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 
 private fun String.supportMessageCharCount(): Int =
     codePointCount(0, length)
@@ -146,19 +145,6 @@ private fun String.takeSupportMessageChars(maxChars: Int): String {
     if (supportMessageCharCount() <= maxChars) return this
     val endIndex = offsetByCodePoints(0, maxChars)
     return substring(0, endIndex)
-}
-
-private fun normalizeSupportLinkTarget(raw: String): String {
-    val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
-    if (trimmed.isBlank()) return raw.trim()
-    return if (
-        trimmed.startsWith("http://", ignoreCase = true) ||
-        trimmed.startsWith("https://", ignoreCase = true)
-    ) {
-        trimmed
-    } else {
-        "https://$trimmed"
-    }
 }
 
 private fun supportFeedbackPayloadFingerprint(
@@ -227,11 +213,6 @@ private fun Context.currentInstalledVersionCode(): Long =
         }
     }.getOrDefault(BuildConfig.VERSION_CODE.toLong())
 
-private fun trimSupportBareUrlDisplayText(raw: String): String {
-    val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
-    return raw.trimEnd { it in trailingPunctuation }
-}
-
 private fun buildSupportLinkedText(
     text: String,
     linkColor: Color,
@@ -240,7 +221,7 @@ private fun buildSupportLinkedText(
     return buildAnnotatedString {
         var index = 0
         while (index < text.length) {
-            val bareUrl = supportBareUrlRegex.find(text, index)
+            val bareUrl = bareWebUrlRegex.find(text, index)
             if (bareUrl == null) {
                 append(text.substring(index))
                 break
@@ -248,7 +229,7 @@ private fun buildSupportLinkedText(
             if (bareUrl.range.first > index) {
                 append(text.substring(index, bareUrl.range.first))
             }
-            val displayText = trimSupportBareUrlDisplayText(bareUrl.value)
+            val displayText = trimBareWebUrlDisplayText(bareUrl.value)
             if (displayText.isEmpty()) {
                 append(bareUrl.value)
                 index = bareUrl.range.last + 1
@@ -256,7 +237,7 @@ private fun buildSupportLinkedText(
             }
             withLink(
                 LinkAnnotation.Url(
-                    url = normalizeSupportLinkTarget(displayText),
+                    url = normalizeWebLinkTarget(displayText),
                     linkInteractionListener = linkInteractionListener
                 )
             ) {

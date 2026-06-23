@@ -197,7 +197,6 @@ private val rendererHorizontalRuleRegex = Regex("""^([-*_])(?:\s*\1){2,}\s*$""")
 private val rendererChineseSectionHeadingRegex = Regex("^([一二三四五六七八九十]{1,3})([、.．])\\s*(.+)$")
 private val rendererMarkdownImageRegex = Regex("!\\[([^\\]]*)]\\(([^)]+)\\)")
 private val rendererMarkdownLinkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
-private val rendererBareUrlRegex = Regex("(?i)\\b((?:https?://|www\\.)[^\\s<>()]+)")
 private const val RENDERER_TABLE_BLOCK_PREFIX = "\uE000NQ_TABLE:"
 private const val RENDERER_TABLE_ROW_SEPARATOR = "\u001E"
 private const val RENDERER_TABLE_CELL_SEPARATOR = "\u001F"
@@ -2470,7 +2469,7 @@ internal fun buildRendererInlineAnnotatedString(
             }
             withLink(
                 LinkAnnotation.Url(
-                    url = normalizeRendererLinkTarget(url),
+                    url = normalizeWebLinkTarget(url),
                     linkInteractionListener = linkInteractionListener
                 )
             ) {
@@ -2499,15 +2498,15 @@ internal fun buildRendererInlineAnnotatedString(
                     index = markdownImage.range.last + 1
                     continue
                 }
-                val bareUrl = rendererBareUrlRegex.find(displayText, index)
-                    ?.takeIf { it.range.first == index }
-                if (bareUrl != null) {
-                    val displayText = trimRendererBareUrlDisplayText(bareUrl.value)
-                    if (displayText.isNotEmpty()) {
-                        appendLinked(displayText = displayText, url = displayText)
-                        index += displayText.length
-                        continue
-                    }
+            }
+            val bareUrl = bareWebUrlRegex.find(displayText, index)
+                ?.takeIf { it.range.first == index }
+            if (bareUrl != null) {
+                val displayText = trimBareWebUrlDisplayText(bareUrl.value)
+                if (displayText.isNotEmpty()) {
+                    appendLinked(displayText = displayText, url = displayText)
+                    index += displayText.length
+                    continue
                 }
             }
             when {
@@ -2599,24 +2598,6 @@ private fun findRendererLooseBoldSpacingClosingDelimiter(text: String, startInde
         cursor = text.indexOf("**", cursor + 2)
     }
     return null
-}
-
-private fun normalizeRendererLinkTarget(raw: String): String {
-    val trimmed = raw.trim().removePrefix("<").removeSuffix(">")
-    if (trimmed.isBlank()) return raw.trim()
-    return if (
-        trimmed.startsWith("http://", ignoreCase = true) ||
-        trimmed.startsWith("https://", ignoreCase = true)
-    ) {
-        trimmed
-    } else {
-        "https://$trimmed"
-    }
-}
-
-private fun trimRendererBareUrlDisplayText(raw: String): String {
-    val trailingPunctuation = ".,;:!?，。；：！？)]}）】》」』”\"'"
-    return raw.trimEnd { it in trailingPunctuation }
 }
 
 private fun Char.isRendererAsciiLetterOrDigit(): Boolean {
@@ -2832,7 +2813,7 @@ private fun findNextStreamingInlineDelimiterIndex(
             ?.first
             ?.takeIf { it >= startIndex }
         if (markdownLinkIndex != null) next = minOf(next, markdownLinkIndex)
-        val bareUrlIndex = rendererBareUrlRegex.find(text, startIndex)
+        val bareUrlIndex = bareWebUrlRegex.find(text, startIndex)
             ?.range
             ?.first
             ?.takeIf { it >= startIndex }

@@ -180,6 +180,52 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun bareDomainsWithoutWwwBecomeLinksAndStopBeforeChineseText() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "参考网址：moa.gov.cn适用场景：查政策；www.agri-tech.gov.cn适用场景：查规程。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals(
+            "参考网址：moa.gov.cn适用场景：查政策；www.agri-tech.gov.cn适用场景：查规程。",
+            rendered.text
+        )
+        assertTrue(rendered.hasUrlFor("moa.gov.cn", "https://moa.gov.cn"))
+        assertTrue(rendered.hasUrlFor("www.agri-tech.gov.cn", "https://www.agri-tech.gov.cn"))
+        assertFalse(rendered.hasUrlFor("适用场景：查政策", "https://moa.gov.cn"))
+        assertFalse(rendered.hasUrlFor("适用场景：查规程", "https://www.agri-tech.gov.cn"))
+    }
+
+    @Test
+    fun bareUrlsInsideInlineCodeStillBecomeLinks() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "参考网址：`www.moa.gov.cn`适用场景，`natesc.org.cn`也能打开。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("参考网址：www.moa.gov.cn适用场景，natesc.org.cn也能打开。", rendered.text)
+        assertTrue(rendered.hasUrlFor("www.moa.gov.cn", "https://www.moa.gov.cn"))
+        assertTrue(rendered.hasUrlFor("natesc.org.cn", "https://natesc.org.cn"))
+    }
+
+    @Test
+    fun bareDomainLinkingDoesNotTreatVersionsPercentagesOrPackageNamesAsLinks() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "版本 1.0.8，含量 9.8%，包名 com.nongjiqiancha，官网 nongjiqiancha.cn。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals(
+            "版本 1.0.8，含量 9.8%，包名 com.nongjiqiancha，官网 nongjiqiancha.cn。",
+            rendered.text
+        )
+        assertFalse(rendered.hasUrlFor("1.0.8", "https://1.0.8"))
+        assertFalse(rendered.hasUrlFor("9.8", "https://9.8"))
+        assertFalse(rendered.hasUrlFor("com.nongjiqiancha", "https://com.nongjiqiancha"))
+        assertTrue(rendered.hasUrlFor("nongjiqiancha.cn", "https://nongjiqiancha.cn"))
+    }
+
+    @Test
     fun linksDisabledKeepsDisplayTextWithoutUrlAnnotations() {
         val rendered = buildRendererInlineAnnotatedString(
             text = "看[官网](www.moa.gov.cn)，或 https://www.natesc.org.cn/。",
