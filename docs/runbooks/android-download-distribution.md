@@ -98,14 +98,14 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 
 当前正在下发的正式包记录：
 
-- `versionName=1.0.7`
-- `versionCode=8`
-- APK URL：`https://download.nongjiqiancha.cn/android/releases/8/nongjiqiancha-1.0.7-v8-9adcbf63.apk`
-- SHA-256：`1c71cf4b19f00eacb7eb01ad5133e0d80dc6ae97e942b867fe9137f2c7c1e184`
+- `versionName=1.0.8`
+- `versionCode=9`
+- APK URL：`https://download.nongjiqiancha.cn/android/releases/9/nongjiqiancha-1.0.8-v9-e787a743.apk`
+- SHA-256：`924c4b05ce1a054c50ed90d46148c014648495d945e2d859176f70359302d1ff`
 - 文件大小：`14,209,660` 字节
-- 发布提交：`9adcbf63`
+- 发布提交：`e787a743`
 
-上一版 `1.0.6(7)`、`1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/7/`、`android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=8` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
+上一版 `1.0.7(8)`、`1.0.6(7)`、`1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/8/`、`android/releases/7/`、`android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=9` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
 
 注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
