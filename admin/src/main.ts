@@ -819,7 +819,7 @@ async function entitlementsPage(): Promise<string> {
 async function ordersPage(): Promise<string> {
   return userScopedPage({
     title: "订单",
-    desc: "支付链路未正式接入前，订单只做只读核查，不提供补发、退款或手动改权益。",
+    desc: "只读核查会员变更、支付宝订单和权益发放状态，不提供补发、退款或手动改权益。",
     formID: "orders-form",
     inputName: "user_id",
     value: pageState.orderUserID,
@@ -833,11 +833,11 @@ async function ordersPage(): Promise<string> {
           ${kpi(userID ? "筛选订单" : "最近订单", orders.length, userID ? `账号 ${userID}` : "最近 50 条")}
           ${kpi("成功", summary.success, "只读统计")}
           ${kpi("失败", summary.failed, "只读统计")}
-          ${kpi("开发期记录金额", summary.amountText, "不代表实收")}
+          ${kpi("订单金额", summary.amountText, "以支付渠道和后台记录核对")}
         </div>
         <div class="grid two" style="margin-top:12px">
-          ${notice("支付未接入", "真实微信 / 支付宝支付、回调、退款、对账和自动发放权益尚未接入；当前金额只代表开发期记录，不代表实收，不提供支付成功模拟或手动发放入口。", "warn")}
-          ${notice("当前用途", "用于查看现有订单 / 会员变更记录，辅助核查账号权益来源。支付接入后再扩展渠道订单号、回调状态和退款记录。", "info")}
+          ${notice("只读核查", "这里只展示订单、渠道交易号和权益发放状态；不提供支付成功模拟、手动补发、退款或改权益按钮。", "info")}
+          ${notice("异常处理", "看到 paid 但 grant_status 不是 success 时，先核对支付宝后台和服务端日志，再按支付 runbook 处理。", "warn")}
         </div>
         <section class="card">
           <div class="card-head"><div class="card-title">${userID ? "用户订单" : "最近订单"}</div><span class="small muted">${orders.length} 条</span></div>
@@ -2216,9 +2216,9 @@ const pageGuides: Partial<Record<RouteKey, PageGuideItem[]>> = {
     { label: "扣次", value: "自动对账为主，不要求人工天天盯" },
   ],
   orders: [
-    { label: "当前用途", value: "只读核查开发期订单和权益变更记录" },
-    { label: "不要误读", value: "金额不代表真实收入", level: "warn" },
-    { label: "后续", value: "支付接入后再补回调、对账、退款" },
+    { label: "当前用途", value: "只读核查支付宝订单和权益变更记录" },
+    { label: "不要误读", value: "生产放量前以支付宝账单和对账结果为准", level: "warn" },
+    { label: "后续", value: "生产回调验收、对账、退款" },
   ],
   "gift-cards": [
     { label: "先看", value: "可兑换卡、失败尝试、按尾号/账号追溯" },
@@ -2648,10 +2648,10 @@ function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
 }
 
 function ordersTable(rows: AdminOrderEntry[]): string {
-  if (!rows.length) return emptyState("没有订单数据", "支付未正式接入，或当前筛选范围内没有现有订单 / 会员变更记录。");
+  if (!rows.length) return emptyState("没有订单数据", "当前筛选范围内没有现有订单、支付记录或会员变更记录。");
   return `
     <table class="table mobile-card-table">
-      <thead><tr><th>订单</th><th>账号ID</th><th>类型</th><th>开发期金额</th><th>状态</th><th>创建时间</th><th>结果</th></tr></thead>
+      <thead><tr><th>订单</th><th>账号ID</th><th>来源</th><th>类型</th><th>金额</th><th>状态</th><th>权益</th><th>创建时间</th><th>结果</th></tr></thead>
       <tbody>
         ${rows
           .map(
@@ -2659,9 +2659,11 @@ function ordersTable(rows: AdminOrderEntry[]): string {
               <tr>
                 ${tableCell("订单", escapeHTML(row.order_id))}
                 ${tableCell("账号ID", `<div class="truncate" style="max-width:220px">${escapeHTML(row.user_id)}</div>`)}
+                ${tableCell("来源", escapeHTML(orderSourceLabel(row)))}
                 ${tableCell("类型", escapeHTML(row.type))}
-                ${tableCell("开发期金额", escapeHTML(row.amount))}
+                ${tableCell("金额", escapeHTML(row.amount))}
                 ${tableCell("状态", statusPill(row.status))}
+                ${tableCell("权益", row.grant_status ? statusPill(row.grant_status) : '<span class="muted">-</span>')}
                 ${tableCell("创建时间", formatTime(row.created_at))}
                 ${tableCell("结果", jsonInline(redactSensitiveDisplayValue(row.result)), "wrap")}
               </tr>
@@ -2671,6 +2673,13 @@ function ordersTable(rows: AdminOrderEntry[]): string {
       </tbody>
     </table>
   `;
+}
+
+function orderSourceLabel(row: AdminOrderEntry): string {
+  if (row.provider) return row.provider;
+  if (row.source === "payment") return "payment";
+  if (row.source === "dev") return "dev";
+  return row.source || "-";
 }
 
 function summarizeOrders(rows: AdminOrderEntry[]): { success: number; failed: number; amountText: string } {
@@ -4580,7 +4589,7 @@ function monitoringProgramCheckStrip(report: AdminMonitoring): string {
       <div class="manual-check-head">
         <div>
           <strong>程序需处理项</strong>
-          <p>这些通常能通过代码、配置、部署或后台操作推进；正常未发布、未发卡、未接支付等上线准备项不混在这里。</p>
+          <p>这些通常能通过代码、配置、部署或后台操作推进；正常未发布、未发卡、支付生产验收等上线准备项不混在这里。</p>
         </div>
         <span class="small muted">${rows.length} 项待处理</span>
       </div>

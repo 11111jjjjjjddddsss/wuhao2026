@@ -14,7 +14,7 @@ const (
 	membershipTermDays   = 30
 	topupPackRemaining   = 80
 	topupPackPrice       = 6.0
-	topupPackActiveLimit = 1
+	topupPackActiveLimit = 0
 	plusTierPrice        = 19.9
 	proTierPrice         = 29.9
 )
@@ -685,7 +685,7 @@ func (s *Store) BuyTopupPack(ctx context.Context, userID string, orderID string)
 	).Scan(&activeCount); err != nil {
 		return false, "", nil, 0, err
 	}
-	if activeCount.Int64 >= topupPackActiveLimit {
+	if topupPackActiveLimit > 0 && activeCount.Int64 >= topupPackActiveLimit {
 		return false, "", nil, 0, fmt.Errorf("TOPUP_LIMIT_REACHED")
 	}
 

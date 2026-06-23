@@ -484,6 +484,10 @@ export interface AdminOrderEntry {
   amount: string;
   created_at: number;
   status: string;
+  source?: string;
+  provider?: string;
+  provider_trade_no?: string;
+  grant_status?: string;
   result?: JsonValue;
 }
 

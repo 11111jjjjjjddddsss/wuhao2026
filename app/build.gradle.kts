@@ -122,6 +122,7 @@ dependencies {
     implementation("androidx.compose.material:material-icons-core")
     implementation("me.saket.telephoto:zoomable-image-coil:0.19.0")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
+    implementation("com.alipay.sdk:alipaysdk-android:15.8.42")
     debugImplementation("androidx.compose.ui:ui-tooling")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.google.code.gson:gson:2.14.0")

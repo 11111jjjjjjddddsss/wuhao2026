@@ -539,7 +539,7 @@ func TestAdminMonitoringLaunchReadinessStatusContract(t *testing.T) {
 	if payment.Status != "attention" || payment.Manual {
 		t.Fatalf("payment before purchase launch should be attention and not a manual go-live item, got %#v", payment)
 	}
-	assertContainsAll(t, payment.Body, "购买入口保持关闭", "不阻塞免费版", "开放真实收费前")
+	assertContainsAll(t, payment.Body, "支付宝 APP 支付代码已接入", "回调验签实测", "对账")
 }
 
 func TestAdminMonitoringLaunchReadinessRequiresCompleteAppUpdateArtifacts(t *testing.T) {

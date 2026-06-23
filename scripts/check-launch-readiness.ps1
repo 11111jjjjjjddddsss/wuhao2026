@@ -248,20 +248,13 @@ function Invoke-PaymentReadinessGateStep {
         $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $paymentArgs
         $timer.Stop()
         $paymentStatus = Get-CapturedValue -Lines $lines -Key "payment_readiness_status"
-        $safeWithoutPaidIapRaw = (Get-CapturedValue -Lines $lines -Key "safe_without_paid_iap").Trim().ToLowerInvariant()
-        $safeWithoutPaidIap = @("1", "true", "yes", "y", "ok") -contains $safeWithoutPaidIapRaw
-        $hasSafePlaceholder = $paymentStatus -eq "attention" -and $safeWithoutPaidIap
         $message = ""
         $status = "ready"
         $name = "payment readiness"
-        if ($hasSafePlaceholder) {
-            $name = "payment closed guard"
-            $status = "safe_placeholder"
-            $message = "formal payment is not configured; safe non-payment placeholder only while Android purchase buttons and dev-order endpoints remain closed"
-        } elseif ($paymentStatus -eq "attention") {
+        if ($paymentStatus -eq "attention") {
             $name = "payment readiness"
             $status = "skipped_or_attention"
-            $message = "payment readiness needs review"
+            $message = "Alipay APP Pay code is wired; production charging still needs live credentials, callback validation, reconciliation, refund handling, and manual acceptance"
         }
         Add-GateResult -Name $name -Status $status -Seconds $timer.Elapsed.TotalSeconds -Message $message
         $line = "step_status=$status seconds=$([math]::Round($timer.Elapsed.TotalSeconds, 1))"
@@ -399,7 +392,7 @@ function Invoke-ManualGoLiveChecklist {
             $pending += $item.Key
         }
     }
-    Write-Host "manual_note=real payment is not a launch blocker while Android purchase buttons remain disabled and server dev-order endpoints stay closed"
+    Write-Host "manual_note=Alipay APP Pay code is wired, but production charging remains an attention item until live credentials, callback validation, reconciliation, refund handling, and manual acceptance are confirmed"
     if ($pending.Count -gt 0) {
         throw "manual go-live confirmations pending: $($pending -join ', ')"
     }
@@ -600,7 +593,7 @@ Write-Host
 Write-Host "== launch readiness summary =="
 $failed = @($results | Where-Object { $_.Status -eq "failed" })
 $attention = @($results | Where-Object { $_.Status -eq "skipped_or_attention" })
-$safePlaceholders = @($results | Where-Object { $_.Status -eq "safe_placeholder" })
+$safeNotices = @($results | Where-Object { $_.Status -eq "safe_notice" })
 foreach ($result in $results) {
     $line = "step=$($result.Name) status=$($result.Status) seconds=$($result.Seconds)"
     if (-not [string]::IsNullOrWhiteSpace($result.Message)) {
@@ -608,7 +601,7 @@ foreach ($result in $results) {
     }
     Write-Host $line
 }
-Write-Host "failed=$($failed.Count) attention=$($attention.Count) safe_placeholder=$($safePlaceholders.Count) total=$($results.Count)"
+Write-Host "failed=$($failed.Count) attention=$($attention.Count) safe_notice=$($safeNotices.Count) total=$($results.Count)"
 
 if ($failed.Count -gt 0) {
     Write-Host "status=failed"
@@ -623,8 +616,8 @@ if ($attention.Count -gt 0) {
     exit 2
 }
 
-if ($safePlaceholders.Count -gt 0) {
-    Write-Host "status=ready_without_paid_iap"
+if ($safeNotices.Count -gt 0) {
+    Write-Host "status=ready_with_safe_notices"
     exit 0
 }
 

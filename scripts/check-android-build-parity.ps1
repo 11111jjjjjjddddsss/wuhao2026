@@ -167,7 +167,8 @@ if ($failures.Count -eq 0) {
         "Main manifest must keep explicit fullBackupContent rules."
     Require-Match $failures $manifest 'android\.permission\.ACCESS_NETWORK_STATE' `
         "Manifest must declare ACCESS_NETWORK_STATE for normal app networking checks."
-    Require-NoMatch $failures $manifest 'READ_PHONE_STATE|ACCESS_WIFI_STATE|CHANGE_NETWORK_STATE|com\.alicom\.fusion|com\.mobile\.auth\.gatewayauth|FusionAuthProtocolActivity' `
+    $manifestForOldPermissionScan = $manifest -replace '(?ms)<uses-permission\b(?=[^>]*android:name="android\.permission\.(?:READ_PHONE_STATE|ACCESS_WIFI_STATE|CHANGE_NETWORK_STATE)")(?=[^>]*tools:node="remove")[^>]*/>\s*', ''
+    Require-NoMatch $failures $manifestForOldPermissionScan 'READ_PHONE_STATE|ACCESS_WIFI_STATE|CHANGE_NETWORK_STATE|com\.alicom\.fusion|com\.mobile\.auth\.gatewayauth|FusionAuthProtocolActivity' `
         "Main manifest must not reintroduce fusion auth activities or old carrier-network permissions."
 
     Require-Match $failures $networkSecurity '<base-config\s+cleartextTrafficPermitted="false"\s*/>' `
@@ -565,7 +566,7 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must show the current gift-card immediate-effect rule."
     Require-Match $failures $chatScreen 'valid_from 只作创建追溯，不作为预约生效门槛' `
         "Debug UI copy preview must explain that gift-card valid_from is not a future activation gate."
-    Require-Match $failures $membershipCenterSheet ([regex]::Escape('加油包暂未开放。开放后仅 Plus / Pro 用户可购买；未用完次数长期保留，购买和续购以页面开放为准。')) `
+    Require-Match $failures $membershipCenterSheet ([regex]::Escape('仅 Plus / Pro 会员可购买；未用完次数长期保留，可按需续购。')) `
         "Membership topup copy must not imply that topup balance expires with membership."
     Require-NoMatch $failures $membershipCenterSheet '有效期、使用规则' `
         "Membership topup copy must not keep the old vague validity-period wording."

@@ -442,13 +442,17 @@ type AdminSupportMessage struct {
 }
 
 type AdminOrderEntry struct {
-	OrderID   string          `json:"order_id"`
-	UserID    string          `json:"user_id"`
-	Type      string          `json:"type"`
-	Amount    string          `json:"amount"`
-	CreatedAt int64           `json:"created_at"`
-	Status    string          `json:"status"`
-	Result    json.RawMessage `json:"result,omitempty"`
+	OrderID         string          `json:"order_id"`
+	UserID          string          `json:"user_id"`
+	Type            string          `json:"type"`
+	Amount          string          `json:"amount"`
+	CreatedAt       int64           `json:"created_at"`
+	Status          string          `json:"status"`
+	Source          string          `json:"source,omitempty"`
+	Provider        string          `json:"provider,omitempty"`
+	ProviderTradeNo string          `json:"provider_trade_no,omitempty"`
+	GrantStatus     string          `json:"grant_status,omitempty"`
+	Result          json.RawMessage `json:"result,omitempty"`
 }
 
 type AdminOrderQuery struct {
@@ -784,7 +788,7 @@ func (s *Server) handleAdminOrders(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"orders": orders,
 		"filter": filter,
-		"note":   "payment_not_configured",
+		"note":   "orders_readonly",
 	})
 }
 
@@ -1575,7 +1579,7 @@ func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus
 	}
 	overview.Queues.AppErrorTop = summary
 	overview.Notes = []AdminStatusNote{
-		{Title: "订单 / 支付", Body: "支付尚未接入正式回调，当前后台仅保留只读入口。", Level: "info"},
+		{Title: "订单 / 支付", Body: "支付宝 APP 支付代码已接入，后台当前仅做订单和权益发放状态只读核查；生产放量前仍需完成回调验收、对账、退款和异常补偿流程。", Level: "info"},
 		{Title: "礼品卡", Body: "礼品卡批次创建、卡状态、作废未兑换卡、兑换尝试和 Android 用户侧兑换已接入。", Level: "info"},
 		{Title: "产品洞察", Body: "后续从脱敏反馈、App 日志和归档摘要生成，不直接铺完整聊天全文。", Level: "info"},
 	}
@@ -2610,7 +2614,7 @@ func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitori
 	items = append(items, AdminMonitoringLaunchItem{
 		Title:      "支付接入",
 		Status:     "attention",
-		Body:       "微信 / 支付宝支付申请和真实回调未完成；购买入口保持关闭、开发期订单端点关闭时，不阻塞免费版、礼品卡内测或不含内购的正式上架。开放真实收费前必须完成申请、验签、回调、对账和权益发放闭环。",
+		Body:       "支付宝 APP 支付代码已接入，仍需生产密钥配置、回调验签实测、对账、退款和异常补偿验收后才能对外放量；微信支付和自动续费仍未接入。",
 		Route:      "orders",
 		Owner:      "外部申请 / 后端",
 		LaunchOnly: true,
@@ -2740,7 +2744,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；主账号后台可查看并复制完整卡码。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
-		{Title: "订单核查", Status: "partial", Body: "开发期订单 / 会员变更记录可只读查询；真实支付、退款、对账、自动续费和补发权益仍未接入。", Route: "orders"},
+		{Title: "订单核查", Status: "partial", Body: "支付宝订单 / 会员变更记录可只读查询；退款、对账自动化、自动续费和人工补发权益仍未开放。", Route: "orders"},
 		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、公网黑盒探测、今日农情失败、扣次补偿异常、记忆待补偿状态异常和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
@@ -3552,6 +3556,25 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderQuery) ([]
 	if filter.Limit > maxAdminListLimit {
 		filter.Limit = maxAdminListLimit
 	}
+	entries, err := s.listAdminLegacyOrders(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	paymentEntries, err := s.listAdminPaymentOrders(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	entries = append(entries, paymentEntries...)
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].CreatedAt > entries[j].CreatedAt
+	})
+	if len(entries) > filter.Limit {
+		entries = entries[:filter.Limit]
+	}
+	return entries, nil
+}
+
+func (s *Store) listAdminLegacyOrders(ctx context.Context, filter AdminOrderQuery) ([]AdminOrderEntry, error) {
 	query := `SELECT order_id, user_id, type, CAST(amount AS CHAR), created_at, status, result_json
 		   FROM orders`
 	args := []any{}
@@ -3581,6 +3604,77 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderQuery) ([]
 				entry.Result = raw
 			}
 		}
+		entry.Source = "dev"
+		entries = append(entries, entry)
+	}
+	return entries, rows.Err()
+}
+
+func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQuery) ([]AdminOrderEntry, error) {
+	query := `SELECT out_trade_no, user_id, provider, product_type, amount_cents, created_at, status,
+		          provider_trade_no, provider_status, grant_status, grant_error, paid_at, granted_at
+		   FROM payment_orders`
+	args := []any{}
+	if strings.TrimSpace(filter.UserID) != "" {
+		query += `
+		  WHERE user_id = ?`
+		args = append(args, strings.TrimSpace(filter.UserID))
+	}
+	query += `
+		  ORDER BY created_at DESC
+		  LIMIT ?`
+	args = append(args, filter.Limit)
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	entries := []AdminOrderEntry{}
+	for rows.Next() {
+		var (
+			entry          AdminOrderEntry
+			amountCents    int
+			providerTrade  sql.NullString
+			providerStatus sql.NullString
+			grantStatus    sql.NullString
+			grantError     sql.NullString
+			paidAt         sql.NullInt64
+			grantedAt      sql.NullInt64
+		)
+		if err := rows.Scan(
+			&entry.OrderID,
+			&entry.UserID,
+			&entry.Provider,
+			&entry.Type,
+			&amountCents,
+			&entry.CreatedAt,
+			&entry.Status,
+			&providerTrade,
+			&providerStatus,
+			&grantStatus,
+			&grantError,
+			&paidAt,
+			&grantedAt,
+		); err != nil {
+			return nil, err
+		}
+		entry.Source = "payment"
+		entry.Amount = formatAmountCents(amountCents)
+		entry.ProviderTradeNo = nullStringValue(providerTrade)
+		entry.GrantStatus = nullStringValue(grantStatus)
+		result := map[string]any{
+			"provider":        entry.Provider,
+			"provider_status": nullStringValue(providerStatus),
+			"grant_status":    entry.GrantStatus,
+			"grant_error":     nullStringValue(grantError),
+			"paid_at":         nullInt64ToPtr(paidAt),
+			"granted_at":      nullInt64ToPtr(grantedAt),
+		}
+		if entry.ProviderTradeNo != "" {
+			result["provider_trade_no"] = entry.ProviderTradeNo
+		}
+		raw, _ := json.Marshal(result)
+		entry.Result = raw
 		entries = append(entries, entry)
 	}
 	return entries, rows.Err()

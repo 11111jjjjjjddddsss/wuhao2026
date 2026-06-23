@@ -3,6 +3,7 @@ package com.nongjiqianwen
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
 import android.util.Log
 import com.google.gson.Gson
 import com.google.gson.JsonObject
@@ -165,6 +166,39 @@ object SessionApi {
         @SerializedName("upgrade_remaining") val upgradeRemaining: Int? = null,
         @SerializedName("membership_source") val membershipSource: String? = null,
         @SerializedName("gift_card_redeemed_at") val giftCardRedeemedAt: Long? = null
+    )
+
+    data class AlipayOrderResponse(
+        val ok: Boolean? = null,
+        val provider: String? = null,
+        @SerializedName("out_trade_no") val outTradeNo: String? = null,
+        @SerializedName("product_type") val productType: String? = null,
+        val subject: String? = null,
+        @SerializedName("amount_cents") val amountCents: Int? = null,
+        @SerializedName("order_string") val orderString: String? = null
+    )
+
+    data class PaymentOrderStatusResponse(
+        val ok: Boolean? = null,
+        val order: PaymentOrder? = null
+    )
+
+    data class PaymentOrder(
+        @SerializedName("out_trade_no") val outTradeNo: String? = null,
+        val provider: String? = null,
+        @SerializedName("product_type") val productType: String? = null,
+        @SerializedName("amount_cents") val amountCents: Int? = null,
+        val currency: String? = null,
+        val subject: String? = null,
+        val status: String? = null,
+        @SerializedName("provider_trade_no") val providerTradeNo: String? = null,
+        @SerializedName("provider_status") val providerStatus: String? = null,
+        @SerializedName("grant_status") val grantStatus: String? = null,
+        @SerializedName("grant_error") val grantError: String? = null,
+        @SerializedName("created_at") val createdAt: Long? = null,
+        @SerializedName("updated_at") val updatedAt: Long? = null,
+        @SerializedName("paid_at") val paidAt: Long? = null,
+        @SerializedName("granted_at") val grantedAt: Long? = null
     )
 
     data class AuthSessionSnapshot(
@@ -1116,6 +1150,172 @@ object SessionApi {
             }
         )
     }
+
+    fun createAlipayOrder(
+        productType: String,
+        onResult: (AlipayOrderResponse?, String?) -> Unit
+    ) {
+        val base = baseUrl()
+        if (base.isEmpty()) {
+            postToMain { onResult(null, "服务暂时不可用，请稍后再试") }
+            return
+        }
+        if (!IdManager.isLoggedIn()) {
+            postToMain { onResult(null, "请先登录后再购买") }
+            return
+        }
+        val payload = mapOf(
+            "product_type" to productType,
+            "client_app_version" to BuildConfig.VERSION_NAME,
+            "client_platform" to "android"
+        )
+        val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/payments/alipay/orders")
+                        .addHeader("Content-Type", "application/json")
+                        .post(requestBody)
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    val statusCode = it.code
+                    val body = it.body?.string().orEmpty()
+                    if (!it.isSuccessful) {
+                        val errorCode = parseApiErrorCode(body)
+                        reportClientLog(
+                            level = if (statusCode >= 500) "error" else "warn",
+                            event = "payment.order_create_failed",
+                            message = "Payment order create failed",
+                            attrs = mapOf(
+                                "http_status" to statusCode,
+                                "error" to errorCode,
+                                "product_type" to productType
+                            )
+                        )
+                        postToMain { onResult(null, paymentCreateErrorMessage(statusCode, errorCode)) }
+                        return@use
+                    }
+                    val parsed = runCatching {
+                        gson.fromJson(body, AlipayOrderResponse::class.java)
+                    }.getOrNull()
+                    val valid = parsed?.takeIf { order ->
+                        order.ok == true &&
+                            !order.outTradeNo.isNullOrBlank() &&
+                            !order.orderString.isNullOrBlank()
+                    }
+                    if (valid == null) {
+                        reportClientLog(
+                            level = "warn",
+                            event = "payment.order_create_failed",
+                            message = "Payment order create failed",
+                            attrs = mapOf("reason" to "invalid_response")
+                        )
+                        postToMain { onResult(null, "下单失败，请稍后再试") }
+                    } else {
+                        postToMain { onResult(valid, null) }
+                    }
+                }
+            },
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "payment.order_create_failed",
+                    message = "Payment order create failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName,
+                        "product_type" to productType
+                    )
+                )
+                postToMain { onResult(null, "网络连接失败，请稍后再试") }
+            }
+        )
+    }
+
+    fun getPaymentOrder(
+        outTradeNo: String,
+        onResult: (PaymentOrder?, String?) -> Unit
+    ) {
+        val base = baseUrl()
+        val trimmedOutTradeNo = outTradeNo.trim()
+        if (base.isEmpty() || trimmedOutTradeNo.isEmpty()) {
+            postToMain { onResult(null, "支付状态暂时不可查") }
+            return
+        }
+        enqueueWithRetry401(
+            requestFactory = { token ->
+                val encodedOutTradeNo = Uri.encode(trimmedOutTradeNo)
+                val builder = applyIdentityHeaders(
+                    Request.Builder()
+                        .url("$base/api/payments/orders?out_trade_no=$encodedOutTradeNo")
+                        .get()
+                )
+                if (!token.isNullOrBlank()) builder.addHeader("Authorization", "Bearer $token")
+                builder
+            },
+            onResult = { response ->
+                response.use {
+                    val body = it.body?.string().orEmpty()
+                    if (!it.isSuccessful) {
+                        val errorCode = parseApiErrorCode(body)
+                        reportClientLog(
+                            level = if (it.code >= 500) "error" else "warn",
+                            event = "payment.order_status_failed",
+                            message = "Payment order status failed",
+                            attrs = mapOf(
+                                "http_status" to it.code,
+                                "error" to errorCode
+                            )
+                        )
+                        postToMain { onResult(null, paymentStatusErrorMessage(it.code, errorCode)) }
+                        return@use
+                    }
+                    val parsed = runCatching {
+                        gson.fromJson(body, PaymentOrderStatusResponse::class.java)
+                    }.getOrNull()
+                    postToMain { onResult(parsed?.order, null) }
+                }
+            },
+            onFailure = { error ->
+                reportClientLog(
+                    level = "warn",
+                    event = "payment.order_status_failed",
+                    message = "Payment order status failed",
+                    attrs = mapOf(
+                        "reason" to "network",
+                        "exception" to error.javaClass.simpleName
+                    )
+                )
+                postToMain { onResult(null, "网络连接失败，请稍后再试") }
+            }
+        )
+    }
+
+    private fun paymentCreateErrorMessage(statusCode: Int, errorCode: String): String =
+        when {
+            statusCode == 401 -> "请先登录后再购买"
+            statusCode == 503 || errorCode == "ALIPAY_NOT_CONFIGURED" -> "支付暂时不可用，请稍后再试"
+            errorCode == "FORBIDDEN_TIER" -> "当前会员状态暂不支持购买这个项目"
+            errorCode == "USE_UPGRADE_PLUS_TO_PRO" -> "Plus 会员请使用升级 Pro"
+            errorCode == "ALREADY_PRO" -> "当前已是 Pro 会员"
+            errorCode == "MEMBERSHIP_EXPIRING_SOON" -> "会员快到期了，请先续费后再购买"
+            errorCode == "INVALID_PRODUCT" -> "购买项目暂时不可用"
+            statusCode >= 500 -> "下单失败，请稍后再试"
+            else -> "下单失败，请稍后再试"
+        }
+
+    private fun paymentStatusErrorMessage(statusCode: Int, errorCode: String): String =
+        when {
+            statusCode == 401 -> "登录已失效，请重新登录后查看"
+            statusCode == 404 || errorCode == "ORDER_NOT_FOUND" -> "未查到这笔订单"
+            statusCode >= 500 -> "支付状态暂时不可查，请稍后刷新"
+            else -> "支付状态暂时不可查"
+        }
 
     fun getTodayAgriCard(onResult: (TodayAgriCard?) -> Unit) {
         val requestGeneration = runtimeGeneration.get()

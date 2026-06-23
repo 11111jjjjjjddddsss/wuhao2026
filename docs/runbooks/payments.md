@@ -1,28 +1,24 @@
 # 支付与会员订单 Runbook
 
-最后更新：2026-06-17
+最后更新：2026-06-23
 
 ## 目的
 
-记录农技千查后续申请和接入真实支付时的边界、流程和风险，避免把当前开发期会员接口误当正式支付系统。
+记录农技千查支付、会员订单、权益发放、回调验签、对账和退款边界，避免把开发期接口或未验收代码误当正式收费系统。
 
-当前未接入任何真实支付 SDK、支付渠道、自动续费、退款或对账流程。今晚若申请支付功能，先按本文件准备资料；代码接入必须等商户号、应用 ID、支付产品、证书 / 密钥和回调配置明确后再做。
+当前状态：支付宝 APP 支付代码已接入仓库，Android 已接支付宝 SDK，后端已接服务端创建支付宝 APP 支付订单、异步通知验签、`payment_orders` / `payment_notifications`、幂等发放会员 / 加油包权益和后台只读订单核查。生产正式收费仍不得直接放量，必须完成生产环境 `AppID / seller_id / 应用私钥 / 支付宝公钥 / notify_url` 配置、小额真机支付、异步通知公网验签、重复通知幂等、权益发放、异常补偿、对账和退款流程验收后，再按正式发版和运营口径打开。
 
 ## 当前代码真相
 
-- Android 会员中心只展示会员规则和权益状态，套餐 / 加油包相关操作会提示“会员购买暂未开放 / 相关功能暂未开放，当前不会扣费”。
-- Android 不调用 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro` 或 `/api/topup/buy`。
-- Android 用户点击当前未开放的会员 / 加油包购买入口时，会上报 `payment.unavailable_clicked` 到自有 App 自动日志，attrs 只带 `source`，用于观察需求和证明未开放收费阶段没有进入真实扣费链；该日志不调用模型、不扣用户次数。
-- 后端这 4 个接口仍存在，但只是本地 / 内测开发期直改接口。
-- 开发期订单接口默认返回 `PAYMENT_NOT_CONFIGURED`。
-- 只有显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true` 且当前环境明确为 `APP_ENV / ENV / GO_ENV = local / dev / development / test` 时，开发期订单接口才会放行；缺失环境名也按关闭处理。
-- 生产环境或环境名缺失时，即使误设 `ALLOW_DEV_ORDER_ENDPOINTS=true`，后端也会强制关闭开发期订单接口。
-- 生产 readiness 会硬拦 `ALLOW_DEV_ORDER_ENDPOINTS=true`，避免公开环境误开开发期直改会员接口。
-- 当前 `orders` 表只记录开发期成功结果，字段包括 `order_id / user_id / type / amount / created_at / status / result_json`；它不是正式支付订单表。
-- 开发期订单 replay 会同时校验 `order_id`、账号ID和商品类型；同一 `order_id` 不能跨账号，也不能跨 Plus / Pro / Plus 升 Pro / 加油包复用，避免假测试把旧订单回放到错误权益上。
-- 当前权益口径已经按用户拍板固化：加油包次数和 Plus 升 Pro 生成的升级补偿次数都按永久有效处理，不随会员到期清零；每日额度是自然日额度，不跨天结转。Plus 升 Pro 不做剩余 Plus 折成现金抵扣，用户按 Pro 开通价升级，Plus 剩余每日权益折成永久升级补偿次数，后续按每日额度 -> 升级补偿 -> 加油包顺序消耗。
-- 管理后台已接只读订单核查：`GET /admin-api/v1/orders` 可按账号ID筛选或留空查看最近开发期订单 / 会员变更记录，用来辅助核查权益来源；该页面不提供补发、退款、对账或手动改权益。
-- 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android 购买 / 加油包入口仍关闭、Android 没有调用开发期订单接口、后端开发期订单接口有 `PAYMENT_NOT_CONFIGURED` 防线、支付回调 URL 已写入 runbook，并探测公网 `/healthz` 的 `dev_order_endpoints=false`。脚本还会检查后台订单页保持只读文案、没有补发 / 退款 / 手动改权益 / 模拟支付成功按钮，且服务端只注册 `GET /admin-api/v1/orders`、没有订单写路由。脚本还会只检查本机环境变量是否具备支付宝沙箱和微信 App 支付联调所需前置项，只输出缺少哪一类配置，不打印任何密钥值。该脚本只证明“当前未开放收费时是安全占位”，不代表真实支付已接入。
+- Android 会员中心的 Plus、Pro 和加油包按钮已改为真实支付入口：先请求后端 `POST /api/payments/alipay/orders` 创建订单，再把后端返回的 `order_string` 交给支付宝 SDK `PayTask.payV2` 调起支付。
+- Android 不保存、不生成、不读取支付宝应用私钥、支付宝公钥、商户密钥或任何支付渠道密钥；客户端同步结果只用于提示和轮询订单状态，不直接发放权益。
+- Android 会把 `9000` 视为同步成功、`8000 / 6004 / 6006` 视为处理中、`6002` 视为网络异常并继续轮询后端订单；只有后端订单达到 `paid + grant_status=success` 才提示权益已生效。
+- 后端新增正式支付订单表 `payment_orders` 和通知表 `payment_notifications`。支付宝通知会验签并校验 `app_id / seller_id / out_trade_no / trade_no / total_amount / trade_status`，成功处理后才返回支付宝要求的 `success`。
+- 后端发权益使用 `pay_<out_trade_no>` 作为幂等订单号，复用现有会员 / 加油包账本；重复通知不会重复发权益。`grant_status=processing` 未完成时不返回成功，保留支付宝重试机会；晚到的 `TRADE_CLOSED` 不应覆盖已支付订单。
+- Plus / Pro 会员仍按 30 天周期处理；加油包次数和 Plus 升 Pro 生成的升级补偿次数都按永久有效处理，不随会员到期清零；每日额度是自然日额度，不跨天结转。后续扣次顺序仍是每日额度 -> 升级补偿 -> 加油包。
+- 后端开发期直改接口 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍保留给本地 / 内测调试，默认返回 `PAYMENT_NOT_CONFIGURED`；生产环境必须继续保持 `dev_order_endpoints=false`，不能把开发期接口当正式收费入口。
+- 管理后台订单页已接只读核查：可查看支付宝订单、渠道交易号、订单状态、金额、权益发放状态和会员变更记录。当前不提供手动补发、退款、对账自动化或手动改权益按钮。
+- 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android SDK / manifest / 调起支付 / 未知结果轮询、后端支付宝订单 / 通知 / 验签 / seller_id / 幂等重试、数据库迁移、后台只读订单页、App / 官网隐私和第三方共享清单。脚本只输出配置是否缺失，不打印任何密钥值；当前输出 `payment_readiness_status=attention` 表示代码已对齐但正式收费开放前仍要做生产配置、回调、对账、退款和人工验收。
 
 ## 申请前准备
 
@@ -61,12 +57,13 @@
 - Android 同步返回只能当“支付流程结束 / 需要刷新订单状态”的 UI 信号，不作为发放会员权益的依据；真实支付结果必须以后端收到并验签通过的异步通知或主动查单结果为准。
 - 支付宝回调建议先预留 `https://api.nongjiqiancha.cn/api/payments/alipay/notify`，服务端验签、校验 `out_trade_no / trade_no / total_amount / app_id / seller_id / trade_status` 后，再幂等发权益；处理成功后按平台要求返回 `success`。
 
-当前本机联调前置检查：
+当前联调和上线前检查：
 
-- `check-payment-readiness.ps1` 当前输出 `alipay_sandbox_prereqs=missing`，缺少沙箱 AppID、应用私钥和支付宝公钥 / 证书材料；补齐后可先做支付宝沙箱下单、同步返回和异步通知验签联调。
-- `check-payment-readiness.ps1` 当前输出 `wechat_app_pay_prereqs=missing`，缺少微信 AppID、商户号、商户私钥、商户证书序列号和 APIv3 密钥；补齐并确认商户后台 App 支付产品权限后，才能调用微信 App 下单和正式 / 可用测试链路。
-- 当前已能自动测试的内容：Android 购买入口仍关闭、Android 未调用开发期订单接口、生产 `/healthz` 的 `dev_order_endpoints=false`、后端开发期订单接口默认返回 `PAYMENT_NOT_CONFIGURED`、支付回调 URL 口径、支付宝 / 微信联调材料缺口、以及用户点未开放购买入口会进入自有 App 日志。
-- 当前不能凭空测试的内容：支付宝沙箱真实下单、支付宝沙箱异步通知验签、微信 App 下单、微信 App 拉起支付、微信回调解密验签。这些都需要对应平台提供的 AppID、商户号、公钥 / 私钥 / 证书 / APIv3 Key 等测试或生产材料，不能由代码自行生成，也不能使用别人的商户身份。
+- `check-payment-readiness.ps1` 会检查本机是否具备支付宝正式联调所需环境变量：`ALIPAY_APP_ID / ALIPAY_SELLER_ID / ALIPAY_APP_PRIVATE_KEY(_FILE) / ALIPAY_PUBLIC_KEY(_FILE)`，只输出 ready / missing，不打印任何密钥。
+- 生产 ECS 若要启用支付宝，必须配置 `ALIPAY_APP_ID`、`ALIPAY_SELLER_ID`、应用私钥、支付宝公钥和 `ALIPAY_NOTIFY_URL=https://api.nongjiqiancha.cn/api/payments/alipay/notify`；缺任一项都不能写成支付 ready。
+- 当前已能自动测试的内容：Android 是否集成支付宝 SDK、是否把未知同步结果转为轮询、后端是否注册订单 / 通知路由、是否强制 seller 校验、是否避免完整支付号进日志、支付表迁移是否存在、后台和协议页面是否同步支付宝口径。
+- 当前仍必须人工或平台实测的内容：生产或沙箱小额下单、支付宝 App 拉起、用户取消、网络中断、`6004 / 6006` 未知结果、异步通知公网验签、重复通知、金额不一致拒绝、订单关闭、已支付权益发放、支付成功但权益未生效的客服处理、对账和退款流程。
+- 微信 App 支付仍未接入；如后续接微信，必须另行准备微信开放平台移动应用 AppID、微信支付商户号、API 证书 / APIv3 Key / 平台证书，并复用同一套服务端订单和权益发放边界。
 - 以上前置项只允许放本机安全配置、服务器环境变量或云端密钥管理，不能进入 APK、仓库、日志、后台页面或聊天记录。
 
 共同边界：
@@ -107,13 +104,13 @@
 - `POST /api/tier/renew_plus`：开发期续 Plus。
 - `POST /api/tier/renew_pro`：开发期续 Pro。
 - `POST /api/tier/upgrade_plus_to_pro`：开发期 Plus 升 Pro，并计算永久升级补偿次数。
-- `POST /api/topup/buy`：开发期购买加油包，仍要求当前有效档位为 Plus / Pro；当前只允许同时存在 1 个 active 加油包，用完后再买。
+- `POST /api/topup/buy`：开发期购买加油包，仍要求当前有效档位为 Plus / Pro；当前加油包次数不设到期时间，未用完次数长期保留，也允许按需继续购买叠加。
 
 这些接口只允许本地 / 内测调试，不允许公开生产使用。真实支付接入后，应移除、继续硬隔离，或只保留受控测试环境。
 
 ## 正式支付主链
 
-正式支付接入后，会员权益发放必须收敛到服务端支付回调 / 对账，不由 Android 直接改权益。
+支付宝 APP 支付代码已接入后，会员权益发放必须收敛到服务端支付回调 / 对账，不由 Android 直接改权益；生产放量前仍需完成真实小额支付、异步通知、对账、退款和异常补偿验收。
 
 推荐主链：
 
@@ -160,7 +157,7 @@
 - 支付回调和用户刷新 `/api/me` 是异步关系，Android 要允许短暂“支付处理中”。
 - 退款、撤销、失败和超时关闭不能和成功订单混在一起。
 - Plus 升 Pro 仍要保留当前“不坑用户”的补偿口径：Plus 剩余每日权益折成永久升级补偿次数，不能被 Pro 覆盖后静默丢失；当前不做现金折扣抵扣。
-- 加油包仍只允许 Plus / Pro 有效会员购买；当前同一时刻只允许 1 个 active 加油包，用完后再买。未来如果要叠加多个加油包，需要另行产品拍板并补权益流水 / 后台说明。
+- 加油包仍只允许 Plus / Pro 有效会员购买；当前未用完次数长期保留，允许按需继续购买叠加，后端仍按账本顺序逐包扣减。
 - 自动续费如果未来接入，必须单独做签约、解约、续费通知、扣款失败、到期和协议文案；当前产品没有自动续费。
 - 支付密钥、商户私钥、平台证书、APIv3 密钥等只能放服务端密钥管理或环境变量，不能进 APK，不能写仓库。
 

@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path,
     [string]$BaseUrl = "https://api.nongjiqiancha.cn",
     [int]$TimeoutSec = 12,
@@ -23,11 +23,6 @@ function Add-WarningItem {
 function Read-SourceFile {
     param([string]$Path)
     return Get-Content -LiteralPath $Path -Raw -Encoding UTF8
-}
-
-function Text-FromUtf8Base64 {
-    param([string]$Value)
-    return [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Value))
 }
 
 function Require-Match {
@@ -88,63 +83,83 @@ function Write-PrereqGroupStatus {
 Write-Host "== payment readiness =="
 Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth"
 
-$membershipPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/MembershipCenterSheet.kt"
+$appBuildPath = Join-Path $RepoRoot "app/build.gradle.kts"
+$manifestPath = Join-Path $RepoRoot "app/src/main/AndroidManifest.xml"
+$paymentClientPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/AlipayPaymentClient.kt"
+$sessionApiPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/SessionApi.kt"
 $chatScreenPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/ChatScreen.kt"
 $hamburgerMenuPath = Join-Path $RepoRoot "app/src/main/kotlin/com/nongjiqianwen/HamburgerMenuSheet.kt"
 $adminMainPath = Join-Path $RepoRoot "admin/src/main.ts"
+$adminTypesPath = Join-Path $RepoRoot "admin/src/types.ts"
 $serverPath = Join-Path $RepoRoot "server-go/internal/app/server.go"
+$paymentsPath = Join-Path $RepoRoot "server-go/internal/app/payments.go"
+$migrationPath = Join-Path $RepoRoot "server-go/migrations/044_alipay_payment_orders.sql"
 $paymentsRunbookPath = Join-Path $RepoRoot "docs/runbooks/payments.md"
+$thirdPartyPagePath = Join-Path $RepoRoot "site/public/legal/third-party-sharing/index.html"
 
-$membership = Read-SourceFile $membershipPath
+$appBuild = Read-SourceFile $appBuildPath
+$manifest = Read-SourceFile $manifestPath
+$paymentClient = Read-SourceFile $paymentClientPath
+$sessionApi = Read-SourceFile $sessionApiPath
 $chatScreen = Read-SourceFile $chatScreenPath
 $hamburgerMenu = Read-SourceFile $hamburgerMenuPath
 $adminMain = Read-SourceFile $adminMainPath
+$adminTypes = Read-SourceFile $adminTypesPath
 $server = Read-SourceFile $serverPath
+$payments = Read-SourceFile $paymentsPath
+$migration = Read-SourceFile $migrationPath
 $paymentsRunbook = Read-SourceFile $paymentsRunbookPath
+$thirdPartyPage = Read-SourceFile $thirdPartyPagePath
 
-Require-Match -Name "android_membership_notice_component" -Content $membership -Pattern "MembershipUnavailableNotice"
-Require-Match -Name "android_topup_component" -Content $membership -Pattern "MembershipTopupCard"
-Require-Match -Name "android_plan_actions_disabled" -Content $membership -Pattern "actionEnabled\s*=\s*false"
-Require-Match -Name "android_topup_action_disabled" -Content $membership -Pattern "val\s+canBuy\s*=\s*false"
-Require-NoMatch -Name "android_no_dev_order_api_calls" -Content $membership -Pattern "/api/(tier/renew_plus|tier/renew_pro|tier/upgrade_plus_to_pro|topup/buy)"
-Require-Match -Name "android_chat_membership_payment_click_log" -Content $chatScreen -Pattern "payment\.unavailable_clicked(?s:.*?)chat_membership_sheet"
-Require-Match -Name "android_settings_membership_payment_click_log" -Content $hamburgerMenu -Pattern "payment\.unavailable_clicked(?s:.*?)settings_membership_page"
-$adminOrdersReadOnlyPrefix = [regex]::Escape((Text-FromUtf8Base64 "6K6i5Y2V5Y+q5YGa5Y+q6K+75qC45p+l"))
-$adminOrdersNoManualGrant = [regex]::Escape((Text-FromUtf8Base64 "5LiN5o+Q5L6b6KGl5Y+R44CB6YCA5qy+5oiW5omL5Yqo5pS55p2D55uK"))
-$adminOrdersNoPaymentSimulation = [regex]::Escape((Text-FromUtf8Base64 "5LiN5o+Q5L6b5pSv5LuY5oiQ5Yqf5qih5ouf5oiW5omL5Yqo5Y+R5pS+5YWl5Y+j"))
-$adminOrderForbiddenButtons = @(
-    "6KGl5Y+R",
-    "5omL5Yqo5pS55p2D55uK",
-    "5qih5ouf5pSv5LuY5oiQ5Yqf",
-    "56Gu6K6k6YCA5qy+",
-    "5Y+R5pS+5p2D55uK"
-) | ForEach-Object { [regex]::Escape((Text-FromUtf8Base64 $_)) }
-Require-Match -Name "admin_orders_read_only_copy" -Content $adminMain -Pattern "$adminOrdersReadOnlyPrefix(?s:.*?)$adminOrdersNoManualGrant"
-Require-Match -Name "admin_orders_no_payment_simulation_copy" -Content $adminMain -Pattern $adminOrdersNoPaymentSimulation
-Require-NoMatch -Name "admin_orders_no_write_buttons" -Content $adminMain -Pattern ("<button[^>]*>\s*(" + ($adminOrderForbiddenButtons -join "|") + ")")
+Require-Match -Name "android_alipay_sdk_dependency" -Content $appBuild -Pattern "alipaysdk-android"
+Require-Match -Name "android_alipay_package_visibility" -Content $manifest -Pattern "com\.eg\.android\.AlipayGphone"
+Require-Match -Name "android_alipay_paytask" -Content $paymentClient -Pattern "PayTask"
+Require-Match -Name "android_alipay_payv2" -Content $paymentClient -Pattern "payV2"
+Require-Match -Name "android_alipay_unknown_result_polling" -Content $paymentClient -Pattern '"8000",\s*"6004",\s*"6006"'
+Require-Match -Name "android_create_alipay_order_api" -Content $sessionApi -Pattern "/api/payments/alipay/orders"
+Require-Match -Name "android_get_payment_order_api" -Content $sessionApi -Pattern "/api/payments/orders"
+Require-Match -Name "android_payment_start_log" -Content $chatScreen -Pattern "payment\.start"
+Require-Match -Name "android_alipay_sync_log" -Content $chatScreen -Pattern "payment\.alipay_sync_result"
+Require-Match -Name "android_payment_grant_success_log" -Content $chatScreen -Pattern "payment\.grant_success"
+Require-Match -Name "android_payment_grant_failure_persistent" -Content $chatScreen -Pattern "支付已确认，权益处理异常"
+Require-NoMatch -Name "android_no_order_string_client_log" -Content $chatScreen -Pattern '"order_string"|orderString\s+to|"\s*orderString\s*"\s+to'
+Require-Match -Name "android_privacy_mentions_alipay" -Content $hamburgerMenu -Pattern "支付宝 APP 支付 SDK"
+Require-NoMatch -Name "android_privacy_no_old_no_payment_sdk_copy" -Content $hamburgerMenu -Pattern "当前版本不接入[^。]*支付[^。]*第三方 SDK"
 
-Require-Match -Name "server_dev_order_guard" -Content $server -Pattern "func\s+\(s \*Server\)\s+allowDevOrderEndpoint"
-Require-Match -Name "server_payment_not_configured" -Content $server -Pattern "PAYMENT_NOT_CONFIGURED"
-Require-Match -Name "server_dev_order_explicit_env" -Content $server -Pattern "ALLOW_DEV_ORDER_ENDPOINTS"
-Require-Match -Name "server_dev_order_requires_dev_env" -Content $server -Pattern "env == ""local"" \|\| env == ""dev"" \|\| env == ""development"" \|\| env == ""test"""
-Require-Match -Name "server_admin_orders_get_only" -Content $server -Pattern 's\.mux\.HandleFunc\("GET /admin-api/v1/orders",\s*s\.handleAdminOrders\)'
-$serverAdminOrdersWritePattern = [regex]::Escape('s.mux.HandleFunc("') + '(POST|PUT|PATCH|DELETE)' + [regex]::Escape(' /admin-api/v1/orders')
-Require-NoMatch -Name "server_admin_orders_no_write_routes" -Content $server -Pattern $serverAdminOrdersWritePattern
+Require-Match -Name "server_create_alipay_order_route" -Content $server -Pattern 'POST /api/payments/alipay/orders'
+Require-Match -Name "server_get_payment_order_route" -Content $server -Pattern 'GET /api/payments/orders'
+Require-Match -Name "server_alipay_notify_route" -Content $server -Pattern 'POST /api/payments/alipay/notify'
+Require-Match -Name "server_healthz_alipay" -Content $server -Pattern '"alipay"\s*:\s*s\.alipay\.HealthStatus\(\)'
+Require-Match -Name "server_alipay_app_pay_api" -Content $payments -Pattern "alipay\.trade\.app\.pay"
+Require-Match -Name "server_alipay_sign_type_rsa2" -Content $payments -Pattern 'sign_type"\s*,\s*"RSA2'
+Require-Match -Name "server_alipay_seller_required" -Content $payments -Pattern 'sellerID\s*==\s*""'
+Require-Match -Name "server_alipay_enabled_requires_seller" -Content $payments -Pattern "c\.sellerID\s*!="
+Require-Match -Name "server_alipay_grant_retry_guard" -Content $payments -Pattern "PAYMENT_GRANT_IN_PROGRESS"
+Require-Match -Name "server_alipay_grant_claim_timestamp" -Content $payments -Pattern "COALESCE\(grant_claimed_at,\s*updated_at\)"
+Require-Match -Name "server_alipay_no_paid_downgrade" -Content $payments -Pattern 'order\.Status\s*==\s*paymentStatusPaid(?s:.*?)last_notify_json'
+Require-Match -Name "server_payment_log_suffix" -Content $payments -Pattern "paymentIDLogSuffix"
+Require-NoMatch -Name "server_no_full_payment_id_logs" -Content $payments -Pattern 'logger\.(Info|Warn|Error)\([^\\r\\n]*"(outTradeNo|tradeNo)"'
+Require-Match -Name "db_payment_orders" -Content $migration -Pattern "CREATE TABLE IF NOT EXISTS payment_orders"
+Require-Match -Name "db_payment_notifications" -Content $migration -Pattern "CREATE TABLE IF NOT EXISTS payment_notifications"
+Require-Match -Name "db_payment_orders_grant_claimed_at" -Content $migration -Pattern "grant_claimed_at BIGINT NULL"
 
-Require-Match -Name "runbook_wechat_notify_url" -Content $paymentsRunbook -Pattern "https://api\.nongjiqiancha\.cn/api/payments/wechat/notify"
+Require-Match -Name "admin_orders_mentions_alipay" -Content $adminMain -Pattern "支付宝订单"
+Require-Match -Name "admin_order_types_provider_fields" -Content $adminTypes -Pattern "provider_trade_no"
 Require-Match -Name "runbook_alipay_notify_url" -Content $paymentsRunbook -Pattern "https://api\.nongjiqiancha\.cn/api/payments/alipay/notify"
 Require-Match -Name "runbook_alipay_app_pay_api" -Content $paymentsRunbook -Pattern "alipay\.trade\.app\.pay"
-Require-Match -Name "runbook_payment_not_configured" -Content $paymentsRunbook -Pattern "PAYMENT_NOT_CONFIGURED"
+Require-Match -Name "runbook_formal_validation_gate" -Content $paymentsRunbook -Pattern "正式收费开放前"
+Require-Match -Name "site_third_party_mentions_alipay" -Content $thirdPartyPage -Pattern "支付宝 APP 支付 SDK"
+Require-NoMatch -Name "site_third_party_no_old_no_payment_sdk_copy" -Content $thirdPartyPage -Pattern "当前版本不接入[^。]*支付[^。]*第三方 SDK"
 
 if (-not $SkipPublicHealth) {
     try {
         $healthUrl = ($BaseUrl.TrimEnd("/") + "/healthz")
         $response = Invoke-RestMethod -Uri $healthUrl -TimeoutSec $TimeoutSec -Headers @{
-            "User-Agent" = "nongjiqiancha-payment-readiness/1.0"
+            "User-Agent" = "nongjiqiancha-payment-readiness/1.1"
         }
-        $devOrder = $response.dev_order_endpoints
-        Write-Host "public_healthz_dev_order_endpoints=$devOrder"
-        if ($devOrder -ne $false) {
+        Write-Host "public_healthz_alipay=$($response.alipay)"
+        Write-Host "public_healthz_dev_order_endpoints=$($response.dev_order_endpoints)"
+        if ($response.dev_order_endpoints -ne $false) {
             Add-ErrorItem "public healthz dev_order_endpoints must be false"
         }
     } catch {
@@ -152,24 +167,15 @@ if (-not $SkipPublicHealth) {
     }
 }
 
-Write-Host "payment_formal_status=not_configured"
-Write-Host "wechat_notify_url=https://api.nongjiqiancha.cn/api/payments/wechat/notify"
+Write-Host "payment_formal_status=alipay_app_pay_code_ready_needs_live_validation"
 Write-Host "alipay_notify_url=https://api.nongjiqiancha.cn/api/payments/alipay/notify"
-Write-PrereqGroupStatus -Name "alipay_sandbox_prereqs" -Requirements @(
-    @{ Label = "app_id"; AnyOf = @("ALIPAY_SANDBOX_APP_ID", "NONGJI_ALIPAY_SANDBOX_APP_ID") },
-    @{ Label = "app_private_key"; AnyOf = @("ALIPAY_SANDBOX_APP_PRIVATE_KEY", "ALIPAY_SANDBOX_APP_PRIVATE_KEY_FILE", "NONGJI_ALIPAY_SANDBOX_APP_PRIVATE_KEY", "NONGJI_ALIPAY_SANDBOX_APP_PRIVATE_KEY_FILE") },
-    @{ Label = "alipay_public_key"; AnyOf = @("ALIPAY_SANDBOX_PUBLIC_KEY", "ALIPAY_SANDBOX_PUBLIC_KEY_FILE", "NONGJI_ALIPAY_SANDBOX_PUBLIC_KEY", "NONGJI_ALIPAY_SANDBOX_PUBLIC_KEY_FILE") }
+Write-PrereqGroupStatus -Name "alipay_live_prereqs" -Requirements @(
+    @{ Label = "app_id"; AnyOf = @("ALIPAY_APP_ID", "ALIPAY_OPEN_APP_ID") },
+    @{ Label = "seller_id"; AnyOf = @("ALIPAY_SELLER_ID") },
+    @{ Label = "app_private_key"; AnyOf = @("ALIPAY_APP_PRIVATE_KEY", "ALIPAY_APP_PRIVATE_KEY_FILE") },
+    @{ Label = "alipay_public_key"; AnyOf = @("ALIPAY_PUBLIC_KEY", "ALIPAY_PUBLIC_KEY_FILE") }
 )
-Write-PrereqGroupStatus -Name "wechat_app_pay_prereqs" -Requirements @(
-    @{ Label = "app_id"; AnyOf = @("WECHAT_PAY_APP_ID", "WECHATPAY_APP_ID", "NONGJI_WECHAT_PAY_APP_ID") },
-    @{ Label = "mch_id"; AnyOf = @("WECHAT_PAY_MCH_ID", "WECHATPAY_MCH_ID", "NONGJI_WECHAT_PAY_MCH_ID") },
-    @{ Label = "merchant_private_key"; AnyOf = @("WECHAT_PAY_MCH_PRIVATE_KEY", "WECHAT_PAY_MCH_PRIVATE_KEY_FILE", "WECHATPAY_MCH_PRIVATE_KEY", "WECHATPAY_MCH_PRIVATE_KEY_FILE", "NONGJI_WECHAT_PAY_MCH_PRIVATE_KEY", "NONGJI_WECHAT_PAY_MCH_PRIVATE_KEY_FILE") },
-    @{ Label = "merchant_cert_serial_no"; AnyOf = @("WECHAT_PAY_MCH_CERT_SERIAL_NO", "WECHATPAY_MCH_CERT_SERIAL_NO", "NONGJI_WECHAT_PAY_MCH_CERT_SERIAL_NO") },
-    @{ Label = "api_v3_key"; AnyOf = @("WECHAT_PAY_API_V3_KEY", "WECHATPAY_API_V3_KEY", "NONGJI_WECHAT_PAY_API_V3_KEY") }
-)
-Write-Host "sandbox_note=Alipay sandbox can be prepared before production approval; WeChat live App Pay calls require merchant credentials, product permission, signing, and HTTPS notify handling."
-Write-Host "safe_without_paid_iap=$($errors.Count -eq 0)"
-Write-Host "next_step=apply merchant products, then wire sandbox/live credentials and implement formal order/callback tables"
+Write-Host "payment_readiness_note=Code and documents are aligned for Alipay APP Pay, but production charging still requires live env config, callback validation, reconciliation, refund handling, and manual acceptance."
 
 if ($warnings.Count -gt 0) {
     foreach ($warning in $warnings) {

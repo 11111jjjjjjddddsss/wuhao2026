@@ -39,11 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -59,9 +55,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import java.util.Locale
-import kotlinx.coroutines.delay
 
 internal enum class MembershipLoadState { Idle, Loading, Loaded, Failed }
+
+internal enum class MembershipPaymentProduct(val apiValue: String) {
+    RenewPlus("renew_plus"),
+    RenewPro("renew_pro"),
+    UpgradePlusToPro("upgrade_plus_to_pro"),
+    BuyTopup("buy_topup")
+}
+
+internal data class MembershipPaymentState(
+    val activeProduct: MembershipPaymentProduct? = null,
+    val notice: String? = null
+)
 
 private const val MEMBERSHIP_SCRIM_ENTER_MS = 80
 private const val MEMBERSHIP_SHEET_ENTER_MS = 165
@@ -73,9 +80,10 @@ internal fun MembershipCenterBottomSheet(
     loadState: MembershipLoadState,
     purchaseSuccessVisible: Boolean,
     userId: String,
+    paymentState: MembershipPaymentState = MembershipPaymentState(),
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
-    onPaymentUnavailable: () -> Unit,
+    onStartPayment: (MembershipPaymentProduct) -> Unit,
     onRetryLoad: () -> Unit = {},
     onPurchaseSuccessConfirm: () -> Unit
 ) {
@@ -137,7 +145,8 @@ internal fun MembershipCenterBottomSheet(
                             entitlement = entitlement,
                             loadState = loadState,
                             paymentNoticeResetKey = visible,
-                            onPaymentUnavailable = onPaymentUnavailable,
+                            paymentState = paymentState,
+                            onStartPayment = onStartPayment,
                             onRetryLoad = onRetryLoad
                         )
                     }
@@ -227,19 +236,14 @@ internal fun MembershipCenterBody(
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
     paymentNoticeResetKey: Any?,
-    onPaymentUnavailable: () -> Unit,
+    paymentState: MembershipPaymentState = MembershipPaymentState(),
+    onStartPayment: (MembershipPaymentProduct) -> Unit,
     onRetryLoad: () -> Unit = {}
 ) {
-    var paymentNoticeVisible by remember(paymentNoticeResetKey) { mutableStateOf(false) }
     val displayLoadState = if (entitlement != null) {
         MembershipLoadState.Loaded
     } else {
         loadState
-    }
-    LaunchedEffect(paymentNoticeVisible) {
-        if (!paymentNoticeVisible) return@LaunchedEffect
-        delay(1500)
-        paymentNoticeVisible = false
     }
     MembershipQuotaSummary(
         entitlement = entitlement,
@@ -249,25 +253,21 @@ internal fun MembershipCenterBody(
         MembershipSyncRetryNotice(onRetryLoad = onRetryLoad)
     }
     val loadedEntitlement = entitlement.takeIf { displayLoadState == MembershipLoadState.Loaded }
-    if (paymentNoticeVisible) {
-        MembershipInlineNotice(text = "相关功能暂未开放，当前不会扣费")
+    paymentState.notice?.takeIf { it.isNotBlank() }?.let { notice ->
+        MembershipInlineNotice(text = notice)
     }
     MembershipPlanSection(
         activeTier = entitlement.activeMembershipTier(displayLoadState),
         upgradeRemaining = loadedEntitlement?.upgradeRemaining ?: 0,
         topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
-        onPaymentUnavailable = {
-            paymentNoticeVisible = true
-            onPaymentUnavailable()
-        }
+        paymentState = paymentState,
+        onStartPayment = onStartPayment
     )
     MembershipTopupCard(
         activeTier = entitlement.activeMembershipTier(displayLoadState),
         topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
-        onPaymentUnavailable = {
-            paymentNoticeVisible = true
-            onPaymentUnavailable()
-        }
+        paymentState = paymentState,
+        onStartPayment = onStartPayment
     )
     MembershipRulesSection()
 }
@@ -505,31 +505,35 @@ internal fun MembershipQuotaSummary(
 internal fun MembershipPlanSectionPreview(
     activeTier: String,
     upgradeRemaining: Int = 0,
-    topupRemaining: Int = 0
+    topupRemaining: Int = 0,
+    paymentState: MembershipPaymentState = MembershipPaymentState()
 ) {
     MembershipPlanSection(
         activeTier = activeTier,
         upgradeRemaining = upgradeRemaining,
         topupRemaining = topupRemaining,
-        onPaymentUnavailable = {}
+        paymentState = paymentState,
+        onStartPayment = {}
     )
 }
 
 @Composable
 internal fun MembershipTopupCardPreview(
     activeTier: String,
-    topupRemaining: Int
+    topupRemaining: Int,
+    paymentState: MembershipPaymentState = MembershipPaymentState()
 ) {
     MembershipTopupCard(
         activeTier = activeTier,
         topupRemaining = topupRemaining,
-        onPaymentUnavailable = {}
+        paymentState = paymentState,
+        onStartPayment = {}
     )
 }
 
 @Composable
 internal fun MembershipPaymentNoticePreview() {
-    MembershipInlineNotice(text = "相关功能暂未开放，当前不会扣费")
+    MembershipInlineNotice(text = "支付结果确认中，请稍等")
 }
 
 @Composable
@@ -584,22 +588,31 @@ private fun MembershipPlanSection(
     activeTier: String,
     upgradeRemaining: Int,
     topupRemaining: Int,
-    onPaymentUnavailable: () -> Unit
+    paymentState: MembershipPaymentState,
+    onStartPayment: (MembershipPaymentProduct) -> Unit
 ) {
-    val plusActionText = when (activeTier) {
-        "unknown" -> "暂未开放"
-        "plus" -> "当前套餐"
-        "pro" -> "当前为 Pro"
-        else -> "暂未开放"
+    val plusProduct = MembershipPaymentProduct.RenewPlus
+    val proProduct = when (activeTier) {
+        "plus" -> MembershipPaymentProduct.UpgradePlusToPro
+        else -> MembershipPaymentProduct.RenewPro
     }
-    val proActionText = when (activeTier) {
-        "unknown" -> "暂未开放"
-        "plus" -> "支付升级暂未开放"
-        "pro" -> "当前套餐"
-        else -> "暂未开放"
+    val plusEnabled = activeTier == "free" || activeTier == "plus"
+    val proEnabled = activeTier == "free" || activeTier == "plus" || activeTier == "pro"
+    val plusActionText = when {
+        paymentState.activeProduct == plusProduct -> "处理中"
+        activeTier == "unknown" -> "刷新后可购买"
+        activeTier == "plus" -> "续费 Plus"
+        activeTier == "pro" -> "当前为 Pro"
+        else -> "开通 Plus"
+    }
+    val proActionText = when {
+        paymentState.activeProduct == proProduct -> "处理中"
+        activeTier == "unknown" -> "刷新后可购买"
+        activeTier == "plus" -> "升级 Pro"
+        activeTier == "pro" -> "续费 Pro"
+        else -> "开通 Pro"
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        MembershipUnavailableNotice()
         MembershipPlanSectionTitle(
             upgradeRemaining = upgradeRemaining,
             topupRemaining = topupRemaining
@@ -610,9 +623,8 @@ private fun MembershipPlanSection(
             active = activeTier == "plus",
             highlights = listOf("每天${MEMBERSHIP_PLUS_DAILY_LIMIT}次问诊", "图文问题随时问", "记忆与上下文更强"),
             actionText = plusActionText,
-            actionEnabled = false,
-            actionClickableWhenDisabled = plusActionText == "暂未开放",
-            onActionClick = onPaymentUnavailable
+            actionEnabled = plusEnabled && paymentState.activeProduct == null,
+            onActionClick = { onStartPayment(plusProduct) }
         )
         MembershipPlanCard(
             name = "Pro",
@@ -621,28 +633,8 @@ private fun MembershipPlanSection(
             active = activeTier == "pro",
             highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
             actionText = proActionText,
-            actionEnabled = false,
-            actionClickableWhenDisabled = proActionText == "暂未开放" || proActionText == "支付升级暂未开放",
-            onActionClick = onPaymentUnavailable
-        )
-    }
-}
-
-@Composable
-private fun MembershipUnavailableNotice() {
-    Surface(
-        color = Color(0xFFF5F6F8),
-        shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "会员购买和支付升级暂未开放；当前页面只展示套餐规则，不会发起扣费。礼品卡仍可按规则开通或升级会员。",
-            color = Color(0xFF4E5661),
-            fontSize = 13.sp,
-            lineHeight = 19.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+            actionEnabled = proEnabled && paymentState.activeProduct == null,
+            onActionClick = { onStartPayment(proProduct) }
         )
     }
 }
@@ -774,11 +766,13 @@ private fun MembershipPlanCard(
 private fun MembershipTopupCard(
     activeTier: String,
     topupRemaining: Int,
-    onPaymentUnavailable: () -> Unit
+    paymentState: MembershipPaymentState,
+    onStartPayment: (MembershipPaymentProduct) -> Unit
 ) {
+    val product = MembershipPaymentProduct.BuyTopup
     val hasActiveTopup = topupRemaining > 0
     val isPaidTier = activeTier == "plus" || activeTier == "pro"
-    val canBuy = false
+    val canBuy = isPaidTier && paymentState.activeProduct == null
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(18.dp),
@@ -830,20 +824,22 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "加油包暂未开放。开放后仅 Plus / Pro 用户可购买；未用完次数长期保留，购买和续购以页面开放为准。",
+                text = "仅 Plus / Pro 会员可购买；未用完次数长期保留，可按需续购。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp
             )
             MembershipActionButton(
                 text = when {
-                    hasActiveTopup && isPaidTier -> "续购暂未开放"
+                    paymentState.activeProduct == product -> "处理中"
+                    activeTier == "unknown" -> "刷新后可购买"
+                    hasActiveTopup && isPaidTier -> "续购加油包"
                     hasActiveTopup -> "剩余次数可用"
-                    else -> "暂未开放"
+                    isPaidTier -> "购买加油包"
+                    else -> "会员可购买"
                 },
                 enabled = canBuy,
-                clickableWhenDisabled = !hasActiveTopup || isPaidTier,
-                onClick = onPaymentUnavailable
+                onClick = { onStartPayment(product) }
             )
         }
     }

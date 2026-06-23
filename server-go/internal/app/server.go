@@ -36,6 +36,7 @@ type Server struct {
 	dailyAgri             *DailyAgriCardService
 	dypns                 *DypnsClient
 	sms                   *SMSClient
+	alipay                *AlipayClient
 	shanghai              *time.Location
 	assetDir              string
 	uploadsDir            string
@@ -138,6 +139,10 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
+	alipay, err := NewAlipayClientFromEnv(shanghai)
+	if err != nil {
+		return nil, err
+	}
 	uploadStore, err := NewUploadStoreFromEnv(uploadsDir)
 	if err != nil {
 		return nil, err
@@ -156,6 +161,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		dailyAgri:             NewDailyAgriCardService(store, bailian, logger, shanghai),
 		dypns:                 dypns,
 		sms:                   sms,
+		alipay:                alipay,
 		shanghai:              shanghai,
 		assetDir:              assetDir,
 		uploadsDir:            uploadsDir,
@@ -257,6 +263,9 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("POST /api/tier/renew_plus", s.handleRenewPlus)
 	s.mux.HandleFunc("POST /api/tier/renew_pro", s.handleRenewPro)
 	s.mux.HandleFunc("POST /api/tier/upgrade_plus_to_pro", s.handleUpgradePlusToPro)
+	s.mux.HandleFunc("POST /api/payments/alipay/orders", s.handleCreateAlipayPaymentOrder)
+	s.mux.HandleFunc("GET /api/payments/orders", s.handleGetPaymentOrder)
+	s.mux.HandleFunc("POST /api/payments/alipay/notify", s.handleAlipayPaymentNotify)
 	s.mux.HandleFunc("POST /api/today-agri-item", s.handleSaveTodayAgriItem)
 	s.mux.HandleFunc("GET /api/today-agri-card", s.handleTodayAgriCard)
 	s.mux.HandleFunc("GET /api/today-agri-cards", s.handleTodayAgriCards)
@@ -293,6 +302,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		"dypns_fusion":        ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
 		"dypns_sms":           smsStatus,
 		"sms":                 smsStatus,
+		"alipay":              s.alipay.HealthStatus(),
 		"redis":               redisStatus,
 		"upload_storage":      uploadStoreHealthStatus(s.uploadStore),
 		"auth_strict":         IsAuthStrict(),

@@ -47,7 +47,7 @@
 | 内部 secret 接口 | 每 IP/scope `120/10min` | 保护脚本和内部接口。 |
 | 后台登录 | 用户名 hash + IP hash `10/10min`，外层仍有内部接口 IP 保护 | 只保护 `admin.nongjiqiancha.cn` 登录入口，不影响 App 用户登录、聊天或验证码。 |
 | 会员每日次数 | Free `6/day`，Plus `25/day`，Pro `40/day` | 产品权益，不是流量限流。 |
-| 加油包 | `80` 次，最多 1 个 active pack | 产品权益。 |
+| 加油包 | `80` 次 / 包，未用完次数长期保留，可继续购买叠加 | 产品权益。 |
 | MySQL 连接池 | max open `10`，max idle `10` | 当前生产环境使用默认值。 |
 
 Redis 限流当前按链路区分：短信、登录、礼品卡、上传、内部 secret 等安全或成本敏感入口保持 fail closed；主聊天、帮助反馈和 App 自动日志这些用户体验 / 排障链路在 Redis 限流操作错误或超时时 fail open，避免 Redis 短抖影响问诊、客服和日志上报。Redis 正常时，上述链路仍按各自频率限流。

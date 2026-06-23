@@ -205,7 +205,7 @@ expectAdminPattern("gift card void requires typed keyword", /请输入 作废 �
 rejectAdminPattern("gift card page must not imply future activation", /已经生效且未过期/);
 rejectServerPattern("admin gift card monitoring must not gate on future valid_from", /valid_from\s*<=/);
 rejectServerPattern("admin gift card monitoring text must not imply activation gate", /生效且未过期/);
-expectAdminPattern("orders page marks amount as development record", /开发期记录金额/);
+expectAdminPattern("orders page warns about Alipay bill reconciliation", /生产放量前以支付宝账单和对账结果为准/);
 rejectAdminPattern("orders page must not imply actual income", /金额合计/);
 expectAdminPattern("app update separates switch from delivery", /是否会下发/);
 expectAdminPattern("app update labels switch as switch", /发布开关/);

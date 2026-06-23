@@ -299,10 +299,11 @@ internal fun HamburgerMenuSheet(
     userId: String,
     membershipEntitlement: SessionApi.EntitlementSnapshot?,
     membershipLoadState: MembershipLoadState,
+    membershipPaymentState: MembershipPaymentState = MembershipPaymentState(),
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onRequestMembershipRefresh: () -> Unit,
-    onMembershipPaymentUnavailable: () -> Unit,
+    onStartMembershipPayment: (MembershipPaymentProduct) -> Unit,
     onClearChatHistory: () -> Unit,
     onPlaceholderClick: (String) -> Unit
 ) {
@@ -755,16 +756,11 @@ internal fun HamburgerMenuSheet(
                                 userId = userId,
                                 entitlement = membershipEntitlement,
                                 loadState = membershipLoadState,
+                                paymentState = membershipPaymentState,
                                 onRetryLoad = onRequestMembershipRefresh,
-                                onPaymentUnavailable = {
+                                onStartPayment = { product ->
                                     performButtonHaptic()
-                                    SessionApi.reportClientLog(
-                                        level = "info",
-                                        event = "payment.unavailable_clicked",
-                                        message = "Membership payment unavailable clicked",
-                                        attrs = mapOf("source" to "settings_membership_page")
-                                    )
-                                    onMembershipPaymentUnavailable()
+                                    onStartMembershipPayment(product)
                                 }
                             )
                         }
@@ -1172,15 +1168,17 @@ private fun HamburgerMembershipCenterPage(
     userId: String,
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
+    paymentState: MembershipPaymentState = MembershipPaymentState(),
     onRetryLoad: () -> Unit,
-    onPaymentUnavailable: () -> Unit
+    onStartPayment: (MembershipPaymentProduct) -> Unit
 ) {
     HamburgerMembershipCenterContent(
         userId = userId,
         entitlement = entitlement,
         loadState = loadState,
+        paymentState = paymentState,
         onRetryLoad = onRetryLoad,
-        onPaymentUnavailable = onPaymentUnavailable,
+        onStartPayment = onStartPayment,
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
@@ -1272,8 +1270,9 @@ private fun HamburgerMembershipCenterContent(
     userId: String,
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
+    paymentState: MembershipPaymentState = MembershipPaymentState(),
     onRetryLoad: () -> Unit,
-    onPaymentUnavailable: () -> Unit,
+    onStartPayment: (MembershipPaymentProduct) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
@@ -1285,7 +1284,8 @@ private fun HamburgerMembershipCenterContent(
             entitlement = entitlement,
             loadState = loadState,
             paymentNoticeResetKey = userId,
-            onPaymentUnavailable = onPaymentUnavailable,
+            paymentState = paymentState,
+            onStartPayment = onStartPayment,
             onRetryLoad = onRetryLoad
         )
     }
@@ -1692,7 +1692,7 @@ internal fun HamburgerPrivacyPolicyContent(
         )
         HamburgerAgreementSection(
             title = "六、第三方服务",
-            body = "我们可能通过平台服务器调用云计算、数据存储、智能分析、短信等服务，用于系统运行、验证码登录、问诊分析、图片理解、今日农情、故障排查和权益核对；购买入口开放后，支付服务商会在您主动购买时处理必要订单和支付状态信息。相关服务只在实现对应功能所必需的范围内处理必要信息。当前不接入广告、地图、推送或统计类第三方 SDK。"
+            body = "我们可能通过平台服务器调用云计算、数据存储、智能分析、短信、支付宝支付等服务，用于系统运行、验证码登录、问诊分析、图片理解、今日农情、故障排查、权益核对和付费服务处理。相关服务只在实现对应功能所必需的范围内处理必要信息。当前不接入广告、地图、推送或统计类第三方 SDK。"
         )
         HamburgerAgreementSection(
             title = "七、保存、安全和共享",
@@ -1861,11 +1861,11 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "六、支付服务",
-            body = "共享类型：支付服务接口。\n服务提供方：购买入口开放后由页面展示的支付服务商。\n服务类别：支付渠道服务。\n使用场景：购买入口开放后，您主动购买会员、加油包或其他付费服务。\n涉及信息：订单号、商品 / 权益信息、支付状态、退款和售后处理所需信息。\n共享方式：仅在 App 页面展示可购买状态且您主动购买时，由页面展示的支付服务商处理必要订单和支付状态；当前未展示可购买状态的入口不会发起真实扣费。\n第三方处理规则：支付服务商按其公开规则处理支付信息；当前未接入真实支付的入口不会向支付服务商发起扣费请求。真实支付渠道确定后，本清单会补充对应服务商名称和隐私政策链接。"
+            body = "共享类型：支付宝 APP 支付 SDK / 支付服务接口。\n服务提供方：支付宝（中国）网络技术有限公司及支付宝开放平台相关服务。\n服务类别：支付渠道服务。\n使用场景：您主动购买会员、加油包或其他付费服务时，调起支付宝完成支付。\n涉及信息：订单号、商品 / 权益信息、支付金额、支付状态、退款和售后处理所需信息，以及支付宝 SDK 完成支付所需的设备和支付环境必要信息。\n共享方式：由农技千查后端创建订单并生成支付参数，Android 端仅将支付参数交给支付宝 SDK 调起支付；权益发放以后端验签通知或订单状态核验为准，客户端同步结果不直接发放权益。\n第三方处理规则：支付宝隐私权政策及支付宝开放平台公开规则。"
         )
         HamburgerAgreementSection(
             title = "七、当前未接入的第三方 SDK",
-            body = "当前版本不接入广告、地图、推送、统计、支付、社交分享、通讯录、短信读取、电话状态或 Wi-Fi 状态类第三方 SDK。基础开源组件和 Android 系统组件不作为独立第三方收集个人信息；相关数据处理仍以本政策和 App 内清单为准。"
+            body = "当前版本不接入广告、地图、推送、统计、社交分享、通讯录、短信读取、电话状态或 Wi-Fi 状态类第三方 SDK。支付宝 SDK 仅在您主动购买付费服务时调用；基础开源组件和 Android 系统组件不作为独立第三方收集个人信息，相关数据处理仍以本政策和 App 内清单为准。"
         )
     }
 }
@@ -2069,7 +2069,7 @@ internal fun HamburgerMembershipCenterPagePreview(userId: String) {
                 ),
                 loadState = MembershipLoadState.Loaded,
                 onRetryLoad = {},
-                onPaymentUnavailable = {}
+                onStartPayment = {}
             )
         }
     }
