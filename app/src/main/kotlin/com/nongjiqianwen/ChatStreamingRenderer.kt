@@ -919,17 +919,13 @@ internal fun shouldShowStreamingSectionDivider(
     previous: StreamingLineModel?,
     current: StreamingLineModel
 ): Boolean {
-    if (
-        previous == null ||
-        previous is StreamingLineModel.Heading
-    ) {
-        return false
-    }
-    val heading = current as? StreamingLineModel.Heading
-    if (heading != null) return heading.level <= 3
-    val paragraph = current as? StreamingLineModel.Paragraph ?: return false
-    return parseRendererLeadingBoldSectionTitle(paragraph.text) != null
+    return false
 }
+
+private fun isRendererSoftSectionTitleBlock(model: StreamingLineModel): Boolean =
+    model is StreamingLineModel.Heading ||
+        (model is StreamingLineModel.Numbered && isRendererCompactNumberedSection(model)) ||
+        (model is StreamingLineModel.Paragraph && parseRendererLeadingBoldSectionTitle(model.text) != null)
 
 internal fun buildRendererPlainCopyText(content: String): String {
     val blockState = splitStreamingBlockState(
@@ -2051,14 +2047,16 @@ private fun rendererMarkdownBlockSpacingAfter(
     previousBlock: StreamingLineModel,
     currentBlock: StreamingLineModel
 ): Dp {
-    return if (
-        previousBlock is StreamingLineModel.Numbered &&
-        isRendererCompactNumberedSection(previousBlock) &&
-        currentBlock !is StreamingLineModel.Blank
-    ) {
-        10.dp
-    } else {
-        MARKDOWN_BLOCK_SPACING
+    if (currentBlock is StreamingLineModel.Blank) return MARKDOWN_BLOCK_SPACING
+    val previousIsCompactNumberedSection =
+        previousBlock is StreamingLineModel.Numbered && isRendererCompactNumberedSection(previousBlock)
+    val currentIsSectionTitle = isRendererSoftSectionTitleBlock(currentBlock)
+    return when {
+        previousIsCompactNumberedSection && currentIsSectionTitle -> 16.dp
+        previousIsCompactNumberedSection -> 12.dp
+        currentIsSectionTitle && previousBlock !is StreamingLineModel.Blank -> 20.dp
+        isRendererSoftSectionTitleBlock(previousBlock) -> MARKDOWN_BLOCK_SPACING
+        else -> MARKDOWN_BLOCK_SPACING
     }
 }
 
