@@ -696,6 +696,21 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun boldChineseSectionHeadingKeepsDividerForFutureModelVariants() {
+        val previous = classifyStreamingLine("先说清楚。")
+        val heading = classifyStreamingLine("**一、处理建议**")
+
+        assertTrue(heading is StreamingLineModel.Heading)
+        assertEquals("一、处理建议", (heading as StreamingLineModel.Heading).text)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = previous,
+                current = heading
+            )
+        )
+    }
+
+    @Test
     fun compactNumberedSectionKeepsDividerBeforeNumberWithoutSplittingNestedHeading() {
         val state = splitStreamingBlockState(
             "上一段处理建议。\n\n" +
@@ -733,6 +748,104 @@ class ChatStreamingRendererTest {
         assertTrue(numbered is StreamingLineModel.Numbered)
         assertTrue(isRendererCompactNumberedSection(numbered as StreamingLineModel.Numbered))
         assertTrue(shouldShowStreamingSectionDivider(previous, numbered))
+    }
+
+    @Test
+    fun compactNumberedSectionCreatesDividerAfterBlankLine() {
+        val models = listOf(
+            classifyStreamingLine("膨果期的管理核心是营养平衡、水分稳定、负载合理。"),
+            StreamingLineModel.Blank,
+            classifyStreamingLine("**1. 营养需求重点**")
+        )
+
+        val numbered = models[2]
+        assertTrue(numbered is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(numbered as StreamingLineModel.Numbered))
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = previousStreamingSectionDividerCandidate(models, 2),
+                current = numbered
+            )
+        )
+    }
+
+    @Test
+    fun commonModelHeadingVariantsCreateDividersAfterBlankLine() {
+        val variants = listOf(
+            "## 营养需求重点",
+            "一、营养需求重点",
+            "**一、营养需求重点**",
+            "1. 营养需求重点",
+            "**1. 营养需求重点**"
+        )
+
+        variants.forEach { line ->
+            val models = listOf(
+                classifyStreamingLine("膨果期先看营养和水分。"),
+                StreamingLineModel.Blank,
+                classifyStreamingLine(line)
+            )
+
+            assertTrue(
+                "Expected divider for heading variant: $line",
+                shouldShowStreamingSectionDivider(
+                    previous = previousStreamingSectionDividerCandidate(models, 2),
+                    current = models[2]
+                )
+            )
+        }
+    }
+
+    @Test
+    fun readableParagraphSplitAndBlankHeadingDividerWorkTogether() {
+        val state = splitStreamingBlockState(
+            "膨果是产量形成的基础，也是后续增甜的前提。如果果实膨大不到位，后期再怎么增甜，单果重和总产量都上不去。" +
+                "膨果期的管理核心是**营养平衡、水分稳定、负载合理**。\n\n" +
+                "**1. 营养需求重点**\n\n" +
+                "**钾元素是主力**\n\n" +
+                "钾能促进细胞膨大和光合产物向果实运输。膨果期对钾的需求量最大，建议使用硫酸钾或硝酸钾。"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val sectionIndex = models.indexOfFirst {
+            it is StreamingLineModel.Numbered && it.number == "1"
+        }
+        val boldSubheadingIndex = models.indexOfFirst {
+            it is StreamingLineModel.Heading && it.text == "钾元素是主力"
+        }
+
+        assertTrue(sectionIndex > 0)
+        assertTrue(boldSubheadingIndex > sectionIndex)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = previousStreamingSectionDividerCandidate(models, sectionIndex),
+                current = models[sectionIndex]
+            )
+        )
+        assertFalse(
+            shouldShowStreamingSectionDivider(
+                previous = previousStreamingSectionDividerCandidate(models, boldSubheadingIndex),
+                current = models[boldSubheadingIndex]
+            )
+        )
+    }
+
+    @Test
+    fun standaloneBoldSubheadingStaysWithoutDividerAfterBlankLine() {
+        val models = listOf(
+            classifyStreamingLine("1. 营养需求重点"),
+            StreamingLineModel.Blank,
+            classifyStreamingLine("**钾元素是主力**")
+        )
+
+        val subheading = models[2]
+        assertTrue(subheading is StreamingLineModel.Heading)
+        assertFalse(
+            shouldShowStreamingSectionDivider(
+                previous = previousStreamingSectionDividerCandidate(models, 2),
+                current = subheading
+            )
+        )
     }
 
     @Test

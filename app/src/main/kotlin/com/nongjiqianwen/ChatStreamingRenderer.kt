@@ -834,6 +834,13 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
     parseRendererBoldArabicNumberedLine(trimmed, indentLevel)?.let { model ->
         return model
     }
+    parseRendererBoldChineseSectionHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(
+            level = 3,
+            text = headingText,
+            source = StreamingHeadingSource.ChineseSection
+        )
+    }
     parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(
             level = 2,
@@ -889,6 +896,13 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     }
     parseRendererBoldArabicNumberedLine(trimmed, indentLevel)?.let { model ->
         return model
+    }
+    parseRendererBoldChineseSectionHeading(trimmed)?.let { headingText ->
+        return StreamingLineModel.Heading(
+            level = 3,
+            text = headingText,
+            source = StreamingHeadingSource.ChineseSection
+        )
     }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
         return StreamingLineModel.Heading(
@@ -963,6 +977,17 @@ internal fun shouldShowStreamingSectionDivider(
         return isRendererCompactNumberedSection(numbered)
     }
     return false
+}
+
+internal fun previousStreamingSectionDividerCandidate(
+    models: List<StreamingLineModel>,
+    index: Int
+): StreamingLineModel? {
+    for (candidateIndex in index - 1 downTo 0) {
+        val candidate = models[candidateIndex]
+        if (candidate !is StreamingLineModel.Blank) return candidate
+    }
+    return null
 }
 
 internal fun buildRendererPlainCopyText(content: String): String {
@@ -1103,12 +1128,7 @@ private fun parseRendererBoldArabicNumberedLine(
 }
 
 private fun isRendererBoldChineseNumberedLine(line: String): Boolean {
-    val trimmed = line.trim()
-    if (!trimmed.startsWith("**")) return false
-    val closing = trimmed.indexOf("**", startIndex = 2)
-    if (closing <= 2) return false
-    val title = trimmed.substring(2, closing).trim()
-    return rendererChineseSectionHeadingRegex.matches(title)
+    return parseRendererBoldChineseSectionHeading(line) != null
 }
 
 private fun isRendererBoldNumberedLine(line: String): Boolean =
@@ -1121,6 +1141,18 @@ private fun parseRendererChineseSectionHeading(line: String): String? {
     val title = match.groupValues[3].trim()
     if (!isRendererStandaloneSectionHeadingTitle(title)) return null
     return trimmed
+}
+
+private fun parseRendererBoldChineseSectionHeading(line: String): String? {
+    val trimmed = line.trim()
+    if (!trimmed.startsWith("**")) return null
+    val closing = trimmed.indexOf("**", startIndex = 2)
+    if (closing <= 2) return null
+    val suffix = trimmed.drop(closing + 2).trim()
+    if (suffix.isNotEmpty() && suffix !in setOf(":", "：")) return null
+    val title = trimmed.substring(2, closing).trim()
+    if (title.contains("**")) return null
+    return parseRendererChineseSectionHeading(title + suffix)
 }
 
 private fun isRendererStandaloneBoldHeadingTitle(title: String): Boolean {
@@ -2124,7 +2156,7 @@ private fun RendererAssistantStreamingContentImpl(
         }
         unifiedModels.forEachIndexed { index, model ->
             val blockLeadingDivider = shouldShowStreamingSectionDivider(
-                previous = unifiedModels.getOrNull(index - 1),
+                previous = previousStreamingSectionDividerCandidate(unifiedModels, index),
                 current = model
             )
             if (index > 0) {
@@ -3211,7 +3243,7 @@ private fun RendererAssistantMarkdownContentImpl(
         }
         completedModels.forEachIndexed { index, model ->
             val blockLeadingDivider = shouldShowStreamingSectionDivider(
-                previous = completedModels.getOrNull(index - 1),
+                previous = previousStreamingSectionDividerCandidate(completedModels, index),
                 current = model
             )
             key("markdown_completed_$index") {

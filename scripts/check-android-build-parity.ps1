@@ -945,6 +945,22 @@ if ($failures.Count -eq 0) {
         "Assistant renderer tests must cover a compact numbered section title followed by a nested heading without a second divider."
     Require-Match $failures $chatStreamingRendererTest 'firstCompactNumberedSectionCreatesDividerAfterIntro' `
         "Assistant renderer tests must prove the opening compact numbered section can get a divider after the intro."
+    Require-Match $failures $chatStreamingRendererTest 'compactNumberedSectionCreatesDividerAfterBlankLine' `
+        "Assistant renderer tests must prove compact numbered section dividers survive a blank line before the heading."
+    Require-Match $failures $chatStreamingRendererTest 'commonModelHeadingVariantsCreateDividersAfterBlankLine' `
+        "Assistant renderer tests must prove common future model heading variants keep section dividers after blank spacer lines."
+    Require-Match $failures $chatStreamingRendererTest 'readableParagraphSplitAndBlankHeadingDividerWorkTogether' `
+        "Assistant renderer tests must prove readable paragraph splitting and blank-line heading divider detection work together."
+    Require-Match $failures $chatStreamingRendererTest 'boldChineseSectionHeadingKeepsDividerForFutureModelVariants' `
+        "Assistant renderer tests must prove bold Chinese section headings are treated as structural headings, not plain bold subheadings."
+    Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingStaysWithoutDividerAfterBlankLine' `
+        "Assistant renderer tests must prove standalone bold subheadings still do not get a divider after a blank line."
+    Require-Match $failures $chatStreamingRenderer 'parseRendererBoldChineseSectionHeading' `
+        "Assistant renderer must recognize bold Chinese section headings as structural headings for model-variant resilience."
+    Require-Match $failures $chatStreamingRenderer 'previousStreamingSectionDividerCandidate\(unifiedModels,\s*index\)' `
+        "Streaming assistant section divider decisions must skip blank spacer blocks and use the previous non-blank content block."
+    Require-Match $failures $chatStreamingRenderer 'previousStreamingSectionDividerCandidate\(completedModels,\s*index\)' `
+        "Settled assistant section divider decisions must skip blank spacer blocks and use the previous non-blank content block."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingsInsideNumberedSectionsDoNotCreateDividers' `
         "Assistant renderer tests must prove nested bold subheadings do not create dividers inside numbered sections."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
