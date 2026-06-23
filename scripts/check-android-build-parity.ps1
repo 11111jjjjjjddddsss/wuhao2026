@@ -958,7 +958,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatStreamingRendererTest 'boldChineseSectionHeadingKeepsDividerForFutureModelVariants' `
         "Assistant renderer tests must prove bold Chinese section headings are treated as structural headings, not plain bold subheadings."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingStaysWithoutDividerAfterBlankLine' `
-        "Assistant renderer tests must prove standalone bold subheadings still do not get a divider after a blank line."
+        "Assistant renderer tests must prove a bold heading immediately under a compact numbered title does not create a duplicate divider."
     Require-Match $failures $chatStreamingRenderer 'parseRendererBoldChineseSectionHeading' `
         "Assistant renderer must recognize bold Chinese section headings as structural headings for model-variant resilience."
     Require-Match $failures $chatStreamingRenderer 'shouldShowStreamingSectionDivider\(unifiedModels,\s*index\)' `
@@ -968,7 +968,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatStreamingRenderer 'Color\(0xFFD8DEE8\)' `
         "Assistant section divider lines must remain visible enough on white mobile backgrounds."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingsInsideNumberedSectionsDoNotCreateDividers' `
-        "Assistant renderer tests must prove nested bold subheadings do not create dividers inside numbered sections."
+        "Assistant renderer tests must prove nested standalone bold subheadings do not create dividers while inline bold text stays untouched."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
         "Active streaming Chinese section heading text should render immediately when it is clearly structural."
     Require-Match $failures $chatStreamingRenderer 'fun\s+currentTextStyle\(\)(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*&&\s*emphasisEnabled\s*\)\s*FontWeight\.Medium\s+else\s+null' `
