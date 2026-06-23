@@ -537,7 +537,7 @@ class ChatStreamingRendererTest {
         assertEquals(5, stats.blockCount)
         assertEquals(2, stats.headingCount)
         assertEquals(0, stats.tableCount)
-        assertEquals(2, stats.dividerHeadingCount)
+        assertEquals(1, stats.dividerHeadingCount)
     }
 
     @Test
@@ -620,7 +620,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun standaloneBoldHeadingDividerSurvivesStreamingToSettled() {
+    fun standaloneBoldHeadingStaysGroupedWithoutDivider() {
         val streamingState = splitStreamingBlockState("先说清楚。\n\n**处理建议")
         val streamingModels = streamingState.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(streamingState.activeBlock?.let(::classifyActiveStreamingLine))
@@ -636,7 +636,7 @@ class ChatStreamingRendererTest {
         val settledModels = settledState.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(settledState.activeBlock?.let(::classifyStreamingLine))
         assertTrue(settledModels[1] is StreamingLineModel.Heading)
-        assertTrue(
+        assertFalse(
             shouldShowStreamingSectionDivider(
                 previous = settledModels[0],
                 current = settledModels[1]
@@ -645,14 +645,14 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun unclosedStandaloneBoldHeadingDividerSurvivesInSettledHistory() {
+    fun unclosedStandaloneBoldHeadingStaysGroupedWithoutDivider() {
         val state = splitStreamingBlockState("先说清楚。\n\n**处理建议\n\n继续观察。")
         val models = state.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
 
         assertTrue(models[1] is StreamingLineModel.Heading)
         assertEquals("处理建议", (models[1] as StreamingLineModel.Heading).text)
-        assertTrue(
+        assertFalse(
             shouldShowStreamingSectionDivider(
                 previous = models[0],
                 current = models[1]
@@ -661,7 +661,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun unclosedStandaloneBoldHeadingLineKeepsDividerAfterBodyArrives() {
+    fun unclosedStandaloneBoldHeadingLineKeepsBodyGroupedWithoutDivider() {
         val state = splitStreamingBlockState("先说清楚。\n\n**处理建议\n及时通风。")
         val models = state.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
@@ -671,7 +671,7 @@ class ChatStreamingRendererTest {
         assertTrue(models[1] is StreamingLineModel.Heading)
         assertEquals("处理建议", (models[1] as StreamingLineModel.Heading).text)
         assertTrue(models[2] is StreamingLineModel.Paragraph)
-        assertTrue(
+        assertFalse(
             shouldShowStreamingSectionDivider(
                 previous = models[0],
                 current = models[1]
@@ -723,6 +723,37 @@ class ChatStreamingRendererTest {
                 current = models[2]
             )
         )
+    }
+
+    @Test
+    fun firstCompactNumberedSectionDoesNotCreateIntroDivider() {
+        val previous = classifyStreamingLine("膨果期的管理核心是营养平衡、水分稳定、负载合理。")
+        val numbered = classifyStreamingLine("1. 营养需求重点")
+
+        assertTrue(numbered is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(numbered as StreamingLineModel.Numbered))
+        assertFalse(shouldShowStreamingSectionDivider(previous, numbered))
+    }
+
+    @Test
+    fun standaloneBoldSubheadingsInsideNumberedSectionsDoNotCreateDividers() {
+        val state = splitStreamingBlockState(
+            "1. 营养需求重点\n\n" +
+                "**钾元素是主力**\n\n" +
+                "钾能促进细胞膨大和光合产物向果实运输。\n\n" +
+                "**氮素要控量**\n\n" +
+                "氮是细胞分裂的基础，但过量会导致枝叶旺长。"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(5, models.size)
+        assertTrue(models[0] is StreamingLineModel.Numbered)
+        assertTrue(models[1] is StreamingLineModel.Heading)
+        assertTrue(models[2] is StreamingLineModel.Paragraph)
+        assertTrue(models[3] is StreamingLineModel.Heading)
+        assertFalse(shouldShowStreamingSectionDivider(models[0], models[1]))
+        assertFalse(shouldShowStreamingSectionDivider(models[2], models[3]))
     }
 
     @Test
@@ -901,7 +932,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun standaloneBoldLineIsHeadingBlockForLightDivider() {
+    fun standaloneBoldLineIsHeadingBlockWithoutLightDivider() {
         val blockState = splitStreamingBlockState("先观察叶片变化。\n**处理建议**\n及时通风。")
         val models = blockState.completedBlocks.map(::classifyStreamingLine) +
             listOfNotNull(blockState.activeBlock?.let(::classifyStreamingLine))
@@ -911,7 +942,7 @@ class ChatStreamingRendererTest {
         val heading = models[1]
         assertTrue(heading is StreamingLineModel.Heading)
         assertEquals("处理建议", (heading as StreamingLineModel.Heading).text)
-        assertTrue(shouldShowStreamingSectionDivider(models[0], heading))
+        assertFalse(shouldShowStreamingSectionDivider(models[0], heading))
     }
 
     @Test
@@ -941,21 +972,21 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun activeClosedStandaloneBoldHeadingShowsStableDividerWithoutCommittingHeading() {
+    fun activeClosedStandaloneBoldHeadingStaysGroupedWithoutCommittingDivider() {
         val previous = classifyStreamingLine("先说清楚。")
         val model = classifyActiveStreamingLine("**处理建议**")
 
         assertTrue(model is StreamingLineModel.Paragraph)
-        assertTrue(shouldShowStreamingSectionDivider(previous, model))
+        assertFalse(shouldShowStreamingSectionDivider(previous, model))
     }
 
     @Test
-    fun activeClosedBoldThenBodyKeepsStableDivider() {
+    fun activeClosedBoldThenBodyStaysGroupedWithoutDivider() {
         val previous = classifyStreamingLine("先说清楚。")
         val model = classifyActiveStreamingLine("**重点** 后面还有正文")
 
         assertTrue(model is StreamingLineModel.Paragraph)
-        assertTrue(shouldShowStreamingSectionDivider(previous, model))
+        assertFalse(shouldShowStreamingSectionDivider(previous, model))
     }
 
     @Test
@@ -997,7 +1028,7 @@ class ChatStreamingRendererTest {
 
         assertEquals(2, settledModels.size)
         assertTrue(settledModels[1] is StreamingLineModel.Paragraph)
-        assertTrue(
+        assertFalse(
             shouldShowStreamingSectionDivider(
                 previous = settledModels[0],
                 current = settledModels[1]

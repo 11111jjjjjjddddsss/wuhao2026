@@ -583,12 +583,22 @@ private data class RendererReadableParagraphProjection(
 
 internal sealed interface StreamingLineModel {
     data object Blank : StreamingLineModel
-    data class Heading(val level: Int, val text: String) : StreamingLineModel
+    data class Heading(
+        val level: Int,
+        val text: String,
+        val source: StreamingHeadingSource = StreamingHeadingSource.Markdown
+    ) : StreamingLineModel
     data class Bullet(val text: String, val indentLevel: Int = 0) : StreamingLineModel
     data class Numbered(val number: String, val text: String, val indentLevel: Int = 0) : StreamingLineModel
     data class Quote(val text: String) : StreamingLineModel
     data class Table(val table: RendererMarkdownTable) : StreamingLineModel
     data class Paragraph(val text: String) : StreamingLineModel
+}
+
+internal enum class StreamingHeadingSource {
+    Markdown,
+    ChineseSection,
+    StandaloneBold
 }
 
 private fun isRendererHorizontalRuleLine(line: String): Boolean =
@@ -825,13 +835,25 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
         return model
     }
     parseRendererStandaloneBoldHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(2, headingText)
+        return StreamingLineModel.Heading(
+            level = 2,
+            text = headingText,
+            source = StreamingHeadingSource.StandaloneBold
+        )
     }
     parseRendererActiveStandaloneBoldHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(2, headingText)
+        return StreamingLineModel.Heading(
+            level = 2,
+            text = headingText,
+            source = StreamingHeadingSource.StandaloneBold
+        )
     }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(3, headingText)
+        return StreamingLineModel.Heading(
+            level = 3,
+            text = headingText,
+            source = StreamingHeadingSource.ChineseSection
+        )
     }
     return when {
         trimmed.matches(rendererHeadingRegex) -> {
@@ -869,7 +891,11 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
         return model
     }
     parseRendererChineseSectionHeading(trimmed)?.let { headingText ->
-        return StreamingLineModel.Heading(3, headingText)
+        return StreamingLineModel.Heading(
+            level = 3,
+            text = headingText,
+            source = StreamingHeadingSource.ChineseSection
+        )
     }
     val headingMarker = trimmed.takeWhile { it == '#' }
     if (headingMarker.isNotEmpty() && headingMarker.length <= 6) {
@@ -928,11 +954,15 @@ internal fun shouldShowStreamingSectionDivider(
         return false
     }
     val heading = current as? StreamingLineModel.Heading
-    if (heading != null) return heading.level <= 3
+    if (heading != null) {
+        return heading.level <= 3 &&
+            heading.source != StreamingHeadingSource.StandaloneBold
+    }
     val numbered = current as? StreamingLineModel.Numbered
-    if (numbered != null) return isRendererCompactNumberedSection(numbered)
-    val paragraph = current as? StreamingLineModel.Paragraph ?: return false
-    return parseRendererLeadingBoldSectionTitle(paragraph.text) != null
+    if (numbered != null) {
+        return numbered.number != "1" && isRendererCompactNumberedSection(numbered)
+    }
+    return false
 }
 
 internal fun buildRendererPlainCopyText(content: String): String {
@@ -1042,18 +1072,6 @@ private fun parseRendererActiveStandaloneBoldHeading(line: String): String? {
     if (title.any { it in "，,；;" }) return null
     if (!isRendererLikelyCompleteActiveBoldHeadingTitle(title)) return null
     if (!isRendererStandaloneBoldHeadingTitle(title)) return null
-    return title
-}
-
-private fun parseRendererLeadingBoldSectionTitle(line: String): String? {
-    val trimmed = line.trim()
-    if (!trimmed.startsWith("**")) return null
-    val closing = trimmed.indexOf("**", startIndex = 2)
-    if (closing <= 1) return null
-    val title = trimmed.substring(2, closing).trim()
-    if (title.contains("**")) return null
-    if (!isRendererStandaloneBoldHeadingTitle(title)) return null
-    if (!isRendererLikelyCompleteActiveBoldHeadingTitle(title)) return null
     return title
 }
 
@@ -2055,14 +2073,16 @@ private fun rendererMarkdownBlockSpacingAfter(
     previousBlock: StreamingLineModel,
     currentBlock: StreamingLineModel
 ): Dp {
-    return if (
+    return when {
+        currentBlock is StreamingLineModel.Heading -> 18.dp
         previousBlock is StreamingLineModel.Numbered &&
-        isRendererCompactNumberedSection(previousBlock) &&
-        currentBlock !is StreamingLineModel.Blank
-    ) {
-        12.dp
-    } else {
-        MARKDOWN_BLOCK_SPACING
+            isRendererCompactNumberedSection(previousBlock) &&
+            currentBlock !is StreamingLineModel.Blank -> 12.dp
+        previousBlock is StreamingLineModel.Heading &&
+            currentBlock !is StreamingLineModel.Blank -> 12.dp
+        currentBlock is StreamingLineModel.Numbered &&
+            isRendererCompactNumberedSection(currentBlock) -> 18.dp
+        else -> MARKDOWN_BLOCK_SPACING
     }
 }
 
