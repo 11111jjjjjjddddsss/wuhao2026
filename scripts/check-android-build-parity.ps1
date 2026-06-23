@@ -965,6 +965,10 @@ if ($failures.Count -eq 0) {
         "Streaming assistant section divider decisions must skip blank spacer blocks and use the previous non-blank content block."
     Require-Match $failures $chatStreamingRenderer 'shouldShowStreamingSectionDivider\(completedModels,\s*index\)' `
         "Settled assistant section divider decisions must skip blank spacer blocks and use the previous non-blank content block."
+    Require-Match $failures $chatStreamingRenderer 'RendererAssistantMarkdownContentImpl(?s:.*?)RendererAssistantStreamingUnifiedBlockHost\((?s:.*?)linksEnabled\s*=\s*true(?s:.*?)showLeadingSectionDivider\s*=\s*blockLeadingDivider' `
+        "Settled assistant history must render section dividers through the same unified block host as streaming content, including compact numbered headings."
+    Require-Match $failures $chatStreamingRenderer 'RendererAssistantStreamingContentImpl(?s:.*?)RendererAssistantStreamingUnifiedBlockHost\((?s:.*?)linksEnabled\s*=\s*false(?s:.*?)showLeadingSectionDivider\s*=\s*blockLeadingDivider' `
+        "Streaming assistant content must render section dividers through the unified block host while keeping streaming links disabled."
     Require-Match $failures $chatStreamingRenderer 'Color\(0xFFE7E9ED\)' `
         "Assistant section divider lines must keep the original light visual style."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingsInsideNumberedSectionsDoNotCreateDividers' `

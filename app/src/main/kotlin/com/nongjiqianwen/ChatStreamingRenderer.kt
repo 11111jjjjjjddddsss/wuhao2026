@@ -2205,6 +2205,7 @@ private fun RendererAssistantStreamingContentImpl(
                         lastIndex = unifiedModels.lastIndex,
                         model = model
                     ),
+                    linksEnabled = false,
                     tableCopyEnabled = false,
                     showLeadingSectionDivider = blockLeadingDivider,
                     onStatusHint = onStatusHint,
@@ -2328,6 +2329,7 @@ private fun String.hasRendererUnclosedCodeDelimiter(): Boolean {
 private fun RendererAssistantStreamingUnifiedBlockHost(
     model: StreamingLineModel,
     inlineMode: RendererInlineMode,
+    linksEnabled: Boolean,
     tableCopyEnabled: Boolean,
     showLeadingSectionDivider: Boolean,
     onStatusHint: ((String) -> Unit)?,
@@ -2340,7 +2342,7 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
         RendererAssistantStreamingActiveBlockImpl(
             model = model,
             inlineMode = inlineMode,
-            linksEnabled = false,
+            linksEnabled = linksEnabled,
             tableCopyEnabled = tableCopyEnabled,
             showLeadingSectionDivider = false,
             onStatusHint = onStatusHint,
@@ -3277,7 +3279,7 @@ private fun RendererAssistantMarkdownContentImpl(
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
-                RendererAssistantStreamingActiveBlockImpl(
+                RendererAssistantStreamingUnifiedBlockHost(
                     model = model,
                     inlineMode = RendererInlineMode.Settled,
                     linksEnabled = true,
