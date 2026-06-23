@@ -959,6 +959,11 @@ internal fun shouldShowStreamingSectionDivider(
     previous: StreamingLineModel?,
     current: StreamingLineModel
 ): Boolean {
+    val numbered = current as? StreamingLineModel.Numbered
+    if (numbered != null) {
+        return previous != null && isRendererCompactNumberedSection(numbered)
+    }
+
     if (
         previous == null ||
         previous is StreamingLineModel.Heading ||
@@ -972,11 +977,16 @@ internal fun shouldShowStreamingSectionDivider(
         return heading.level <= 3 &&
             heading.source != StreamingHeadingSource.StandaloneBold
     }
-    val numbered = current as? StreamingLineModel.Numbered
-    if (numbered != null) {
-        return isRendererCompactNumberedSection(numbered)
-    }
     return false
+}
+
+internal fun shouldShowStreamingSectionDivider(
+    models: List<StreamingLineModel>,
+    index: Int
+): Boolean {
+    val current = models.getOrNull(index) ?: return false
+    val previous = previousStreamingSectionDividerCandidate(models, index)
+    return shouldShowStreamingSectionDivider(previous, current)
 }
 
 internal fun previousStreamingSectionDividerCandidate(
@@ -1063,6 +1073,13 @@ internal fun shouldUseRendererCompactNumberedSection(
     isRendererCompactNumberedSection(model)
 
 private fun isRendererCompactNumberedSectionText(text: String): Boolean {
+    val trimmed = text.trim()
+    rendererStandaloneBoldTitlePrefix(trimmed)?.let { return true }
+    val firstLine = trimmed.lineSequence().firstOrNull()?.trim().orEmpty()
+    if (firstLine.isNotEmpty() && firstLine != trimmed) {
+        return isRendererCompactNumberedSectionText(firstLine)
+    }
+
     val plain = plainRendererInlineText(text)
         .replace(Regex("\\s+"), "")
     if (plain.length !in 2..28) return false
@@ -1072,6 +1089,15 @@ private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     val commaLikeCount = plain.count { it in "，,、" }
     if (commaLikeCount == 0) return true
     return commaLikeCount == 1 && plain.length <= 12
+}
+
+private fun rendererStandaloneBoldTitlePrefix(text: String): String? {
+    if (!text.startsWith("**")) return null
+    val closing = text.indexOf("**", startIndex = 2)
+    if (closing <= 2) return null
+    val title = text.substring(2, closing).trim()
+    if (!isRendererStandaloneBoldHeadingTitle(title)) return null
+    return title
 }
 
 private fun parseRendererStandaloneBoldHeading(line: String): String? {
@@ -2155,10 +2181,7 @@ private fun RendererAssistantStreamingContentImpl(
             )
         }
         unifiedModels.forEachIndexed { index, model ->
-            val blockLeadingDivider = shouldShowStreamingSectionDivider(
-                previous = previousStreamingSectionDividerCandidate(unifiedModels, index),
-                current = model
-            )
+            val blockLeadingDivider = shouldShowStreamingSectionDivider(unifiedModels, index)
             if (index > 0) {
                 if (!blockLeadingDivider) {
                     Spacer(
@@ -2844,7 +2867,7 @@ private fun RendererMarkdownSectionDividerImpl() {
     HorizontalDivider(
         modifier = Modifier.fillMaxWidth(),
         thickness = 1.dp,
-        color = Color(0xFFE7E9ED)
+        color = Color(0xFFD8DEE8)
     )
     Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
 }
@@ -3242,10 +3265,7 @@ private fun RendererAssistantMarkdownContentImpl(
             RendererMarkdownSectionDividerImpl()
         }
         completedModels.forEachIndexed { index, model ->
-            val blockLeadingDivider = shouldShowStreamingSectionDivider(
-                previous = previousStreamingSectionDividerCandidate(completedModels, index),
-                current = model
-            )
+            val blockLeadingDivider = shouldShowStreamingSectionDivider(completedModels, index)
             key("markdown_completed_$index") {
                 val blockModifier =
                     if (blockLeadingDivider) {

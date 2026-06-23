@@ -870,6 +870,54 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun numberedSectionsAfterStandaloneBoldHeadingCreateVisibleDividers() {
+        val state = splitStreamingBlockState(
+            "**使用建议与注意事项**\n\n" +
+                "1. 时机很重要\n\n" +
+                "幼果膨大期和转色成熟期是糖分积累关键窗口。\n\n" +
+                "2. 浓度与配伍\n\n" +
+                "叶面喷施氨基酸浓度建议 0.2% 至 0.5%。\n\n" +
+                "3. 不能替代基础施肥\n\n" +
+                "氨基酸是增效剂，不是主力肥。\n\n" +
+                "4. 产品选择\n\n" +
+                "建议关注产品标签。"
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertTrue(models[0] is StreamingLineModel.Heading)
+        assertTrue(models[1] is StreamingLineModel.Numbered)
+        assertTrue(models[3] is StreamingLineModel.Numbered)
+        assertTrue(models[5] is StreamingLineModel.Numbered)
+        assertTrue(models[7] is StreamingLineModel.Numbered)
+        assertFalse(shouldShowStreamingSectionDivider(models, 0))
+        assertTrue(shouldShowStreamingSectionDivider(models, 1))
+        assertTrue(shouldShowStreamingSectionDivider(models, 3))
+        assertTrue(shouldShowStreamingSectionDivider(models, 5))
+        assertTrue(shouldShowStreamingSectionDivider(models, 7))
+    }
+
+    @Test
+    fun boldNumberedSectionsWithInlineBodyStillCreateDividers() {
+        val state = splitStreamingBlockState(
+            "**影响价格的关键因素**\n" +
+                "**1. 含量与形态**：七水硫酸镁含镁约 9.8%，无水硫酸镁含镁约 20%。\n" +
+                "**2. 区域与运费**：硫酸镁属于低值重货，运费占比高。\n" +
+                "**3. 纯度等级**：农业上用普通农业级即可。",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertTrue(models[1] is StreamingLineModel.Numbered)
+        assertTrue(models[2] is StreamingLineModel.Numbered)
+        assertTrue(models[3] is StreamingLineModel.Numbered)
+        assertTrue(shouldShowStreamingSectionDivider(models, 1))
+        assertTrue(shouldShowStreamingSectionDivider(models, 2))
+        assertTrue(shouldShowStreamingSectionDivider(models, 3))
+    }
+
+    @Test
     fun activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural() {
         val previous = classifyStreamingLine("先说清楚。")
         val active = classifyActiveStreamingLine("一、成品含腐植酸尿素 vs. 自配方案")
