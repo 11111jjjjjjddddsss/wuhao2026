@@ -706,10 +706,13 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 		!strings.Contains(userContent, "这是今日农情唯一硬数量要求") ||
 		!strings.Contains(userContent, "items 必须正好 3 个对象") ||
 		!strings.Contains(userContent, "优先近 7 天公开来源") ||
+		!strings.Contains(userContent, "三条尽量分散地区、作物和主题") ||
+		!strings.Contains(userContent, "同地区、同作物、同一事件尽量避开") ||
 		!strings.Contains(userContent, "选题以种植方面的新闻为主") ||
 		!strings.Contains(userContent, "不限制具体作物") ||
-		!strings.Contains(userContent, "更优先选择对生产有实际参考价值的内容") ||
-		!strings.Contains(userContent, "栽培管理、植保病虫、种子种苗、农资农机、技术推广、苗情墒情、产地流通 / 价格、政策补贴等真实进展") ||
+		!strings.Contains(userContent, "不要总集中在水稻、蔬菜、夏收夏种和天气提醒") ||
+		!strings.Contains(userContent, "更优先选择对生产或经营有实际参考价值的内容") ||
+		!strings.Contains(userContent, "栽培管理、植保病虫、种子种苗、农资农机、技术推广、土壤墒情、节水灌溉、产地流通 / 价格、仓储保鲜、政策补贴、地方农技推广等真实进展") ||
 		!strings.Contains(userContent, "天气、气象、防灾或抢收可以作为其中一个角度") ||
 		!strings.Contains(userContent, "对农事安排、防灾减损或田间管理有什么影响") ||
 		!strings.Contains(userContent, "只取种植侧") ||
@@ -719,6 +722,7 @@ func TestGenerateDailyAgriCardQwen35PlusUsesCompatibleChatTurbo(t *testing.T) {
 		!strings.Contains(userContent, "一般别低于 80 个中文字符") ||
 		!strings.Contains(userContent, "写 2-3 句完整短讯") ||
 		!strings.Contains(userContent, "信息量要够") ||
+		!strings.Contains(userContent, "摘要要像正常新闻短讯") ||
 		!strings.Contains(userContent, "source_name 写机构、媒体或站点短名") ||
 		!strings.Contains(userContent, "是否避开养殖水产、广告软文、传言、旧闻和编造数字") {
 		t.Fatalf("daily agri prompt should carry freshness/diversity guidance without prompt_intervene: %q", userContent)
