@@ -1,18 +1,18 @@
 # 官方网站 Runbook
 
-最后更新：2026-06-23
+最后更新：2026-06-24
 
 ## 当前状态
 
 官网首版在 `site` 目录，使用 Vite 静态站实现。当前只做克制暗色一页展示：左侧品牌与产品主张“看清作物问题”、右侧三项能力“原生视觉感知 / 多模态线索融合 / 稳健农技推理”、安卓版下载按钮、服务边界和 footer 公司主体 / ICP / 公安备案；不做顶部导航、对话演示、管理后台，不保存后台 secret，不承载用户数据，不公开点名 `Qwen3.5-Plus`，也不把“联网校准”单独包装成公开核心卖点。
 
-2026-06-06 已部署到 ECS Nginx 静态站；2026-06-10 已重新部署并验证公安备案 footer、警徽图标和独立协议页面；2026-06-20 已补应用市场常用清单页并部署到生产静态站；2026-06-23 已将官网下载按钮切到当前正式 Android 包 `1.0.9(10)`，站点包 SHA-256 为 `f300bf88def1c166aa2f198114dca60106333acd11f6cf6fe03d02bbed818950`：
+2026-06-06 已部署到 ECS Nginx 静态站；2026-06-10 已重新部署并验证公安备案 footer、警徽图标和独立协议页面；2026-06-20 已补应用市场常用清单页并部署到生产静态站；2026-06-24 已将官网下载按钮切到当前正式 Android 包 `1.0.10(11)`，站点包 SHA-256 为 `d958af6dfa3256f2d5224a8e11b4067826be924f0bc9b72ca0b7d35fb04ff6ed`：
 
 - 入口：`https://nongjiqiancha.cn/`、`https://www.nongjiqiancha.cn/`
 - DNS：`@` 和 `www` A 记录均指向 ECS 公网 IP `39.106.1.151`
 - Nginx 配置：`/etc/nginx/sites-available/nongjiqiancha-site`
 - 站点目录：`/var/www/nongjiqiancha-site/current`
-- 当前官网下载 APK：`https://download.nongjiqiancha.cn/android/releases/10/nongjiqiancha-1.0.9-v10-1e3fbe92.apk`，SHA-256 `33d99bdc77425b0b01662f7575a3bcbc1342a1cf8d8dbc21a6c9c73eecb134ef`，文件大小 `14,209,664` 字节；根域名和 `www` 域名加载的前端脚本均已确认包含该下载地址
+- 当前官网下载 APK：`https://download.nongjiqiancha.cn/android/releases/11/nongjiqiancha-1.0.10-v11-04eb7e35.apk`，SHA-256 `931e4ab5f53383f15b8c19a3302af309e06b2a889c152debd940dd000b6f8f1d`，文件大小 `14,393,288` 字节；根域名和 `www` 域名加载的前端脚本均已确认包含该下载地址
 - 内部测试包下载主链：`download.nongjiqiancha.cn + OSS private object + signed URL`；debug/internal APK 只走 OSS `test-apks/debug/...` 短签名链接，发布脚本会在新包探针通过后清理旧内部 APK，只保留最新 1 个，OSS 3 天生命周期作为兜底。ECS `/test-apks/` 已停用，`-UseEcsDownloadFallback` 已退役并会被脚本拒绝，不挂官网正式下载按钮，不进入检查更新
 - 证书：Let's Encrypt / certbot，路径 `/etc/letsencrypt/live/nongjiqiancha.cn/`，有效期到 2026-09-04，自动续期 timer 已启用；只记录证书路径，不记录私钥内容
 - 公网验证：根域名 HTTP 会 301 到 HTTPS，根域名 / www HTTPS 返回官网首页 200，`/gongan.png` 返回图片；`/legal/user-agreement/`、`/legal/privacy-policy/`、`/legal/third-party-sharing/`、`/legal/personal-info-list/`、`/legal/app-permissions/` 和 `/legal/risk-notice/` 在根域名与 www 域名下均返回 200；`api.nongjiqiancha.cn` healthz 仍独立走 API Nginx 配置

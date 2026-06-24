@@ -98,14 +98,14 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 
 当前正在下发的正式包记录：
 
-- `versionName=1.0.9`
-- `versionCode=10`
-- APK URL：`https://download.nongjiqiancha.cn/android/releases/10/nongjiqiancha-1.0.9-v10-1e3fbe92.apk`
-- SHA-256：`33d99bdc77425b0b01662f7575a3bcbc1342a1cf8d8dbc21a6c9c73eecb134ef`
-- 文件大小：`14,209,664` 字节
-- 发布提交：`1e3fbe92`
+- `versionName=1.0.10`
+- `versionCode=11`
+- APK URL：`https://download.nongjiqiancha.cn/android/releases/11/nongjiqiancha-1.0.10-v11-04eb7e35.apk`
+- SHA-256：`931e4ab5f53383f15b8c19a3302af309e06b2a889c152debd940dd000b6f8f1d`
+- 文件大小：`14,393,288` 字节
+- 发布提交：`04eb7e35`
 
-上一版 `1.0.8(9)`、`1.0.7(8)`、`1.0.6(7)`、`1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/9/`、`android/releases/8/`、`android/releases/7/`、`android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=10` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
+上一版 `1.0.9(10)`、`1.0.8(9)`、`1.0.7(8)`、`1.0.6(7)`、`1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/10/`、`android/releases/9/`、`android/releases/8/`、`android/releases/7/`、`android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=11` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
 
 注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
