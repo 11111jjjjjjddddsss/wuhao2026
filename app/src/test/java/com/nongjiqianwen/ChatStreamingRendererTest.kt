@@ -1471,44 +1471,62 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun streamingReadableLongParagraphSplitsStablePrefixWhileTailStreams() {
-        val state = splitStreamingBlockState(
+    fun streamingReadableLongParagraphKeepsModelParagraphWhileTailStreams() {
+        val content =
             "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
                 "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。" +
                 "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化"
+        val state = splitStreamingBlockState(
+            content
         )
 
-        assertEquals(
-            listOf(
-                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。",
-                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。"
-            ),
-            state.completedBlocks
-        )
-        assertEquals(
-            "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化",
-            state.activeBlock
-        )
+        assertEquals(emptyList<String>(), state.completedBlocks)
+        assertEquals(content, state.activeBlock)
     }
 
     @Test
-    fun settledReadableLongParagraphSplitsHistoricalContentImmediately() {
-        val state = splitStreamingBlockState(
+    fun settledReadableLongParagraphKeepsHistoricalModelParagraph() {
+        val content =
             "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +
                 "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。" +
-                "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化。",
+                "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化。"
+        val state = splitStreamingBlockState(
+            content,
             treatTrailingLineAsComplete = true
         )
         val blocks = state.completedBlocks + listOfNotNull(state.activeBlock)
 
         assertEquals(
-            listOf(
-                "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。",
-                "建议先看老叶和新叶差异，同时观察根系是否发白、有无烂根，再结合近期施肥和浇水情况判断。",
-                "如果近期施肥偏少，可以先小范围补充中微量元素，观察三到五天变化。"
-            ),
+            listOf(content),
             blocks
         )
+    }
+
+    @Test
+    fun streamingReadableParagraphKeepsModelSingleLineBreaks() {
+        val content =
+            "**印尼货**：价格在 1.95 至 2.00 元/斤左右，出口需求一般。\n" +
+                "**级蒜**：大规格价格较高，6.5 厘米以上约 4.70 至 5.00 元/斤。"
+        val state = splitStreamingBlockState(content)
+
+        assertEquals(emptyList<String>(), state.completedBlocks)
+        assertEquals(content, state.activeBlock)
+    }
+
+    @Test
+    fun settledReadableParagraphKeepsHistoricalModelSingleLineBreaks() {
+        val content =
+            "**印尼货**：价格在 1.95 至 2.00 元/斤左右，出口需求一般。\n" +
+                "**级蒜**：大规格价格较高，6.5 厘米以上约 4.70 至 5.00 元/斤。\n" +
+                "小规格 5.0 厘米约 2.50 至 2.60 元/斤。\n" +
+                "**河南本地**：周口淮阳、郑州中牟等地紫皮蒜价格略低。"
+        val state = splitStreamingBlockState(
+            content,
+            treatTrailingLineAsComplete = true
+        )
+        val blocks = state.completedBlocks + listOfNotNull(state.activeBlock)
+
+        assertEquals(listOf(content), blocks)
     }
 
     @Test

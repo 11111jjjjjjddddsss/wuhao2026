@@ -8955,7 +8955,7 @@ private fun UiCopyPreviewOverlay(
                 title = "文本渲染",
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
-                    UiCopyPreviewItem("AI 长正文分段", "长段和行内编号自动放松", UiCopyPreviewKind.AssistantReadableParagraphSample),
+                    UiCopyPreviewItem("AI 长正文", "尊重模型原文换行，保留标题分割和编号整理", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
                     UiCopyPreviewItem("AI 表格", "无摘要表头、正文不加粗、单表复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
@@ -9162,7 +9162,8 @@ private data class UiCopyPreviewItem(
 private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_SAMPLE =
     "# 叶片发黄排查\n" +
         "建议先看 **叶背虫体**、`pH` 和近期浇水。\n" +
-        "这是一段较长的普通正文，用来检查 AI 回答一边生成一边分段的显示效果。前面已经说完整的内容应该先排得松一点，后面仍在生成的尾巴继续正常显示。这样切回页面时已有正文也会马上按当前规则排好，不需要用户额外等待。\n" +
+        "这是一段较长的普通正文，用来检查 AI 回答是否尊重模型原文换行。普通句号、问号和感叹号不再自动插入空行；标题、列表和链接仍按 Markdown 结构渲染。\n" +
+        "**级蒜**：模型自己换到这一行时，App 也保留这一行，不再拼回上一句。\n" +
         "**处理建议**\n" +
         "先停用高浓度叶面肥，补拍根系和土壤湿度。\n" +
         "**注意事项：**\n" +

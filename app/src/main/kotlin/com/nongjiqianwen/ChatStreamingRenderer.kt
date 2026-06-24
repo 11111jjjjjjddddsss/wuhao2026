@@ -1703,13 +1703,6 @@ private fun isStructuralRendererActiveStreamingLine(line: String): Boolean {
     }
 }
 
-private fun needsRendererParagraphJoinSpace(previous: Char, next: Char): Boolean {
-    if (previous.isWhitespace() || next.isWhitespace()) return false
-    if (previous.isRendererCjkUnifiedIdeograph() || next.isRendererCjkUnifiedIdeograph()) return false
-    if (previous.isRendererWeakPausePunctuation() || previous.isRendererStrongPausePunctuation()) return true
-    return previous.isLetterOrDigit() && next.isLetterOrDigit()
-}
-
 private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
     if (buffer.isEmpty()) return StreamingRevealBatch("", STREAM_TYPEWRITER_IDLE_POLL_MS)
     val text = StringBuilder()
@@ -1752,11 +1745,7 @@ private fun buildStreamingRevealBatch(buffer: String): StreamingRevealBatch {
 private fun StringBuilder.appendRendererParagraphLine(line: String) {
     if (line.isBlank()) return
     if (isNotEmpty()) {
-        val previous = this[lastIndex]
-        val next = line.first()
-        if (needsRendererParagraphJoinSpace(previous, next)) {
-            append(' ')
-        }
+        append('\n')
     }
     append(line)
 }
@@ -1798,61 +1787,20 @@ private fun projectRendererReadableParagraph(
     treatTailAsComplete: Boolean
 ): RendererReadableParagraphProjection {
     val normalized = text.trim()
-    if (!shouldProjectRendererReadableParagraph(normalized)) {
-        return RendererReadableParagraphProjection(emptyList(), normalized.ifEmpty { null })
+    if (normalized.isEmpty()) {
+        return RendererReadableParagraphProjection(emptyList(), null)
     }
-
-    val stableBlocks = mutableListOf<String>()
-    var blockStart = 0
-    var index = 0
-    while (index < normalized.length) {
-        val current = normalized[index]
-        if (current.isRendererReadableSentenceEnd()) {
-            val blockEnd = index + 1
-            val candidate = normalized.substring(blockStart, blockEnd).trim()
-            val hasFollowingText = normalized
-                .substring(blockEnd)
-                .any { !it.isWhitespace() }
-            if (
-                hasFollowingText &&
-                candidate.rendererReadableTextLength() >= RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS
-            ) {
-                stableBlocks += candidate
-                blockStart = blockEnd
-            }
-        }
-        index++
-    }
-
-    val tail = normalized.substring(blockStart).trim()
-    if (treatTailAsComplete && tail.isNotEmpty()) {
-        stableBlocks += tail
+    if (treatTailAsComplete) {
         return RendererReadableParagraphProjection(
-            stableBlocks = stableBlocks,
+            stableBlocks = listOf(normalized),
             tailBlock = null
         )
     }
     return RendererReadableParagraphProjection(
-        stableBlocks = stableBlocks,
-        tailBlock = tail.ifEmpty { null }
+        stableBlocks = emptyList(),
+        tailBlock = normalized
     )
 }
-
-private const val RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS = 34
-
-private fun shouldProjectRendererReadableParagraph(text: String): Boolean {
-    if (text.length < RENDERER_READABLE_PARAGRAPH_SPLIT_CHARS) return false
-    if (!text.any { it.isRendererReadableSentenceEnd() }) return false
-    if (text.contains("```") || text.contains("~~~")) return false
-    if (text.lineSequence().any { line -> isRendererIndentedCodeLine(line) }) return false
-    return true
-}
-
-private fun Char.isRendererReadableSentenceEnd(): Boolean =
-    this == '。' || this == '！' || this == '？'
-
-private fun String.rendererReadableTextLength(): Int =
-    count { !it.isWhitespace() }
 
 @Composable
 internal fun ChatStreamingRenderer(
