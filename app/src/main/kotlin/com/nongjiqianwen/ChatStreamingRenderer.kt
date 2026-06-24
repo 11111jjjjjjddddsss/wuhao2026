@@ -1544,137 +1544,25 @@ private fun isRendererInvisibleStreamingMarkerToken(token: String): Boolean {
 private fun splitRendererStreamingLogicalLines(content: String): StreamingLogicalLines {
     val normalized = content.replace("\r\n", "\n")
     if (normalized.isEmpty()) return StreamingLogicalLines(emptyList(), null)
-    val normalizedLists = normalizeRendererInlineListBreaks(normalized)
 
     val lines = mutableListOf<String>()
     var start = 0
-    normalizedLists.forEachIndexed { index, ch ->
+    normalized.forEachIndexed { index, ch ->
         if (ch == '\n') {
-            lines += normalizedLists.substring(start, index)
+            lines += normalized.substring(start, index)
             start = index + 1
         }
     }
 
-    return if (normalizedLists.last() == '\n') {
+    return if (normalized.last() == '\n') {
         lines += ""
         StreamingLogicalLines(completedLines = lines, activeLine = null)
     } else {
         StreamingLogicalLines(
             completedLines = lines,
-            activeLine = normalizedLists.substring(start)
+            activeLine = normalized.substring(start)
         )
     }
-}
-
-private fun normalizeRendererInlineListBreaks(text: String): String {
-    if (text.isEmpty()) return text
-    val out = StringBuilder(text.length + 8)
-    var i = 0
-    while (i < text.length) {
-        if (i > 0 && shouldBreakBeforeRendererInlineListMarker(text, i)) {
-            out.append("\n\n")
-        }
-        out.append(text[i])
-        i++
-    }
-    return out.toString()
-}
-
-private fun shouldBreakBeforeRendererInlineListMarker(text: String, index: Int): Boolean {
-    if (index <= 0 || text[index - 1] == '\n') return false
-    if (!hasRendererInlineListBoundaryBefore(text, index)) return false
-    val markerIndex = rendererInlineListMarkerStartIndex(text, index) ?: return false
-    val digitMarkerLength = rendererInlineDigitListMarkerLength(text, markerIndex)
-    if (digitMarkerLength > 0) return true
-    return rendererInlineChineseListMarkerLength(text, markerIndex) > 0
-}
-
-private fun rendererInlineListMarkerStartIndex(text: String, index: Int): Int? {
-    if (rendererInlineDigitListMarkerLength(text, index) > 0 ||
-        rendererInlineChineseListMarkerLength(text, index) > 0
-    ) {
-        return index
-    }
-    if (text.startsWith("**", index)) {
-        val markerIndex = index + 2
-        if (markerIndex < text.length &&
-            (
-                rendererInlineDigitListMarkerLength(text, markerIndex) > 0 ||
-                    rendererInlineChineseListMarkerLength(text, markerIndex) > 0
-            )
-        ) {
-            return markerIndex
-        }
-    }
-    return null
-}
-
-private fun rendererInlineDigitListMarkerLength(text: String, index: Int): Int {
-    var cursor = index
-    var digits = 0
-    while (cursor < text.length && text[cursor].isDigit() && digits < 2) {
-        cursor++
-        digits++
-    }
-    if (digits == 0) return 0
-    if (cursor < text.length && text[cursor].isDigit()) return 0
-    val marker = text.getOrNull(cursor) ?: return 0
-    if (marker != '.' && marker != ')' && marker != '．') return 0
-    val firstAfterMarker = text.getOrNull(cursor + 1) ?: return 0
-    if (firstAfterMarker.isDigit() || firstAfterMarker in "%.)）]】") return 0
-    val nextNonSpace = text.nextRendererNonWhitespaceIndex(cursor + 1)
-        ?.let { text[it] }
-        ?: return 0
-    if (nextNonSpace.isDigit() || nextNonSpace in "%.)）]】") return 0
-    return cursor - index + 1
-}
-
-private fun rendererInlineChineseListMarkerLength(text: String, index: Int): Int {
-    var cursor = index
-    var count = 0
-    while (cursor < text.length && text[cursor] in "一二三四五六七八九十" && count < 3) {
-        cursor++
-        count++
-    }
-    if (count == 0) return 0
-    val marker = text.getOrNull(cursor) ?: return 0
-    if (marker != '、' && marker != '.' && marker != '．') return 0
-    return count + 2
-}
-
-private fun hasRendererInlineListBoundaryBefore(text: String, index: Int): Boolean {
-    val previous = text.getOrNull(index - 1) ?: return false
-    if (previous == '\n') return false
-    if (!previous.isWhitespace()) return isRendererInlineListBoundaryPunctuation(previous)
-    var cursor = index - 1
-    while (cursor >= 0) {
-        val current = text[cursor]
-        if (current == '\n') return false
-        if (!current.isWhitespace()) return isRendererInlineListBoundaryPunctuation(current)
-        cursor--
-    }
-    return false
-}
-
-private fun isRendererInlineListBoundaryPunctuation(ch: Char): Boolean =
-    ch in "。！？；;：:，,）)]】》」』”\"'"
-
-private fun String.previousRendererNonWhitespaceIndex(before: Int): Int? {
-    var cursor = before - 1
-    while (cursor >= 0) {
-        if (!this[cursor].isWhitespace()) return cursor
-        cursor--
-    }
-    return null
-}
-
-private fun String.nextRendererNonWhitespaceIndex(from: Int): Int? {
-    var cursor = from
-    while (cursor < length) {
-        if (!this[cursor].isWhitespace()) return cursor
-        cursor++
-    }
-    return null
 }
 
 private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
@@ -1773,7 +1661,7 @@ internal fun projectRendererReadableParagraphBlocks(
     text: String,
     treatTailAsComplete: Boolean = true
 ): List<String> =
-    normalizeRendererInlineListBreaks(text)
+    text
         .split(Regex("\n{2,}"))
         .flatMap { block ->
             projectRendererReadableParagraph(

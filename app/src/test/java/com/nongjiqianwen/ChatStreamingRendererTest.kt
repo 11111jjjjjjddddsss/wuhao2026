@@ -1584,50 +1584,38 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun inlineArabicNumberedItemsSplitWithoutTouchingPercentages() {
+    fun inlineArabicNumberedItemsKeepModelOriginalText() {
         val input =
             "您是做肥料销售的，如果考虑搭配销售或自用：1.核实证件：采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料，防止烧根。 2.计算成本：按有效镁含量算账。无水硫酸镁含镁约 20%。 3. 纯度等级：农业上用普通农业级即可。"
 
-        assertEquals(
-            "您是做肥料销售的，如果考虑搭配销售或自用：\n\n" +
-                "1. 核实证件：采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料，防止烧根。\n\n" +
-                "2. 计算成本：按有效镁含量算账。无水硫酸镁含镁约 20%。\n\n" +
-                "3. 纯度等级：农业上用普通农业级即可。",
-            buildRendererPlainCopyText(input)
-        )
+        assertEquals(input, buildRendererPlainCopyText(input))
     }
 
     @Test
-    fun inlineChineseNumberedItemsSplitWithoutCreatingSectionDividers() {
+    fun inlineChineseNumberedItemsKeepModelOriginalText() {
         val input =
             "可以按三个方向看：一、含量与形态：七水硫酸镁含镁约9.8%。二、区域与运费：低值重货要看物流。三、纯度等级：农业级即可。"
 
-        assertEquals(
-            "可以按三个方向看：\n\n" +
-                "一、含量与形态：七水硫酸镁含镁约9.8%。\n\n" +
-                "二、区域与运费：低值重货要看物流。\n\n" +
-                "三、纯度等级：农业级即可。",
-            buildRendererPlainCopyText(input)
-        )
+        assertEquals(input, buildRendererPlainCopyText(input))
         assertEquals(0, buildRendererStructureStats(input).dividerHeadingCount)
     }
 
     @Test
-    fun inlineListSplitDoesNotBreakDecimalsVersionsOrLooseNumbers() {
+    fun inlineNumbersKeepModelOriginalText() {
         val input = "价格参考 9.8 元到 20.5 元，版本 1.0.6 不应拆开，数字 1左右也不拆，1、2、3 这种串也不拆。"
 
         assertEquals(input, buildRendererPlainCopyText(input))
     }
 
     @Test
-    fun inlineBoldArabicNumberedItemsSplitAfterSentenceBoundary() {
+    fun inlineBoldArabicNumberedItemsKeepModelOriginalText() {
         val input =
             "1. 含量与形态：七水硫酸镁含镁约 9.8%，无水硫酸镁含镁约 20%。" +
                 "无水产品价格通常更高，但用量省。 **2. 区域与运费：** 硫酸镁属于低值重货，运费占比高。"
         val rendered = buildRendererPlainCopyText(input)
 
-        assertFalse(rendered.contains("省。 2."))
-        assertTrue(rendered.contains("省。\n\n2. 区域与运费："))
+        assertTrue(rendered.contains("省。 2. 区域与运费："))
+        assertFalse(rendered.contains("省。\n\n2. 区域与运费："))
     }
 
     @Test
@@ -1645,24 +1633,38 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun inlineBoldFirstArabicNumberedItemSplitsAfterColonBoundary() {
+    fun inlineBoldFirstArabicNumberedItemKeepsModelOriginalText() {
         val input =
             "您是做肥料销售的，如果考虑搭配销售或自用： **1.核实证件：** 采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料。"
         val rendered = buildRendererPlainCopyText(input)
 
-        assertFalse(rendered.contains("自用： 1."))
-        assertTrue(rendered.contains("自用：\n\n1. 核实证件："))
+        assertTrue(rendered.contains("自用： 1.核实证件："))
+        assertFalse(rendered.contains("自用：\n\n1."))
     }
 
     @Test
-    fun inlineBoldChineseNumberedItemsSplitAfterSentenceBoundary() {
+    fun inlineBoldChineseNumberedItemsKeepModelOriginalText() {
         val input =
             "可以按三个方向看：**一、含量与形态：** 七水硫酸镁含镁约9.8%。" +
                 "无水产品价格通常更高。 **二、区域与运费：** 低值重货要看物流。"
         val rendered = buildRendererPlainCopyText(input)
 
-        assertFalse(rendered.contains("高。 二、"))
-        assertTrue(rendered.contains("高。\n\n二、区域与运费："))
+        assertTrue(rendered.contains("二、区域与运费："))
+        assertFalse(rendered.contains("高。\n\n二、区域与运费："))
+    }
+
+    @Test
+    fun settledHistoryTextPreservesModelSingleLineBreaksWithoutInlineNumberingSplit() {
+        val input =
+            "蒜米料：价格在 1.60 至 1.65 元/斤左右，需求相对稳定。\n" +
+                "印尼货：价格在 1.95 至 2.00 元/斤左右，出口需求一般。级蒜：大规格价格较高，小规格价格偏低。"
+        val state = splitStreamingBlockState(input, treatTrailingLineAsComplete = true)
+        val rendered = buildRendererPlainCopyText(input)
+
+        assertEquals(listOf(input), state.completedBlocks + listOfNotNull(state.activeBlock))
+        assertTrue(rendered.contains("稳定。\n印尼货："))
+        assertTrue(rendered.contains("需求一般。级蒜："))
+        assertFalse(rendered.contains("需求一般。\n\n级蒜："))
     }
 
     @Test
