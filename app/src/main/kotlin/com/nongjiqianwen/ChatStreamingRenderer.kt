@@ -1657,14 +1657,6 @@ private fun RendererReadableParagraphProjection.allBlocks(): List<String> =
         tailBlock?.let { add(it) }
     }
 
-internal fun splitRendererParagraphDisplayLines(text: String): List<String> {
-    if (!text.contains('\n') && !text.contains('\r')) return listOf(text)
-    return text
-        .replace("\r\n", "\n")
-        .replace('\r', '\n')
-        .split('\n')
-}
-
 internal fun projectRendererReadableParagraphBlocks(
     text: String,
     treatTailAsComplete: Boolean = true
@@ -2230,51 +2222,6 @@ private fun RendererStreamingActiveTextImpl(
 }
 
 @Composable
-private fun RendererParagraphTextImpl(
-    text: String,
-    style: TextStyle,
-    minLineHeight: Dp,
-    inlineMode: RendererInlineMode,
-    linksEnabled: Boolean,
-    emphasisEnabled: Boolean = true,
-    onStatusHint: ((String) -> Unit)? = null,
-    modifier: Modifier = Modifier
-) {
-    val displayLines = remember(text) { splitRendererParagraphDisplayLines(text) }
-    if (displayLines.size <= 1) {
-        RendererStreamingActiveTextImpl(
-            text = text,
-            style = style,
-            minLineHeight = minLineHeight,
-            inlineMode = inlineMode,
-            linksEnabled = linksEnabled,
-            emphasisEnabled = emphasisEnabled,
-            onStatusHint = onStatusHint,
-            modifier = modifier
-        )
-        return
-    }
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        displayLines.forEach { line ->
-            if (line.isBlank()) {
-                Spacer(modifier = Modifier.height(MARKDOWN_BLOCK_SPACING))
-            } else {
-                RendererStreamingActiveTextImpl(
-                    text = line,
-                    style = style,
-                    minLineHeight = minLineHeight,
-                    inlineMode = inlineMode,
-                    linksEnabled = linksEnabled,
-                    emphasisEnabled = emphasisEnabled,
-                    onStatusHint = onStatusHint,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-@Composable
 private fun rememberRendererLinkInteractionListener(onStatusHint: ((String) -> Unit)?): LinkInteractionListener {
     val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
@@ -2369,6 +2316,11 @@ internal fun buildRendererInlineAnnotatedString(
         }
 
         while (index < displayText.length) {
+            if (displayText[index] == '\n') {
+                append('\n')
+                index += 1
+                continue
+            }
             if (!code) {
                 val markdownLink = rendererMarkdownLinkRegex.find(displayText, index)
                     ?.takeIf { it.range.first == index }
@@ -2439,8 +2391,19 @@ internal fun buildRendererInlineAnnotatedString(
     }
 }
 
-private fun normalizeRendererLooseBoldDelimiterSpacing(text: String): String {
+internal fun normalizeRendererLooseBoldDelimiterSpacing(text: String): String {
     if (!text.contains("**")) return text
+    if (text.contains('\n') || text.contains('\r')) {
+        return text
+            .replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .split('\n')
+            .joinToString("\n", transform = ::normalizeRendererLooseBoldDelimiterSpacingLine)
+    }
+    return normalizeRendererLooseBoldDelimiterSpacingLine(text)
+}
+
+private fun normalizeRendererLooseBoldDelimiterSpacingLine(text: String): String {
     val result = StringBuilder(text.length)
     var index = 0
     var code = false
@@ -2691,6 +2654,8 @@ private fun findNextStreamingInlineDelimiterIndex(
     mode: RendererInlineMode
 ): Int {
     var next = text.length
+    val lineBreakIndex = text.indexOf('\n', startIndex)
+    if (lineBreakIndex >= 0) next = minOf(next, lineBreakIndex)
     if (!code) {
         val markdownImageIndex = rendererMarkdownImageRegex.find(text, startIndex)
             ?.range
@@ -2884,7 +2849,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 )
             }
             is StreamingLineModel.Paragraph -> {
-                RendererParagraphTextImpl(
+                RendererStreamingActiveTextImpl(
                     text = model.text,
                     modifier = Modifier.fillMaxWidth(),
                     style = paragraphStyle,

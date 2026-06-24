@@ -1530,22 +1530,49 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun paragraphDisplayLinesPreserveHistoricalModelSingleLineBreaks() {
+    fun inlineRendererPreservesSingleLineBreaks() {
+        assertEquals(
+            "甲\n乙",
+            buildRendererInlineAnnotatedString("甲\n乙", RendererInlineMode.Settled).text
+        )
+        assertEquals(
+            "甲\n乙",
+            buildRendererInlineAnnotatedString("**甲**\n**乙**", RendererInlineMode.Settled).text
+        )
+        assertEquals(
+            "**甲**：第一行。\n**乙**：第二行。",
+            stripRendererStandaloneHorizontalRules(
+                stripRendererDecorativeEmoji("**甲**：第一行。\n**乙**：第二行。")
+            )
+        )
+        assertEquals(
+            "**甲**：第一行。\n**乙**：第二行。",
+            normalizeRendererLooseBoldDelimiterSpacing("**甲**：第一行。\n**乙**：第二行。")
+        )
+        assertEquals(
+            "甲：第一行。\n乙：第二行。",
+            buildRendererInlineAnnotatedString("**甲**：第一行。\n**乙**：第二行。", RendererInlineMode.Settled).text
+        )
+    }
+
+    @Test
+    fun paragraphBlocksPreserveHistoricalModelSingleLineBreaks() {
         val content =
             "**蒜米料**：价格在 1.60 至 1.65 元/斤左右，需求相对稳定。\n" +
                 "**印尼货**：价格在 1.95 至 2.00 元/斤左右，出口需求一般。\n" +
                 "**级蒜**：大规格价格较高，6.5 厘米以上约 4.70 至 5.00 元/斤。小规格 5.0 厘米约 2.50 至 2.60 元/斤。\n" +
                 "**河南本地**：周口淮阳、郑州中牟等地紫皮蒜价格略低。"
+        val expectedVisibleText =
+            "蒜米料：价格在 1.60 至 1.65 元/斤左右，需求相对稳定。\n" +
+                "印尼货：价格在 1.95 至 2.00 元/斤左右，出口需求一般。\n" +
+                "级蒜：大规格价格较高，6.5 厘米以上约 4.70 至 5.00 元/斤。小规格 5.0 厘米约 2.50 至 2.60 元/斤。\n" +
+                "河南本地：周口淮阳、郑州中牟等地紫皮蒜价格略低。"
 
-        assertEquals(
-            listOf(
-                "**蒜米料**：价格在 1.60 至 1.65 元/斤左右，需求相对稳定。",
-                "**印尼货**：价格在 1.95 至 2.00 元/斤左右，出口需求一般。",
-                "**级蒜**：大规格价格较高，6.5 厘米以上约 4.70 至 5.00 元/斤。小规格 5.0 厘米约 2.50 至 2.60 元/斤。",
-                "**河南本地**：周口淮阳、郑州中牟等地紫皮蒜价格略低。"
-            ),
-            splitRendererParagraphDisplayLines(content)
-        )
+        val state = splitStreamingBlockState(content, treatTrailingLineAsComplete = true)
+
+        assertEquals(emptyList<String>(), state.completedBlocks)
+        assertEquals(content, state.activeBlock)
+        assertEquals(expectedVisibleText, buildRendererInlineAnnotatedString(content, RendererInlineMode.Settled).text)
     }
 
     @Test
