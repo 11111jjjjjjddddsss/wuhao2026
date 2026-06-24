@@ -36,17 +36,20 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
 		"【输出约束】",
-		"禁止表格，关键点少量加粗，排版适合手机阅读。",
+		"禁止表格，不要用 Markdown 表格、竖线或横线画表；关键点少量加粗，排版适合手机阅读。",
+		"Markdown 表格",
+		"竖线或横线画表",
 		"关键点少量加粗",
 		"排版适合手机阅读",
 		"禁止表格",
 		"多用自然换行",
-		"有多个要点、步骤或提醒时",
-		"优先用编号列表或项目列表",
+		"有多个要点、步骤、提醒或对比内容时",
+		"对比内容",
+		"优先使用编号列表或项目列表",
 		"禁止英文",
 		"默认只用中文",
 		"除非是专业名词、商品名、登记标签或用户原文需要保留",
-		"否则不要夹英文",
+		"否则不要夹带英文",
 	} {
 		if !strings.Contains(chatOutputConstraint, want) {
 			t.Fatalf("output constraint missing %q: %q", want, chatOutputConstraint)
