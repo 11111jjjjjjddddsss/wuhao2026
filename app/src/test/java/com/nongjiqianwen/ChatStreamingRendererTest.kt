@@ -1530,6 +1530,25 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun paragraphDisplayLinesPreserveHistoricalModelSingleLineBreaks() {
+        val content =
+            "**蒜米料**：价格在 1.60 至 1.65 元/斤左右，需求相对稳定。\n" +
+                "**印尼货**：价格在 1.95 至 2.00 元/斤左右，出口需求一般。\n" +
+                "**级蒜**：大规格价格较高，6.5 厘米以上约 4.70 至 5.00 元/斤。小规格 5.0 厘米约 2.50 至 2.60 元/斤。\n" +
+                "**河南本地**：周口淮阳、郑州中牟等地紫皮蒜价格略低。"
+
+        assertEquals(
+            listOf(
+                "**蒜米料**：价格在 1.60 至 1.65 元/斤左右，需求相对稳定。",
+                "**印尼货**：价格在 1.95 至 2.00 元/斤左右，出口需求一般。",
+                "**级蒜**：大规格价格较高，6.5 厘米以上约 4.70 至 5.00 元/斤。小规格 5.0 厘米约 2.50 至 2.60 元/斤。",
+                "**河南本地**：周口淮阳、郑州中牟等地紫皮蒜价格略低。"
+            ),
+            splitRendererParagraphDisplayLines(content)
+        )
+    }
+
+    @Test
     fun readableParagraphSplitsDoNotCrossStandaloneHorizontalRule() {
         val content =
             "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。\n\n" +

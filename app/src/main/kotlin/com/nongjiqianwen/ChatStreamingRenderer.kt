@@ -1657,6 +1657,14 @@ private fun RendererReadableParagraphProjection.allBlocks(): List<String> =
         tailBlock?.let { add(it) }
     }
 
+internal fun splitRendererParagraphDisplayLines(text: String): List<String> {
+    if (!text.contains('\n') && !text.contains('\r')) return listOf(text)
+    return text
+        .replace("\r\n", "\n")
+        .replace('\r', '\n')
+        .split('\n')
+}
+
 internal fun projectRendererReadableParagraphBlocks(
     text: String,
     treatTailAsComplete: Boolean = true
@@ -2219,6 +2227,51 @@ private fun RendererStreamingActiveTextImpl(
         textAlign = TextAlign.Start,
         softWrap = true
     )
+}
+
+@Composable
+private fun RendererParagraphTextImpl(
+    text: String,
+    style: TextStyle,
+    minLineHeight: Dp,
+    inlineMode: RendererInlineMode,
+    linksEnabled: Boolean,
+    emphasisEnabled: Boolean = true,
+    onStatusHint: ((String) -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    val displayLines = remember(text) { splitRendererParagraphDisplayLines(text) }
+    if (displayLines.size <= 1) {
+        RendererStreamingActiveTextImpl(
+            text = text,
+            style = style,
+            minLineHeight = minLineHeight,
+            inlineMode = inlineMode,
+            linksEnabled = linksEnabled,
+            emphasisEnabled = emphasisEnabled,
+            onStatusHint = onStatusHint,
+            modifier = modifier
+        )
+        return
+    }
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        displayLines.forEach { line ->
+            if (line.isBlank()) {
+                Spacer(modifier = Modifier.height(MARKDOWN_BLOCK_SPACING))
+            } else {
+                RendererStreamingActiveTextImpl(
+                    text = line,
+                    style = style,
+                    minLineHeight = minLineHeight,
+                    inlineMode = inlineMode,
+                    linksEnabled = linksEnabled,
+                    emphasisEnabled = emphasisEnabled,
+                    onStatusHint = onStatusHint,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -2831,7 +2884,7 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 )
             }
             is StreamingLineModel.Paragraph -> {
-                RendererStreamingActiveTextImpl(
+                RendererParagraphTextImpl(
                     text = model.text,
                     modifier = Modifier.fillMaxWidth(),
                     style = paragraphStyle,
