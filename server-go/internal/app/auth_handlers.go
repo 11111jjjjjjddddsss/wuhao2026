@@ -237,14 +237,24 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, "invalid_phone")
 		return
 	}
+	smsIPLimitKey := ""
+	smsIPLimitConsumed := false
+	refundSMSIPLimit := func() {
+		if smsIPLimitConsumed && smsIPLimitKey != "" {
+			refundRateLimit(s.smsIPLimiter, smsIPLimitKey)
+			smsIPLimitConsumed = false
+		}
+	}
 	if s.smsIPLimiter != nil {
-		limitKey := authIPRateLimitKey("sms_send_ip", GetClientIP(r))
-		if allowed, retryAfter := s.smsIPLimiter.Consume(limitKey, time.Now()); !allowed {
+		smsIPLimitKey = authIPRateLimitKey("sms_send_ip", GetClientIP(r))
+		if allowed, retryAfter := s.smsIPLimiter.Consume(smsIPLimitKey, time.Now()); !allowed {
 			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
 				"error":               "rate_limited",
 				"retry_after_seconds": retryAfter,
 			})
 			return
+		} else {
+			smsIPLimitConsumed = true
 		}
 	}
 	smsPhoneLimitKey := ""
@@ -258,6 +268,7 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 	if s.smsLimiter != nil {
 		smsPhoneLimitKey = authPhoneRateLimitKey("sms_send", phone)
 		if allowed, retryAfter := s.smsLimiter.Consume(smsPhoneLimitKey, time.Now()); !allowed {
+			refundSMSIPLimit()
 			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
 				"error":               "rate_limited",
 				"retry_after_seconds": retryAfter,
@@ -269,12 +280,14 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 	}
 	code, err := randomSMSCode(defaultSMSCodeLength)
 	if err != nil {
+		refundSMSIPLimit()
 		refundSMSPhoneLimit()
 		s.logger.Error("sms code generate failed", "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
 	if err := s.cacheSMSCode(r.Context(), phone, code); err != nil {
+		refundSMSIPLimit()
 		refundSMSPhoneLimit()
 		s.logger.Warn("sms code cache failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
 		s.writeError(w, http.StatusServiceUnavailable, "sms_cache_unavailable")
@@ -282,6 +295,7 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 	}
 	outID, err := randomHexString(12)
 	if err != nil {
+		refundSMSIPLimit()
 		refundSMSPhoneLimit()
 		_ = s.clearSMSCode(r.Context(), phone)
 		s.logger.Error("sms out id failed", "error", err)
@@ -289,11 +303,13 @@ func (s *Server) handleAuthSMSSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.sms.SendLoginCode(r.Context(), phone, code, outID); err != nil {
+		refundSMSIPLimit()
 		refundSMSPhoneLimit()
 		s.logger.Warn("sms send failed", "error", sanitizeProviderError(err), "phone_mask", maskPhone(phone))
 		s.writeError(w, http.StatusServiceUnavailable, smsSendErrorCode(err))
 		return
 	}
+	smsIPLimitConsumed = false
 	smsPhoneLimitConsumed = false
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"ok":                  true,
@@ -379,6 +395,16 @@ func (s *Server) handleAuthSMSLogin(w http.ResponseWriter, r *http.Request) {
 	if strings.TrimSpace(body.VerifyCode) == "" {
 		s.writeError(w, http.StatusBadRequest, "invalid_code")
 		return
+	}
+	if s.smsIPLimiter != nil {
+		limitKey := authIPRateLimitKey("sms_login_ip", GetClientIP(r))
+		if allowed, retryAfter := s.smsIPLimiter.Consume(limitKey, time.Now()); !allowed {
+			s.writeJSON(w, http.StatusTooManyRequests, map[string]any{
+				"error":               "rate_limited",
+				"retry_after_seconds": retryAfter,
+			})
+			return
+		}
 	}
 	if s.smsLoginLimiter != nil {
 		limitKey := authPhoneRateLimitKey("sms_login", phone)

@@ -326,6 +326,34 @@ func TestAuthSMSSendProviderFailureKeepsCachedCode(t *testing.T) {
 	if strings.Contains(sendBlock, "clearSMSCode") {
 		t.Fatalf("SMS provider failure must not clear the cached code; provider timeouts can still deliver the SMS")
 	}
+	for _, want := range []string{
+		"refundSMSIPLimit()",
+		"refundSMSPhoneLimit()",
+	} {
+		if !strings.Contains(sendBlock, want) {
+			t.Fatalf("SMS provider failure must refund consumed rate limit bucket %q", want)
+		}
+	}
+}
+
+func TestAuthSMSSendRefundsIPLimitWhenPhoneLimitBlocks(t *testing.T) {
+	source, err := os.ReadFile("auth_handlers.go")
+	if err != nil {
+		t.Fatalf("read auth_handlers.go: %v", err)
+	}
+	text := string(source)
+	blockStart := strings.Index(text, "if s.smsLimiter != nil")
+	if blockStart < 0 {
+		t.Fatalf("SMS phone limiter block not found")
+	}
+	blockEnd := strings.Index(text[blockStart:], "code, err := randomSMSCode")
+	if blockEnd < 0 {
+		t.Fatalf("SMS phone limiter block end not found")
+	}
+	phoneLimitBlock := text[blockStart : blockStart+blockEnd]
+	if !strings.Contains(phoneLimitBlock, "refundSMSIPLimit()") {
+		t.Fatalf("SMS phone limiter rejection must refund the previously consumed IP bucket")
+	}
 }
 
 func TestAuthSMSLoginUsesAtomicReservation(t *testing.T) {
@@ -343,6 +371,32 @@ func TestAuthSMSLoginUsesAtomicReservation(t *testing.T) {
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("SMS login atomic reservation guard missing %q", want)
+		}
+	}
+}
+
+func TestAuthSMSLoginUsesIPRateLimit(t *testing.T) {
+	source, err := os.ReadFile("auth_handlers.go")
+	if err != nil {
+		t.Fatalf("read auth_handlers.go: %v", err)
+	}
+	text := string(source)
+	blockStart := strings.Index(text, "func (s *Server) handleAuthSMSLogin")
+	if blockStart < 0 {
+		t.Fatalf("SMS login handler not found")
+	}
+	blockEnd := strings.Index(text[blockStart:], "reservation, verifyStatus, err := s.reserveSMSCodeForLogin")
+	if blockEnd < 0 {
+		t.Fatalf("SMS login limiter section end not found")
+	}
+	limitBlock := text[blockStart : blockStart+blockEnd]
+	for _, want := range []string{
+		"s.smsIPLimiter",
+		"authIPRateLimitKey(\"sms_login_ip\"",
+		"s.smsIPLimiter.Consume",
+	} {
+		if !strings.Contains(limitBlock, want) {
+			t.Fatalf("SMS login must use IP rate limit guard, missing %q", want)
 		}
 	}
 }
