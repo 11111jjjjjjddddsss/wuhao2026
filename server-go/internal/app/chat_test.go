@@ -36,20 +36,21 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
 		"【输出约束】",
-		"结构以自然分段为主",
+		"关键点少量加粗",
 		"适合手机阅读",
 		"禁止表格",
-		"回答不要刻意套固定模板",
-		"不限固定格式",
+		"以短段落为主",
+		"每段通常一到三句",
+		"优先用自然换行分开",
+		"不要把多个要点挤进同一长段",
+		"不要刻意套固定模板",
 		"根据本轮问题自然组织",
 		"避免呆板机械",
-		"关键点少量加粗",
-		"默认必须使用中文表达",
-		"禁止中英混写",
-		"普通英文词和英文短语必须改成中文说法",
-		"不得直接夹在中文句子里",
-		"只有农药/肥料成分、品种名、病原拉丁学名、登记标签、品牌商品名或用户原文确实需要保留时",
-		"才使用英文，并尽量先给中文解释",
+		"禁止英文",
+		"默认只用中文",
+		"不要中英混写",
+		"普通英文词和英文短语要改成中文说法",
+		"确需保留的专业名词、商品名、登记标签或用户原文除外",
 	} {
 		if !strings.Contains(chatOutputConstraint, want) {
 			t.Fatalf("output constraint missing %q: %q", want, chatOutputConstraint)
@@ -68,10 +69,15 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"以本轮图片和客观信息为准",
 		"时间、地点、天气、历史对话和记忆摘要只作风险背景",
 		"不能盖过本轮证据",
+		"结构以自然分段为主",
+		"不限固定格式",
+		"默认必须使用中文表达",
+		"不得直接夹在中文句子里",
+		"农药/肥料成分、品种名、病原拉丁学名",
+		"才使用英文，并尽量先给中文解释",
 		"排版尽量简洁",
 		"多用短段落和适当空行",
 		"不要使用多级列表和项目符号列表",
-		"避免长段堆叠",
 	} {
 		if strings.Contains(chatOutputConstraint, blocked) {
 			t.Fatalf("output constraint should not include template phrase %q: %q", blocked, chatOutputConstraint)
