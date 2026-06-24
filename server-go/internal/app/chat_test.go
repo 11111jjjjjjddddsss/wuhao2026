@@ -36,7 +36,9 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
 		"【输出约束】",
-		"所有回答禁止表格",
+		"结构以自然分段为主",
+		"适合手机阅读",
+		"禁止表格",
 		"回答不要刻意套固定模板",
 		"不限固定格式",
 		"根据本轮问题自然组织",

@@ -8955,7 +8955,7 @@ private fun UiCopyPreviewOverlay(
                 title = "文本渲染",
                 items = listOf(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
-                    UiCopyPreviewItem("AI 长正文", "尊重模型原文换行，保留标题分割", UiCopyPreviewKind.AssistantReadableParagraphSample),
+                    UiCopyPreviewItem("AI 长正文", "保留模型换行，标题分割，行内编号不硬拆", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
                     UiCopyPreviewItem("AI 表格", "无摘要表头、正文不加粗、单表复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
@@ -9199,13 +9199,14 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE =
         "公式原样可读：${'$'}K=N+P${'$'}，${'$'}${'$'}亩数=长度*宽度/666.7${'$'}${'$'}。"
 
 private const val UI_COPY_PREVIEW_ASSISTANT_READABLE_PARAGRAPH_SAMPLE =
-    "作基肥时，每亩地施用10至15公斤，结合整地撒施，能长效补充土壤镁含量。作追肥时，多用叶面喷施，浓度控制在1%至2%，每隔14天喷一次，连续2到3次，见效快，适合作物生长后期快速补肥。比如土豆块茎膨大期、果树着色期用效果明显。\n\n" +
-        "能显著矫正叶片黄化，改善光合作用，提高果实糖度和色泽。在土豆、烟草、果树上使用，能增加产量和改善品质。实际使用时仍要结合土壤检测、作物阶段和天气条件，不要盲目加大浓度。\n\n" +
+    "根据近期主要产区市场信息，给您整理几个参考方向。\n\n" +
+        "1. 主产地收购价（参考）\n" +
+        "山东金乡、江苏邳州等主产区近期新蒜交易较活跃。蒜米料：价格在 1.60 至 1.65 元/斤左右，需求相对稳定。\n" +
+        "印尼货：价格在 1.95 至 2.00 元/斤左右，出口需求一般。级蒜：大规格价格较高，小规格价格偏低。\n\n" +
         "如果考虑搭配销售或自用：1.核实证件：采购时确认产品是否有肥料登记证，避免买到工业副产物冒充的肥料。2.计算成本：按有效镁含量算账，注意运费和用量。3.纯度等级：农业级通常够用，没必要盲目追高纯度。\n\n" +
-        "1. 价格波动大，低位明显\n" +
-        "根据近期产地汇总数据，低价区和高价区差别较大，采收、分级和运输都会影响到手价。\n" +
-        "2. 天气、采收影响品质\n" +
-        "连续降雨或高温会影响花苞开放速度，收花点容易被动压价，最好结合当地收购节奏判断。"
+        "**使用提醒**\n" +
+        "市场价格变化快，最好按当地收购点、规格等级和实际成交价复核。\n" +
+        "正文里的 **重点词** 只加粗，不应该被当成新的分割标题。"
 
 private const val UI_COPY_PREVIEW_ASSISTANT_TABLE_SAMPLE =
     "| 维度 | 成品含腐植酸尿素 | 普通尿素 + 矿源黄腐酸钾 |\n" +
