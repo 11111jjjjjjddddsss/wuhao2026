@@ -46,7 +46,7 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"需要列要点时，用编号列表或项目列表",
 		"禁止英文",
 		"默认只用中文",
-		"除非是专业名词、商品名、登记标签或用户原文必须保留",
+		"除非是专业名词、商品名、登记标签或用户原文需要保留",
 		"否则不要夹英文",
 	} {
 		if !strings.Contains(chatOutputConstraint, want) {
