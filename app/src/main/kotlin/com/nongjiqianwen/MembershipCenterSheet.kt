@@ -206,7 +206,7 @@ private fun MembershipCenterHeader(
             color = Color(0xFFF5F6F7),
             border = BorderStroke(0.7.dp, Color(0xFFE2E4E8)),
             modifier = Modifier
-                .size(42.dp)
+                .size(48.dp)
                 .semantics {
                     contentDescription = "关闭会员中心"
                     role = Role.Button
@@ -222,8 +222,8 @@ private fun MembershipCenterHeader(
                 Text(
                     text = "×",
                     color = Color(0xFF202124),
-                    fontSize = 24.sp,
-                    lineHeight = 24.sp,
+                    fontSize = 29.sp,
+                    lineHeight = 29.sp,
                     textAlign = TextAlign.Center
                 )
             }
@@ -482,6 +482,13 @@ internal fun MembershipPaymentConfirmOverlay(
                                 value = formatPaymentAmountText(item.amountCents),
                                 valueWeight = FontWeight.SemiBold
                             )
+                            if (item.outTradeSuffix.isNotBlank()) {
+                                MembershipPaymentInfoRow(
+                                    label = "订单尾号",
+                                    value = item.outTradeSuffix,
+                                    valueWeight = FontWeight.SemiBold
+                                )
+                            }
                             MembershipPaymentInfoRow(
                                 label = "说明",
                                 value = membershipPaymentProductNote(item.product)
@@ -495,37 +502,39 @@ internal fun MembershipPaymentConfirmOverlay(
                                 lineHeight = 18.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(9.dp)
                             ) {
                                 MembershipPaymentMethodChip(
                                     text = "支付宝",
                                     selected = true,
-                                    enabled = true
+                                    enabled = true,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                                 MembershipPaymentMethodChip(
                                     text = "微信支付 暂未开通",
                                     selected = false,
-                                    enabled = false
+                                    enabled = false,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(9.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             MembershipPaymentConfirmButton(
-                                text = "取消",
-                                primary = false,
-                                modifier = Modifier.weight(1f),
-                                onClick = onCancel
-                            )
-                            MembershipPaymentConfirmButton(
                                 text = "确认并打开支付宝",
                                 primary = true,
-                                modifier = Modifier.weight(1.45f),
+                                modifier = Modifier.fillMaxWidth(),
                                 onClick = onConfirm
+                            )
+                            MembershipPaymentConfirmButton(
+                                text = "取消",
+                                primary = false,
+                                modifier = Modifier.fillMaxWidth(),
+                                onClick = onCancel
                             )
                         }
                     }
@@ -569,7 +578,8 @@ private fun MembershipPaymentInfoRow(
 private fun MembershipPaymentMethodChip(
     text: String,
     selected: Boolean,
-    enabled: Boolean
+    enabled: Boolean,
+    modifier: Modifier = Modifier
 ) {
     Surface(
         color = when {
@@ -580,20 +590,27 @@ private fun MembershipPaymentMethodChip(
         border = BorderStroke(
             0.8.dp,
             if (selected) Color(0xFF111111) else Color(0xFFE1E4E8)
-        )
+        ),
+        modifier = modifier.heightIn(min = 44.dp)
     ) {
-        Text(
-            text = text,
-            color = when {
-                selected -> Color.White
-                enabled -> Color(0xFF202124)
-                else -> Color(0xFF9297A0)
-            },
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-        )
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = when {
+                    selected -> Color.White
+                    enabled -> Color(0xFF202124)
+                    else -> Color(0xFF9297A0)
+                },
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+            )
+        }
     }
 }
 
@@ -768,7 +785,7 @@ internal fun MembershipPaymentConfirmPreview() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(360.dp)
+            .height(430.dp)
     ) {
         MembershipPaymentConfirmOverlay(
             visible = true,
@@ -1020,7 +1037,7 @@ private fun MembershipTopupCard(
     val product = MembershipPaymentProduct.BuyTopup
     val hasActiveTopup = topupRemaining > 0
     val isPaidTier = activeTier == "plus" || activeTier == "pro"
-    val canBuy = isPaidTier && paymentState.activeProduct == null
+    val canBuy = isPaidTier && !hasActiveTopup && paymentState.activeProduct == null
     Surface(
         color = Color.White,
         shape = RoundedCornerShape(18.dp),
@@ -1072,7 +1089,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "仅 Plus / Pro 会员可购买；未用完次数长期保留，可按需续购。",
+                text = "仅 Plus / Pro 会员可购买；未用完次数长期保留，用完后可再买。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp
@@ -1081,7 +1098,7 @@ private fun MembershipTopupCard(
                 text = when {
                     paymentState.activeProduct == product -> "处理中"
                     activeTier == "unknown" -> "刷新后可购买"
-                    hasActiveTopup && isPaidTier -> "续购加油包"
+                    hasActiveTopup && isPaidTier -> "用完再买"
                     hasActiveTopup -> "剩余次数可用"
                     isPaidTier -> "购买加油包"
                     else -> "会员可购买"
@@ -1290,7 +1307,8 @@ private fun membershipPaymentProductTitle(product: MembershipPaymentProduct): St
 private fun membershipPaymentProductNote(product: MembershipPaymentProduct): String =
     when (product) {
         MembershipPaymentProduct.BuyTopup -> "额外80次问诊次数，长期保留"
-        else -> "一次购买30天，不自动续费"
+        MembershipPaymentProduct.UpgradePlusToPro -> "升级后立刻生效，Plus剩余会折成补偿次数"
+        else -> "一次购买30天，不自动续费；未到期会顺延"
     }
 
 private fun formatPaymentAmountText(amountCents: Int): String {

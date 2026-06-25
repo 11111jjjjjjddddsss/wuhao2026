@@ -140,6 +140,7 @@ Require-Match -Name "server_healthz_alipay_payment_gate" -Content $server -Patte
 Require-Match -Name "server_alipay_app_pay_api" -Content $payments -Pattern "alipay\.trade\.app\.pay"
 Require-Match -Name "server_alipay_order_format_json" -Content $payments -Pattern 'format"\s*,\s*"json'
 Require-Match -Name "server_alipay_order_biz_seller_id" -Content $payments -Pattern 'SellerID:\s*c\.sellerID'
+Require-Match -Name "server_alipay_order_sign_keeps_sign_type" -Content $payments -Pattern 'BuildAppPayOrder(?s:.*?)alipaySignContent\(params,\s*"sign"\)'
 Require-Match -Name "server_alipay_payment_gate_default_closed" -Content $payments -Pattern "ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES"
 Require-Match -Name "server_alipay_payment_gate_requires_user_and_build" -Content $payments -Pattern "len\(allowedUsers\)\s*==\s*0\s*\|\|\s*len\(allowedBuildTypes\)\s*==\s*0"
 Require-Match -Name "server_alipay_payment_public_switch" -Content $payments -Pattern "ALIPAY_PAYMENT_PUBLIC_ENABLED"

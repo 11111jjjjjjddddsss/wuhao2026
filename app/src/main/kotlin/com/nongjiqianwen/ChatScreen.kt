@@ -4243,6 +4243,20 @@ fun ChatScreen() {
             membershipPaymentState = MembershipPaymentState(notice = "加油包仅 Plus / Pro 会员可购买，请先开通会员")
             return
         }
+        if (
+            product == MembershipPaymentProduct.BuyTopup &&
+            (membershipEntitlement?.topupRemaining ?: 0) > 0
+        ) {
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.button_blocked",
+                message = "Membership payment button blocked locally",
+                product = product,
+                extraAttrs = mapOf("reason" to "topup_remaining")
+            )
+            membershipPaymentState = MembershipPaymentState(notice = "加油包用完后再购买，未用完次数会长期保留")
+            return
+        }
         if (membershipPaymentState.activeProduct != null) {
             reportMembershipPaymentLog(
                 level = "info",
@@ -9188,11 +9202,11 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("套餐区：窄屏挤压", "280dp 下标题、胶囊和价格不互撞", UiCopyPreviewKind.MembershipPlanNarrow),
                     UiCopyPreviewItem("加油包：Free不可订购", "Plus / Pro 可订购置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
                     UiCopyPreviewItem("加油包：Free剩余", "按钮显示“剩余次数可用”", UiCopyPreviewKind.MembershipTopupFreeActive),
-                    UiCopyPreviewItem("加油包：付费档位可买", "Plus / Pro 可购买，未用完次数长期保留", UiCopyPreviewKind.MembershipTopupBuyable),
-                    UiCopyPreviewItem("加油包：未用完", "仍可按需继续购买，后端订单验签后发放", UiCopyPreviewKind.MembershipTopupActive),
+                    UiCopyPreviewItem("加油包：付费档位可买", "Plus / Pro 可购买，未用完次数长期保留，用完后可再买", UiCopyPreviewKind.MembershipTopupBuyable),
+                    UiCopyPreviewItem("加油包：未用完", "未用完时不能重复购买，后端和本地都会拦住", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
-                    UiCopyPreviewItem("确认付款", "金额、支付方式和不自动续费说明", UiCopyPreviewKind.MembershipPaymentConfirm),
+                    UiCopyPreviewItem("确认付款", "订单尾号、竖排支付方式和续费顺延说明", UiCopyPreviewKind.MembershipPaymentConfirm),
                     UiCopyPreviewItem("权益生效提示", "支付完成后展示后端确认的权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序 / 补偿与加油包", UiCopyPreviewKind.MembershipRules)
                 )

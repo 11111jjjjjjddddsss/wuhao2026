@@ -1305,6 +1305,7 @@ object SessionApi {
             errorCode == "FORBIDDEN_TIER" -> "当前会员状态暂不支持购买这个项目"
             errorCode == "USE_UPGRADE_PLUS_TO_PRO" -> "Plus 会员请使用升级 Pro"
             errorCode == "ALREADY_PRO" -> "当前已是 Pro 会员"
+            errorCode == "TOPUP_LIMIT_REACHED" -> "加油包用完后再购买，未用完次数会长期保留"
             errorCode == "MEMBERSHIP_EXPIRING_SOON" -> "会员快到期了，请先续费后再购买"
             errorCode == "INVALID_PRODUCT" -> "购买项目暂时不可用"
             statusCode >= 500 -> "下单失败，请稍后再试"

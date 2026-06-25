@@ -566,8 +566,8 @@ if ($failures.Count -eq 0) {
         "Debug UI copy preview must show the current gift-card immediate-effect rule."
     Require-Match $failures $chatScreen 'valid_from 只作创建追溯，不作为预约生效门槛' `
         "Debug UI copy preview must explain that gift-card valid_from is not a future activation gate."
-    Require-Match $failures $membershipCenterSheet ([regex]::Escape('仅 Plus / Pro 会员可购买；未用完次数长期保留，可按需续购。')) `
-        "Membership topup copy must not imply that topup balance expires with membership."
+    Require-Match $failures $membershipCenterSheet ([regex]::Escape('仅 Plus / Pro 会员可购买；未用完次数长期保留，用完后可再买。')) `
+        "Membership topup copy must keep the one-active-pack, use-up-before-rebuy rule."
     Require-NoMatch $failures $membershipCenterSheet '有效期、使用规则' `
         "Membership topup copy must not keep the old vague validity-period wording."
     Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPlanSectionTitle(?s:.*?)heightIn\(min\s*=\s*24\.dp\)' `
@@ -675,6 +675,18 @@ if ($failures.Count -eq 0) {
     }
     Require-Match $failures $membershipCenterSheet 'MembershipTopupCard(?s:.*?)clickableWhenDisabled\s*=\s*true(?s:.*?)onClick\s*=\s*\{\s*onStartPayment\(product\)\s*\}' `
         "Membership topup disabled state must still surface a local notice/log instead of feeling like a dead button."
+    Require-Match $failures $membershipCenterSheet 'val\s+canBuy\s*=\s*isPaidTier\s*&&\s*!hasActiveTopup\s*&&\s*paymentState\.activeProduct\s*==\s*null(?s:.*?)hasActiveTopup\s*&&\s*isPaidTier\s*->\s*"用完再买"' `
+        "Membership topup must require the current topup balance to be used up before another purchase."
+    Require-Match $failures $chatScreen 'product\s*==\s*MembershipPaymentProduct\.BuyTopup\s*&&(?s:.*?)membershipEntitlement\?\.topupRemaining\s*\?:\s*0\)\s*>\s*0(?s:.*?)"reason"\s+to\s+"topup_remaining"(?s:.*?)"加油包用完后再购买，未用完次数会长期保留"' `
+        "Membership topup active-balance taps must be blocked locally before creating an order."
+    Require-Match $failures $membershipCenterSheet '\.size\(48\.dp\)(?s:.*?)contentDescription\s*=\s*"关闭会员中心"(?s:.*?)fontSize\s*=\s*29\.sp' `
+        "Membership center close button must keep a larger touch target and visible close glyph."
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单尾号"(?s:.*?)value\s*=\s*item\.outTradeSuffix' `
+        "Payment confirmation must show only the safe order suffix for user support, not the full order number."
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)MembershipPaymentMethodChip\((?s:.*?)text\s*=\s*"支付宝"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)text\s*=\s*"微信支付 暂未开通"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"确认并打开支付宝"(?s:.*?)Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"取消"' `
+        "Payment confirmation must keep the four payment/action capsules stacked vertically on narrow phones."
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.BuyTopup\s*->\s*"额外80次问诊次数，长期保留"(?s:.*?)MembershipPaymentProduct\.UpgradePlusToPro\s*->\s*"升级后立刻生效，Plus剩余会折成补偿次数"(?s:.*?)else\s*->\s*"一次购买30天，不自动续费；未到期会顺延"' `
+        "Payment confirmation notes must explain topup retention, Plus-to-Pro compensation, and membership renewal extension."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.5\.sp\s*else\s*17\.5\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*30\.sp\s*else\s*27\.sp(?s:.*?)fontWeight\s*=\s*FontWeight\.Bold' `
         "Assistant headings must keep the earlier roomier bold layout."
     Require-Match $failures $chatScreen 'val\s+globalStatusHintVisible\s*=\s*globalStatusHintText\s*!=\s*null\s*&&\s*inputSelectionToolbarState\s*==\s*null\s*&&\s*activeMessageSelectionState\s*==\s*null(?s:.*?)ComposerAttachmentBottomSheet\((?s:.*?)GlobalStatusHint\((?s:.*?)\.zIndex\(120f\)' `

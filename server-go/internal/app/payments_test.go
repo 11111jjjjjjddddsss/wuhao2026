@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -209,9 +210,9 @@ func TestAlipayBuildAppPayOrderSignatureVerifies(t *testing.T) {
 	if values.Get("sign") == "" {
 		t.Fatal("sign is empty")
 	}
-	signContent := alipaySignContent(values, "sign", "sign_type")
-	if strings.Contains(signContent, "sign_type=") {
-		t.Fatalf("order sign content should exclude sign_type: %s", signContent)
+	signContent := alipaySignContent(values, "sign")
+	if !strings.Contains(signContent, "sign_type=RSA2") {
+		t.Fatalf("order sign content should include sign_type for APP orderInfo: %s", signContent)
 	}
 	if err := verifyRSA2(signContent, values.Get("sign"), &key.PublicKey); err != nil {
 		t.Fatalf("verify order signature: %v", err)
@@ -263,6 +264,34 @@ func TestAlipayNotifyVerify(t *testing.T) {
 	values.Set("total_amount", "29.91")
 	if _, err := client.VerifyNotify(values); err == nil {
 		t.Fatal("VerifyNotify should reject tampered amount")
+	}
+}
+
+func TestValidatePaymentProductRejectsTopupWhenPackRemaining(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := &Store{db: db}
+	userID := "acct_topup_active"
+	expireAt := time.Now().Add(24 * time.Hour).UnixMilli()
+
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierPlus), expireAt))
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE(SUM(remaining),0) AS total_remaining, MIN(expire_at) AS earliest_expire_at
+		 FROM topup_packs
+		 WHERE user_id = ? AND status = 'active' AND remaining > 0 AND (expire_at IS NULL OR expire_at > ?)`)).
+		WithArgs(userID, sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"total_remaining", "earliest_expire_at"}).AddRow(12, nil))
+
+	err = store.ValidatePaymentProduct(context.Background(), userID, paymentProductBuyTopup)
+	if err == nil || err.Error() != "TOPUP_LIMIT_REACHED" {
+		t.Fatalf("ValidatePaymentProduct err = %v, want TOPUP_LIMIT_REACHED", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
 	}
 }
 

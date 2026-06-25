@@ -14,7 +14,7 @@ const (
 	membershipTermDays   = 30
 	topupPackRemaining   = 80
 	topupPackPrice       = 6.0
-	topupPackActiveLimit = 0
+	topupPackActiveLimit = 1
 	plusTierPrice        = 19.9
 	proTierPrice         = 29.9
 )

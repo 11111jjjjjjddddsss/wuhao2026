@@ -303,7 +303,8 @@ func (c *AlipayClient) BuildAppPayOrder(outTradeNo string, product paymentProduc
 	params.Set("notify_url", c.notifyURL)
 	params.Set("biz_content", string(bizContent))
 
-	content := alipaySignContent(params, "sign", "sign_type")
+	// APP 支付 orderInfo 的签名串需要保留 sign_type；异步通知验签仍按 V1 规则排除 sign_type。
+	content := alipaySignContent(params, "sign")
 	signature, err := signRSA2(content, c.privateKey)
 	if err != nil {
 		return "", err
@@ -559,6 +560,13 @@ func (s *Store) ValidatePaymentProduct(ctx context.Context, userID string, produ
 	case paymentProductBuyTopup:
 		if tier != TierPlus && tier != TierPro {
 			return fmt.Errorf("FORBIDDEN_TIER")
+		}
+		topupRemaining, _, err := s.GetTopupStatus(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if topupRemaining > 0 {
+			return fmt.Errorf("TOPUP_LIMIT_REACHED")
 		}
 		if membershipExpiringSoon() {
 			return fmt.Errorf("MEMBERSHIP_EXPIRING_SOON")
@@ -1038,7 +1046,7 @@ func paymentProductHTTPStatus(err error) int {
 	switch err.Error() {
 	case "FORBIDDEN_TIER":
 		return http.StatusForbidden
-	case "USE_UPGRADE_PLUS_TO_PRO", "ALREADY_PRO", "MEMBERSHIP_EXPIRING_SOON":
+	case "USE_UPGRADE_PLUS_TO_PRO", "ALREADY_PRO", "TOPUP_LIMIT_REACHED", "MEMBERSHIP_EXPIRING_SOON":
 		return http.StatusConflict
 	case "INVALID_PRODUCT":
 		return http.StatusBadRequest

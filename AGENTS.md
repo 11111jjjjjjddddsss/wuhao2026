@@ -173,7 +173,7 @@ Android 构建链：
 - Plus / Pro 到期后，后端按有效权益自动降回 Free 计算；旧 `user_entitlement.tier` 可以保留历史值，但接口和额度消费只认 `tier_expire_at` 后的有效 tier
 - Plus / Pro 必须有有效 `tier_expire_at` 才算有效付费会员；若数据库出现 paid tier 但到期时间为空，后端按 Free 处理，避免脏数据变成永久会员
 - 加油包：6 元 / 80 次，仅 Plus / Pro 可买；当前业务口径为次数包永久有效，未用完的加油包不随会员到期清零
-- 同一时刻只允许 1 个 active 加油包，用完再续
+- 同一时刻只允许 1 个有剩余的 active 加油包，用完后再买
 - 续费订单金额以后端 `orders.amount` 记账为准：Plus 19.9，Pro 29.9
 - Plus 升 Pro 当前不做“剩余 Plus 折成现金抵扣”的复杂折扣；用户按 Pro 开通价升级，后端把 Plus 剩余每日权益折成永久升级补偿次数，作为后续超额请求次数继续使用
 - 支付未接入前，后端开发期订单变更接口默认返回 `PAYMENT_NOT_CONFIGURED`；即使显式设置 `ALLOW_DEV_ORDER_ENDPOINTS=true`，也必须同时把 `APP_ENV / ENV / GO_ENV` 设为 `local / dev / development / test` 才会放行，缺失环境名按关闭处理。正式支付必须走服务端验签后的支付回调 / 对账流程
