@@ -22,6 +22,35 @@
 - 管理后台订单页已接只读核查：可查看支付宝订单、渠道交易号、订单状态、金额、权益发放状态和会员变更记录。当前不提供手动补发、退款、对账自动化或手动改权益按钮；正式收费前必须补受控的人工补权益入口或同等 SOP。
 - 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android SDK / manifest / 调起支付 / 未知结果轮询、后端支付宝订单 / 通知 / 验签 / seller_id / 幂等重试、数据库迁移、后台只读订单页、App / 官网隐私和第三方共享清单。脚本只输出配置是否缺失，不打印任何密钥值；当前输出 `payment_readiness_status=attention` 表示代码已对齐但正式收费开放前仍要做生产配置、回调、对账、退款和人工验收。
 
+## 0.01 元内测联调流程
+
+目标：只让指定账号的内部 debug 测试包跑通真实支付宝 0.01 元支付，不开放正式收费，不让正式包或非白名单账号创建订单。
+
+联调前置：
+
+1. 支付宝开放平台正式应用已上线或具备可生产调用的 APP 支付配置，准备好 `ALIPAY_APP_ID`、`ALIPAY_SELLER_ID`、应用私钥和支付宝公钥。
+2. 生产 ECS 配置支付宝正式变量和 `ALIPAY_NOTIFY_URL=https://api.nongjiqiancha.cn/api/payments/alipay/notify`，密钥只进服务器环境或本机安全配置，不进仓库、聊天、日志或 APK。
+3. 生产 ECS 只开受控测试门禁：`ALIPAY_PAYMENT_PUBLIC_ENABLED=false`、`ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug`、`ALIPAY_PAYMENT_ALLOWED_USER_IDS=acct_...`、`ALIPAY_PAYMENT_TEST_AMOUNT_CENTS=1`。
+4. 重新跑 `check-payment-readiness.ps1`，要求生产 `/healthz` 里 `alipay=ok` 且 `alipay_payment_gate=limited`；若仍是 `missing_config` 或 `closed`，手机端不能做实付。
+5. 生成并安装最新内部 debug 测试包；正式 release 包、旧包或未带 `client_build_type=debug` 的包不能通过测试门禁。
+
+手机端操作：
+
+1. 登录白名单里的测试账号。
+2. 打开左上角三横线，进入“会员中心”。
+3. 点“开通 Plus / 开通 Pro / 续费 Pro / 升级 Pro”中的一个。Free 用户点“加油包”会是灰色或“会员可购买”，这是正常限制，不是支付故障。
+4. App 提示“正在创建支付订单”后应拉起支付宝，支付金额应为 0.01 元。
+5. 支付后回到 App，等待订单轮询或刷新会员中心；权益只能以后端验签通知或订单状态核验后发放，客户端同步成功不直接发权益。
+
+验收记录：
+
+- 0.01 测试单不能删除，后台应标记为测试订单并排除正式收入统计。
+- 每次联调都要记录测试包对象 / commit / 账号白名单 / 商品类型 / 支付宝支付结果 / 后端订单状态 / 权益是否到账 / 是否触发回调 / 是否需要人工补权益。
+- App 自动日志应能串起完整链路：`payment.button_tapped`、`payment.button_blocked`、`payment.start`、`payment.order_create_started`、`payment.order_create_success`、`payment.order_create_failed`、`payment.alipay_launch_started`、`payment.alipay_sync_result`、`payment.order_poll_started`、`payment.order_poll_tick`、`payment.order_poll_timeout`、`payment.order_status_failed`、`payment.grant_success`、`payment.grant_needs_ops`。日志只保留商品类型、当前会员档、构建类型、版本号、订单尾号、状态和安全错误码，不能记录完整订单号、`order_string`、渠道交易号、密钥、公钥、手机号或支付参数全文。
+- 若“点不动”，先确认点的是 Plus/Pro 购买按钮而不是 Free 状态下的加油包；再确认会员中心权益已加载、测试包确实是 debug、测试账号在白名单内、生产门禁为 `limited`。
+- 若能点但提示“支付暂时不可用 / 下单失败”，优先看 `check-payment-readiness.ps1`、`/healthz` 的 `alipay` 和 `alipay_payment_gate`、App 日志 `payment.order_create_failed`、后端支付日志。
+- 测试完成后必须移除 `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS`，正式收费前不得打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。
+
 ## 已支付但权益未到账处理口径
 
 - 用户侧：如果用户反馈已付款但会员或加油包没到账，先引导用户走 App 内“帮助与反馈”联系客服，并补充账号、订单号尾号、支付截图或必要说明；不要让用户把密钥、后台截图或敏感材料发到聊天里。

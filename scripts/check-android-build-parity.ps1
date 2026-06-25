@@ -657,8 +657,24 @@ if ($failures.Count -eq 0) {
         "Today agri appearance must not keep a dedicated force-bottom anchor state; it should not pull the user to the bottom at the moment it appears."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantParagraphTextStyle\(\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*16\.5\.sp(?s:.*?)lineHeight\s*=\s*27\.5\.sp(?s:.*?)letterSpacing\s*=\s*0\.sp(?s:.*?)internal\s+fun\s+assistantStreamingParagraphTextStyle\(\):\s*TextStyle\s*=(?s:.*?)lineHeight\s*=\s*29\.sp(?s:.*?)internal\s+fun\s+assistantHeadingTextStyle' `
         "Assistant main-chat text must keep the roomier pre-tight typography and zero Chinese body letter spacing."
-    Require-Match $failures $chatScreen 'val\s+chatPageSurface\s*=\s*Color\(0xFFF8F9FA\)' `
-        "Main chat page surface must keep the previous soft off-white background."
+    Require-Match $failures $chatScreen 'val\s+chatPageSurface\s*=\s*Color\(0xFFFBFCFD\)' `
+        "Main chat page surface must keep the slightly brighter off-white background without changing text, dividers, or input chrome."
+    foreach ($paymentEvent in @(
+        'payment\.button_tapped',
+        'payment\.button_blocked',
+        'payment\.order_create_started',
+        'payment\.order_create_success',
+        'payment\.alipay_launch_started',
+        'payment\.order_poll_started',
+        'payment\.order_poll_tick',
+        'payment\.order_poll_timeout',
+        'payment\.grant_needs_ops'
+    )) {
+        Require-Match $failures $chatScreen $paymentEvent `
+            "Membership payment flow must keep safe client log event $paymentEvent."
+    }
+    Require-Match $failures $membershipCenterSheet 'MembershipTopupCard(?s:.*?)clickableWhenDisabled\s*=\s*true(?s:.*?)onClick\s*=\s*\{\s*onStartPayment\(product\)\s*\}' `
+        "Membership topup disabled state must still surface a local notice/log instead of feeling like a dead button."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.5\.sp\s*else\s*17\.5\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*30\.sp\s*else\s*27\.sp(?s:.*?)fontWeight\s*=\s*FontWeight\.Bold' `
         "Assistant headings must keep the earlier roomier bold layout."
     Require-Match $failures $chatScreen 'val\s+globalStatusHintVisible\s*=\s*globalStatusHintText\s*!=\s*null\s*&&\s*inputSelectionToolbarState\s*==\s*null\s*&&\s*activeMessageSelectionState\s*==\s*null(?s:.*?)ComposerAttachmentBottomSheet\((?s:.*?)GlobalStatusHint\((?s:.*?)\.zIndex\(120f\)' `

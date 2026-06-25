@@ -3153,7 +3153,7 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem) return atBottom
         return isForwardListAtExactBottom()
     }
-    val chatPageSurface = Color(0xFFF8F9FA)
+    val chatPageSurface = Color(0xFFFBFCFD)
     val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -4084,11 +4084,53 @@ fun ChatScreen() {
         }
     }
 
+    fun currentMembershipTierForPaymentLog(): String {
+        if (membershipLoadState != MembershipLoadState.Loaded) return "unknown"
+        return when (membershipEntitlement?.tier?.trim()?.lowercase(Locale.ROOT)) {
+            "plus" -> "plus"
+            "pro" -> "pro"
+            else -> "free"
+        }
+    }
+
+    fun reportMembershipPaymentLog(
+        level: String,
+        event: String,
+        message: String,
+        product: MembershipPaymentProduct? = null,
+        extraAttrs: Map<String, Any?> = emptyMap()
+    ) {
+        val attrs = linkedMapOf<String, Any?>(
+            "active_tier" to currentMembershipTierForPaymentLog(),
+            "build_type" to BuildConfig.BUILD_TYPE,
+            "version_code" to BuildConfig.VERSION_CODE
+        )
+        product?.let { attrs["product_type"] = it.apiValue }
+        extraAttrs.forEach { (key, value) ->
+            if (value != null) attrs[key] = value
+        }
+        SessionApi.reportClientLog(
+            level = level,
+            event = event,
+            message = message,
+            attrs = attrs
+        )
+    }
+
     suspend fun pollMembershipPaymentOrder(
         product: MembershipPaymentProduct,
         outTradeNo: String
     ) {
+        reportMembershipPaymentLog(
+            level = "info",
+            event = "payment.order_poll_started",
+            message = "Membership payment order polling started",
+            product = product,
+            extraAttrs = mapOf("out_trade_suffix" to outTradeNo.takeLast(8))
+        )
         var lastError: String? = null
+        var lastOrderStatus = ""
+        var lastGrantStatus = ""
         repeat(12) { attempt ->
             if (attempt > 0) {
                 delay(if (attempt < 4) 1_200L else 2_000L)
@@ -4100,28 +4142,59 @@ fun ChatScreen() {
             }
             val orderStatus = order.status.orEmpty().lowercase(Locale.ROOT)
             val grantStatus = order.grantStatus.orEmpty().lowercase(Locale.ROOT)
+            lastOrderStatus = orderStatus
+            lastGrantStatus = grantStatus
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.order_poll_tick",
+                message = "Membership payment order polling tick",
+                product = product,
+                extraAttrs = mapOf(
+                    "attempt" to attempt + 1,
+                    "order_status" to orderStatus,
+                    "grant_status" to grantStatus,
+                    "out_trade_suffix" to outTradeNo.takeLast(8)
+                )
+            )
             when {
                 orderStatus == "paid" && grantStatus == "success" -> {
                     refreshMembershipEntitlement()
                     membershipPaymentState = MembershipPaymentState(notice = "权益已生效")
                     membershipPurchaseSuccessVisible = true
-                    SessionApi.reportClientLog(
+                    reportMembershipPaymentLog(
                         level = "info",
                         event = "payment.grant_success",
                         message = "Membership payment grant confirmed",
-                        attrs = mapOf(
-                            "product_type" to product.apiValue,
+                        product = product,
+                        extraAttrs = mapOf(
                             "out_trade_suffix" to outTradeNo.takeLast(8)
                         )
                     )
                     return
                 }
                 orderStatus == "closed" -> {
+                    reportMembershipPaymentLog(
+                        level = "info",
+                        event = "payment.order_closed",
+                        message = "Membership payment order closed",
+                        product = product,
+                        extraAttrs = mapOf("out_trade_suffix" to outTradeNo.takeLast(8))
+                    )
                     membershipPaymentState = MembershipPaymentState(notice = "订单已关闭")
                     membershipRefreshNonce += 1
                     return
                 }
                 orderStatus == "paid" && (grantStatus == "failed" || grantStatus == "needs_ops") -> {
+                    reportMembershipPaymentLog(
+                        level = "warn",
+                        event = "payment.grant_needs_ops",
+                        message = "Membership payment grant needs ops",
+                        product = product,
+                        extraAttrs = mapOf(
+                            "grant_status" to grantStatus,
+                            "out_trade_suffix" to outTradeNo.takeLast(8)
+                        )
+                    )
                     membershipPaymentState = MembershipPaymentState(
                         notice = "支付已确认，权益处理异常，请在帮助与反馈联系我"
                     )
@@ -4130,6 +4203,18 @@ fun ChatScreen() {
                 }
             }
         }
+        reportMembershipPaymentLog(
+            level = "warn",
+            event = "payment.order_poll_timeout",
+            message = "Membership payment order polling timed out",
+            product = product,
+            extraAttrs = mapOf(
+                "last_order_status" to lastOrderStatus,
+                "last_grant_status" to lastGrantStatus,
+                "last_error" to lastError,
+                "out_trade_suffix" to outTradeNo.takeLast(8)
+            )
+        )
         membershipPaymentState = MembershipPaymentState(
             notice = lastError
                 ?.takeIf { it.isNotBlank() && it != "订单不存在，请稍后刷新" }
@@ -4139,16 +4224,57 @@ fun ChatScreen() {
     }
 
     fun startMembershipPayment(product: MembershipPaymentProduct) {
+        reportMembershipPaymentLog(
+            level = "info",
+            event = "payment.button_tapped",
+            message = "Membership payment button tapped",
+            product = product
+        )
+        if (
+            product == MembershipPaymentProduct.BuyTopup &&
+            currentMembershipTierForPaymentLog() !in setOf("plus", "pro")
+        ) {
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.button_blocked",
+                message = "Membership payment button blocked locally",
+                product = product,
+                extraAttrs = mapOf("reason" to "topup_requires_paid_tier")
+            )
+            membershipPaymentState = MembershipPaymentState(notice = "加油包仅 Plus / Pro 会员可购买，请先开通会员")
+            return
+        }
         if (membershipPaymentState.activeProduct != null) {
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.button_blocked",
+                message = "Membership payment button blocked locally",
+                product = product,
+                extraAttrs = mapOf("reason" to "payment_in_progress")
+            )
             membershipPaymentState = membershipPaymentState.copy(notice = "支付处理中，请稍等")
             return
         }
         if (!SessionApi.hasBackendConfigured()) {
+            reportMembershipPaymentLog(
+                level = "warn",
+                event = "payment.button_blocked",
+                message = "Membership payment button blocked locally",
+                product = product,
+                extraAttrs = mapOf("reason" to "backend_not_configured")
+            )
             membershipPaymentState = MembershipPaymentState(notice = "服务暂时不可用，请稍后再试")
             return
         }
         val activity = context.findActivity()
         if (activity == null) {
+            reportMembershipPaymentLog(
+                level = "warn",
+                event = "payment.button_blocked",
+                message = "Membership payment button blocked locally",
+                product = product,
+                extraAttrs = mapOf("reason" to "activity_missing")
+            )
             membershipPaymentState = MembershipPaymentState(notice = "当前页面无法打开支付宝，请稍后再试")
             return
         }
@@ -4156,34 +4282,64 @@ fun ChatScreen() {
             activeProduct = product,
             notice = "正在创建支付订单"
         )
-        SessionApi.reportClientLog(
+        reportMembershipPaymentLog(
             level = "info",
             event = "payment.start",
             message = "Membership payment started",
-            attrs = mapOf("product_type" to product.apiValue)
+            product = product
         )
         snackbarScope.launch {
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.order_create_started",
+                message = "Membership payment order create started",
+                product = product
+            )
             val (order, createError) = awaitCreateAlipayOrder(product)
             val orderString = order?.orderString?.trim().orEmpty()
             val outTradeNo = order?.outTradeNo?.trim().orEmpty()
             if (orderString.isEmpty() || outTradeNo.isEmpty()) {
+                reportMembershipPaymentLog(
+                    level = "warn",
+                    event = "payment.order_create_empty",
+                    message = "Membership payment order create returned no usable order",
+                    product = product,
+                    extraAttrs = mapOf("error" to createError)
+                )
                 membershipPaymentState = MembershipPaymentState(
                     notice = createError?.takeIf { it.isNotBlank() } ?: "下单失败，请稍后再试"
                 )
                 return@launch
             }
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.order_create_success",
+                message = "Membership payment order create succeeded",
+                product = product,
+                extraAttrs = mapOf(
+                    "amount_cents" to order?.amountCents,
+                    "out_trade_suffix" to outTradeNo.takeLast(8)
+                )
+            )
             membershipPaymentState = MembershipPaymentState(
                 activeProduct = product,
                 notice = "正在打开支付宝"
             )
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.alipay_launch_started",
+                message = "Alipay launch started",
+                product = product,
+                extraAttrs = mapOf("out_trade_suffix" to outTradeNo.takeLast(8))
+            )
             AlipayPaymentClient.pay(activity, orderString) { result ->
                 snackbarScope.launch {
-                    SessionApi.reportClientLog(
+                    reportMembershipPaymentLog(
                         level = "info",
                         event = "payment.alipay_sync_result",
                         message = "Alipay sync result received",
-                        attrs = mapOf(
-                            "product_type" to product.apiValue,
+                        product = product,
+                        extraAttrs = mapOf(
                             "result_status" to result.resultStatus,
                             "out_trade_suffix" to outTradeNo.takeLast(8)
                         )

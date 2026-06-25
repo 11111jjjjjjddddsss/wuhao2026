@@ -839,6 +839,7 @@ private fun MembershipTopupCard(
                     else -> "会员可购买"
                 },
                 enabled = canBuy,
+                clickableWhenDisabled = true,
                 onClick = { onStartPayment(product) }
             )
         }
