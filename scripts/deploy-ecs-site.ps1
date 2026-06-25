@@ -381,7 +381,7 @@ $userAgreementDist = Get-Content -LiteralPath (Join-Path $distDir "legal/user-ag
 $privacyPolicyDist = Get-Content -LiteralPath (Join-Path $distDir "legal/privacy-policy/index.html") -Raw -Encoding UTF8
 foreach ($marker in @(
     'nongji-page-user-agreement',
-    'name="nongji-legal-version" content="20260620"',
+    'name="nongji-legal-version" content="20260625"',
     'name="nongji-legal-section" content="user-agreement-usage-norms"'
 )) {
     if ($userAgreementDist -notlike "*$marker*") {
@@ -390,7 +390,7 @@ foreach ($marker in @(
 }
 foreach ($marker in @(
     'nongji-page-privacy-policy',
-    'name="nongji-legal-version" content="20260620"',
+    'name="nongji-legal-version" content="20260625"',
     'name="nongji-privacy-section" content="long-term-memory"'
 )) {
     if ($privacyPolicyDist -notlike "*$marker*") {
@@ -400,19 +400,19 @@ foreach ($marker in @(
 $additionalLegalPageMarkers = @(
     @{
         Path = "legal/third-party-sharing/index.html"
-        Markers = @("nongji-page-third-party-sharing", 'name="nongji-legal-version" content="20260620"')
+        Markers = @("nongji-page-third-party-sharing", 'name="nongji-legal-version" content="20260625"')
     },
     @{
         Path = "legal/personal-info-list/index.html"
-        Markers = @("nongji-page-personal-info-list", 'name="nongji-legal-version" content="20260620"')
+        Markers = @("nongji-page-personal-info-list", 'name="nongji-legal-version" content="20260625"')
     },
     @{
         Path = "legal/app-permissions/index.html"
-        Markers = @("nongji-page-app-permissions", 'name="nongji-legal-version" content="20260620"')
+        Markers = @("nongji-page-app-permissions", 'name="nongji-legal-version" content="20260625"')
     },
     @{
         Path = "legal/risk-notice/index.html"
-        Markers = @("nongji-page-risk-notice", 'name="nongji-legal-version" content="20260620"')
+        Markers = @("nongji-page-risk-notice", 'name="nongji-legal-version" content="20260625"')
     }
 )
 foreach ($spec in $additionalLegalPageMarkers) {
@@ -762,12 +762,12 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_status "site-https-legal-user" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_status "site-https-legal-privacy" "200" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
-  expect_contains "site-legal-user-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
+  expect_contains "site-legal-user-date" "name=\"nongji-legal-version\" content=\"20260625\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-user-norms" "name=\"nongji-legal-section\" content=\"user-agreement-usage-norms\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-user-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_not_contains "site-legal-user-no-old-title" "禁止行为" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/user-agreement/"
   expect_contains "site-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
-  expect_contains "site-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
+  expect_contains "site-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260625\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-privacy-gongan" "11010602202723" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/privacy-policy/"
   expect_contains "site-legal-third-party-marker" "nongji-page-third-party-sharing" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/third-party-sharing/"
@@ -775,11 +775,11 @@ if [ -f "`$cert_dir/fullchain.pem" ]; then
   expect_contains "site-legal-permissions-marker" "nongji-page-app-permissions" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/app-permissions/"
   expect_contains "site-legal-risk-marker" "nongji-page-risk-notice" -k --resolve "`$domain:443:127.0.0.1" "https://`$domain/legal/risk-notice/"
   expect_contains "site-www-legal-user-marker" "nongji-page-user-agreement" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
-  expect_contains "site-www-legal-user-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
+  expect_contains "site-www-legal-user-date" "name=\"nongji-legal-version\" content=\"20260625\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-user-norms" "name=\"nongji-legal-section\" content=\"user-agreement-usage-norms\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_not_contains "site-www-legal-user-no-old-title" "禁止行为" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/user-agreement/"
   expect_contains "site-www-legal-privacy-marker" "nongji-page-privacy-policy" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
-  expect_contains "site-www-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260620\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
+  expect_contains "site-www-legal-privacy-date" "name=\"nongji-legal-version\" content=\"20260625\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
   expect_contains "site-www-legal-privacy-memory" "name=\"nongji-privacy-section\" content=\"long-term-memory\"" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/privacy-policy/"
   expect_contains "site-www-legal-third-party-marker" "nongji-page-third-party-sharing" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/third-party-sharing/"
   expect_contains "site-www-legal-personal-info-marker" "nongji-page-personal-info-list" -k --resolve "`$www_domain:443:127.0.0.1" "https://`$www_domain/legal/personal-info-list/"

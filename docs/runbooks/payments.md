@@ -6,14 +6,16 @@
 
 记录农技千查支付、会员订单、权益发放、回调验签、对账和退款边界，避免把开发期接口或未验收代码误当正式收费系统。
 
-当前状态：支付宝 APP 支付代码已接入仓库，Android 已接支付宝 SDK，后端已接服务端创建支付宝 APP 支付订单、异步通知验签、`payment_orders` / `payment_notifications`、幂等发放会员 / 加油包权益和后台只读订单核查。生产正式收费仍不得直接放量，必须完成生产环境 `AppID / seller_id / 应用私钥 / 支付宝公钥 / notify_url` 配置、小额真机支付、异步通知公网验签、重复通知幂等、权益发放、异常补偿、对账、人工补权益和退款流程验收后，再按正式发版和运营口径打开。
+当前状态：支付宝 APP 支付代码已接入仓库，Android 已接支付宝 SDK，后端已接服务端创建支付宝 APP 支付订单、异步通知验签、`payment_orders` / `payment_notifications`、幂等发放会员 / 加油包权益和后台只读订单核查。2026-06-25 起，后端订单创建额外受生产支付门禁控制：默认关闭；内测联调必须同时配置测试包构建类型和账号白名单才允许创建支付宝订单，单独只配其中一个仍保持关闭；正式放量必须另开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。生产正式收费仍不得直接放量，必须完成生产环境 `AppID / seller_id / 应用私钥 / 支付宝公钥 / notify_url` 配置、小额真机支付、异步通知公网验签、重复通知幂等、权益发放、异常补偿、对账、人工补权益和退款流程验收后，再按正式发版和运营口径打开。
 
 ## 当前代码真相
 
 - Android 会员中心的 Plus、Pro 和加油包按钮已改为真实支付入口：先请求后端 `POST /api/payments/alipay/orders` 创建订单，再把后端返回的 `order_string` 交给支付宝 SDK `PayTask.payV2` 调起支付。
+- Android 创建支付宝订单时会带 `client_build_type` 和 `client_version_code`；后端用它配合账号白名单控制“内部测试包可测、正式包继续不可用”。旧正式包不带构建类型时不会通过测试门禁；测试期只配 `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug` 或只配账号白名单也不会放行。
 - Android 不保存、不生成、不读取支付宝应用私钥、支付宝公钥、商户密钥或任何支付渠道密钥；客户端同步结果只用于提示和轮询订单状态，不直接发放权益。
 - Android 会把 `9000` 视为同步成功、`8000 / 6004 / 6006` 视为处理中、`6002` 视为网络异常并继续轮询后端订单；只有后端订单达到 `paid + grant_status=success` 才提示权益已生效。
 - 后端新增正式支付订单表 `payment_orders` 和通知表 `payment_notifications`。支付宝通知会验签并校验 `app_id / seller_id / out_trade_no / trade_no / total_amount / trade_status`，成功处理后才返回支付宝要求的 `success`。
+- 0.01 元联调订单支付成功后会按商品类型发放完整测试权益，因此只允许白名单账号 + debug 测试包使用。测试订单不删除，`payment_orders` 会记录 `is_test_order / original_amount_cents / client_build_type / client_version_code`；后台汇总不把测试订单计入正式支付金额，便于后续和支付宝账单、回调日志、权益流水对账。
 - 后端发权益使用 `pay_<out_trade_no>` 作为幂等订单号，复用现有会员 / 加油包账本；重复通知不会重复发权益。`grant_status=processing` 未完成时不返回成功，保留支付宝重试机会；晚到的 `TRADE_CLOSED` 不应覆盖已支付订单。
 - Plus / Pro 会员仍按 30 天周期处理；加油包次数和 Plus 升 Pro 生成的升级补偿次数都按永久有效处理，不随会员到期清零；每日额度是自然日额度，不跨天结转。后续扣次顺序仍是每日额度 -> 升级补偿 -> 加油包。
 - 后端开发期直改接口 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍保留给本地 / 内测调试，默认返回 `PAYMENT_NOT_CONFIGURED`；生产环境必须继续保持 `dev_order_endpoints=false`，不能把开发期接口当正式收费入口。
@@ -26,6 +28,7 @@
 - 运营侧：客服先核对后台订单、支付宝账单 / 回调记录和服务端日志。确认订单已支付、账号归属正确且权益确实未发放时，优先人工补权益并记录处理备注 / 审计，退款不是第一处理动作。
 - 退款适用：无法核实付款、重复扣款、用户明确不接受补权益、平台规则或法律要求退款时，再进入退款流程。
 - 当前缺口：后台订单页仍是只读核查，没有一键补权益按钮；正式收费前应补 `owner / finance_ops` 二次确认、订单校验和审计齐全的人工补权益入口。短期如需人工补偿，可用受控礼品卡或后台 SOP 处理，但礼品卡本身不是支付订单或退款凭证。
+- 测试单处理：内部 0.01 元订单不得从数据库删除；如需排查或对账，应在后台按“测试订单”识别并排除正式收入统计。删除订单会造成支付宝账单、异步回调和本地权益发放记录断链。
 
 ## 申请前准备
 
@@ -67,7 +70,13 @@
 当前联调和上线前检查：
 
 - `check-payment-readiness.ps1` 会检查本机是否具备支付宝正式联调所需环境变量：`ALIPAY_APP_ID / ALIPAY_SELLER_ID / ALIPAY_APP_PRIVATE_KEY(_FILE) / ALIPAY_PUBLIC_KEY(_FILE)`，只输出 ready / missing，不打印任何密钥。
-- 生产 ECS 若要启用支付宝，必须配置 `ALIPAY_APP_ID`、`ALIPAY_SELLER_ID`、应用私钥、支付宝公钥和 `ALIPAY_NOTIFY_URL=https://api.nongjiqiancha.cn/api/payments/alipay/notify`；缺任一项都不能写成支付 ready。
+- 生产 ECS 若要启用支付宝，必须配置 `ALIPAY_APP_ID`、`ALIPAY_SELLER_ID`、应用私钥、支付宝公钥和 `ALIPAY_NOTIFY_URL=https://api.nongjiqiancha.cn/api/payments/alipay/notify`；缺任一项都不能写成支付 ready。配置这些密钥只代表支付宝客户端可用，不代表正式包已开放收费。
+- 支付订单创建门禁：
+  - `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`：正式放量开关，只有真实上线验收完成后才能开。
+  - `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug`：测试期必须配置，只允许内部 debug 测试包创建订单；正式包或旧包缺少构建类型时会继续收到“支付暂时不可用”。
+  - `ALIPAY_PAYMENT_ALLOWED_USER_IDS=acct_...`：测试期必须配置，只允许指定账号创建订单。测试模式下账号白名单和构建类型白名单必须同时存在并同时命中，单独只配一项不会放行。
+  - `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS=1`：仅用于白名单账号 + debug 测试包的小额联调，表示 0.01 元；该开关在 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true` 时不会生效，没有账号白名单或没有构建类型白名单时也不会生效，即使误把 `release` 加进构建类型白名单也不会对 release 包生效。测试完成后必须从生产环境移除，不能把它当正式定价；测试单仍会发放完整权益，但会标记 `is_test_order=true`。
+- 生产 `/healthz` 会额外返回 `alipay_payment_gate=closed / limited / public`。`alipay=ok` 只说明支付宝密钥配置完整；是否能创建订单还要看支付门禁状态。
 - 当前已能自动测试的内容：Android 是否集成支付宝 SDK、是否把未知同步结果转为轮询、后端是否注册订单 / 通知路由、是否强制 seller 校验、是否避免完整支付号进日志、支付表迁移是否存在、后台和协议页面是否同步支付宝口径。
 - 当前仍必须人工或平台实测的内容：生产或沙箱小额下单、支付宝 App 拉起、用户取消、网络中断、`6004 / 6006` 未知结果、异步通知公网验签、重复通知、金额不一致拒绝、订单关闭、已支付权益发放、支付成功但权益未生效的客服人工补权益处理、对账和退款流程。
 - 微信 App 支付仍未接入；如后续接微信，必须另行准备微信开放平台移动应用 AppID、微信支付商户号、API 证书 / APIv3 Key / 平台证书，并复用同一套服务端订单和权益发放边界。

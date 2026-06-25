@@ -1585,11 +1585,11 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "四、会员、支付、加油包和礼品卡",
-                body = "会员、加油包、升级补偿、礼品卡、订单、退款和权益生效规则，以 App 页面、平台记录、支付渠道结果和法律规定为准。付费服务应通过 App 页面展示的官方渠道完成；未展示可购买状态的入口不会发起真实扣费。"
+                body = "Plus / Pro 会员按 30 天计算，为一次性购买，不自动续费；每日额度不结转，会员到期后按基础权益计算。加油包为额外问诊次数，未用完次数长期保留；升级补偿次数和礼品卡权益以 App 页面和平台记录为准。付费服务应通过 App 页面展示的官方渠道完成；未展示可购买状态的入口不会发起真实扣费。已付款但权益未到账时，请通过帮助与反馈联系客服；核实后优先补发权益，重复扣款、无法提供服务、依法或支付平台规则应退款的情形，按核验结果处理退款或其他售后。支付凭证或发票需求可通过帮助与反馈提交，我们会按实际经营和税务规则处理。"
             ),
             HamburgerLegalSection(
-                title = "五、农资信息和交易边界",
-                body = "本服务可能展示农资标签解读、查询路径、使用注意事项或市场信息整理等内容。相关信息仅供参考，不构成购买建议、效果保证或质量承诺。若页面提供交易或售后服务，具体规则以页面说明、商品标签、订单记录和法律规定为准。"
+                title = "五、农资信息和购买提醒",
+                body = "本服务可能展示农资标签解读、查询路径、使用注意事项或市场信息整理等内容。相关信息仅供参考，不构成购买建议、效果保证或质量承诺。您在 App 外购买农资时，请自行核对经营主体、产品资质、适用作物、票据凭证和当地法规。"
             ),
             HamburgerLegalSection(
                 title = "六、使用规范、责任和协议更新",
@@ -1599,7 +1599,7 @@ internal fun HamburgerServiceAgreementContent(
     }
     HamburgerLegalTextPage(
         title = "服务协议",
-        meta = "更新日期：2026年6月20日\n生效日期：2026年6月20日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+        meta = "更新日期：2026年6月25日\n生效日期：2026年6月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
         sections = sections,
         modifier = modifier,
     )
@@ -1665,7 +1665,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年6月20日\n生效日期：2026年6月20日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+            text = "更新日期：2026年6月25日\n生效日期：2026年6月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1736,13 +1736,13 @@ private fun HamburgerRiskNoticeContent(
     ) {
         HamburgerLegalPageTitle("风险提示")
         Text(
-            text = "更新日期：2026年6月20日\n生效日期：2026年6月20日",
+            text = "更新日期：2026年6月25日\n生效日期：2026年6月25日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
         )
         Text(
-            text = "农技千查提供农业技术参考，不能替代现场诊断、官方认定、检测结论、商品质量承诺或线下专业服务。涉及用药用肥、农资购买、重大损失、赔付争议或安全风险，建议结合线下情况复核。",
+            text = "农技千查提供农业技术参考，不能替代现场诊断、官方认定、检测结论、农资质量承诺或线下专业服务。涉及用药用肥、农资购买、重大损失、赔付争议或安全风险，建议结合线下情况复核。",
             color = Color(0xFF30343A),
             fontSize = 14.5.sp,
             lineHeight = 23.sp
@@ -1757,15 +1757,15 @@ private fun HamburgerRiskNoticeContent(
         )
         HamburgerAgreementSection(
             title = "三、药肥农资看标签",
-            body = "涉及农药、肥料、调节剂、种子、基质、设备等农资，请以产品标签、登记信息、质量证明、当地法规、安全间隔期和线下农技人员意见为准。不建议仅凭 AI 建议超范围、超剂量、混配或在不适宜天气下使用；购买农资时请核对经营主体、商品资质、适用作物、售后规则和发票凭证。"
+            body = "涉及农药、肥料、调节剂、种子、基质、设备等农资，请以产品标签、登记信息、质量证明、当地法规、安全间隔期和线下农技人员意见为准。不建议仅凭 AI 建议超范围、超剂量、混配或在不适宜天气下使用；购买农资时请核对经营主体、产品资质、适用作物和票据凭证。"
         )
         HamburgerAgreementSection(
             title = "四、官方和时效信息以最新发布为准",
             body = "检疫、补贴、备案、登记、审定、证件真伪、价格、天气、预警、质量争议、赔付和行政流程，AI 只能提供一般说明或查询路径，请以官方平台和当地主管部门最新信息为准。"
         )
         HamburgerAgreementSection(
-            title = "五、交易和权益风险",
-            body = "会员、加油包、礼品卡、支付、农资交易或售后服务的权益，以 App 页面、平台记录、订单记录、支付渠道结果、商品标签和商家规则为准。涉及 App 外私下收款、代充、代兑换、非官方客服或包治包赔承诺时，请谨慎核实。"
+            title = "五、权益和支付风险",
+            body = "会员、加油包、礼品卡和支付相关权益，以 App 页面、平台记录、订单记录、支付渠道结果和法律规定为准。涉及 App 外私下收款、代充、代兑换、非官方客服或包治包赔承诺时，请谨慎核实。"
         )
         HamburgerAgreementSection(
             title = "六、未成年人需监护",
@@ -1834,7 +1834,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年6月20日",
+            text = "更新日期：2026年6月25日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1861,7 +1861,7 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "六、支付服务",
-            body = "共享类型：支付宝 APP 支付 SDK / 支付服务接口。\n服务提供方：支付宝（中国）网络技术有限公司及支付宝开放平台相关服务。\n服务类别：支付渠道服务。\n使用场景：您主动购买会员、加油包或其他付费服务时，调起支付宝完成支付。\n涉及信息：订单号、商品 / 权益信息、支付金额、支付状态、退款和售后处理所需信息，以及支付宝 SDK 完成支付所需的设备和支付环境必要信息。\n共享方式：由农技千查后端创建订单并生成支付参数，Android 端仅将支付参数交给支付宝 SDK 调起支付；权益发放以后端验签通知或订单状态核验为准，客户端同步结果不直接发放权益。\n第三方处理规则：支付宝隐私权政策及支付宝开放平台公开规则。"
+            body = "共享类型：支付宝 APP 支付 SDK / 支付服务接口。\n服务提供方：支付宝（中国）网络技术有限公司及支付宝开放平台相关服务。\n服务类别：支付渠道服务。\n使用场景：您主动购买会员、加油包或其他付费服务时，调起支付宝完成支付。\n涉及信息：订单号、服务 / 权益信息、支付金额、支付状态、退款和售后处理所需信息，以及支付宝 SDK 完成支付所需的设备和支付环境必要信息。\n共享方式：由农技千查后端创建订单并生成支付参数，Android 端仅将支付参数交给支付宝 SDK 调起支付；权益发放以后端验签通知或订单状态核验为准，客户端同步结果不直接发放权益。\n第三方处理规则：支付宝隐私权政策及支付宝开放平台公开规则。"
         )
         HamburgerAgreementSection(
             title = "七、当前未接入的第三方 SDK",
@@ -1909,7 +1909,7 @@ private fun HamburgerPersonalInfoListContent(
     ) {
         HamburgerLegalPageTitle("个人信息收集清单")
         Text(
-            text = "更新日期：2026年6月20日",
+            text = "更新日期：2026年6月25日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1980,7 +1980,7 @@ private fun HamburgerPermissionListContent(
     ) {
         HamburgerLegalPageTitle("应用权限")
         Text(
-            text = "更新日期：2026年6月20日",
+            text = "更新日期：2026年6月25日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp

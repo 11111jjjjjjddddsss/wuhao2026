@@ -1167,7 +1167,9 @@ object SessionApi {
         val payload = mapOf(
             "product_type" to productType,
             "client_app_version" to BuildConfig.VERSION_NAME,
-            "client_platform" to "android"
+            "client_platform" to "android",
+            "client_build_type" to BuildConfig.BUILD_TYPE,
+            "client_version_code" to BuildConfig.VERSION_CODE
         )
         val requestBody = gson.toJson(payload).toRequestBody("application/json".toMediaType())
         enqueueWithRetry401(

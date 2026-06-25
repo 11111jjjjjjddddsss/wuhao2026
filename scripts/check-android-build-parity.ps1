@@ -655,10 +655,10 @@ if ($failures.Count -eq 0) {
         "Today agri main-chat copy menu must stay aligned with assistant text copy/full-copy behavior."
     Require-NoMatch $failures $chatScreen 'todayAgriBottomAnchorAppliedKey' `
         "Today agri appearance must not keep a dedicated force-bottom anchor state; it should not pull the user to the bottom at the moment it appears."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantParagraphTextStyle\(\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*16\.5\.sp(?s:.*?)lineHeight\s*=\s*27\.5\.sp(?s:.*?)letterSpacing\s*=\s*0\.sp(?s:.*?)internal\s+fun\s+assistantStreamingParagraphTextStyle\(\):\s*TextStyle\s*=(?s:.*?)lineHeight\s*=\s*29\.sp(?s:.*?)internal\s+fun\s+assistantHeadingTextStyle' `
-        "Assistant main-chat text must keep the balanced half-step typography and zero Chinese body letter spacing."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.5\.sp\s*else\s*17\.5\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*30\.sp\s*else\s*27\.sp' `
-        "Assistant headings must keep the balanced half-step scale instead of returning to the heavier 20/18sp layout."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantParagraphTextStyle\(\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*17\.sp(?s:.*?)lineHeight\s*=\s*28\.5\.sp(?s:.*?)letterSpacing\s*=\s*0\.sp(?s:.*?)internal\s+fun\s+assistantStreamingParagraphTextStyle\(\):\s*TextStyle\s*=(?s:.*?)lineHeight\s*=\s*29\.sp(?s:.*?)internal\s+fun\s+assistantHeadingTextStyle' `
+        "Assistant main-chat text must keep the slightly roomier GPT-like typography and zero Chinese body letter spacing."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.sp\s*else\s*17\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*29\.5\.sp\s*else\s*27\.sp(?s:.*?)fontWeight\s*=\s*FontWeight\.SemiBold' `
+        "Assistant headings must keep the lighter GPT-like scale without returning to the heavier bold layout."
     Require-Match $failures $chatScreen 'val\s+globalStatusHintVisible\s*=\s*globalStatusHintText\s*!=\s*null\s*&&\s*inputSelectionToolbarState\s*==\s*null\s*&&\s*activeMessageSelectionState\s*==\s*null(?s:.*?)ComposerAttachmentBottomSheet\((?s:.*?)GlobalStatusHint\((?s:.*?)\.zIndex\(120f\)' `
         "Main-chat middle status hints must stay above transient panels so short business prompts give immediate visible feedback."
     Require-Match $failures $chatScreen 'HamburgerMenuSheet\((?s:.*?)onPlaceholderClick\s*=\s*\{\s*text\s*->(?s:.*?)performButtonHaptic\(\)(?s:.*?)showComposerStatusHint\(text\)' `
@@ -970,8 +970,8 @@ if ($failures.Count -eq 0) {
         "Settled assistant history must render section dividers through the same unified block host as streaming content, including compact numbered headings."
     Require-Match $failures $chatStreamingRenderer 'RendererAssistantStreamingContentImpl(?s:.*?)RendererAssistantStreamingUnifiedBlockHost\((?s:.*?)linksEnabled\s*=\s*false(?s:.*?)showLeadingSectionDivider\s*=\s*blockLeadingDivider' `
         "Streaming assistant content must render section dividers through the unified block host while keeping streaming links disabled."
-    Require-Match $failures $chatStreamingRenderer 'Color\(0xFFE7E9ED\)' `
-        "Assistant section divider lines must keep the original light visual style."
+    Require-Match $failures $chatStreamingRenderer 'HorizontalDivider\((?s:.*?)thickness\s*=\s*0\.6\.dp(?s:.*?)Color\(0xFFF0F2F4\)' `
+        "Assistant section divider lines must keep the softer GPT-like visual style."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingsInsideNumberedSectionsDoNotCreateDividers' `
         "Assistant renderer tests must prove nested standalone bold subheadings do not create dividers while inline bold text stays untouched."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `

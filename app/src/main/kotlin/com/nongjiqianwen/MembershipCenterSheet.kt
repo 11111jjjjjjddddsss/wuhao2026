@@ -621,7 +621,7 @@ private fun MembershipPlanSection(
             name = "Plus",
             price = MEMBERSHIP_PLUS_PRICE_TEXT,
             active = activeTier == "plus",
-            highlights = listOf("每天${MEMBERSHIP_PLUS_DAILY_LIMIT}次问诊", "图文问题随时问", "记忆与上下文更强"),
+            highlights = listOf("每天${MEMBERSHIP_PLUS_DAILY_LIMIT}次问诊", "一次购买30天，不自动续费", "图文问题随时问"),
             actionText = plusActionText,
             actionEnabled = plusEnabled && paymentState.activeProduct == null,
             onActionClick = { onStartPayment(plusProduct) }
@@ -631,7 +631,7 @@ private fun MembershipPlanSection(
             price = MEMBERSHIP_PRO_PRICE_TEXT,
             badge = "推荐",
             active = activeTier == "pro",
-            highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "复杂问题推理更强", "适合多作物、多地块复盘"),
+            highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "一次购买30天，不自动续费", "复杂问题推理更强"),
             actionText = proActionText,
             actionEnabled = proEnabled && paymentState.activeProduct == null,
             onActionClick = { onStartPayment(proProduct) }

@@ -38,6 +38,132 @@ func TestPaymentAmountCentsParsing(t *testing.T) {
 	}
 }
 
+func clearAlipayPaymentGateTestEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv(alipayPaymentPublicEnabledEnv, "")
+	t.Setenv(alipayPaymentAllowedUserIDsEnv, "")
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "")
+	t.Setenv(alipayPaymentTestAmountCentsEnv, "")
+}
+
+func TestAlipayPaymentOrderGateDefaultsClosed(t *testing.T) {
+	clearAlipayPaymentGateTestEnv(t)
+
+	if alipayPaymentOrderGateAllows("acct_payment_user", createAlipayOrderRequest{ClientBuildType: "debug"}) {
+		t.Fatal("payment gate should default to closed")
+	}
+	if got := alipayPaymentOrderGateStatus(); got != "closed" {
+		t.Fatalf("gate status=%q want closed", got)
+	}
+}
+
+func TestAlipayPaymentOrderGateRequiresUserAndDebugBuildAllowlists(t *testing.T) {
+	clearAlipayPaymentGateTestEnv(t)
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug")
+
+	if alipayPaymentOrderGateAllows("acct_payment_user", createAlipayOrderRequest{ClientBuildType: "debug"}) {
+		t.Fatal("build-type allowlist alone should not allow payment orders")
+	}
+	if got := alipayPaymentOrderGateStatus(); got != "closed" {
+		t.Fatalf("gate status with build-only allowlist=%q want closed", got)
+	}
+
+	clearAlipayPaymentGateTestEnv(t)
+	t.Setenv(alipayPaymentAllowedUserIDsEnv, "acct_payment_user")
+	if alipayPaymentOrderGateAllows("acct_payment_user", createAlipayOrderRequest{ClientBuildType: "debug"}) {
+		t.Fatal("user allowlist alone should not allow payment orders")
+	}
+	if got := alipayPaymentOrderGateStatus(); got != "closed" {
+		t.Fatalf("gate status with user-only allowlist=%q want closed", got)
+	}
+
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug")
+	if !alipayPaymentOrderGateAllows("acct_payment_user", createAlipayOrderRequest{ClientBuildType: "debug"}) {
+		t.Fatal("matching user and debug build should be allowed")
+	}
+	if got := alipayPaymentOrderGateStatus(); got != "limited" {
+		t.Fatalf("gate status=%q want limited", got)
+	}
+}
+
+func TestAlipayPaymentOrderGateRequiresBothUserAndBuildWhenBothConfigured(t *testing.T) {
+	clearAlipayPaymentGateTestEnv(t)
+	t.Setenv(alipayPaymentAllowedUserIDsEnv, "acct_allowed")
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug")
+
+	if !alipayPaymentOrderGateAllows("acct_allowed", createAlipayOrderRequest{ClientBuildType: "debug"}) {
+		t.Fatal("matching user and debug build should be allowed")
+	}
+	if alipayPaymentOrderGateAllows("acct_other", createAlipayOrderRequest{ClientBuildType: "debug"}) {
+		t.Fatal("wrong user should be blocked")
+	}
+	if alipayPaymentOrderGateAllows("acct_allowed", createAlipayOrderRequest{ClientBuildType: "release"}) {
+		t.Fatal("wrong build type should be blocked")
+	}
+	if alipayPaymentOrderGateAllows("acct_allowed", createAlipayOrderRequest{}) {
+		t.Fatal("missing build type should be blocked")
+	}
+}
+
+func TestAlipayPaymentOrderGatePublicEnabledAllowsAll(t *testing.T) {
+	clearAlipayPaymentGateTestEnv(t)
+	t.Setenv(alipayPaymentPublicEnabledEnv, "true")
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug")
+
+	if !alipayPaymentOrderGateAllows("acct_any", createAlipayOrderRequest{ClientBuildType: "release"}) {
+		t.Fatal("public payment gate should allow release clients")
+	}
+	if got := alipayPaymentOrderGateStatus(); got != "public" {
+		t.Fatalf("gate status=%q want public", got)
+	}
+}
+
+func TestApplyAlipayPaymentTestAmountRequiresUserAllowlist(t *testing.T) {
+	clearAlipayPaymentGateTestEnv(t)
+	product, ok := paymentProductByType(paymentProductBuyTopup)
+	if !ok {
+		t.Fatal("topup product missing")
+	}
+	t.Setenv(alipayPaymentTestAmountCentsEnv, "1")
+
+	got, applied := applyAlipayPaymentTestAmount(product, "acct_allowed", createAlipayOrderRequest{ClientBuildType: "debug"})
+	if applied || got.AmountCents != product.AmountCents {
+		t.Fatal("test amount should not apply without user allowlist")
+	}
+
+	t.Setenv(alipayPaymentAllowedUserIDsEnv, "acct_allowed")
+	got, applied = applyAlipayPaymentTestAmount(product, "acct_allowed", createAlipayOrderRequest{ClientBuildType: "debug"})
+	if applied || got.AmountCents != product.AmountCents {
+		t.Fatal("test amount should not apply without build-type allowlist")
+	}
+
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug")
+	got, applied = applyAlipayPaymentTestAmount(product, "acct_allowed", createAlipayOrderRequest{ClientBuildType: "release"})
+	if applied || got.AmountCents != product.AmountCents {
+		t.Fatal("test amount should not apply to release build")
+	}
+
+	got, applied = applyAlipayPaymentTestAmount(product, "acct_allowed", createAlipayOrderRequest{ClientBuildType: "debug"})
+	if !applied || got.AmountCents != 1 {
+		t.Fatalf("test amount applied=%v amount=%d, want 1 cent", applied, got.AmountCents)
+	}
+	if !strings.Contains(got.Subject, "联调测试") {
+		t.Fatalf("test subject should be marked, got %q", got.Subject)
+	}
+
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug,release")
+	got, applied = applyAlipayPaymentTestAmount(product, "acct_allowed", createAlipayOrderRequest{ClientBuildType: "release"})
+	if applied || got.AmountCents != product.AmountCents {
+		t.Fatal("test amount should never apply to release build even if release is misconfigured in allowlist")
+	}
+
+	t.Setenv(alipayPaymentPublicEnabledEnv, "true")
+	got, applied = applyAlipayPaymentTestAmount(product, "acct_allowed", createAlipayOrderRequest{ClientBuildType: "debug"})
+	if applied || got.AmountCents != product.AmountCents {
+		t.Fatal("test amount must not apply when public payment is enabled")
+	}
+}
+
 func TestAlipayBuildAppPayOrderSignatureVerifies(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -160,6 +286,8 @@ func TestGrantPaidPaymentOrderKeepsAlipayRetryWhenAlreadyProcessing(t *testing.T
 			2990,
 			"CNY",
 			"农技千查 Pro 会员30天",
+			2990,
+			0,
 			paymentStatusPaid,
 			"20260623220000000001",
 			"TRADE_SUCCESS",
@@ -216,6 +344,8 @@ func TestGrantPaidPaymentOrderMarksNeedsOpsForBusinessConflict(t *testing.T) {
 			2990,
 			"CNY",
 			"农技千查升级 Pro 会员30天",
+			2990,
+			0,
 			paymentStatusPaid,
 			"20260623220000000001",
 			"TRADE_SUCCESS",
@@ -278,6 +408,8 @@ func TestCompleteAlipayPaymentDoesNotDowngradePaidOrderOnClosedNotify(t *testing
 			2990,
 			"CNY",
 			"农技千查 Pro 会员30天",
+			2990,
+			0,
 			paymentStatusPaid,
 			"20260623220000000001",
 			"TRADE_SUCCESS",
@@ -329,6 +461,8 @@ func paymentOrderRows() *sqlmock.Rows {
 		"amount_cents",
 		"currency",
 		"subject",
+		"original_amount_cents",
+		"is_test_order",
 		"status",
 		"provider_trade_no",
 		"provider_status",

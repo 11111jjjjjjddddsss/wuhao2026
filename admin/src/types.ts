@@ -482,12 +482,16 @@ export interface AdminOrderEntry {
   user_id: string;
   type: string;
   amount: string;
+  original_amount?: string;
   created_at: number;
   status: string;
   source?: string;
   provider?: string;
   provider_trade_no?: string;
   grant_status?: string;
+  is_test_order?: boolean;
+  client_build_type?: string;
+  client_version_code?: number;
   result?: JsonValue;
 }
 

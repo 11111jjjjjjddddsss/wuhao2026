@@ -808,8 +808,8 @@ internal val GPT_BALL_SIZE = 14.dp
 internal val GPT_BALL_CONTAINER_SIZE = 24.dp
 internal val GPT_BALL_START_PADDING = 0.dp
 internal val MARKDOWN_BLOCK_SPACING = 14.dp
-internal val SECTION_DIVIDER_GAP = 22.dp
-internal val SECTION_DIVIDER_TOP_EXTRA_GAP = 14.dp
+internal val SECTION_DIVIDER_GAP = 18.dp
+internal val SECTION_DIVIDER_TOP_EXTRA_GAP = 10.dp
 private const val APP_TITLE_TEXT = "农技千查"
 private const val WELCOME_EMPTY_STATE_TEXT = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片"
 internal const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
@@ -963,8 +963,8 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
 }
 
 internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
-    fontSize = 16.5.sp,
-    lineHeight = 27.5.sp,
+    fontSize = 17.sp,
+    lineHeight = 28.5.sp,
     letterSpacing = 0.sp,
     color = Color(0xFF171717),
     textMotion = TextMotion.Static,
@@ -1048,9 +1048,9 @@ internal fun shouldShowAiDisclaimerRefined(content: String): Boolean {
 }
 
 internal fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
-    fontSize = if (level <= 2) 19.5.sp else 17.5.sp,
-    lineHeight = if (level <= 2) 30.sp else 27.sp,
-    fontWeight = FontWeight.Bold,
+    fontSize = if (level <= 2) 19.sp else 17.sp,
+    lineHeight = if (level <= 2) 29.5.sp else 27.sp,
+    fontWeight = FontWeight.SemiBold,
     color = Color(0xFF111111),
     textMotion = TextMotion.Static,
     lineBreak = LineBreak.Heading

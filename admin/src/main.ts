@@ -819,7 +819,7 @@ async function entitlementsPage(): Promise<string> {
 async function ordersPage(): Promise<string> {
   return userScopedPage({
     title: "订单",
-    desc: "只读核查会员变更、支付宝订单和权益发放状态，不提供补发、退款或手动改权益。",
+    desc: "只读核查会员变更、支付订单和权益发放状态，不提供补发、退款或手动改权益。",
     formID: "orders-form",
     inputName: "user_id",
     value: pageState.orderUserID,
@@ -833,11 +833,12 @@ async function ordersPage(): Promise<string> {
           ${kpi(userID ? "筛选订单" : "最近订单", orders.length, userID ? `账号 ${userID}` : "最近 50 条")}
           ${kpi("成功", summary.success, "只读统计")}
           ${kpi("失败", summary.failed, "只读统计")}
-          ${kpi("订单金额", summary.amountText, "以支付渠道和后台记录核对")}
+          ${kpi("正式支付金额", summary.amountText, "只统计非测试支付订单")}
         </div>
         <div class="grid two" style="margin-top:12px">
           ${notice("只读核查", "这里只展示订单、渠道交易号和权益发放状态；不提供支付成功模拟、手动补发、退款或改权益按钮。", "info")}
-          ${notice("异常处理", "看到 paid 但 grant_status 不是 success 时，先核对支付宝后台和服务端日志，再按支付 runbook 处理。", "warn")}
+          ${notice("测试单口径", "0.01 联调订单会保留为测试订单，不删除；后台汇总不把测试单计入正式支付金额。", "info")}
+          ${notice("对账提醒", "生产放量前以支付宝账单和对账结果为准；看到 paid 但 grant_status 不是 success 时，先核对支付平台后台和服务端日志。", "warn")}
         </div>
         <section class="card">
           <div class="card-head"><div class="card-title">${userID ? "用户订单" : "最近订单"}</div><span class="small muted">${orders.length} 条</span></div>
@@ -2216,8 +2217,8 @@ const pageGuides: Partial<Record<RouteKey, PageGuideItem[]>> = {
     { label: "扣次", value: "自动对账为主，不要求人工天天盯" },
   ],
   orders: [
-    { label: "当前用途", value: "只读核查支付宝订单和权益变更记录" },
-    { label: "不要误读", value: "生产放量前以支付宝账单和对账结果为准", level: "warn" },
+    { label: "当前用途", value: "只读核查支付订单和权益变更记录" },
+    { label: "不要误读", value: "生产放量前以支付平台账单和对账结果为准", level: "warn" },
     { label: "后续", value: "生产回调验收、对账、退款" },
   ],
   "gift-cards": [
@@ -2661,7 +2662,7 @@ function ordersTable(rows: AdminOrderEntry[]): string {
                 ${tableCell("账号ID", `<div class="truncate" style="max-width:220px">${escapeHTML(row.user_id)}</div>`)}
                 ${tableCell("来源", escapeHTML(orderSourceLabel(row)))}
                 ${tableCell("类型", escapeHTML(row.type))}
-                ${tableCell("金额", escapeHTML(row.amount))}
+                ${tableCell("金额", orderAmountCell(row))}
                 ${tableCell("状态", statusPill(row.status))}
                 ${tableCell("权益", row.grant_status ? statusPill(row.grant_status) : '<span class="muted">-</span>')}
                 ${tableCell("创建时间", formatTime(row.created_at))}
@@ -2676,10 +2677,30 @@ function ordersTable(rows: AdminOrderEntry[]): string {
 }
 
 function orderSourceLabel(row: AdminOrderEntry): string {
-  if (row.provider) return row.provider;
-  if (row.source === "payment") return "payment";
-  if (row.source === "dev") return "dev";
-  return row.source || "-";
+  const base = row.provider || (row.source === "payment" ? "payment" : row.source === "dev" ? "dev" : row.source || "-");
+  if (row.is_test_order) return `${base} · 测试`;
+  return base;
+}
+
+function orderAmountCell(row: AdminOrderEntry): string {
+  const parts = [escapeHTML(row.amount)];
+  if (row.is_test_order) {
+    parts.push(` ${statusPill("测试", "warn")}`);
+  }
+  if (row.original_amount && row.original_amount !== row.amount) {
+    parts.push(`<div class="small muted">原价 ${escapeHTML(row.original_amount)}</div>`);
+  }
+  if (row.client_build_type) {
+    const version = row.client_version_code ? ` / v${row.client_version_code}` : "";
+    parts.push(`<div class="small muted">${escapeHTML(row.client_build_type + version)}</div>`);
+  }
+  return parts.join("");
+}
+
+function orderCountsAsPaidRevenue(row: AdminOrderEntry): boolean {
+  if (row.source !== "payment") return false;
+  if (row.is_test_order) return false;
+  return (row.status || "").toLowerCase() === "paid";
 }
 
 function summarizeOrders(rows: AdminOrderEntry[]): { success: number; failed: number; amountText: string } {
@@ -2694,7 +2715,7 @@ function summarizeOrders(rows: AdminOrderEntry[]): { success: number; failed: nu
       failed += 1;
     }
     const amount = Number(row.amount);
-    if (Number.isFinite(amount)) {
+    if (orderCountsAsPaidRevenue(row) && Number.isFinite(amount)) {
       amountTotal += amount;
     }
   }

@@ -1,6 +1,6 @@
 # Android 测试包 Runbook
 
-最后更新：2026-06-20
+最后更新：2026-06-25
 
 本 runbook 只用于给用户、代理或管理层临时安装测试包。测试包不是正式发布包，不进入 App 内检查更新，也不替代应用商店 / 官网正式下载物料。
 
@@ -8,6 +8,7 @@
 
 - 测试包默认使用 `debug` 构建，包名仍是 `com.nongjiqiancha`，后端仍接 `https://api.nongjiqiancha.cn`。
 - 测试包可以包含 debug-only 预览面板和调试日志；除此之外，业务链路应尽量和正式包一致。
+- 支付联调测试包会在创建支付宝订单时带 `client_build_type=debug`；后端生产支付门禁必须同时配置 `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug` 和账号白名单，只有指定账号的内部测试包可创建订单。测试包支付通过不等于正式包收费开放。
 - 测试包文件名和 OSS 路径必须显式包含 `debug`、`internal` 或 `test-apks`，避免和正式 release 物料混淆。
 - 测试包默认先上传到 OSS 私有对象，再通过 `download.nongjiqiancha.cn` 自有 HTTPS 下载域名生成签名链接；阿里云 OSS 默认公网 endpoint 不允许直接分发 APK，不能把 `*.oss-cn-beijing.aliyuncs.com` 签名 URL 发给测试用户。低成本下载方案见 [android-download-distribution.md](D:/wuhao/docs/runbooks/android-download-distribution.md)。
 - 上传脚本负责生成 / 上传 debug/internal 测试包、输出签名下载链接，并在新包下载探针通过后清理同前缀旧 debug/internal APK，只保留最新 1 个，避免用户下载错包；脚本不在本机或 ECS 写清理 cron。OSS `test-apks/` 前缀 3 天生命周期继续启用并由脚本只读校验，作为兜底清理。ECS `/test-apks/` 旧直链已停用，不再作为下载回退。

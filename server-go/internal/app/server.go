@@ -303,6 +303,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		"dypns_sms":           smsStatus,
 		"sms":                 smsStatus,
 		"alipay":              s.alipay.HealthStatus(),
+		"alipay_payment_gate": alipayPaymentOrderGateStatus(),
 		"redis":               redisStatus,
 		"upload_storage":      uploadStoreHealthStatus(s.uploadStore),
 		"auth_strict":         IsAuthStrict(),

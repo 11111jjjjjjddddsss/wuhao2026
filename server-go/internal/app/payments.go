@@ -42,6 +42,12 @@ const (
 
 	paymentGrantProcessingRetryAfter      = 5 * time.Minute
 	paymentMembershipMinRemainingForOrder = 45 * time.Minute
+
+	alipayPaymentPublicEnabledEnv     = "ALIPAY_PAYMENT_PUBLIC_ENABLED"
+	alipayPaymentAllowedUserIDsEnv    = "ALIPAY_PAYMENT_ALLOWED_USER_IDS"
+	alipayPaymentAllowedBuildTypesEnv = "ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES"
+	alipayPaymentTestAmountCentsEnv   = "ALIPAY_PAYMENT_TEST_AMOUNT_CENTS"
+	alipayPaymentMaxTestAmountCents   = 100
 )
 
 type paymentProduct struct {
@@ -52,29 +58,33 @@ type paymentProduct struct {
 }
 
 type paymentOrder struct {
-	OutTradeNo         string `json:"out_trade_no"`
-	UserID             string `json:"user_id,omitempty"`
-	Provider           string `json:"provider"`
-	ProductType        string `json:"product_type"`
-	AmountCents        int    `json:"amount_cents"`
-	Currency           string `json:"currency"`
-	Subject            string `json:"subject"`
-	Status             string `json:"status"`
-	ProviderTradeNo    string `json:"provider_trade_no,omitempty"`
-	ProviderStatus     string `json:"provider_status,omitempty"`
-	EntitlementOrderID string `json:"entitlement_order_id,omitempty"`
-	GrantStatus        string `json:"grant_status"`
-	GrantError         string `json:"grant_error,omitempty"`
-	CreatedAt          int64  `json:"created_at"`
-	UpdatedAt          int64  `json:"updated_at"`
-	PaidAt             *int64 `json:"paid_at,omitempty"`
-	GrantedAt          *int64 `json:"granted_at,omitempty"`
+	OutTradeNo          string `json:"out_trade_no"`
+	UserID              string `json:"user_id,omitempty"`
+	Provider            string `json:"provider"`
+	ProductType         string `json:"product_type"`
+	AmountCents         int    `json:"amount_cents"`
+	OriginalAmountCents int    `json:"original_amount_cents,omitempty"`
+	Currency            string `json:"currency"`
+	Subject             string `json:"subject"`
+	Status              string `json:"status"`
+	ProviderTradeNo     string `json:"provider_trade_no,omitempty"`
+	ProviderStatus      string `json:"provider_status,omitempty"`
+	EntitlementOrderID  string `json:"entitlement_order_id,omitempty"`
+	GrantStatus         string `json:"grant_status"`
+	GrantError          string `json:"grant_error,omitempty"`
+	IsTestOrder         bool   `json:"is_test_order,omitempty"`
+	CreatedAt           int64  `json:"created_at"`
+	UpdatedAt           int64  `json:"updated_at"`
+	PaidAt              *int64 `json:"paid_at,omitempty"`
+	GrantedAt           *int64 `json:"granted_at,omitempty"`
 }
 
 type createAlipayOrderRequest struct {
-	ProductType      string `json:"product_type"`
-	ClientAppVersion string `json:"client_app_version,omitempty"`
-	ClientPlatform   string `json:"client_platform,omitempty"`
+	ProductType       string `json:"product_type"`
+	ClientAppVersion  string `json:"client_app_version,omitempty"`
+	ClientPlatform    string `json:"client_platform,omitempty"`
+	ClientBuildType   string `json:"client_build_type,omitempty"`
+	ClientVersionCode int    `json:"client_version_code,omitempty"`
 }
 
 type AlipayClient struct {
@@ -160,6 +170,99 @@ func (c *AlipayClient) HealthStatus() string {
 		return "ok"
 	}
 	return "missing_config"
+}
+
+func alipayPaymentOrderGateAllows(userID string, body createAlipayOrderRequest) bool {
+	if alipayPaymentPublicEnabled() {
+		return true
+	}
+	allowedUsers := paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedUserIDsEnv), normalizePaymentAllowlistUserID)
+	allowedBuildTypes := paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedBuildTypesEnv), normalizeAlipayClientBuildType)
+	if len(allowedUsers) == 0 || len(allowedBuildTypes) == 0 {
+		return false
+	}
+	normalizedUserID := normalizePaymentAllowlistUserID(userID)
+	if !allowedUsers[normalizedUserID] {
+		return false
+	}
+	normalizedBuildType := normalizeAlipayClientBuildType(body.ClientBuildType)
+	if !allowedBuildTypes[normalizedBuildType] {
+		return false
+	}
+	return true
+}
+
+func alipayPaymentOrderGateStatus() string {
+	if alipayPaymentPublicEnabled() {
+		return "public"
+	}
+	if len(paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedUserIDsEnv), normalizePaymentAllowlistUserID)) > 0 &&
+		len(paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedBuildTypesEnv), normalizeAlipayClientBuildType)) > 0 {
+		return "limited"
+	}
+	return "closed"
+}
+
+func applyAlipayPaymentTestAmount(product paymentProduct, userID string, body createAlipayOrderRequest) (paymentProduct, bool) {
+	if alipayPaymentPublicEnabled() {
+		return product, false
+	}
+	raw := strings.TrimSpace(os.Getenv(alipayPaymentTestAmountCentsEnv))
+	if raw == "" {
+		return product, false
+	}
+	cents, err := strconv.Atoi(raw)
+	if err != nil || cents <= 0 || cents > alipayPaymentMaxTestAmountCents {
+		return product, false
+	}
+	allowedUsers := paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedUserIDsEnv), normalizePaymentAllowlistUserID)
+	if len(allowedUsers) == 0 || !allowedUsers[normalizePaymentAllowlistUserID(userID)] {
+		return product, false
+	}
+	normalizedBuildType := normalizeAlipayClientBuildType(body.ClientBuildType)
+	allowedBuildTypes := paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedBuildTypesEnv), normalizeAlipayClientBuildType)
+	if len(allowedBuildTypes) == 0 || !allowedBuildTypes[normalizedBuildType] || normalizedBuildType != "debug" {
+		return product, false
+	}
+	product.AmountCents = cents
+	product.Subject = truncateRunes(product.Subject+"（联调测试）", 96)
+	product.Body = truncateRunes(product.Body+"（内测联调）", 128)
+	return product, true
+}
+
+func alipayPaymentPublicEnabled() bool {
+	return parseBoolEnv(os.Getenv(alipayPaymentPublicEnabledEnv))
+}
+
+func paymentEnvTokenSet(raw string, normalize func(string) string) map[string]bool {
+	result := map[string]bool{}
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	}) {
+		value := normalize(part)
+		if value != "" {
+			result[value] = true
+		}
+	}
+	return result
+}
+
+func normalizePaymentAllowlistUserID(value string) string {
+	return strings.TrimSpace(value)
+}
+
+func normalizeAlipayClientBuildType(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	if normalized == "" || len(normalized) > 32 {
+		return ""
+	}
+	for _, r := range normalized {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' || r == '.' {
+			continue
+		}
+		return ""
+	}
+	return normalized
 }
 
 func (c *AlipayClient) BuildAppPayOrder(outTradeNo string, product paymentProduct, now time.Time) (string, error) {
@@ -268,6 +371,18 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 		s.writeError(w, http.StatusBadRequest, "INVALID_PRODUCT")
 		return
 	}
+	originalAmountCents := product.AmountCents
+	if !alipayPaymentOrderGateAllows(auth.UserID, body) {
+		s.logger.Info("alipay order blocked by payment gate", "product", body.ProductType, "clientBuildType", normalizeAlipayClientBuildType(body.ClientBuildType), "gate", alipayPaymentOrderGateStatus())
+		s.writeError(w, http.StatusServiceUnavailable, "ALIPAY_NOT_CONFIGURED")
+		return
+	}
+	isTestOrder := false
+	if overridden, applied := applyAlipayPaymentTestAmount(product, auth.UserID, body); applied {
+		product = overridden
+		isTestOrder = true
+		s.logger.Info("alipay test amount applied", "product", product.Type, "amountCents", product.AmountCents)
+	}
 	ctx := r.Context()
 	if err := s.store.EnsureUser(ctx, auth.UserID, TierFree); err != nil {
 		s.logger.Error("ensure user failed before payment", "userId", auth.UserID, "error", err)
@@ -292,19 +407,21 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 		return
 	}
 	order := paymentOrder{
-		OutTradeNo:  outTradeNo,
-		UserID:      auth.UserID,
-		Provider:    paymentProviderAlipay,
-		ProductType: product.Type,
-		AmountCents: product.AmountCents,
-		Currency:    "CNY",
-		Subject:     product.Subject,
-		Status:      paymentStatusPending,
-		GrantStatus: paymentGrantPending,
-		CreatedAt:   now.UnixMilli(),
-		UpdatedAt:   now.UnixMilli(),
+		OutTradeNo:          outTradeNo,
+		UserID:              auth.UserID,
+		Provider:            paymentProviderAlipay,
+		ProductType:         product.Type,
+		AmountCents:         product.AmountCents,
+		OriginalAmountCents: originalAmountCents,
+		Currency:            "CNY",
+		Subject:             product.Subject,
+		Status:              paymentStatusPending,
+		GrantStatus:         paymentGrantPending,
+		IsTestOrder:         isTestOrder,
+		CreatedAt:           now.UnixMilli(),
+		UpdatedAt:           now.UnixMilli(),
 	}
-	if err := s.store.CreatePaymentOrder(ctx, order, body.ClientAppVersion, body.ClientPlatform, maskIP(GetClientIP(r))); err != nil {
+	if err := s.store.CreatePaymentOrder(ctx, order, body.ClientAppVersion, body.ClientPlatform, body.ClientBuildType, body.ClientVersionCode, maskIP(GetClientIP(r))); err != nil {
 		s.logger.Error("create payment order failed", "userId", auth.UserID, "product", product.Type, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
@@ -467,18 +584,19 @@ func (s *Store) ValidatePaymentProduct(ctx context.Context, userID string, produ
 	return nil
 }
 
-func (s *Store) CreatePaymentOrder(ctx context.Context, order paymentOrder, clientAppVersion string, clientPlatform string, clientIPMask string) error {
+func (s *Store) CreatePaymentOrder(ctx context.Context, order paymentOrder, clientAppVersion string, clientPlatform string, clientBuildType string, clientVersionCode int, clientIPMask string) error {
 	_, err := s.db.ExecContext(
 		ctx,
 		`INSERT INTO payment_orders(
 		   out_trade_no, user_id, provider, product_type, amount_cents, currency, subject,
-		   status, grant_status, client_app_version, client_platform, client_ip_mask,
+		   status, grant_status, client_app_version, client_platform, client_build_type, client_version_code,
+		   client_ip_mask, is_test_order, original_amount_cents,
 		   created_at, updated_at
 		 )
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		order.OutTradeNo,
 		order.UserID,
-		paymentProviderAlipay,
+		firstNonEmpty(order.Provider, paymentProviderAlipay),
 		order.ProductType,
 		order.AmountCents,
 		firstNonEmpty(order.Currency, "CNY"),
@@ -487,7 +605,11 @@ func (s *Store) CreatePaymentOrder(ctx context.Context, order paymentOrder, clie
 		paymentGrantPending,
 		nullableTrimmed(clientAppVersion),
 		nullableTrimmed(clientPlatform),
+		nullableTrimmed(normalizeAlipayClientBuildType(clientBuildType)),
+		nullableInt(clientVersionCode),
 		nullableTrimmed(clientIPMask),
+		boolToInt(order.IsTestOrder),
+		nullableInt(order.OriginalAmountCents),
 		order.CreatedAt,
 		order.UpdatedAt,
 	)
@@ -498,6 +620,7 @@ func (s *Store) GetPaymentOrder(ctx context.Context, userID string, outTradeNo s
 	row := s.db.QueryRowContext(
 		ctx,
 		`SELECT out_trade_no, user_id, provider, product_type, amount_cents, currency, subject,
+		        original_amount_cents, is_test_order,
 		        status, provider_trade_no, provider_status, entitlement_order_id, grant_status, grant_error,
 		        created_at, updated_at, paid_at, granted_at
 		   FROM payment_orders
@@ -584,6 +707,7 @@ func (s *Store) CompleteAlipayPayment(ctx context.Context, payload alipayNotifyP
 	order, err := scanPaymentOrder(tx.QueryRowContext(
 		ctx,
 		`SELECT out_trade_no, user_id, provider, product_type, amount_cents, currency, subject,
+		        original_amount_cents, is_test_order,
 		        status, provider_trade_no, provider_status, entitlement_order_id, grant_status, grant_error,
 		        created_at, updated_at, paid_at, granted_at
 		   FROM payment_orders
@@ -789,6 +913,7 @@ func (s *Store) getPaymentOrderByOutTradeNo(ctx context.Context, outTradeNo stri
 	return scanPaymentOrder(s.db.QueryRowContext(
 		ctx,
 		`SELECT out_trade_no, user_id, provider, product_type, amount_cents, currency, subject,
+		        original_amount_cents, is_test_order,
 		        status, provider_trade_no, provider_status, entitlement_order_id, grant_status, grant_error,
 		        created_at, updated_at, paid_at, granted_at
 		   FROM payment_orders
@@ -809,6 +934,8 @@ func scanPaymentOrder(scanner paymentOrderScanner) (paymentOrder, error) {
 		providerStatus     sql.NullString
 		entitlementOrderID sql.NullString
 		grantError         sql.NullString
+		originalAmount     sql.NullInt64
+		isTestOrder        sql.NullInt64
 		paidAt             sql.NullInt64
 		grantedAt          sql.NullInt64
 	)
@@ -820,6 +947,8 @@ func scanPaymentOrder(scanner paymentOrderScanner) (paymentOrder, error) {
 		&order.AmountCents,
 		&order.Currency,
 		&order.Subject,
+		&originalAmount,
+		&isTestOrder,
 		&order.Status,
 		&providerTradeNo,
 		&providerStatus,
@@ -837,6 +966,10 @@ func scanPaymentOrder(scanner paymentOrderScanner) (paymentOrder, error) {
 	order.ProviderStatus = nullStringValue(providerStatus)
 	order.EntitlementOrderID = nullStringValue(entitlementOrderID)
 	order.GrantError = nullStringValue(grantError)
+	if originalAmount.Valid && originalAmount.Int64 > 0 {
+		order.OriginalAmountCents = int(originalAmount.Int64)
+	}
+	order.IsTestOrder = isTestOrder.Valid && isTestOrder.Int64 != 0
 	order.PaidAt = nullInt64ToPtr(paidAt)
 	order.GrantedAt = nullInt64ToPtr(grantedAt)
 	return order, nil

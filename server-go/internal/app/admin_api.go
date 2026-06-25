@@ -442,17 +442,21 @@ type AdminSupportMessage struct {
 }
 
 type AdminOrderEntry struct {
-	OrderID         string          `json:"order_id"`
-	UserID          string          `json:"user_id"`
-	Type            string          `json:"type"`
-	Amount          string          `json:"amount"`
-	CreatedAt       int64           `json:"created_at"`
-	Status          string          `json:"status"`
-	Source          string          `json:"source,omitempty"`
-	Provider        string          `json:"provider,omitempty"`
-	ProviderTradeNo string          `json:"provider_trade_no,omitempty"`
-	GrantStatus     string          `json:"grant_status,omitempty"`
-	Result          json.RawMessage `json:"result,omitempty"`
+	OrderID           string          `json:"order_id"`
+	UserID            string          `json:"user_id"`
+	Type              string          `json:"type"`
+	Amount            string          `json:"amount"`
+	OriginalAmount    string          `json:"original_amount,omitempty"`
+	CreatedAt         int64           `json:"created_at"`
+	Status            string          `json:"status"`
+	Source            string          `json:"source,omitempty"`
+	Provider          string          `json:"provider,omitempty"`
+	ProviderTradeNo   string          `json:"provider_trade_no,omitempty"`
+	GrantStatus       string          `json:"grant_status,omitempty"`
+	IsTestOrder       bool            `json:"is_test_order,omitempty"`
+	ClientBuildType   string          `json:"client_build_type,omitempty"`
+	ClientVersionCode int             `json:"client_version_code,omitempty"`
+	Result            json.RawMessage `json:"result,omitempty"`
 }
 
 type AdminOrderQuery struct {
@@ -1579,7 +1583,7 @@ func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus
 	}
 	overview.Queues.AppErrorTop = summary
 	overview.Notes = []AdminStatusNote{
-		{Title: "订单 / 支付", Body: "支付宝 APP 支付代码已接入，后台当前仅做订单和权益发放状态只读核查；生产放量前仍需完成回调验收、对账、退款和异常补偿流程。", Level: "info"},
+		{Title: "订单 / 支付", Body: "支付订单后台当前仅做订单和权益发放状态只读核查；支付宝 APP 支付代码已接入，生产放量前仍需完成回调验收、对账、退款和异常补偿流程。", Level: "info"},
 		{Title: "礼品卡", Body: "礼品卡批次创建、卡状态、作废未兑换卡、兑换尝试和 Android 用户侧兑换已接入。", Level: "info"},
 		{Title: "产品洞察", Body: "后续从脱敏反馈、App 日志和归档摘要生成，不直接铺完整聊天全文。", Level: "info"},
 	}
@@ -2744,7 +2748,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；主账号后台可查看并复制完整卡码。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
-		{Title: "订单核查", Status: "partial", Body: "支付宝订单 / 会员变更记录可只读查询；退款、对账自动化、自动续费和人工补发权益仍未开放。", Route: "orders"},
+		{Title: "订单核查", Status: "partial", Body: "支付订单 / 会员变更记录可只读查询；退款、对账自动化、自动续费和人工补发权益仍未开放。", Route: "orders"},
 		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、公网黑盒探测、今日农情失败、扣次补偿异常、记忆待补偿状态异常和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
@@ -3612,7 +3616,8 @@ func (s *Store) listAdminLegacyOrders(ctx context.Context, filter AdminOrderQuer
 
 func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQuery) ([]AdminOrderEntry, error) {
 	query := `SELECT out_trade_no, user_id, provider, product_type, amount_cents, created_at, status,
-		          provider_trade_no, provider_status, grant_status, grant_error, paid_at, granted_at
+		          provider_trade_no, provider_status, grant_status, grant_error, paid_at, granted_at,
+		          is_test_order, original_amount_cents, client_build_type, client_version_code
 		   FROM payment_orders`
 	args := []any{}
 	if strings.TrimSpace(filter.UserID) != "" {
@@ -3632,14 +3637,18 @@ func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQue
 	entries := []AdminOrderEntry{}
 	for rows.Next() {
 		var (
-			entry          AdminOrderEntry
-			amountCents    int
-			providerTrade  sql.NullString
-			providerStatus sql.NullString
-			grantStatus    sql.NullString
-			grantError     sql.NullString
-			paidAt         sql.NullInt64
-			grantedAt      sql.NullInt64
+			entry             AdminOrderEntry
+			amountCents       int
+			providerTrade     sql.NullString
+			providerStatus    sql.NullString
+			grantStatus       sql.NullString
+			grantError        sql.NullString
+			paidAt            sql.NullInt64
+			grantedAt         sql.NullInt64
+			isTestOrder       int
+			originalAmount    sql.NullInt64
+			clientBuildType   sql.NullString
+			clientVersionCode sql.NullInt64
 		)
 		if err := rows.Scan(
 			&entry.OrderID,
@@ -3655,11 +3664,23 @@ func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQue
 			&grantError,
 			&paidAt,
 			&grantedAt,
+			&isTestOrder,
+			&originalAmount,
+			&clientBuildType,
+			&clientVersionCode,
 		); err != nil {
 			return nil, err
 		}
 		entry.Source = "payment"
 		entry.Amount = formatAmountCents(amountCents)
+		entry.IsTestOrder = isTestOrder != 0
+		if originalAmount.Valid && originalAmount.Int64 > 0 && (entry.IsTestOrder || int(originalAmount.Int64) != amountCents) {
+			entry.OriginalAmount = formatAmountCents(int(originalAmount.Int64))
+		}
+		entry.ClientBuildType = nullStringValue(clientBuildType)
+		if clientVersionCode.Valid && clientVersionCode.Int64 > 0 {
+			entry.ClientVersionCode = int(clientVersionCode.Int64)
+		}
 		entry.ProviderTradeNo = nullStringValue(providerTrade)
 		entry.GrantStatus = nullStringValue(grantStatus)
 		result := map[string]any{
@@ -3669,6 +3690,16 @@ func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQue
 			"grant_error":     nullStringValue(grantError),
 			"paid_at":         nullInt64ToPtr(paidAt),
 			"granted_at":      nullInt64ToPtr(grantedAt),
+			"is_test_order":   entry.IsTestOrder,
+		}
+		if entry.OriginalAmount != "" {
+			result["original_amount"] = entry.OriginalAmount
+		}
+		if entry.ClientBuildType != "" {
+			result["client_build_type"] = entry.ClientBuildType
+		}
+		if entry.ClientVersionCode > 0 {
+			result["client_version_code"] = entry.ClientVersionCode
 		}
 		if entry.ProviderTradeNo != "" {
 			result["provider_trade_no"] = entry.ProviderTradeNo
