@@ -369,6 +369,67 @@ private fun looksLikeRendererMarkdownTableBodyRow(
     return allowRowsWithoutEdge && expectedColumnCount >= 2 && cells.size >= expectedColumnCount
 }
 
+private data class RendererLoosePipeTableCandidate(
+    val rowLines: List<String>,
+    val endIndexExclusive: Int
+)
+
+private fun isRendererLoosePipeTableLineBlocked(line: String): Boolean {
+    val trimmed = line.trimStart()
+    return trimmed.startsWith(">") ||
+        trimmed.matches(Regex("""[-+*]\s+\|.+""")) ||
+        trimmed.matches(Regex("""\d{1,9}[.)]\s+\|.+"""))
+}
+
+private fun collectRendererLoosePipeTableRows(
+    lines: List<String>,
+    startIndex: Int,
+    contentEndsWithLineBreak: Boolean,
+    treatTrailingLineAsComplete: Boolean
+): RendererLoosePipeTableCandidate? {
+    val headerLine = lines.getOrNull(startIndex) ?: return null
+    if (isRendererLoosePipeTableLineBlocked(headerLine)) return null
+    if (!looksLikeRendererMarkdownTableRow(headerLine)) return null
+    if (isRendererMarkdownTableSeparatorLine(headerLine)) return null
+    val headerCells = splitRendererMarkdownTableCells(headerLine)
+    val columnCount = headerCells.size
+    if (columnCount < 2) return null
+    val headerHasEdge = hasRendererMarkdownTableRowEdge(headerLine)
+    val rowLines = mutableListOf<String>()
+    var cursor = startIndex + 1
+
+    while (cursor < lines.size) {
+        val line = lines[cursor]
+        val isTrailingActiveLine =
+            !treatTrailingLineAsComplete &&
+                cursor == lines.lastIndex &&
+                !contentEndsWithLineBreak
+        if (isRendererLoosePipeTableLineBlocked(line)) break
+        if (isRendererMarkdownTableSeparatorLine(line)) break
+        if (isRendererMarkdownTableBodyBlockBoundary(line)) break
+        if (!looksLikeRendererMarkdownTableRow(line)) break
+        val cells = splitRendererMarkdownTableCells(line)
+        if (isTrailingActiveLine && cells.size < 2) break
+        if (cells.size < 2) break
+        if (cells.size < columnCount && !hasRendererMarkdownTableRowEdge(line)) break
+        rowLines += line
+        cursor++
+    }
+
+    if (rowLines.isEmpty()) return null
+    val allRowsHaveEdge = headerHasEdge && rowLines.all(::hasRendererMarkdownTableRowEdge)
+    val enoughPipeShape =
+        allRowsHaveEdge ||
+            (headerHasEdge && rowLines.size >= 2) ||
+            (columnCount >= 3 && (headerHasEdge || rowLines.firstOrNull()?.let(::hasRendererMarkdownTableRowEdge) == true)) ||
+            (columnCount >= 3 && rowLines.size >= 2)
+    if (!enoughPipeShape) return null
+    return RendererLoosePipeTableCandidate(
+        rowLines = rowLines,
+        endIndexExclusive = cursor
+    )
+}
+
 private fun isRendererMarkdownTableBodyBlockBoundary(line: String): Boolean {
     if (isRendererIndentedCodeLine(line)) return true
     if (rendererMarkdownCodeFenceMarker(line) != null) return true
@@ -404,6 +465,7 @@ private fun normalizeRendererMarkdownTables(
     val result = mutableListOf<String>()
     var index = 0
     var codeFenceMarker: String? = null
+    val contentEndsWithLineBreak = normalized.endsWith("\n")
     while (index < lines.size) {
         val current = lines[index]
         val currentFenceMarker = rendererMarkdownCodeFenceMarker(current)
@@ -475,6 +537,24 @@ private fun normalizeRendererMarkdownTables(
                 continue
             }
         }
+        val loosePipeTableCandidate = collectRendererLoosePipeTableRows(
+            lines = lines,
+            startIndex = index,
+            contentEndsWithLineBreak = contentEndsWithLineBreak,
+            treatTrailingLineAsComplete = treatTrailingLineAsComplete
+        )
+        if (loosePipeTableCandidate != null) {
+            val tableBlock = encodeRendererMarkdownTableBlock(
+                headerLine = current,
+                separatorLine = null,
+                rowLines = loosePipeTableCandidate.rowLines
+            )
+            if (tableBlock != null) {
+                result += tableBlock
+                index = loosePipeTableCandidate.endIndexExclusive
+                continue
+            }
+        }
         result += current
         index++
     }
@@ -492,12 +572,13 @@ private fun normalizeRendererMarkdownTableCell(raw: String, fallback: String = "
 
 private fun encodeRendererMarkdownTableBlock(
     headerLine: String,
-    separatorLine: String,
+    separatorLine: String?,
     rowLines: List<String>
 ): String? {
     val rawHeaders = splitRendererMarkdownTableCells(headerLine)
         .map { cell -> normalizeRendererMarkdownTableCell(cell) }
-    val separatorColumnCount = splitRendererMarkdownTableCells(separatorLine).size
+    val separatorColumnCount = separatorLine?.let(::splitRendererMarkdownTableCells)?.size
+        ?: rawHeaders.size
     if (rawHeaders.size < 2 || rawHeaders.size != separatorColumnCount) return null
     val rawRows = rowLines.mapNotNull { rowLine ->
         val cells = splitRendererMarkdownTableCells(rowLine)
@@ -2708,8 +2789,8 @@ private fun RendererMarkdownSectionDividerImpl() {
     Spacer(modifier = Modifier.height(SECTION_DIVIDER_TOP_EXTRA_GAP))
     HorizontalDivider(
         modifier = Modifier.fillMaxWidth(),
-        thickness = 0.6.dp,
-        color = Color(0xFFF0F2F4)
+        thickness = 1.dp,
+        color = Color(0xFFE7E9ED)
     )
     Spacer(modifier = Modifier.height(SECTION_DIVIDER_GAP))
 }
@@ -2899,55 +2980,52 @@ private fun RendererMarkdownTableImpl(
             .toFloat()
         widthValue.dp
     }
-    val copyInsetWidth = if (copyEnabled) 48.dp else 0.dp
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .border(width = 0.7.dp, color = Color(0xFFE1E5EA), shape = RoundedCornerShape(8.dp))
-    ) {
-        Column(
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (copyEnabled) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(38.dp),
+                contentAlignment = Alignment.BottomEnd
+            ) {
+                RendererCopyTableIconButton(onClick = copyTable)
+            }
+        }
+        Box(
             modifier = Modifier
-                .horizontalScroll(scrollState)
-                .padding(end = copyInsetWidth)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.White)
+                .border(width = 0.7.dp, color = Color(0xFFE1E5EA), shape = RoundedCornerShape(8.dp))
         ) {
-            RendererMarkdownTableHorizontalRowImpl(
-                cells = table.headers,
-                columnCount = columnCount,
-                rowWidth = tableWidth,
-                isHeader = true,
-                inlineMode = inlineMode,
-                linksEnabled = linksEnabled,
-                onStatusHint = onStatusHint
-            )
-            table.rows.forEach { row ->
-                HorizontalDivider(
-                    modifier = Modifier.width(tableWidth),
-                    thickness = 0.6.dp,
-                    color = Color(0xFFE8EBEF)
-                )
+            Column(
+                modifier = Modifier.horizontalScroll(scrollState)
+            ) {
                 RendererMarkdownTableHorizontalRowImpl(
-                    cells = row,
+                    cells = table.headers,
                     columnCount = columnCount,
                     rowWidth = tableWidth,
-                    isHeader = false,
+                    isHeader = true,
                     inlineMode = inlineMode,
                     linksEnabled = linksEnabled,
                     onStatusHint = onStatusHint
                 )
-            }
-        }
-        if (copyEnabled) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .height(44.dp)
-                    .width(48.dp)
-                    .background(Color(0xFFFAFBFC)),
-                contentAlignment = Alignment.Center
-            ) {
-                RendererCopyTableIconButton(onClick = copyTable)
+                table.rows.forEach { row ->
+                    HorizontalDivider(
+                        modifier = Modifier.width(tableWidth),
+                        thickness = 0.6.dp,
+                        color = Color(0xFFE8EBEF)
+                    )
+                    RendererMarkdownTableHorizontalRowImpl(
+                        cells = row,
+                        columnCount = columnCount,
+                        rowWidth = tableWidth,
+                        isHeader = false,
+                        inlineMode = inlineMode,
+                        linksEnabled = linksEnabled,
+                        onStatusHint = onStatusHint
+                    )
+                }
             }
         }
     }
@@ -3021,16 +3099,16 @@ private fun RendererCopyTableIconButton(
     DisableSelection {
         Box(
             modifier = Modifier
-                .size(44.dp)
-                .clip(RoundedCornerShape(12.dp))
+                .size(38.dp)
+                .clip(RoundedCornerShape(10.dp))
                 .clickable(onClick = onClick)
                 .clearAndSetSemantics { contentDescription = "复制表格" },
             contentAlignment = Alignment.Center
         ) {
-            Canvas(modifier = Modifier.size(28.dp)) {
+            Canvas(modifier = Modifier.size(25.dp)) {
                 val iconColor = Color(0xFF111111)
                 val coverColor = Color(0xFFFAFBFC)
-                val stroke = Stroke(width = 2.35.dp.toPx())
+                val stroke = Stroke(width = 2.2.dp.toPx())
                 val radius = CornerRadius(3.5.dp.toPx(), 3.5.dp.toPx())
                 val squareSize = size.width * 0.48f
                 val backTopLeft = Offset(x = size.width * 0.38f, y = size.height * 0.15f)

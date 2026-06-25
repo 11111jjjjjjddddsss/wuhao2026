@@ -617,10 +617,70 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun pipeOnlyRowsWithoutMarkdownSeparatorStayPlainText() {
+    fun pipeOnlyRowsWithoutMarkdownSeparatorRenderAsLooseHorizontalTable() {
         val content = "| 使用场景 | 建议 | 风险提示 |\n" +
             "| 条件 | 应急补钙 | 浓度严格控制 |\n" +
             "| 风险 | 盐渍化土壤慎用 |"
+        val stats = buildRendererStructureStats(content)
+        val state = splitStreamingBlockState(content, treatTrailingLineAsComplete = true)
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+
+        assertEquals(1, stats.tableCount)
+        assertEquals(listOf("使用场景", "建议", "风险提示"), table.headers)
+        assertEquals(
+            listOf(
+                listOf("条件", "应急补钙", "浓度严格控制"),
+                listOf("风险", "盐渍化土壤慎用", "")
+            ),
+            table.rows
+        )
+    }
+
+    @Test
+    fun loosePipeTableWithStableColumnsStopsBeforePlainParagraph() {
+        val content = "| 对比维度 | 商品化品种 | 口感型品种 |\n" +
+            "| 果皮硬度 | 较硬，耐储运 | 较薄，易裂果 |\n" +
+            "| 风味 | 酸甜适中，风味较淡 | 糖度高，风味浓郁 |\n\n" +
+            "后面一句 A | B 仍是普通正文。"
+        val state = splitStreamingBlockState(content, treatTrailingLineAsComplete = true)
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val table = models.filterIsInstance<StreamingLineModel.Table>().single().table
+
+        assertEquals(2, models.size)
+        assertEquals(listOf("对比维度", "商品化品种", "口感型品种"), table.headers)
+        assertEquals(2, table.rows.size)
+        assertTrue(models[1] is StreamingLineModel.Paragraph)
+        assertEquals("后面一句 A | B 仍是普通正文。", (models[1] as StreamingLineModel.Paragraph).text)
+    }
+
+    @Test
+    fun loosePipeTableBodyExtraCellsMergeIntoLastColumn() {
+        val content = "| 项目 | 建议 |\n" +
+            "| 配肥 | 硝酸钙 | 少量多次 |"
+        val state = splitStreamingBlockState(content, treatTrailingLineAsComplete = true)
+        val table = (state.activeBlock?.let(::classifyStreamingLine) as StreamingLineModel.Table).table
+
+        assertEquals(listOf("项目", "建议"), table.headers)
+        assertEquals(listOf(listOf("配肥", "硝酸钙 | 少量多次")), table.rows)
+    }
+
+    @Test
+    fun loosePipeTableDoesNotConsumeListOrQuotePipeRows() {
+        val listContent = "- | 操作 | 说明 |\n" +
+            "- | 浇水 | 少量多次 |"
+        val quoteContent = "> | 注意 | 不要混用 |\n" +
+            "> | 建议 | 小面积试验 |"
+
+        assertEquals(0, buildRendererStructureStats(listContent).tableCount)
+        assertEquals(0, buildRendererStructureStats(quoteContent).tableCount)
+    }
+
+    @Test
+    fun twoColumnPipeParagraphsWithoutEdgesStayPlainText() {
+        val content = "A | B\nC | D"
         val stats = buildRendererStructureStats(content)
 
         assertEquals(0, stats.tableCount)

@@ -368,7 +368,7 @@ Clean-State 必做回归的范围：
 - `observedCollapsedBottomReservePx`、`bottomBarHeightPx`、`latestConversationBottomPaddingPx` 等列表 reserve 相关值，不能从输入框当前内容高度中学习。输入框多行文字、图片预览、附件缩略图导致的 composer 内容扩展，只能停留在 composer 内部；只有稳定折叠态 composer 外壳、navigation bar / safe bottom、发送期锁定 reserve 和工作线 gap 能进入聊天列表 bottom padding。IME 动画期间不更新列表 reserve，只移动 composer 自己
 - 当前已决定输入框 / IME 与消息列表解耦：streaming 过程中键盘抬起只移动输入框自己，不再抬升消息工作线；用户在生成中对消息列表产生超过 touch slop 的真实拖动时才进入 `UserBrowsing`，普通点按、长按或点图片不应暂停 AutoFollow。用户手动滑回正向列表物理底部（`canScrollForward == false`、手指已抬起、列表已停止）后，应先请求一次正向底部锚点再恢复 `AutoFollow`；半路只接近工作线不允许自动吸回
 - streaming 期间当前不再做段落级 LazyColumn item 小分割，也不再保留 `StreamingBlockChatListItem / StreamingTextBlock / streamingBrowseBlockSnapshot / activeStreamingBlockIndex` 这套派生和新 active block `requestScrollToItem(0)` 接尾巴链。生成中的 assistant 仍是 `messages` 里的单个 item，`ChatStreamingRenderer.kt` 在这个 item 内负责 waiting / streaming / settled 显示；当前抢手问题改回正向列表上继续磨，优先保证用户上滑浏览时不被正在长高的最新 assistant 反向锚点拖回
-- `ChatStreamingRenderer.kt` 的 active streaming 内容当前使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再对新字尾部做 fresh suffix 灰色高亮动画。active Markdown 仍实时吐字，但只有 `# ` / `- ` / `1. ` 等结构前缀后已经出现非空正文时才切成标题 / 列表 / 引用，不能把只有符号的半成品立刻结构化；已完成 / settled Markdown 也走同一套 soft-wrap block renderer。当前 renderer 是面向移动聊天的轻量 Markdown 子集，不是全量 Markwon / CommonMark / GFM 引擎；支持段落、标题、列表、引用、加粗、斜体、行内代码、链接、裸 URL 和标准 Markdown 表格。标准表格在 streaming / 完成态 / 远端历史回放里都由同一个轻量表格组件解析，手机端默认渲染为横向滚动的正常表格，保留固定的大“复制表格”按钮；表格内“复制表格”按钮只在整条 AI 消息 settled 后出现，复制当前表格的人眼可读分段文本，整条消息“全文复制”遇到表格也会转成更适合人读的分段文本。2026-06-15 起，活跃 streaming 段对未闭合的 `**` / `*` / 反引号做 streaming-aware inline 渲染，已换行 / 空行分隔出去的旧块如果仍含未闭合加粗、斜体或行内代码，也继续按 streaming inline 规则显示，尽量避免闭合符号到达时才整行重排；DONE 到达后仍按打字节奏 drain 本地 reveal buffer，不一口气 flush 尾段。当前远端 waiting 小球最短展示约 1.8 秒、呼吸周期约 700ms；吐字节奏对中文通常 1 个字一拍，中文单字约 19ms，标点和换行保留短停顿，长英文 / 数字词块有单次 reveal 上限，省略号 / 破折号按强停顿处理，常见 emoji、肤色修饰、ZWJ 组合和旗帜不会被拆半，保持一边生成一边渲染，同时避免过慢或末尾整段一口气吐出
+- `ChatStreamingRenderer.kt` 的 active streaming 内容当前使用单个 soft-wrap `Text` 渲染正在吐字的段落 / 标题 / 列表正文，不再把 active 文本按物理行拆成多颗 `Text`，也不再对新字尾部做 fresh suffix 灰色高亮动画。active Markdown 仍实时吐字，但只有 `# ` / `- ` / `1. ` 等结构前缀后已经出现非空正文时才切成标题 / 列表 / 引用，不能把只有符号的半成品立刻结构化；已完成 / settled Markdown 也走同一套 soft-wrap block renderer。当前 renderer 是面向移动聊天的轻量 Markdown 子集，不是全量 Markwon / CommonMark / GFM 引擎；支持段落、标题、列表、引用、加粗、斜体、行内代码、链接、裸 URL、标准 Markdown 表格和稳定多行管道表格草稿。表格在 streaming / 完成态 / 远端历史回放里都由同一个轻量表格组件解析，手机端默认渲染为横向滚动的正常表格；“复制表格”按钮固定在表格上方右侧的 38dp 紧凑工具位，不占表格列、不遮挡单元格文字，只在整条 AI 消息 settled 后出现，复制当前表格的人眼可读分段文本，整条消息“全文复制”遇到表格也会转成更适合人读的分段文本。2026-06-15 起，活跃 streaming 段对未闭合的 `**` / `*` / 反引号做 streaming-aware inline 渲染，已换行 / 空行分隔出去的旧块如果仍含未闭合加粗、斜体或行内代码，也继续按 streaming inline 规则显示，尽量避免闭合符号到达时才整行重排；DONE 到达后仍按打字节奏 drain 本地 reveal buffer，不一口气 flush 尾段。当前远端 waiting 小球最短展示约 1.8 秒、呼吸周期约 700ms；吐字节奏对中文通常 1 个字一拍，中文单字约 19ms，标点和换行保留短停顿，长英文 / 数字词块有单次 reveal 上限，省略号 / 破折号按强停顿处理，常见 emoji、肤色修饰、ZWJ 组合和旗帜不会被拆半，保持一边生成一边渲染，同时避免过慢或末尾整段一口气吐出
 - `ChatStreamingRenderer.kt` streaming 期间如果内容已经满足免责声明触发条件，只预留 `assistantDisclaimerTextStyle()` 对应高度，不显示免责声明文字；settled 后才显示真实文案，避免尾部收口当拍突然增高
 - `commitSendMessage()` 当前的真实顺序是：
   1. 输入框收口
@@ -437,9 +437,9 @@ Clean-State 必做回归的范围：
 - 如最终会出现免责声明，streaming 期间只允许保留稳定几何占位
 
 Markdown 表格：
-- 当前不接全量 GFM 表格引擎，但标准 Markdown 表格会在手机端渲染为横向滚动的正常表格，并带固定的大“复制表格”按钮
-- 2 列、3 列、4 列及更多列都按同一套横向表格展示接住，行缺列时保留为空白单元格；代码块内的 `|` 不参与表格解析，普通包含 `|` 的句子不能被误藏或误判成表格。生成中未确认成标准表格前按普通文字显示，分隔线到达后再整体切成表格组件；完成态 / 远端历史回放同样不能隐藏不完整表格原文。表格内“复制表格”复制当前表格的人眼可读分段文本；消息“全文复制”复制人眼可读的分段文本
-- 只有远端保存的原文仍是标准 Markdown 表格时，历史回放才能显示表格；如果模型已经写成普通“维度：...”段落，App 不硬猜表格
+- 当前不接全量 GFM 表格引擎，但标准 Markdown 表格和稳定的多行管道表格草稿会在手机端渲染为横向滚动的正常表格，并带固定在表格上方右侧 38dp 紧凑工具位的“复制表格”按钮
+- 2 列、3 列、4 列及更多列都按同一套横向表格展示接住，行缺列时保留为空白单元格，多余正文列合并进最后一列；代码块内的 `|` 不参与表格解析，普通包含 `|` 的句子、列表管道行和引用管道行不能被误藏或误判成表格。生成中未确认成表格前按普通文字显示，标准表格分隔线到达后再整体切成表格组件；完成态 / 远端历史回放可额外接住多行列数稳定的管道表格草稿。表格内“复制表格”复制当前表格的人眼可读分段文本；消息“全文复制”复制人眼可读的分段文本
+- 如果模型已经写成普通“维度：...”段落，App 不硬猜表格；只有稳定多行管道形态才作为表格兜底接住
 - emoji / 表情若偶发输出，按普通文本交给 Compose `Text` 渲染；提示词仍应尽量压住不要主动使用表情
 
 消息链接：

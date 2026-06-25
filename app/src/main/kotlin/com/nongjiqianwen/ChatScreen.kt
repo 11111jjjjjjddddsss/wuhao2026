@@ -808,8 +808,8 @@ internal val GPT_BALL_SIZE = 14.dp
 internal val GPT_BALL_CONTAINER_SIZE = 24.dp
 internal val GPT_BALL_START_PADDING = 0.dp
 internal val MARKDOWN_BLOCK_SPACING = 14.dp
-internal val SECTION_DIVIDER_GAP = 18.dp
-internal val SECTION_DIVIDER_TOP_EXTRA_GAP = 10.dp
+internal val SECTION_DIVIDER_GAP = 22.dp
+internal val SECTION_DIVIDER_TOP_EXTRA_GAP = 14.dp
 private const val APP_TITLE_TEXT = "农技千查"
 private const val WELCOME_EMPTY_STATE_TEXT = "欢迎咨询种植\n病虫害防治、施肥等问题\n必要时可上传图片"
 internal const val AI_DISCLAIMER_TEXT = "本回答由AI生成，内容仅供参考。"
@@ -963,8 +963,8 @@ private suspend fun AwaitPointerEventScope.waitForUpIgnoringConsumption(
 }
 
 internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
-    fontSize = 17.sp,
-    lineHeight = 28.5.sp,
+    fontSize = 16.5.sp,
+    lineHeight = 27.5.sp,
     letterSpacing = 0.sp,
     color = Color(0xFF171717),
     textMotion = TextMotion.Static,
@@ -1048,9 +1048,9 @@ internal fun shouldShowAiDisclaimerRefined(content: String): Boolean {
 }
 
 internal fun assistantHeadingTextStyle(level: Int): TextStyle = TextStyle(
-    fontSize = if (level <= 2) 19.sp else 17.sp,
-    lineHeight = if (level <= 2) 29.5.sp else 27.sp,
-    fontWeight = FontWeight.SemiBold,
+    fontSize = if (level <= 2) 19.5.sp else 17.5.sp,
+    lineHeight = if (level <= 2) 30.sp else 27.sp,
+    fontWeight = FontWeight.Bold,
     color = Color(0xFF111111),
     textMotion = TextMotion.Static,
     lineBreak = LineBreak.Heading
@@ -3153,7 +3153,7 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem) return atBottom
         return isForwardListAtExactBottom()
     }
-    val chatPageSurface = Color(0xFFFBFCFD)
+    val chatPageSurface = Color(0xFFF8F9FA)
     val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)
@@ -8957,7 +8957,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
                     UiCopyPreviewItem("AI 长正文", "保留模型换行，标题分割，行内编号不硬拆", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
-                    UiCopyPreviewItem("AI 表格", "横向表格、正文不加粗、单表复制图标", UiCopyPreviewKind.AssistantTableSample),
+                    UiCopyPreviewItem("AI 表格", "横向表格、表格上方复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
             ),
