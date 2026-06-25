@@ -956,8 +956,8 @@ if ($failures.Count -eq 0) {
         "Active streaming closed bold heading tails must stay paragraph-shaped until the line is committed, avoiding height jumps."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)heading\.source\s*!=\s*StreamingHeadingSource\.StandaloneBold' `
         "Standalone bold headings must not create section dividers; they are subheadings inside the current section."
-    Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+shouldShowStreamingSectionDivider(?s:.*?)previous\s+is\s+StreamingLineModel\.Numbered\s*&&\s*isRendererCompactNumberedSection\(previous\)(?s:.*?)return\s+false' `
-        "Assistant section dividers must not split a compact numbered section title from its nested heading/body."
+    Require-Match $failures $chatStreamingRenderer 'shouldSuppressDividerAfterCompactNumberedSection(?s:.*?)previous\s+!is\s+StreamingLineModel\.Numbered(?s:.*?)!isRendererCompactNumberedSection\(previous\)(?s:.*?)current\.source\s*==\s*StreamingHeadingSource\.StandaloneBold' `
+        "Assistant section dividers must only suppress nested standalone-bold subheadings after compact numbered sections, not Chinese section headings."
     Require-Match $failures $chatStreamingRenderer 'val\s+numbered\s*=\s*current\s+as\?\s+StreamingLineModel\.Numbered(?s:.*?)isRendererCompactNumberedSection\(numbered\)' `
         "Assistant section dividers must be able to appear before compact numbered section titles such as '1. 营养需求重点' and '2. 水分管理'."
     Require-Match $failures $chatStreamingRendererTest 'compactNumberedSectionKeepsDividerBeforeNumberWithoutSplittingNestedHeading' `
@@ -976,10 +976,18 @@ if ($failures.Count -eq 0) {
         "Assistant renderer tests must prove readable paragraph splitting and blank-line heading divider detection work together."
     Require-Match $failures $chatStreamingRendererTest 'boldChineseSectionHeadingKeepsDividerForFutureModelVariants' `
         "Assistant renderer tests must prove bold Chinese section headings are treated as structural headings, not plain bold subheadings."
+    Require-Match $failures $chatStreamingRendererTest 'boldChineseSectionHeadingWithParentheticalSuffixKeepsDivider' `
+        "Assistant renderer tests must prove bold Chinese section headings keep dividers when explanatory parentheses sit outside the bold span."
+    Require-Match $failures $chatStreamingRendererTest 'chineseSectionAfterCompactNumberedBodyKeepsDivider' `
+        "Assistant renderer tests must prove Chinese section headings after compact numbered body rows are not mistaken for nested standalone bold subheadings."
     Require-Match $failures $chatStreamingRendererTest 'standaloneBoldSubheadingStaysWithoutDividerAfterBlankLine' `
         "Assistant renderer tests must prove a bold heading immediately under a compact numbered title does not create a duplicate divider."
     Require-Match $failures $chatStreamingRenderer 'parseRendererBoldChineseSectionHeading' `
         "Assistant renderer must recognize bold Chinese section headings as structural headings for model-variant resilience."
+    Require-Match $failures $chatStreamingRenderer 'shouldSuppressDividerAfterCompactNumberedSection(?s:.*?)current\.source\s*==\s*StreamingHeadingSource\.StandaloneBold' `
+        "Assistant renderer must only suppress the divider after compact numbered sections for nested standalone-bold subheadings, not for Chinese section headings."
+    Require-Match $failures $chatStreamingRenderer 'isRendererBoldChineseSectionSuffix(?s:.*?)suffix\.startsWith\("（"\)\s*&&\s*suffix\.endsWith\("）"\)' `
+        "Assistant renderer must recognize bold Chinese section headings with explanatory full-width parentheses outside the bold span."
     Require-Match $failures $chatStreamingRenderer 'shouldShowStreamingSectionDivider\(unifiedModels,\s*index\)' `
         "Streaming assistant section divider decisions must skip blank spacer blocks and use the previous non-blank content block."
     Require-Match $failures $chatStreamingRenderer 'shouldShowStreamingSectionDivider\(completedModels,\s*index\)' `

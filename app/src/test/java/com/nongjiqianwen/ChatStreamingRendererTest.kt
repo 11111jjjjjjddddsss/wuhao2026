@@ -819,6 +819,23 @@ class ChatStreamingRendererTest {
 
         assertTrue(heading is StreamingLineModel.Heading)
         assertEquals("一、处理建议", (heading as StreamingLineModel.Heading).text)
+        assertEquals(StreamingHeadingSource.ChineseSection, heading.source)
+        assertTrue(
+            shouldShowStreamingSectionDivider(
+                previous = previous,
+                current = heading
+            )
+        )
+    }
+
+    @Test
+    fun boldChineseSectionHeadingWithParentheticalSuffixKeepsDivider() {
+        val previous = classifyStreamingLine("党参、人参、石斛、芝麻。")
+        val heading = classifyStreamingLine("**二、中等敏感作物**（少施或不施含氯化肥）")
+
+        assertTrue(heading is StreamingLineModel.Heading)
+        assertEquals("二、中等敏感作物（少施或不施含氯化肥）", (heading as StreamingLineModel.Heading).text)
+        assertEquals(StreamingHeadingSource.ChineseSection, heading.source)
         assertTrue(
             shouldShowStreamingSectionDivider(
                 previous = previous,
@@ -855,6 +872,53 @@ class ChatStreamingRendererTest {
                 current = models[2]
             )
         )
+    }
+
+    @Test
+    fun chineseSectionAfterCompactNumberedBodyKeepsDivider() {
+        val content =
+            "4.  **蔬菜类**：辣椒、莴笋、草莓、苋菜、白菜（部分资料列为轻度敏感）、榨菜\n" +
+                "5.  **药材类**：党参、人参、石斛、芝麻\n\n" +
+                "**二、中等敏感作物**（少施或不施含氯化肥）\n" +
+                "大麦、小麦、玉米、大豆、绿豆、花生等。\n\n" +
+                "**三、耐氯作物**（可正常施用含氯化肥）\n" +
+                "水稻、高粱、谷子、麻类、菠菜等。\n\n" +
+                "**四、忌氯作物使用含氯肥料的风险**\n" +
+                "1. 块根块茎类：淀粉含量降低，影响品质和产量\n" +
+                "2. 瓜果类：含糖量下降，果实变酸变硬\n" +
+                "3. 烟草：燃烧性变差，易熄火\n" +
+                "4. 幼苗期：氯离子浓度过高易造成烧苗\n\n" +
+                "**五、使用建议**\n" +
+                "1. 优先无氯肥料：忌氯作物优先选用硫酸钾。"
+        val state = splitStreamingBlockState(
+            content,
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+        val secondIndex = models.indexOfFirst {
+            it is StreamingLineModel.Heading && it.text.startsWith("二、")
+        }
+        val thirdIndex = models.indexOfFirst {
+            it is StreamingLineModel.Heading && it.text.startsWith("三、")
+        }
+        val fourthIndex = models.indexOfFirst {
+            it is StreamingLineModel.Heading && it.text.startsWith("四、")
+        }
+        val fifthIndex = models.indexOfFirst {
+            it is StreamingLineModel.Heading && it.text.startsWith("五、")
+        }
+
+        assertTrue(secondIndex > 0)
+        assertTrue(thirdIndex > secondIndex)
+        assertTrue(fourthIndex > thirdIndex)
+        assertTrue(fifthIndex > fourthIndex)
+        assertTrue(models[1] is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(models[1] as StreamingLineModel.Numbered))
+        assertTrue(shouldShowStreamingSectionDivider(models, secondIndex))
+        assertTrue(shouldShowStreamingSectionDivider(models, thirdIndex))
+        assertTrue(shouldShowStreamingSectionDivider(models, fourthIndex))
+        assertTrue(shouldShowStreamingSectionDivider(models, fifthIndex))
     }
 
     @Test

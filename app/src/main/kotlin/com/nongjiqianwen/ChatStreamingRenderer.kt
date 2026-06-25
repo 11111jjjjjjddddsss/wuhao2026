@@ -1053,7 +1053,7 @@ internal fun shouldShowStreamingSectionDivider(
         previous == null ||
         previous is StreamingLineModel.Heading ||
         previous is StreamingLineModel.Blank ||
-        (previous is StreamingLineModel.Numbered && isRendererCompactNumberedSection(previous))
+        shouldSuppressDividerAfterCompactNumberedSection(previous, current)
     ) {
         return false
     }
@@ -1063,6 +1063,20 @@ internal fun shouldShowStreamingSectionDivider(
             heading.source != StreamingHeadingSource.StandaloneBold
     }
     return false
+}
+
+private fun shouldSuppressDividerAfterCompactNumberedSection(
+    previous: StreamingLineModel?,
+    current: StreamingLineModel
+): Boolean {
+    if (
+        previous !is StreamingLineModel.Numbered ||
+        !isRendererCompactNumberedSection(previous)
+    ) {
+        return false
+    }
+    return current is StreamingLineModel.Heading &&
+        current.source == StreamingHeadingSource.StandaloneBold
 }
 
 internal fun shouldShowStreamingSectionDivider(
@@ -1260,10 +1274,17 @@ private fun parseRendererBoldChineseSectionHeading(line: String): String? {
     val closing = trimmed.indexOf("**", startIndex = 2)
     if (closing <= 2) return null
     val suffix = trimmed.drop(closing + 2).trim()
-    if (suffix.isNotEmpty() && suffix !in setOf(":", "：")) return null
+    if (!isRendererBoldChineseSectionSuffix(suffix)) return null
     val title = trimmed.substring(2, closing).trim()
     if (title.contains("**")) return null
     return parseRendererChineseSectionHeading(title + suffix)
+}
+
+private fun isRendererBoldChineseSectionSuffix(suffix: String): Boolean {
+    if (suffix.isEmpty() || suffix in setOf(":", "：")) return true
+    if (suffix.length > 32) return false
+    if (suffix.any { it in "。；;" }) return false
+    return suffix.startsWith("（") && suffix.endsWith("）")
 }
 
 private fun isRendererStandaloneBoldHeadingTitle(title: String): Boolean {
