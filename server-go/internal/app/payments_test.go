@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/url"
 	"strings"
@@ -191,6 +192,19 @@ func TestAlipayBuildAppPayOrderSignatureVerifies(t *testing.T) {
 	}
 	if values.Get("app_id") != client.appID {
 		t.Fatalf("app_id=%q", values.Get("app_id"))
+	}
+	if values.Get("format") != "json" {
+		t.Fatalf("format=%q want json", values.Get("format"))
+	}
+	var biz alipayBizContent
+	if err := json.Unmarshal([]byte(values.Get("biz_content")), &biz); err != nil {
+		t.Fatalf("unmarshal biz_content: %v", err)
+	}
+	if biz.SellerID != client.sellerID {
+		t.Fatalf("seller_id in biz_content=%q want %q", biz.SellerID, client.sellerID)
+	}
+	if biz.ProductCode != "QUICK_MSECURITY_PAY" {
+		t.Fatalf("product_code=%q", biz.ProductCode)
 	}
 	if values.Get("sign") == "" {
 		t.Fatal("sign is empty")

@@ -261,6 +261,23 @@ internal data class FailedAssistantMessageState(
     val sourceUserMessageId: String,
     val reason: String? = null
 )
+
+private data class PendingMembershipPaymentOrder(
+    val product: MembershipPaymentProduct,
+    val orderString: String,
+    val outTradeNo: String,
+    val subject: String,
+    val amountCents: Int
+) {
+    fun confirmation(): MembershipPaymentConfirmation =
+        MembershipPaymentConfirmation(
+            product = product,
+            subject = subject,
+            amountCents = amountCents,
+            outTradeSuffix = outTradeNo.takeLast(8)
+        )
+}
+
 @Immutable
 internal data class LocalChatWindowSnapshot(
     val messages: List<ChatMessage> = emptyList(),
@@ -3525,6 +3542,8 @@ fun ChatScreen() {
     var membershipEntitlement by remember(uiRuntimeResetKey) { mutableStateOf<SessionApi.EntitlementSnapshot?>(null) }
     var membershipPurchaseSuccessVisible by remember(uiRuntimeResetKey) { mutableStateOf(false) }
     var membershipPaymentState by remember(uiRuntimeResetKey) { mutableStateOf(MembershipPaymentState()) }
+    var pendingMembershipPaymentOrder by remember(uiRuntimeResetKey) { mutableStateOf<PendingMembershipPaymentOrder?>(null) }
+    var membershipPaymentRequestNonce by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var membershipRefreshNonce by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var membershipRefreshEpoch by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var todayAgriRefreshDayKey by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(currentChinaDateKey()) }
@@ -4032,26 +4051,6 @@ fun ChatScreen() {
             }
         }
     }
-    BackHandler(
-        enabled = attachmentMenuVisible ||
-            hamburgerMenuVisible ||
-            membershipCenterVisible ||
-            membershipPurchaseSuccessVisible ||
-            messageSelectionToolbarState != null ||
-            inputSelectionToolbarState != null
-    ) {
-        when {
-            membershipPurchaseSuccessVisible -> membershipPurchaseSuccessVisible = false
-            membershipCenterVisible -> membershipCenterVisible = false
-            hamburgerMenuVisible -> hamburgerMenuVisible = false
-            attachmentMenuVisible -> attachmentMenuVisible = false
-            inputSelectionToolbarState != null -> {
-                clearInputSelectionToolbar()
-                focusManager.clearFocus(force = true)
-            }
-            messageSelectionToolbarState != null -> clearMessageSelection()
-        }
-    }
     fun performButtonHaptic() {
         val handled = view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
         if (!handled) {
@@ -4282,6 +4281,8 @@ fun ChatScreen() {
             activeProduct = product,
             notice = "正在创建支付订单"
         )
+        val requestNonce = membershipPaymentRequestNonce + 1
+        membershipPaymentRequestNonce = requestNonce
         reportMembershipPaymentLog(
             level = "info",
             event = "payment.start",
@@ -4296,6 +4297,19 @@ fun ChatScreen() {
                 product = product
             )
             val (order, createError) = awaitCreateAlipayOrder(product)
+            if (
+                requestNonce != membershipPaymentRequestNonce ||
+                membershipPaymentState.activeProduct != product
+            ) {
+                reportMembershipPaymentLog(
+                    level = "info",
+                    event = "payment.order_create_ignored",
+                    message = "Membership payment order create result ignored",
+                    product = product,
+                    extraAttrs = mapOf("reason" to "request_cancelled")
+                )
+                return@launch
+            }
             val orderString = order?.orderString?.trim().orEmpty()
             val outTradeNo = order?.outTradeNo?.trim().orEmpty()
             if (orderString.isEmpty() || outTradeNo.isEmpty()) {
@@ -4321,56 +4335,170 @@ fun ChatScreen() {
                     "out_trade_suffix" to outTradeNo.takeLast(8)
                 )
             )
+            pendingMembershipPaymentOrder = PendingMembershipPaymentOrder(
+                product = product,
+                orderString = orderString,
+                outTradeNo = outTradeNo,
+                subject = order?.subject.orEmpty(),
+                amountCents = order?.amountCents ?: 0
+            )
             membershipPaymentState = MembershipPaymentState(
                 activeProduct = product,
-                notice = "正在打开支付宝"
+                notice = "请确认付款信息"
             )
             reportMembershipPaymentLog(
                 level = "info",
-                event = "payment.alipay_launch_started",
-                message = "Alipay launch started",
+                event = "payment.confirmation_shown",
+                message = "Membership payment confirmation shown",
                 product = product,
-                extraAttrs = mapOf("out_trade_suffix" to outTradeNo.takeLast(8))
+                extraAttrs = mapOf(
+                    "amount_cents" to order?.amountCents,
+                    "out_trade_suffix" to outTradeNo.takeLast(8),
+                    "payment_method" to "alipay"
+                )
             )
-            AlipayPaymentClient.pay(activity, orderString) { result ->
-                snackbarScope.launch {
-                    reportMembershipPaymentLog(
-                        level = "info",
-                        event = "payment.alipay_sync_result",
-                        message = "Alipay sync result received",
-                        product = product,
-                        extraAttrs = mapOf(
-                            "result_status" to result.resultStatus,
-                            "out_trade_suffix" to outTradeNo.takeLast(8)
+        }
+    }
+
+    fun cancelPendingMembershipPayment(reason: String = "user_cancelled") {
+        val pending = pendingMembershipPaymentOrder
+        val creatingProduct = membershipPaymentState.activeProduct
+            ?.takeIf { membershipPaymentState.notice == "正在创建支付订单" }
+        if (pending == null && creatingProduct == null) return
+        membershipPaymentRequestNonce += 1
+        pendingMembershipPaymentOrder = null
+        membershipPaymentState = MembershipPaymentState(notice = "支付已取消")
+        if (pending != null) {
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.confirmation_cancelled",
+                message = "Membership payment confirmation cancelled",
+                product = pending.product,
+                extraAttrs = mapOf(
+                    "reason" to reason,
+                    "out_trade_suffix" to pending.outTradeNo.takeLast(8)
+                )
+            )
+        } else if (creatingProduct != null) {
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.order_create_cancelled",
+                message = "Membership payment order create cancelled",
+                product = creatingProduct,
+                extraAttrs = mapOf(
+                    "reason" to reason
+                )
+            )
+        }
+    }
+
+    fun confirmPendingMembershipPayment() {
+        val pending = pendingMembershipPaymentOrder ?: return
+        val activity = context.findActivity()
+        if (activity == null) {
+            pendingMembershipPaymentOrder = null
+            membershipPaymentState = MembershipPaymentState(notice = "当前页面无法打开支付宝，请稍后再试")
+            reportMembershipPaymentLog(
+                level = "warn",
+                event = "payment.button_blocked",
+                message = "Membership payment button blocked locally",
+                product = pending.product,
+                extraAttrs = mapOf("reason" to "activity_missing_after_confirmation")
+            )
+            return
+        }
+        pendingMembershipPaymentOrder = null
+        membershipPaymentState = MembershipPaymentState(
+            activeProduct = pending.product,
+            notice = "正在打开支付宝"
+        )
+        reportMembershipPaymentLog(
+            level = "info",
+            event = "payment.confirmation_confirmed",
+            message = "Membership payment confirmation confirmed",
+            product = pending.product,
+            extraAttrs = mapOf(
+                "amount_cents" to pending.amountCents,
+                "out_trade_suffix" to pending.outTradeNo.takeLast(8),
+                "payment_method" to "alipay"
+            )
+        )
+        reportMembershipPaymentLog(
+            level = "info",
+            event = "payment.alipay_launch_started",
+            message = "Alipay launch started",
+            product = pending.product,
+            extraAttrs = mapOf("out_trade_suffix" to pending.outTradeNo.takeLast(8))
+        )
+        AlipayPaymentClient.pay(activity, pending.orderString) { result ->
+            snackbarScope.launch {
+                val syncAttrs = linkedMapOf<String, Any?>(
+                    "result_status" to result.resultStatus,
+                    "out_trade_suffix" to pending.outTradeNo.takeLast(8)
+                )
+                if (result.memoPresent) {
+                    syncAttrs["memo_present"] = true
+                }
+                reportMembershipPaymentLog(
+                    level = "info",
+                    event = "payment.alipay_sync_result",
+                    message = "Alipay sync result received",
+                    product = pending.product,
+                    extraAttrs = syncAttrs
+                )
+                when (result.status) {
+                    AlipayPaymentSyncStatus.Cancelled -> {
+                        membershipPaymentState = MembershipPaymentState(notice = "支付已取消")
+                        membershipRefreshNonce += 1
+                    }
+                    AlipayPaymentSyncStatus.Failed -> {
+                        membershipPaymentState = MembershipPaymentState(notice = "支付未完成，请稍后重试")
+                        membershipRefreshNonce += 1
+                    }
+                    AlipayPaymentSyncStatus.NetworkError -> {
+                        membershipPaymentState = MembershipPaymentState(
+                            activeProduct = pending.product,
+                            notice = "网络不稳，正在确认支付结果"
                         )
-                    )
-                    when (result.status) {
-                        AlipayPaymentSyncStatus.Cancelled -> {
-                            membershipPaymentState = MembershipPaymentState(notice = "支付已取消")
-                            membershipRefreshNonce += 1
-                        }
-                        AlipayPaymentSyncStatus.Failed -> {
-                            membershipPaymentState = MembershipPaymentState(notice = "支付未完成，请稍后重试")
-                            membershipRefreshNonce += 1
-                        }
-                        AlipayPaymentSyncStatus.NetworkError -> {
-                            membershipPaymentState = MembershipPaymentState(
-                                activeProduct = product,
-                                notice = "网络不稳，正在确认支付结果"
-                            )
-                            pollMembershipPaymentOrder(product, outTradeNo)
-                        }
-                        AlipayPaymentSyncStatus.Success,
-                        AlipayPaymentSyncStatus.Processing -> {
-                            membershipPaymentState = MembershipPaymentState(
-                                activeProduct = product,
-                                notice = "支付结果确认中，请稍等"
-                            )
-                            pollMembershipPaymentOrder(product, outTradeNo)
-                        }
+                        pollMembershipPaymentOrder(pending.product, pending.outTradeNo)
+                    }
+                    AlipayPaymentSyncStatus.Success,
+                    AlipayPaymentSyncStatus.Processing -> {
+                        membershipPaymentState = MembershipPaymentState(
+                            activeProduct = pending.product,
+                            notice = "支付结果确认中，请稍等"
+                        )
+                        pollMembershipPaymentOrder(pending.product, pending.outTradeNo)
                     }
                 }
             }
+        }
+    }
+
+    BackHandler(
+        enabled = pendingMembershipPaymentOrder != null ||
+            membershipPaymentState.notice == "正在创建支付订单" ||
+            attachmentMenuVisible ||
+            hamburgerMenuVisible ||
+            membershipCenterVisible ||
+            membershipPurchaseSuccessVisible ||
+            messageSelectionToolbarState != null ||
+            inputSelectionToolbarState != null
+    ) {
+        when {
+            pendingMembershipPaymentOrder != null ||
+                membershipPaymentState.notice == "正在创建支付订单" -> {
+                cancelPendingMembershipPayment(reason = "system_back")
+            }
+            membershipPurchaseSuccessVisible -> membershipPurchaseSuccessVisible = false
+            membershipCenterVisible -> membershipCenterVisible = false
+            hamburgerMenuVisible -> hamburgerMenuVisible = false
+            attachmentMenuVisible -> attachmentMenuVisible = false
+            inputSelectionToolbarState != null -> {
+                clearInputSelectionToolbar()
+                focusManager.clearFocus(force = true)
+            }
+            messageSelectionToolbarState != null -> clearMessageSelection()
         }
     }
 
@@ -8428,6 +8556,7 @@ fun ChatScreen() {
                     paymentState = membershipPaymentState,
                     modifier = Modifier.fillMaxSize(),
                     onDismiss = {
+                        cancelPendingMembershipPayment(reason = "sheet_dismissed")
                         membershipPurchaseSuccessVisible = false
                         membershipCenterVisible = false
                     },
@@ -8456,6 +8585,7 @@ fun ChatScreen() {
                         .fillMaxSize()
                         .zIndex(78f),
                     onDismiss = {
+                        cancelPendingMembershipPayment(reason = "sheet_dismissed")
                         hamburgerMenuVisible = false
                     },
                     onRequestMembershipRefresh = {
@@ -8476,6 +8606,20 @@ fun ChatScreen() {
                         performButtonHaptic()
                         showComposerStatusHint(text)
                     }
+                )
+
+                MembershipPaymentConfirmOverlay(
+                    visible = pendingMembershipPaymentOrder != null,
+                    confirmation = pendingMembershipPaymentOrder?.confirmation(),
+                    onConfirm = {
+                        performButtonHaptic()
+                        confirmPendingMembershipPayment()
+                    },
+                    onCancel = {
+                        performButtonHaptic()
+                        cancelPendingMembershipPayment()
+                    },
+                    modifier = Modifier.fillMaxSize()
                 )
 
             if (navigationBottomInset > 0.dp) {
@@ -9048,6 +9192,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：未用完", "仍可按需继续购买，后端订单验签后发放", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
+                    UiCopyPreviewItem("确认付款", "金额、支付方式和不自动续费说明", UiCopyPreviewKind.MembershipPaymentConfirm),
                     UiCopyPreviewItem("权益生效提示", "支付完成后展示后端确认的权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序 / 补偿与加油包", UiCopyPreviewKind.MembershipRules)
                 )
@@ -9410,6 +9555,7 @@ private enum class UiCopyPreviewKind {
     MembershipTopupActive,
     MembershipTopupNarrow,
     MembershipPaymentNotice,
+    MembershipPaymentConfirm,
     MembershipPurchaseSuccess,
     MembershipRules,
     HamburgerMenu,
@@ -9863,6 +10009,9 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.MembershipPaymentNotice -> {
                     MembershipPaymentNoticePreview()
+                }
+                UiCopyPreviewKind.MembershipPaymentConfirm -> {
+                    MembershipPaymentConfirmPreview()
                 }
                 UiCopyPreviewKind.MembershipPurchaseSuccess -> {
                     MembershipPurchaseSuccessPreview()

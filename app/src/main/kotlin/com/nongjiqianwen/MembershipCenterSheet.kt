@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
@@ -68,6 +69,13 @@ internal enum class MembershipPaymentProduct(val apiValue: String) {
 internal data class MembershipPaymentState(
     val activeProduct: MembershipPaymentProduct? = null,
     val notice: String? = null
+)
+
+internal data class MembershipPaymentConfirmation(
+    val product: MembershipPaymentProduct,
+    val subject: String,
+    val amountCents: Int,
+    val outTradeSuffix: String
 )
 
 private const val MEMBERSHIP_SCRIM_ENTER_MS = 80
@@ -405,6 +413,225 @@ private fun MembershipPurchaseSuccessCard(
 }
 
 @Composable
+internal fun MembershipPaymentConfirmOverlay(
+    visible: Boolean,
+    confirmation: MembershipPaymentConfirmation?,
+    onConfirm: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BackHandler(enabled = visible && confirmation != null) {
+        onCancel()
+    }
+    AnimatedVisibility(
+        visible = visible && confirmation != null,
+        enter = fadeIn(animationSpec = tween(durationMillis = 90)),
+        exit = ExitTransition.None,
+        modifier = modifier
+            .fillMaxSize()
+            .zIndex(94f)
+    ) {
+        confirmation?.let { item ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.18f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onCancel
+                        )
+                )
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(20.dp),
+                    shadowElevation = 18.dp,
+                    border = BorderStroke(0.7.dp, Color(0xFFE2E4E8)),
+                    modifier = Modifier
+                        .padding(horizontal = 28.dp)
+                        .widthIn(max = 360.dp)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {}
+                        )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                        verticalArrangement = Arrangement.spacedBy(15.dp)
+                    ) {
+                        Text(
+                            text = "确认付款",
+                            color = Color(0xFF111111),
+                            fontSize = 19.sp,
+                            lineHeight = 25.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                            MembershipPaymentInfoRow(
+                                label = "订单",
+                                value = item.subject.ifBlank { membershipPaymentProductTitle(item.product) }
+                            )
+                            MembershipPaymentInfoRow(
+                                label = "金额",
+                                value = formatPaymentAmountText(item.amountCents),
+                                valueWeight = FontWeight.SemiBold
+                            )
+                            MembershipPaymentInfoRow(
+                                label = "说明",
+                                value = membershipPaymentProductNote(item.product)
+                            )
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                text = "支付方式",
+                                color = Color(0xFF4F535A),
+                                fontSize = 13.sp,
+                                lineHeight = 18.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                MembershipPaymentMethodChip(
+                                    text = "支付宝",
+                                    selected = true,
+                                    enabled = true
+                                )
+                                MembershipPaymentMethodChip(
+                                    text = "微信支付 暂未开通",
+                                    selected = false,
+                                    enabled = false
+                                )
+                            }
+                        }
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            MembershipPaymentConfirmButton(
+                                text = "取消",
+                                primary = false,
+                                modifier = Modifier.weight(1f),
+                                onClick = onCancel
+                            )
+                            MembershipPaymentConfirmButton(
+                                text = "确认并打开支付宝",
+                                primary = true,
+                                modifier = Modifier.weight(1.45f),
+                                onClick = onConfirm
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MembershipPaymentInfoRow(
+    label: String,
+    value: String,
+    valueWeight: FontWeight = FontWeight.Normal
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            color = Color(0xFF7B7F87),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            modifier = Modifier.padding(end = 12.dp)
+        )
+        Text(
+            text = value,
+            color = Color(0xFF202124),
+            fontSize = 13.sp,
+            lineHeight = 19.sp,
+            fontWeight = valueWeight,
+            textAlign = TextAlign.End,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun MembershipPaymentMethodChip(
+    text: String,
+    selected: Boolean,
+    enabled: Boolean
+) {
+    Surface(
+        color = when {
+            selected -> Color(0xFF111111)
+            else -> Color(0xFFF2F3F5)
+        },
+        shape = RoundedCornerShape(999.dp),
+        border = BorderStroke(
+            0.8.dp,
+            if (selected) Color(0xFF111111) else Color(0xFFE1E4E8)
+        )
+    ) {
+        Text(
+            text = text,
+            color = when {
+                selected -> Color.White
+                enabled -> Color(0xFF202124)
+                else -> Color(0xFF9297A0)
+            },
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun MembershipPaymentConfirmButton(
+    text: String,
+    primary: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (primary) Color(0xFF111111) else Color.White,
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(0.8.dp, if (primary) Color(0xFF111111) else Color(0xFFDDE1E6)),
+        modifier = modifier
+            .heightIn(min = 44.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                role = Role.Button,
+                onClick = onClick
+            )
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = text,
+                color = if (primary) Color.White else Color(0xFF202124),
+                fontSize = 14.sp,
+                lineHeight = 19.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 11.dp)
+            )
+        }
+    }
+}
+
+@Composable
 internal fun MembershipQuotaSummary(
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState
@@ -534,6 +761,27 @@ internal fun MembershipTopupCardPreview(
 @Composable
 internal fun MembershipPaymentNoticePreview() {
     MembershipInlineNotice(text = "支付结果确认中，请稍等")
+}
+
+@Composable
+internal fun MembershipPaymentConfirmPreview() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(360.dp)
+    ) {
+        MembershipPaymentConfirmOverlay(
+            visible = true,
+            confirmation = MembershipPaymentConfirmation(
+                product = MembershipPaymentProduct.RenewPro,
+                subject = "农技千查 Pro 会员30天",
+                amountCents = 1,
+                outTradeSuffix = "12345678"
+            ),
+            onConfirm = {},
+            onCancel = {}
+        )
+    }
 }
 
 @Composable
@@ -1029,6 +1277,31 @@ private fun formatMembershipExpireDate(expireAtMs: Long?): String? {
     return java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.CHINA).apply {
         timeZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
     }.format(java.util.Date(expireAtMs))
+}
+
+private fun membershipPaymentProductTitle(product: MembershipPaymentProduct): String =
+    when (product) {
+        MembershipPaymentProduct.RenewPlus -> "农技千查 Plus 会员30天"
+        MembershipPaymentProduct.RenewPro -> "农技千查 Pro 会员30天"
+        MembershipPaymentProduct.UpgradePlusToPro -> "农技千查升级 Pro 会员30天"
+        MembershipPaymentProduct.BuyTopup -> "农技千查加油包80次"
+    }
+
+private fun membershipPaymentProductNote(product: MembershipPaymentProduct): String =
+    when (product) {
+        MembershipPaymentProduct.BuyTopup -> "额外80次问诊次数，长期保留"
+        else -> "一次购买30天，不自动续费"
+    }
+
+private fun formatPaymentAmountText(amountCents: Int): String {
+    if (amountCents <= 0) return "--"
+    val yuan = amountCents / 100
+    val cents = amountCents % 100
+    return if (cents == 0) {
+        "¥$yuan"
+    } else {
+        "¥$yuan.${cents.toString().padStart(2, '0')}"
+    }
 }
 
 internal fun compactUserId(userId: String): String {

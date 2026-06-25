@@ -124,6 +124,7 @@ Require-Match -Name "android_create_alipay_order_api" -Content $sessionApi -Patt
 Require-Match -Name "android_create_alipay_order_build_type" -Content $sessionApi -Pattern "client_build_type"
 Require-Match -Name "android_get_payment_order_api" -Content $sessionApi -Pattern "/api/payments/orders"
 Require-Match -Name "android_payment_start_log" -Content $chatScreen -Pattern "payment\.start"
+Require-Match -Name "android_payment_confirmation_log" -Content $chatScreen -Pattern "payment\.confirmation_shown"
 Require-Match -Name "android_alipay_sync_log" -Content $chatScreen -Pattern "payment\.alipay_sync_result"
 Require-Match -Name "android_payment_grant_success_log" -Content $chatScreen -Pattern "payment\.grant_success"
 Require-Match -Name "android_payment_grant_failure_persistent" -Content $chatScreen -Pattern "支付已确认，权益处理异常"
@@ -137,6 +138,8 @@ Require-Match -Name "server_alipay_notify_route" -Content $server -Pattern 'POST
 Require-Match -Name "server_healthz_alipay" -Content $server -Pattern '"alipay"\s*:\s*s\.alipay\.HealthStatus\(\)'
 Require-Match -Name "server_healthz_alipay_payment_gate" -Content $server -Pattern '"alipay_payment_gate"\s*:\s*alipayPaymentOrderGateStatus\(\)'
 Require-Match -Name "server_alipay_app_pay_api" -Content $payments -Pattern "alipay\.trade\.app\.pay"
+Require-Match -Name "server_alipay_order_format_json" -Content $payments -Pattern 'format"\s*,\s*"json'
+Require-Match -Name "server_alipay_order_biz_seller_id" -Content $payments -Pattern 'SellerID:\s*c\.sellerID'
 Require-Match -Name "server_alipay_payment_gate_default_closed" -Content $payments -Pattern "ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES"
 Require-Match -Name "server_alipay_payment_gate_requires_user_and_build" -Content $payments -Pattern "len\(allowedUsers\)\s*==\s*0\s*\|\|\s*len\(allowedBuildTypes\)\s*==\s*0"
 Require-Match -Name "server_alipay_payment_public_switch" -Content $payments -Pattern "ALIPAY_PAYMENT_PUBLIC_ENABLED"

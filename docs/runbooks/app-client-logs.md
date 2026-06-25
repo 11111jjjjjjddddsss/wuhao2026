@@ -1,6 +1,6 @@
 # App 自动日志接收
 
-最后更新：2026-06-23
+最后更新：2026-06-25
 
 ## 当前定位
 
@@ -25,11 +25,25 @@
 - `chat.background_stream_failed`
 - `image.upload_failed`
 - `support.send_failed`
+- `payment.button_tapped`
+- `payment.button_blocked`
 - `payment.start`
+- `payment.order_create_started`
+- `payment.order_create_success`
+- `payment.order_create_ignored`
+- `payment.order_create_cancelled`
 - `payment.order_create_failed`
+- `payment.confirmation_shown`
+- `payment.confirmation_confirmed`
+- `payment.confirmation_cancelled`
+- `payment.alipay_launch_started`
 - `payment.alipay_sync_result`
+- `payment.order_poll_started`
+- `payment.order_poll_tick`
+- `payment.order_poll_timeout`
 - `payment.order_status_failed`
 - `payment.grant_success`
+- `payment.grant_needs_ops`
 - `app_update.check_started`
 - `app_update.available`
 - `app_update.no_update`
@@ -92,7 +106,7 @@ Android 只上报结构化错误信息：
 
 ## 后续接后台面板
 
-第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示短信发送失败、短信登录失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.login_network_failed` 表示登录请求本身网络失败；`auth.sms_send_failed` 表示验证码发送失败；`auth.sms_login_failed` 表示验证码校验或账号登录失败；`auth.sms_login_success` 表示短信登录成功。后台“登录排障”卡会把这些事件纳入 `auth.*` 整组筛选，待处理事项也会提示先查生产 API 可达性、短信配置、验证码是否新发送、手机号 / IP 是否触发短期限流和 Redis 是否健康。后台排障按钮既支持用 `event_prefix=auth.` 查看全部登录相关日志，也会按真实上报事件拆开：短信发送、短信登录校验、登录成功、登录网络失败和闪退补报。历史 `auth.fusion_*` 仍可在 App 日志里查到，但只代表旧包 / 旧联调。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；排障按钮支持 `event_prefix=app_update.` 查看全部检查更新日志，也支持按具体阶段精确过滤。支付链路当前上报 `payment.start`、`payment.order_create_failed`、`payment.alipay_sync_result`、`payment.order_status_failed` 和 `payment.grant_success`，attrs 只保留商品类型、同步结果状态、后端状态和订单号尾部等安全字段，不上传 `order_string`、完整 `out_trade_no`、完整渠道交易号、签名、密钥或支付参数全文。App 日志页还可按 `platform`、`build_type`、`app_version_code`、`app_version_name`、`os_version`、`device_model` 过滤，方便上线前真机回归时区分测试包 / 正式包、具体版本、系统版本或机型问题。下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
+第一版网页后台已提供只读查询；监控面板已单独聚合最近 24 小时登录排障数据，展示短信发送失败、短信登录失败、登录前日志数量、闪退补报和 Top 事件，并提供按钮直达 App 日志筛选。`auth.login_network_failed` 表示登录请求本身网络失败；`auth.sms_send_failed` 表示验证码发送失败；`auth.sms_login_failed` 表示验证码校验或账号登录失败；`auth.sms_login_success` 表示短信登录成功。后台“登录排障”卡会把这些事件纳入 `auth.*` 整组筛选，待处理事项也会提示先查生产 API 可达性、短信配置、验证码是否新发送、手机号 / IP 是否触发短期限流和 Redis 是否健康。后台排障按钮既支持用 `event_prefix=auth.` 查看全部登录相关日志，也会按真实上报事件拆开：短信发送、短信登录校验、登录成功、登录网络失败和闪退补报。历史 `auth.fusion_*` 仍可在 App 日志里查到，但只代表旧包 / 旧联调。监控面板也已单独聚合最近 24 小时 `app_update.*` 检查更新排障日志，展示检查失败、下载失败、安装页失败、安装未知应用权限确认和 Top 事件；排障按钮支持 `event_prefix=app_update.` 查看全部检查更新日志，也支持按具体阶段精确过滤。支付链路当前上报按钮点击、本地阻断、订单创建、确认付款、支付宝调起、同步返回、订单轮询和权益发放结果，attrs 只保留商品类型、同步结果状态、后端状态、构建类型、版本号、支付方式、金额分、订单号尾部和 `memo_present` 这类安全字段，不上传 `order_string`、完整 `out_trade_no`、完整渠道交易号、签名、密钥、支付宝 `memo` 原文或支付参数全文。App 日志页还可按 `platform`、`build_type`、`app_version_code`、`app_version_name`、`os_version`、`device_model` 过滤，方便上线前真机回归时区分测试包 / 正式包、具体版本、系统版本或机型问题。下载失败 attrs 只带安全 reason，例如网络 / HTTP、非 HTTPS 跳转、文件过大、大小不一致、SHA-256 不一致、包名不一致或 `versionCode` 未升版本，不带 APK URL、SHA-256 原文或安装包内容。后续继续补：
 - 更细的版本 / 设备 / 地区聚合趋势
 - SLS 趋势图、第一封告警邮件送达确认和复制单条事件用于排障
 

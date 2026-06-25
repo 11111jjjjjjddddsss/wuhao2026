@@ -6,17 +6,18 @@
 
 记录农技千查支付、会员订单、权益发放、回调验签、对账和退款边界，避免把开发期接口或未验收代码误当正式收费系统。
 
-当前状态：支付宝 APP 支付代码已接入仓库，Android 已接支付宝 SDK，后端已接服务端创建支付宝 APP 支付订单、异步通知验签、`payment_orders` / `payment_notifications`、幂等发放会员 / 加油包权益和后台只读订单核查。2026-06-25 起，后端订单创建额外受生产支付门禁控制：默认关闭；内测联调必须同时配置测试包构建类型和账号白名单才允许创建支付宝订单，单独只配其中一个仍保持关闭；正式放量必须另开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。2026-06-25 晚已把生产门禁开到 `limited`，仅允许指定账号白名单 + 内部 debug 测试包 + 0.01 元测试金额联调；这不是正式收费开放。生产正式收费仍不得直接放量，必须完成小额真机支付、异步通知公网验签、重复通知幂等、权益发放、异常补偿、对账、人工补权益和退款流程验收后，再按正式发版和运营口径打开。
+当前状态：支付宝 APP 支付代码已接入仓库，Android 已接支付宝 SDK，后端已接服务端创建支付宝 APP 支付订单、异步通知验签、`payment_orders` / `payment_notifications`、幂等发放会员 / 加油包权益和后台只读订单核查。2026-06-25 起，后端订单创建额外受生产支付门禁控制：默认关闭；内测联调必须同时配置测试包构建类型和账号白名单才允许创建支付宝订单，单独只配其中一个仍保持关闭；正式放量必须另开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。2026-06-25 晚已把生产门禁开到 `limited`，仅允许指定账号白名单 + 内部 debug 测试包 + 0.01 元测试金额联调；这不是正式收费开放。Android 购买链路已改为先创建订单，再展示“确认付款”页，用户确认金额、支付方式和一次性购买说明后才打开支付宝；当前首版不接自动续费，微信支付只保留未开通占位。生产正式收费仍不得直接放量，必须完成小额真机支付、异步通知公网验签、重复通知幂等、权益发放、异常补偿、对账、人工补权益和退款流程验收后，再按正式发版和运营口径打开。
 
 ## 当前代码真相
 
-- Android 会员中心的 Plus、Pro 和加油包按钮已改为真实支付入口：先请求后端 `POST /api/payments/alipay/orders` 创建订单，再把后端返回的 `order_string` 交给支付宝 SDK `PayTask.payV2` 调起支付。
+- Android 会员中心的 Plus、Pro 和加油包按钮已改为真实支付入口：先请求后端 `POST /api/payments/alipay/orders` 创建订单，再展示确认付款页；用户点“确认并打开支付宝”后，Android 才把后端返回的 `order_string` 交给支付宝 SDK `PayTask.payV2` 调起支付。
 - Android 创建支付宝订单时会带 `client_build_type` 和 `client_version_code`；后端用它配合账号白名单控制“内部测试包可测、正式包继续不可用”。旧正式包不带构建类型时不会通过测试门禁；测试期只配 `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug` 或只配账号白名单也不会放行。
 - Android 不保存、不生成、不读取支付宝应用私钥、支付宝公钥、商户密钥或任何支付渠道密钥；客户端同步结果只用于提示和轮询订单状态，不直接发放权益。
-- Android 会把 `9000` 视为同步成功、`8000 / 6004 / 6006` 视为处理中、`6002` 视为网络异常并继续轮询后端订单；只有后端订单达到 `paid + grant_status=success` 才提示权益已生效。
+- Android 确认付款页会展示订单、金额、支付方式和“一次购买30天，不自动续费”或“加油包长期保留”说明；支付宝为当前可选方式，微信支付只展示“暂未开通”占位。确认页支持取消、遮罩取消和返回键取消；取消不会打开支付宝，也不会发权益。
+- Android 会把 `9000` 视为同步成功、`8000 / 6004 / 6006` 视为处理中、`6002` 视为网络异常并继续轮询后端订单；只有后端订单达到 `paid + grant_status=success` 才提示权益已生效。支付宝 SDK 返回的 `memo` 不上传原文，只记录是否存在备注，避免第三方自由文本进入 App 日志。
 - 后端新增正式支付订单表 `payment_orders` 和通知表 `payment_notifications`。支付宝通知会验签并校验 `app_id / seller_id / out_trade_no / trade_no / total_amount / trade_status`，成功处理后才返回支付宝要求的 `success`。
 - 0.01 元联调订单支付成功后会按商品类型发放完整测试权益，因此只允许白名单账号 + debug 测试包使用。测试订单不删除，`payment_orders` 会记录 `is_test_order / original_amount_cents / client_build_type / client_version_code`；后台汇总不把测试订单计入正式支付金额，便于后续和支付宝账单、回调日志、权益流水对账。
-- 后端发权益使用 `pay_<out_trade_no>` 作为幂等订单号，复用现有会员 / 加油包账本；重复通知不会重复发权益。`grant_status=processing` 未完成时不返回成功，保留支付宝重试机会；晚到的 `TRADE_CLOSED` 不应覆盖已支付订单。
+- 后端生成支付宝 APP 支付订单时使用 RSA2 签名，`order_string` 包含 `format=json`，`biz_content` 明确带 `seller_id` 和 `product_code=QUICK_MSECURITY_PAY`；签名仍只覆盖支付宝要求参与签名的参数，不包含 `sign` 本身。后端发权益使用 `pay_<out_trade_no>` 作为幂等订单号，复用现有会员 / 加油包账本；重复通知不会重复发权益。`grant_status=processing` 未完成时不返回成功，保留支付宝重试机会；晚到的 `TRADE_CLOSED` 不应覆盖已支付订单。
 - Plus / Pro 会员仍按 30 天周期处理；加油包次数和 Plus 升 Pro 生成的升级补偿次数都按永久有效处理，不随会员到期清零；每日额度是自然日额度，不跨天结转。后续扣次顺序仍是每日额度 -> 升级补偿 -> 加油包。
 - 后端开发期直改接口 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍保留给本地 / 内测调试，默认返回 `PAYMENT_NOT_CONFIGURED`；生产环境必须继续保持 `dev_order_endpoints=false`，不能把开发期接口当正式收费入口。
 - 管理后台订单页已接只读核查：可查看支付宝订单、渠道交易号、订单状态、金额、权益发放状态和会员变更记录。当前不提供手动补发、退款、对账自动化或手动改权益按钮；正式收费前必须补受控的人工补权益入口或同等 SOP。
@@ -39,16 +40,18 @@
 1. 登录白名单里的测试账号。
 2. 打开左上角三横线，进入“会员中心”。
 3. 点“开通 Plus / 开通 Pro / 续费 Pro / 升级 Pro”中的一个。Free 用户点“加油包”会是灰色或“会员可购买”，这是正常限制，不是支付故障。
-4. App 提示“正在创建支付订单”后应拉起支付宝，支付金额应为 0.01 元。
-5. 支付后回到 App，等待订单轮询或刷新会员中心；权益只能以后端验签通知或订单状态核验后发放，客户端同步成功不直接发权益。
+4. App 提示“正在创建支付订单”后应先展示“确认付款”页，用户核对订单、金额和支付方式后，再点“确认并打开支付宝”。
+5. 支付宝支付金额应为 0.01 元。若用户在确认页点取消、点遮罩或按返回键，应只显示“支付已取消”，不能打开支付宝。
+6. 支付后回到 App，等待订单轮询或刷新会员中心；权益只能以后端验签通知或订单状态核验后发放，客户端同步成功不直接发权益。
 
 验收记录：
 
 - 0.01 测试单不能删除，后台应标记为测试订单并排除正式收入统计。
 - 每次联调都要记录测试包对象 / commit / 账号白名单 / 商品类型 / 支付宝支付结果 / 后端订单状态 / 权益是否到账 / 是否触发回调 / 是否需要人工补权益。
-- App 自动日志应能串起完整链路：`payment.button_tapped`、`payment.button_blocked`、`payment.start`、`payment.order_create_started`、`payment.order_create_success`、`payment.order_create_failed`、`payment.alipay_launch_started`、`payment.alipay_sync_result`、`payment.order_poll_started`、`payment.order_poll_tick`、`payment.order_poll_timeout`、`payment.order_status_failed`、`payment.grant_success`、`payment.grant_needs_ops`。日志只保留商品类型、当前会员档、构建类型、版本号、订单尾号、状态和安全错误码，不能记录完整订单号、`order_string`、渠道交易号、密钥、公钥、手机号或支付参数全文。
+- App 自动日志应能串起完整链路：`payment.button_tapped`、`payment.button_blocked`、`payment.start`、`payment.order_create_started`、`payment.order_create_success`、`payment.order_create_ignored`、`payment.order_create_cancelled`、`payment.order_create_failed`、`payment.confirmation_shown`、`payment.confirmation_confirmed`、`payment.confirmation_cancelled`、`payment.alipay_launch_started`、`payment.alipay_sync_result`、`payment.order_poll_started`、`payment.order_poll_tick`、`payment.order_poll_timeout`、`payment.order_status_failed`、`payment.grant_success`、`payment.grant_needs_ops`。日志只保留商品类型、当前会员档、构建类型、版本号、订单尾号、状态、安全错误码和 `memo_present` 这类布尔信息，不能记录完整订单号、`order_string`、渠道交易号、密钥、公钥、手机号、支付宝 `memo` 原文或支付参数全文。
 - 若“点不动”，先确认点的是 Plus/Pro 购买按钮而不是 Free 状态下的加油包；再确认会员中心权益已加载、测试包确实是 debug、测试账号在白名单内、生产门禁为 `limited`。
 - 若能点但提示“支付暂时不可用 / 下单失败”，优先看 `check-payment-readiness.ps1`、`/healthz` 的 `alipay` 和 `alipay_payment_gate`、App 日志 `payment.order_create_failed`、后端支付日志。
+- 若后端创建订单成功、Android 已调用支付宝，但支付宝客户端弹“商家订单参数异常，请重新发起付款”，通常表示订单参数在支付宝客户端校验阶段未通过，尚未进入真实付款页，也不会扣款。该现象不能简单等同于“支付宝产品没开通”：应用已上线和 APP 支付产品可见只证明粗开通状态，仍要继续核对本次订单使用的 `app_id`、`seller_id`、应用私钥与控制台应用公钥是否配对、支付宝公钥 / 证书模式是否一致、APP 支付产品权限是否属于同一应用，以及后端实际环境变量是否和控制台截图一致。若补齐 `format=json` 和 `seller_id` 后仍复现，应使用支付宝开放平台接口诊断按该笔 `out_trade_no` 查询具体原因；聊天、文档和日志只记录订单尾号，不贴完整订单号、完整订单串、签名或密钥。
 - 测试完成后必须移除 `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS`，正式收费前不得打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。
 
 ## 已支付但权益未到账处理口径

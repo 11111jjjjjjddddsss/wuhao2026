@@ -101,6 +101,7 @@ type alipayBizContent struct {
 	TotalAmount    string `json:"total_amount"`
 	Subject        string `json:"subject"`
 	Body           string `json:"body,omitempty"`
+	SellerID       string `json:"seller_id,omitempty"`
 	ProductCode    string `json:"product_code"`
 	TimeoutExpress string `json:"timeout_express,omitempty"`
 }
@@ -283,6 +284,7 @@ func (c *AlipayClient) BuildAppPayOrder(outTradeNo string, product paymentProduc
 		TotalAmount:    formatAmountCents(product.AmountCents),
 		Subject:        product.Subject,
 		Body:           product.Body,
+		SellerID:       c.sellerID,
 		ProductCode:    "QUICK_MSECURITY_PAY",
 		TimeoutExpress: "30m",
 	}
@@ -294,6 +296,7 @@ func (c *AlipayClient) BuildAppPayOrder(outTradeNo string, product paymentProduc
 	params.Set("app_id", c.appID)
 	params.Set("method", "alipay.trade.app.pay")
 	params.Set("charset", "utf-8")
+	params.Set("format", "json")
 	params.Set("sign_type", "RSA2")
 	params.Set("timestamp", now.Format("2006-01-02 15:04:05"))
 	params.Set("version", "1.0")

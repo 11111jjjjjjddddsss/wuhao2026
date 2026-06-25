@@ -18,7 +18,8 @@ internal enum class AlipayPaymentSyncStatus {
 
 internal data class AlipayPaymentSyncResult(
     val status: AlipayPaymentSyncStatus,
-    val resultStatus: String
+    val resultStatus: String,
+    val memoPresent: Boolean = false
 )
 
 internal object AlipayPaymentClient {
@@ -40,6 +41,7 @@ internal object AlipayPaymentClient {
                 PayTask(activity).payV2(safeOrderString, true)
             }.getOrElse { emptyMap() }
             val resultStatus = result["resultStatus"].orEmpty()
+            val memoPresent = result["memo"].orEmpty().isNotBlank()
             val status = when (resultStatus) {
                 "9000" -> AlipayPaymentSyncStatus.Success
                 "8000", "6004", "6006" -> AlipayPaymentSyncStatus.Processing
@@ -48,7 +50,13 @@ internal object AlipayPaymentClient {
                 else -> AlipayPaymentSyncStatus.Failed
             }
             mainHandler.post {
-                onResult(AlipayPaymentSyncResult(status = status, resultStatus = resultStatus))
+                onResult(
+                    AlipayPaymentSyncResult(
+                        status = status,
+                        resultStatus = resultStatus,
+                        memoPresent = memoPresent
+                    )
+                )
             }
         }
     }
