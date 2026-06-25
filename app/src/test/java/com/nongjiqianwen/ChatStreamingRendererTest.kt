@@ -978,6 +978,59 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun numberedHeadingsWithParentheticalSuffixCreateDividersAfterContent() {
+        val variants = listOf(
+            "1. 营养需求重点（膨果期）",
+            "1. **营养需求重点**（膨果期）",
+            "**1. 营养需求重点**（膨果期）"
+        )
+
+        variants.forEach { line ->
+            val models = listOf(
+                classifyStreamingLine("膨果期先看营养和水分。"),
+                StreamingLineModel.Blank,
+                classifyStreamingLine(line)
+            )
+            val numbered = models[2]
+
+            assertTrue(
+                "Expected numbered heading variant: $line",
+                numbered is StreamingLineModel.Numbered
+            )
+            assertTrue(
+                "Expected compact numbered section: $line",
+                isRendererCompactNumberedSection(numbered as StreamingLineModel.Numbered)
+            )
+            assertTrue(
+                "Expected divider for numbered heading variant: $line",
+                shouldShowStreamingSectionDivider(
+                    previous = previousStreamingSectionDividerCandidate(models, 2),
+                    current = numbered
+                )
+            )
+        }
+    }
+
+    @Test
+    fun firstStructuralHeadingDoesNotCreateLeadingDivider() {
+        val variants = listOf(
+            "一、营养需求重点",
+            "**一、营养需求重点**（膨果期）",
+            "1. 营养需求重点",
+            "**1. 营养需求重点**（膨果期）"
+        )
+
+        variants.forEach { line ->
+            val model = classifyStreamingLine(line)
+
+            assertFalse(
+                "Expected no leading divider for first heading: $line",
+                shouldShowStreamingSectionDivider(previous = null, current = model)
+            )
+        }
+    }
+
+    @Test
     fun readableParagraphSplitAndBlankHeadingDividerWorkTogether() {
         val state = splitStreamingBlockState(
             "膨果是产量形成的基础，也是后续增甜的前提。如果果实膨大不到位，后期再怎么增甜，单果重和总产量都上不去。" +
