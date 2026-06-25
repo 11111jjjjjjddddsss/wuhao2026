@@ -617,6 +617,17 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun pipeOnlyRowsWithoutMarkdownSeparatorStayPlainText() {
+        val content = "| 使用场景 | 建议 | 风险提示 |\n" +
+            "| 条件 | 应急补钙 | 浓度严格控制 |\n" +
+            "| 风险 | 盐渍化土壤慎用 |"
+        val stats = buildRendererStructureStats(content)
+
+        assertEquals(0, stats.tableCount)
+        assertTrue(classifyStreamingLine(content) is StreamingLineModel.Paragraph)
+    }
+
+    @Test
     fun markdownTableHeaderDelimiterRendersStreamingShellBeforeRows() {
         val state = splitStreamingBlockState("|维度|成品|自配|\n|---|---|---|")
         val model = classifyActiveStreamingLine(state.activeBlock.orEmpty())

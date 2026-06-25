@@ -657,6 +657,8 @@ if ($failures.Count -eq 0) {
         "Today agri appearance must not keep a dedicated force-bottom anchor state; it should not pull the user to the bottom at the moment it appears."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantParagraphTextStyle\(\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*17\.sp(?s:.*?)lineHeight\s*=\s*28\.5\.sp(?s:.*?)letterSpacing\s*=\s*0\.sp(?s:.*?)internal\s+fun\s+assistantStreamingParagraphTextStyle\(\):\s*TextStyle\s*=(?s:.*?)lineHeight\s*=\s*29\.sp(?s:.*?)internal\s+fun\s+assistantHeadingTextStyle' `
         "Assistant main-chat text must keep the slightly roomier GPT-like typography and zero Chinese body letter spacing."
+    Require-Match $failures $chatScreen 'val\s+chatPageSurface\s*=\s*Color\(0xFFFBFCFD\)' `
+        "Main chat page surface must keep the subtly brighter off-white background without going full white."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.sp\s*else\s*17\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*29\.5\.sp\s*else\s*27\.sp(?s:.*?)fontWeight\s*=\s*FontWeight\.SemiBold' `
         "Assistant headings must keep the lighter GPT-like scale without returning to the heavier bold layout."
     Require-Match $failures $chatScreen 'val\s+globalStatusHintVisible\s*=\s*globalStatusHintText\s*!=\s*null\s*&&\s*inputSelectionToolbarState\s*==\s*null\s*&&\s*activeMessageSelectionState\s*==\s*null(?s:.*?)ComposerAttachmentBottomSheet\((?s:.*?)GlobalStatusHint\((?s:.*?)\.zIndex\(120f\)' `
@@ -996,8 +998,8 @@ if ($failures.Count -eq 0) {
         "Assistant text dividers must include common level-3 Markdown headings, not only level-1/2 headings."
     Require-Match $failures $chatStreamingRenderer 'fun\s+RendererMarkdownTable\.toReadableCopyText\(\)(?s:.*?)buildRendererPlainCopyText(?s:.*?)model\.table\.toReadableCopyText\(\)' `
         "Message full-copy must convert Markdown tables into a human-readable grouped text, not raw TSV."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)val\s+copyTable\s*=\s*\{(?s:.*?)buildRendererMarkdownTableCopyText\(table\)(?s:.*?)Toast\.makeText\(context,\s*"已复制"(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)copyEnabled\s*=\s*copyEnabled\s*&&\s*rowIndex\s*==\s*0(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)' `
-        "Markdown table UI must copy only the current table, keep the action inside the first row title strip, and enable it only after the message is settled."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)val\s+copyTable\s*=\s*\{(?s:.*?)buildRendererMarkdownTableCopyText\(table\)(?s:.*?)Toast\.makeText\(context,\s*"已复制"(?s:.*?)rememberScrollState\(\)(?s:.*?)horizontalScroll\(scrollState\)(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*copyTable\)' `
+        "Markdown table UI must copy only the current table, render as a horizontal table, and enable the copy action only after the message is settled."
     Require-Match $failures $chatStreamingRendererTest 'markdownTableButtonCopyExcludesHiddenHeaderAndSurroundingMessageText' `
         "Markdown table copy must have a unit test proving the table button does not include hidden raw headers or surrounding assistant text."
     Require-NoMatch $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
@@ -1006,18 +1008,20 @@ if ($failures.Count -eq 0) {
         "Markdown table UI must avoid showing a redundant raw header-summary strip before any body row arrives."
     Require-NoMatch $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
         "Markdown table UI must not reintroduce the redundant header-summary strip above the first row."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.8\.dp,\s*color\s*=\s*Color\(0xFFDDE2E8\)(?s:.*?)RendererMarkdownTableRowImpl(?s:.*?)fontSize\s*=\s*15\.sp(?s:.*?)Color\(0xFF666D76\)(?s:.*?)fontWeight\s*=\s*FontWeight\.Normal(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)heightIn\(min\s*=\s*44\.dp\)' `
-        "Markdown table UI must stay in one complete lightweight frame with first-row title strip and normal-weight body-sized field labels."
+    Require-NoMatch $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl' `
+        "Markdown table UI must not reintroduce the old vertical card-row renderer."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableImpl(?s:.*?)clip\(RoundedCornerShape\(8\.dp\)\)(?s:.*?)background\(Color\.White\)(?s:.*?)border\(width\s*=\s*0\.7\.dp,\s*color\s*=\s*Color\(0xFFE1E5EA\)(?s:.*?)horizontalScroll\(scrollState\)(?s:.*?)RendererMarkdownTableHorizontalRowImpl\((?s:.*?)isHeader\s*=\s*true(?s:.*?)RendererMarkdownTableHorizontalRowImpl\((?s:.*?)isHeader\s*=\s*false' `
+        "Markdown table UI must stay in one lightweight framed horizontal table with real header and body rows."
     Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(44\.dp\)(?s:.*?)clip\(RoundedCornerShape\(12\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(28\.dp\)\)(?s:.*?)Color\(0xFF111111\)(?s:.*?)coverColor\s*=\s*Color\(0xFFFAFBFC\)(?s:.*?)squareSize\s*=\s*size\.width\s*\*\s*0\.48f(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*coverColor(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*iconColor' `
         "Markdown table copy action must stay as a GPT-style covered overlapping-square icon, not transparent overlapping rounded rectangles or a small circled text button."
     Require-NoMatch $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary' `
         "Markdown table UI must not show a redundant raw column summary above rows."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)text\s*=\s*value(?s:.*?)emphasisEnabled\s*=\s*false' `
-        "Markdown table cell values must suppress inline bold emphasis so table bodies do not become visually noisy."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"无摘要表头、正文不加粗、单表复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
-        "Debug preview panel must mention the latest table header/card/copy-button visual contract."
-    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl(?s:.*?)Color\(0xFFFAFBFC\)(?s:.*?)copyEnabled(?s:.*?)RendererCopyTableIconButton\(onClick\s*=\s*onCopy\)(?s:.*?)visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)(?s:.*?)padding\(horizontal\s*=\s*12\.dp,\s*vertical\s*=\s*9\.dp\)' `
-        "Markdown table rows must stay inside the shared table frame with row headers and internal dividers."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHorizontalRowImpl(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)emphasisEnabled\s*=\s*false' `
+        "Markdown table cells must suppress inline emphasis so table bodies stay visually quiet."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 表格",\s*"横向表格、正文不加粗、单表复制图标",\s*UiCopyPreviewKind\.AssistantTableSample\)' `
+        "Debug preview panel must mention the latest horizontal-table/copy-button visual contract."
+    Require-Match $failures $chatStreamingRenderer 'private\s+fun\s+rendererMarkdownTableColumnWidth\(columnCount:\s*Int,\s*columnIndex:\s*Int\):\s*Dp\s*=(?s:.*?)columnIndex\s*==\s*0\s*&&\s*columnCount\s*<=\s*2\s*->\s*132\.dp(?s:.*?)columnIndex\s*==\s*0\s*->\s*112\.dp(?s:.*?)columnCount\s*<=\s*2\s*->\s*190\.dp(?s:.*?)columnCount\s*==\s*3\s*->\s*148\.dp(?s:.*?)else\s*->\s*132\.dp' `
+        "Markdown table columns must keep stable fixed widths so tables scroll horizontally instead of collapsing into vertical cards."
     Require-Match $failures $chatStreamingRenderer 'headerColumnCount\s*=\s*splitRendererMarkdownTableCells\(current\)\.size(?s:.*?)separatorColumnCount\s*=\s*splitRendererMarkdownTableCells\(lines\[index \+ 1\]\)\.size(?s:.*?)headerColumnCount\s*!=\s*separatorColumnCount(?s:.*?)expectedColumnCount\s*=\s*headerColumnCount(?s:.*?)bodyRowsWithoutEdgeMode(?s:.*?)looksLikeRendererMarkdownTableBodyRow\((?s:.*?)expectedColumnCount\s*=\s*expectedColumnCount' `
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
     Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)trimmed\.matches\(Regex\("""\[-\+\*\]\\s\+\.\+"""\)\)' `
@@ -1060,10 +1064,10 @@ if ($failures.Count -eq 0) {
         "Assistant Markdown tests must prove math markers remain visible plain text instead of being swallowed."
     Require-Match $failures $chatStreamingRendererTest 'taskListMarkersRenderAsVisualCheckboxText' `
         "Assistant Markdown tests must cover task-list markers as readable visual checkbox text."
-    Require-NoMatch $failures $chatStreamingRenderer 'horizontalScroll\s*\(' `
-        "Assistant Markdown table rendering must not revert to the old horizontal-scroll wide table on mobile."
-    Require-Match $failures $chatStreamingRenderer 'visibleEntries\.forEachIndexed(?s:.*?)HorizontalDivider\((?s:.*?)Color\(0xFFE7EAEE\)' `
-        "Assistant Markdown table rows must keep dividers between visible field groups so mobile comparison text does not collapse into one block."
+    Require-Match $failures $chatStreamingRenderer 'horizontalScroll\s*\(scrollState\)' `
+        "Assistant Markdown tables must render as horizontal-scroll tables on mobile."
+    Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHorizontalRowImpl(?s:.*?)\.width\(rowWidth\)(?s:.*?)\.height\(IntrinsicSize\.Min\)(?s:.*?)\.fillMaxHeight\(\)' `
+        "Assistant Markdown table rows must keep equal-height horizontal cells instead of collapsing into vertical field groups."
     Require-Match $failures $chatStreamingRenderer 'text\.startsWith\("\*\*",\s*startIndex\s*=\s*cursor\)' `
         "Streaming typewriter pacing must treat a following standalone bold heading as a structural prefix."
     Require-Match $failures $chatStreamingRenderer 'previous\s*==\s*null\s*\|\|\s*previous\s+is\s+StreamingLineModel\.Heading' `

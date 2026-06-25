@@ -17,19 +17,24 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -2881,127 +2886,114 @@ private fun RendererMarkdownTableImpl(
         currentOnStatusHint.value?.invoke("已复制")
             ?: Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
     }
-    Column(
+    val scrollState = rememberScrollState()
+    val columnCount = remember(table) {
+        max(
+            table.headers.size,
+            table.rows.maxOfOrNull { row -> row.size } ?: 0
+        ).coerceAtLeast(1)
+    }
+    val tableWidth = remember(columnCount) {
+        val widthValue = (0 until columnCount)
+            .sumOf { columnIndex -> rendererMarkdownTableColumnWidth(columnCount, columnIndex).value.toDouble() }
+            .toFloat()
+        widthValue.dp
+    }
+    val copyInsetWidth = if (copyEnabled) 48.dp else 0.dp
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
             .background(Color.White)
-            .border(width = 0.8.dp, color = Color(0xFFDDE2E8), shape = RoundedCornerShape(8.dp))
+            .border(width = 0.7.dp, color = Color(0xFFE1E5EA), shape = RoundedCornerShape(8.dp))
     ) {
-        table.rows.forEachIndexed { rowIndex, row ->
-            if (rowIndex > 0) {
-                HorizontalDivider(
-                    modifier = Modifier.fillMaxWidth(),
-                    thickness = 0.8.dp,
-                    color = Color(0xFFE2E6EA)
-                )
-            }
-            RendererMarkdownTableRowImpl(
-                headers = table.headers,
-                cells = row,
-                rowIndex = rowIndex,
+        Column(
+            modifier = Modifier
+                .horizontalScroll(scrollState)
+                .padding(end = copyInsetWidth)
+        ) {
+            RendererMarkdownTableHorizontalRowImpl(
+                cells = table.headers,
+                columnCount = columnCount,
+                rowWidth = tableWidth,
+                isHeader = true,
                 inlineMode = inlineMode,
                 linksEnabled = linksEnabled,
-                copyEnabled = copyEnabled && rowIndex == 0,
-                onStatusHint = onStatusHint,
-                onCopy = copyTable
+                onStatusHint = onStatusHint
             )
+            table.rows.forEach { row ->
+                HorizontalDivider(
+                    modifier = Modifier.width(tableWidth),
+                    thickness = 0.6.dp,
+                    color = Color(0xFFE8EBEF)
+                )
+                RendererMarkdownTableHorizontalRowImpl(
+                    cells = row,
+                    columnCount = columnCount,
+                    rowWidth = tableWidth,
+                    isHeader = false,
+                    inlineMode = inlineMode,
+                    linksEnabled = linksEnabled,
+                    onStatusHint = onStatusHint
+                )
+            }
+        }
+        if (copyEnabled) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .height(44.dp)
+                    .width(48.dp)
+                    .background(Color(0xFFFAFBFC)),
+                contentAlignment = Alignment.Center
+            ) {
+                RendererCopyTableIconButton(onClick = copyTable)
+            }
         }
     }
 }
 
 @Composable
-private fun RendererMarkdownTableRowImpl(
-    headers: List<String>,
+private fun RendererMarkdownTableHorizontalRowImpl(
     cells: List<String>,
-    rowIndex: Int,
+    columnCount: Int,
+    rowWidth: Dp,
+    isHeader: Boolean,
     inlineMode: RendererInlineMode,
     linksEnabled: Boolean,
-    copyEnabled: Boolean,
-    onStatusHint: ((String) -> Unit)?,
-    onCopy: () -> Unit
+    onStatusHint: ((String) -> Unit)?
 ) {
-    val titleStyle = remember {
+    val cellStyle = remember(isHeader) {
         assistantStreamingParagraphTextStyle().copy(
-            fontSize = 16.sp,
-            lineHeight = 24.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF151515),
+            fontSize = 15.sp,
+            lineHeight = if (isHeader) 22.sp else 23.sp,
+            fontWeight = if (isHeader) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (isHeader) Color(0xFF151515) else Color(0xFF222222),
             letterSpacing = 0.sp
         )
     }
-    val labelStyle = remember {
-        TextStyle(
-            fontSize = 15.sp,
-            lineHeight = 23.sp,
-            color = Color(0xFF666D76),
-            letterSpacing = 0.sp,
-            fontWeight = FontWeight.Normal
-        )
-    }
-    val valueStyle = remember {
-        assistantStreamingParagraphTextStyle().copy(
-            fontSize = 15.sp,
-            lineHeight = 23.sp,
-            fontWeight = FontWeight.Normal,
-            color = Color(0xFF222222),
-            letterSpacing = 0.sp
-        )
-    }
-    val title = rendererMarkdownTableDisplayTitle(headers, cells, rowIndex)
-    val visibleEntries = headers.drop(1).mapIndexedNotNull { index, header ->
-        val value = cells.getOrNull(index + 1).orEmpty().trim()
-        if (value.isBlank()) {
-            null
-        } else {
-            header to value
-        }
-    }
-    Column(
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        modifier = Modifier
+            .width(rowWidth)
+            .background(if (isHeader) Color(0xFFFAFBFC) else Color.White)
+            .height(IntrinsicSize.Min)
+            .heightIn(min = if (isHeader) 44.dp else 48.dp)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(Color(0xFFFAFBFC))
-                .heightIn(min = 44.dp)
-                .padding(start = 12.dp, end = if (copyEnabled) 0.dp else 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            RendererStreamingActiveTextImpl(
-                text = title,
-                style = titleStyle,
-                minLineHeight = 24.dp,
-                inlineMode = inlineMode,
-                linksEnabled = linksEnabled,
-                onStatusHint = onStatusHint,
-                modifier = Modifier.weight(1f)
-            )
-            if (copyEnabled) {
-                RendererCopyTableIconButton(onClick = onCopy)
-            }
-        }
-        visibleEntries.forEachIndexed { index, (header, value) ->
-            HorizontalDivider(
-                modifier = Modifier.fillMaxWidth(),
-                thickness = 0.8.dp,
-                color = Color(0xFFE7EAEE)
-            )
-            Column(
+        repeat(columnCount) { columnIndex ->
+            val borderColor = if (isHeader) Color(0xFFE2E6EA) else Color(0xFFEEF0F3)
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 9.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+                    .width(rendererMarkdownTableColumnWidth(columnCount, columnIndex))
+                    .heightIn(min = if (isHeader) 44.dp else 48.dp)
+                    .fillMaxHeight()
+                    .border(width = 0.4.dp, color = borderColor)
+                    .padding(horizontal = 10.dp, vertical = 9.dp),
+                contentAlignment = Alignment.CenterStart
             ) {
-                Text(
-                    text = plainRendererInlineText(header),
-                    style = labelStyle
-                )
                 RendererStreamingActiveTextImpl(
-                    text = value,
-                    style = valueStyle,
-                    minLineHeight = 23.dp,
+                    text = cells.getOrNull(columnIndex).orEmpty(),
+                    style = cellStyle,
+                    minLineHeight = if (isHeader) 22.dp else 23.dp,
                     inlineMode = inlineMode,
                     linksEnabled = linksEnabled,
                     emphasisEnabled = false,
@@ -3012,6 +3004,15 @@ private fun RendererMarkdownTableRowImpl(
         }
     }
 }
+
+private fun rendererMarkdownTableColumnWidth(columnCount: Int, columnIndex: Int): Dp =
+    when {
+        columnIndex == 0 && columnCount <= 2 -> 132.dp
+        columnIndex == 0 -> 112.dp
+        columnCount <= 2 -> 190.dp
+        columnCount == 3 -> 148.dp
+        else -> 132.dp
+    }
 
 @Composable
 private fun RendererCopyTableIconButton(
@@ -3061,21 +3062,6 @@ private fun RendererCopyTableIconButton(
 
 private fun rendererListIndentDp(indentLevel: Int): Dp =
     (indentLevel.coerceAtLeast(0) * 10).dp
-
-private fun rendererMarkdownTableDisplayTitle(
-    headers: List<String>,
-    cells: List<String>,
-    rowIndex: Int
-): String {
-    val firstHeader = headers.firstOrNull()?.let(::plainRendererInlineText).orEmpty()
-    val firstCell = cells.firstOrNull()?.trim().orEmpty()
-    val rowTitle = firstCell.takeIf { it.isNotBlank() } ?: "第${rowIndex + 1}行"
-    return if (firstHeader in setOf("维度", "项目", "类别", "指标", "对比项") || firstHeader.isBlank()) {
-        rowTitle
-    } else {
-        "$firstHeader：$rowTitle"
-    }
-}
 
 @Composable
 private fun RendererAssistantMarkdownContentImpl(
