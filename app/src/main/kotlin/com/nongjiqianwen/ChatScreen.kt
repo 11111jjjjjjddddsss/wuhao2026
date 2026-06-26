@@ -4437,52 +4437,56 @@ fun ChatScreen() {
                 "payment_method" to "alipay"
             )
         )
-        reportMembershipPaymentLog(
-            level = "info",
-            event = "payment.alipay_launch_started",
-            message = "Alipay launch started",
-            product = pending.product,
-            extraAttrs = mapOf("out_trade_suffix" to pending.outTradeNo.takeLast(8))
-        )
-        AlipayPaymentClient.pay(activity, pending.orderString) { result ->
-            snackbarScope.launch {
-                val syncAttrs = linkedMapOf<String, Any?>(
-                    "result_status" to result.resultStatus,
-                    "out_trade_suffix" to pending.outTradeNo.takeLast(8)
-                )
-                if (result.memoPresent) {
-                    syncAttrs["memo_present"] = true
-                }
-                reportMembershipPaymentLog(
-                    level = "info",
-                    event = "payment.alipay_sync_result",
-                    message = "Alipay sync result received",
-                    product = pending.product,
-                    extraAttrs = syncAttrs
-                )
-                when (result.status) {
-                    AlipayPaymentSyncStatus.Cancelled -> {
-                        membershipPaymentState = MembershipPaymentState(notice = "支付已取消")
-                        membershipRefreshNonce += 1
+        snackbarScope.launch {
+            // Give Compose one frame to remove the confirmation sheet before the SDK switches apps.
+            delay(120L)
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.alipay_launch_started",
+                message = "Alipay launch started",
+                product = pending.product,
+                extraAttrs = mapOf("out_trade_suffix" to pending.outTradeNo.takeLast(8))
+            )
+            AlipayPaymentClient.pay(activity, pending.orderString) { result ->
+                snackbarScope.launch {
+                    val syncAttrs = linkedMapOf<String, Any?>(
+                        "result_status" to result.resultStatus,
+                        "out_trade_suffix" to pending.outTradeNo.takeLast(8)
+                    )
+                    if (result.memoPresent) {
+                        syncAttrs["memo_present"] = true
                     }
-                    AlipayPaymentSyncStatus.Failed -> {
-                        membershipPaymentState = MembershipPaymentState(notice = "支付未完成，请稍后重试")
-                        membershipRefreshNonce += 1
-                    }
-                    AlipayPaymentSyncStatus.NetworkError -> {
-                        membershipPaymentState = MembershipPaymentState(
-                            activeProduct = pending.product,
-                            notice = "网络不稳，正在确认支付结果"
-                        )
-                        pollMembershipPaymentOrder(pending.product, pending.outTradeNo)
-                    }
-                    AlipayPaymentSyncStatus.Success,
-                    AlipayPaymentSyncStatus.Processing -> {
-                        membershipPaymentState = MembershipPaymentState(
-                            activeProduct = pending.product,
-                            notice = "支付结果确认中，请稍等"
-                        )
-                        pollMembershipPaymentOrder(pending.product, pending.outTradeNo)
+                    reportMembershipPaymentLog(
+                        level = "info",
+                        event = "payment.alipay_sync_result",
+                        message = "Alipay sync result received",
+                        product = pending.product,
+                        extraAttrs = syncAttrs
+                    )
+                    when (result.status) {
+                        AlipayPaymentSyncStatus.Cancelled -> {
+                            membershipPaymentState = MembershipPaymentState(notice = "支付已取消")
+                            membershipRefreshNonce += 1
+                        }
+                        AlipayPaymentSyncStatus.Failed -> {
+                            membershipPaymentState = MembershipPaymentState(notice = "支付未完成，请稍后重试")
+                            membershipRefreshNonce += 1
+                        }
+                        AlipayPaymentSyncStatus.NetworkError -> {
+                            membershipPaymentState = MembershipPaymentState(
+                                activeProduct = pending.product,
+                                notice = "网络不稳，正在确认支付结果"
+                            )
+                            pollMembershipPaymentOrder(pending.product, pending.outTradeNo)
+                        }
+                        AlipayPaymentSyncStatus.Success,
+                        AlipayPaymentSyncStatus.Processing -> {
+                            membershipPaymentState = MembershipPaymentState(
+                                activeProduct = pending.product,
+                                notice = "支付结果确认中，请稍等"
+                            )
+                            pollMembershipPaymentOrder(pending.product, pending.outTradeNo)
+                        }
                     }
                 }
             }
