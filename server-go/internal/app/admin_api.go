@@ -2051,7 +2051,7 @@ func (s *Store) buildAdminMonitoringWindow(ctx context.Context, key string, labe
 	if window.GiftCardFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 0", []any{sinceMs}); err != nil {
 		return window, err
 	}
-	if window.AuditFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM admin_audit_logs WHERE created_at >= ? AND success = 0", []any{sinceMs}); err != nil {
+	if window.AuditFailures, err = s.countQuery(ctx, adminAuditFailureActionCountSQL(), []any{sinceMs}); err != nil {
 		return window, err
 	}
 	if window.AdminActions, err = s.countQuery(ctx, "SELECT COUNT(*) FROM admin_audit_logs WHERE created_at >= ?", []any{sinceMs}); err != nil {
@@ -2123,7 +2123,7 @@ func (s *Store) buildAdminMonitoringQueues(ctx context.Context, health AdminHeal
 	if queues.GiftCardFailedAttempts, err = s.countQuery(ctx, "SELECT COUNT(*) FROM gift_card_redemption_attempts WHERE created_at >= ? AND success = 0", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
 		return queues, err
 	}
-	if queues.AuditFailures, err = s.countQuery(ctx, "SELECT COUNT(*) FROM admin_audit_logs WHERE created_at >= ? AND success = 0", []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
+	if queues.AuditFailures, err = s.countQuery(ctx, adminAuditFailureActionCountSQL(), []any{nowMs - int64(24*time.Hour/time.Millisecond)}); err != nil {
 		return queues, err
 	}
 	if queues.QuotaConsumePending, err = s.CountPendingQuotaConsumeOutbox(ctx); err != nil {
@@ -2628,6 +2628,18 @@ func buildAdminMonitoringActionItems(report AdminMonitoring) []AdminMonitoringAc
 		})
 	}
 	return items
+}
+
+func adminAuditFailureActionCountSQL() string {
+	return `SELECT COUNT(*)
+		FROM admin_audit_logs
+		WHERE created_at >= ?
+		  AND success = 0
+		  AND NOT (
+		    action = 'admin.csrf.denied'
+		    AND target_type = 'admin_api'
+		    AND target_id = '/admin-api/v1/auth/logout'
+		  )`
 }
 
 func buildAdminMonitoringLaunchReadiness(report AdminMonitoring) []AdminMonitoringLaunchItem {

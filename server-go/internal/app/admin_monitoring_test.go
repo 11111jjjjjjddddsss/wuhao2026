@@ -52,6 +52,18 @@ func TestAdminMonitoringActionItemsContract(t *testing.T) {
 	}
 }
 
+func TestAdminMonitoringAuditFailureQueryIgnoresLogoutCSRFNoise(t *testing.T) {
+	query := adminAuditFailureActionCountSQL()
+	assertContainsAll(
+		t,
+		query,
+		"success = 0",
+		"admin.csrf.denied",
+		"target_type = 'admin_api'",
+		"target_id = '/admin-api/v1/auth/logout'",
+	)
+}
+
 func TestAdminMonitoringDisabledAppUpdateMissingArtifactsIsNotDailyAction(t *testing.T) {
 	items := buildAdminMonitoringActionItems(AdminMonitoring{
 		Queues: AdminMonitoringQueues{
