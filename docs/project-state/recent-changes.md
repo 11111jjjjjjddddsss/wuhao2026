@@ -5,6 +5,7 @@
 
 ## 2026-06-26
 
+- Plus 升 Pro 支付价格口径按用户最新拍板从“原价升级后折成补偿次数”改为“创建支付订单时直接折金额”：后端按 Plus 剩余有效天数计算抵扣，抵扣上限一个 Plus 周期 19.9 元，Pro 29.9 元最低补差价 10.00 元；0.01 内测只覆盖实付金额，订单仍记录正式折后原价用于对账。补偿次数已退出当前业务，支付、礼品卡和账号迁移都不再新增、展示或消费 `upgrade_credits`；当前扣次顺序收敛为每日额度 -> 加油包，旧表只作历史遗留数据容器保留。Android 会员中心、确认付款页、设置协议文案、后台会员额度页和 debug-only 预览面板同步为“剩余天数抵扣 / 加油包”口径，项目主规则和支付 runbook 同步更新。本轮仍不发布正式 APK、不改官网正式下载或检查更新。
 - 支付收口最新后端已部署到生产 `c86645a7`：创建支付宝订单前自动关闭同账号同类旧未支付 `pending` 订单为 `closed / LOCAL_REPLACED`，避免用户退出支付宝后再次购买被旧单卡住；旧单若后来真实付款成功，支付宝验签回调仍能更新为已支付并走幂等发权益。部署后 `check-ecs-readiness.ps1 -ExpectedRevision c86645a7`、`check-payment-readiness.ps1 -StrictPublicHealth`、公网黑盒和后台 surface 均通过，线上仍为 `alipay_payment_gate=limited`，不发布正式 APK、不改官网正式下载或检查更新，不打开 public 正式收费。
 - 基于提交 `c86645a7b926` 生成内部 debug 测试包 `test-apks/debug/20260626/nongjiqiancha-debug-internal-20260626-143723-c86645a7b926.apk`，大小 `21,284,401` 字节，SHA-256 为 `763bcb2658d9922b17b51ccea72b321721c1044f421785dbdc5c4d45e2a639eb`，下载探针 200 / range 206 均通过，并清理上一只 `133744-9d6364dc9ed4` 测试包。该包只用于内部 0.01 支付、会员中心和 debug-only 预览面板复测，不进入正式检查更新。
 - 支付 / 会员 / 渲染继续按“代理拉满后主窗口收口”补 P2 护栏：四路代理复查支付后端、Android 支付 UI、聊天渲染和后台上线脚本，未发现 P0/P1 阻断。主窗口随后补 Android 客户端日志支付敏感字段硬 denylist、后台支付审计 `target_id` 尾号化、后台 surface 财务角色 / 确认词 / 审计尾号静态护栏、ECS readiness 支付门禁期望校验和 Android parity 支付日志护栏；同时修正 Markdown renderer ADR 中“纵向表格”的旧口径，当前真相仍是横向滚动正常表格。该轮不改支付金额、不改会员购买规则、不改主聊天滚动链、不发布正式 APK、不改官网正式下载或检查更新；正式收费仍保持 `limited` 内测门禁。

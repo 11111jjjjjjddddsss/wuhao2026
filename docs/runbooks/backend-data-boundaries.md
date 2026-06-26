@@ -8,7 +8,7 @@
 
 ## 当前数据真相
 
-- MySQL / RDS 是业务主真相：账号、session、旧 ID 迁移、会员权益、每日额度、额度流水、加油包、升级补偿、订单、聊天 A 层、用户记忆文档、30 天聊天归档、主聊天进行中租约、今日农情、帮助反馈、App 自动日志、后台用户 / session / 审计、礼品卡、注销申请和检查更新配置都在 MySQL
+- MySQL / RDS 是业务主真相：账号、session、旧 ID 迁移、会员权益、每日额度、额度流水、加油包、订单、聊天 A 层、用户记忆文档、30 天聊天归档、主聊天进行中租约、今日农情、帮助反馈、App 自动日志、后台用户 / session / 审计、礼品卡、注销申请和检查更新配置都在 MySQL；`upgrade_credits` 只作为历史遗留表保留，不作为当前权益来源
 - Redis 只做短期状态和限流：融合认证 token、短信验证码摘要、手机号 / IP 限流、主聊天用户级频控、App 自动日志入口限流、帮助反馈发消息限流和上传限流。Redis 不承载聊天正文、会员资产、额度、订单、礼品卡、图片或长期用户画像
 - OSS 只放图片对象：当前 `/upload` 写私有 Bucket `nongjiqiancha-prod`，普通问诊图写 `uploads/` 并通过后端 `/uploads/<file>.jpg` 访问，帮助与反馈图片写 `support/` 并通过后端 `/uploads/support/<file>.jpg` 访问；不把 OSS AK/SK 下发 Android。Bucket 已开启默认服务端 AES256 加密
 - SLS / 本地日志只做排障和监控：Go 请求日志、Nginx error log 和 App 自动日志必须脱敏，不写手机号明文、聊天正文、图片 URL、token、AccessKey、模型 Key 或礼品卡完整码
@@ -19,7 +19,7 @@
 - `app_accounts`：手机号归一后的账号ID，`phone_hash / phone_mask / phone_ciphertext`
 - `auth_sessions`：后端可吊销的 v2 session，正式登录态只应签给 `acct_...`
 - `user_id_migrations`：旧本机 UUID 到账号ID的受控迁移映射，`new_user_id` 必须是 `acct_...`，`old_user_id` 不应是 `acct_...`
-- `user_entitlement / daily_usage / quota_ledger / topup_packs / upgrade_credits / orders`：会员、额度、加油包、升级补偿和订单资产，必须按账号ID归属
+- `user_entitlement / daily_usage / quota_ledger / topup_packs / orders`：会员、额度、加油包和订单资产，必须按账号ID归属；`upgrade_credits` 仅作历史遗留排障，不再参与当前扣次链路
 - `session_ab`：当前 A 层窗口和一份自然语言用户记忆文档，物理字段仍是 `b_summary`，对外叫 `memory_document`
 - `session_round_archive / session_round_ledger`：最近 30 天问答归档和同 `client_msg_id` 幂等真源
 - `chat_stream_inflight`：同一用户活跃主聊天流租约，防重复开模型和并发串账

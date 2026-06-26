@@ -4,7 +4,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestNormalizeMainlandPhone(t *testing.T) {
@@ -106,28 +105,5 @@ func TestMergeEffectiveEntitlementsExtendsSameTier(t *testing.T) {
 	tier, expireAt := mergeEffectiveEntitlements(TierPlus, &targetExpireAt, TierPlus, &sourceExpireAt)
 	if tier != TierPlus || expireAt == nil || *expireAt != sourceExpireAt {
 		t.Fatalf("merged tier=%s expire=%v, want plus %d", tier, expireAt, sourceExpireAt)
-	}
-}
-
-func TestRemainingPlusQuotaCompensationPreservesCoveredPlusValue(t *testing.T) {
-	shanghai := time.FixedZone("Asia/Shanghai", 8*60*60)
-	now := time.Date(2026, 6, 12, 10, 0, 0, 0, shanghai).UnixMilli()
-	expireAt := time.Date(2026, 6, 15, 10, 0, 0, 0, shanghai).UnixMilli()
-
-	got := remainingPlusQuotaCompensation(7, &expireAt, now, shanghai)
-	want := (tierLimits[TierPlus] - 7) + 3*tierLimits[TierPlus]
-	if got != want {
-		t.Fatalf("compensation=%d, want %d", got, want)
-	}
-}
-
-func TestRemainingPlusQuotaCompensationClampsOverusedToday(t *testing.T) {
-	shanghai := time.FixedZone("Asia/Shanghai", 8*60*60)
-	now := time.Date(2026, 6, 12, 10, 0, 0, 0, shanghai).UnixMilli()
-	expireAt := time.Date(2026, 6, 13, 10, 0, 0, 0, shanghai).UnixMilli()
-
-	got := remainingPlusQuotaCompensation(30, &expireAt, now, shanghai)
-	if got != tierLimits[TierPlus] {
-		t.Fatalf("compensation=%d, want one full future day %d", got, tierLimits[TierPlus])
 	}
 }

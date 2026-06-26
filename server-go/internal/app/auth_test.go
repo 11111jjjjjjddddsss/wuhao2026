@@ -195,7 +195,6 @@ func TestLegacyUserIDLogKindAvoidsRawIDs(t *testing.T) {
 func TestLegacyMergeSQLUsesDerivedSources(t *testing.T) {
 	for name, query := range map[string]string{
 		"daily_usage":        mergeDailyUsageSQL,
-		"upgrade_credits":    mergeUpgradeCreditsSQL,
 		"session_generation": mergeSessionGenerationSQL,
 	} {
 		normalized := strings.ToLower(query)

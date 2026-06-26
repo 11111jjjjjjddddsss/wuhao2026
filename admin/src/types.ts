@@ -340,7 +340,6 @@ export interface AdminUserListEntry {
   daily: DailyQuotaStatus;
   topup_remaining: number;
   topup_expire_at?: number;
-  upgrade_remaining: number;
   round_total: number;
   last_seen_at?: number;
   last_region?: string;
@@ -356,7 +355,6 @@ export interface AdminUserDetail {
   user: AdminUserListEntry;
   quota_ledger: AdminQuotaLedgerEntry[];
   topup_packs: AdminTopupPackEntry[];
-  upgrade_credits: AdminUpgradeCredit[];
   recent_rounds: AdminRoundExcerpt[];
   recent_app_logs: ClientAppLogEntry[];
   support_summary?: JsonObject;
@@ -378,7 +376,6 @@ export interface AdminEntitlementSummary {
   expiring_in_30d: number;
   daily_limit_exhausted_users: number;
   topup_active_users: number;
-  upgrade_credit_users: number;
   now_ms: number;
 }
 
@@ -417,13 +414,6 @@ export interface AdminTopupPackEntry {
   expire_at?: number;
   status: string;
   created_at: number;
-}
-
-export interface AdminUpgradeCredit {
-  user_id: string;
-  remaining: number;
-  expire_at?: number;
-  updated_at: number;
 }
 
 export interface AdminRoundExcerpt {

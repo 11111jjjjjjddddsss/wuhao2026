@@ -1584,7 +1584,7 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "四、会员、支付、加油包和礼品卡",
-                body = "Plus / Pro 会员按 30 天计算，为一次性购买，不自动续费；每日额度不结转，会员到期后按基础权益计算。加油包为额外问诊次数，未用完次数长期保留；升级补偿次数和礼品卡权益以 App 页面和平台记录为准。付费服务应通过 App 页面展示的官方渠道完成；未展示可购买状态的入口不会发起真实扣费。已付款但权益未到账时，请通过帮助与反馈联系客服；核实后优先补发权益，重复扣款、无法提供服务、依法或支付平台规则应退款的情形，按核验结果处理退款或其他售后。支付凭证或发票需求可通过帮助与反馈提交，我们会按实际经营和税务规则处理。"
+                body = "Plus / Pro 会员按 30 天计算，为一次性购买，不自动续费；每日额度不结转，会员到期后按基础权益计算。加油包为额外问诊次数，未用完次数长期保留；Plus 升级 Pro 的实际金额和礼品卡权益以 App 页面和平台记录为准。付费服务应通过 App 页面展示的官方渠道完成；未展示可购买状态的入口不会发起真实扣费。已付款但权益未到账时，请通过帮助与反馈联系客服；核实后优先补发权益，重复扣款、无法提供服务、依法或支付平台规则应退款的情形，按核验结果处理退款或其他售后。支付凭证或发票需求可通过帮助与反馈提交，我们会按实际经营和税务规则处理。"
             ),
             HamburgerLegalSection(
                 title = "五、农资信息和购买提醒",
@@ -2062,7 +2062,6 @@ internal fun HamburgerMembershipCenterPagePreview(userId: String) {
                     tierExpireAt = System.currentTimeMillis() + 24L * 24L * 60L * 60L * 1000L,
                     dailyRemaining = 18,
                     topupRemaining = 0,
-                    upgradeRemaining = 0,
                     membershipSource = "gift_card",
                     giftCardRedeemedAt = System.currentTimeMillis() - 6L * 24L * 60L * 60L * 1000L
                 ),

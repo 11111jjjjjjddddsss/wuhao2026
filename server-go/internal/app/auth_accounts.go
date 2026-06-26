@@ -386,20 +386,6 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return "", err
 	}
 	mergedTier, mergedExpireAt := mergeEffectiveEntitlements(targetTier, targetExpireAt, sourceTier, sourceExpireAt)
-	upgradeCompensation, err := s.legacyPlusUpgradeCompensationTx(
-		ctx,
-		tx,
-		oldUserID,
-		newUserID,
-		targetTier,
-		targetExpireAt,
-		sourceTier,
-		sourceExpireAt,
-		nowMs,
-	)
-	if err != nil {
-		return "", err
-	}
 
 	if _, err := tx.ExecContext(ctx, mergeDailyUsageSQL, newUserID, oldUserID); err != nil {
 		return "", err
@@ -451,16 +437,8 @@ func (s *Store) mergeLegacyUserIntoAccountTx(ctx context.Context, tx *sql.Tx, ol
 		return "", err
 	}
 
-	if _, err := tx.ExecContext(ctx, mergeUpgradeCreditsSQL, newUserID, nowMs, oldUserID); err != nil {
-		return "", err
-	}
 	if _, err := tx.ExecContext(ctx, "DELETE FROM upgrade_credits WHERE user_id = ?", oldUserID); err != nil {
 		return "", err
-	}
-	if upgradeCompensation > 0 {
-		if _, err := tx.ExecContext(ctx, insertUpgradeCreditCompensationSQL, newUserID, upgradeCompensation, nowMs); err != nil {
-			return "", err
-		}
 	}
 
 	if _, err := tx.ExecContext(ctx, mergeSessionGenerationSQL, newUserID, nowMs, oldUserID); err != nil {
@@ -512,25 +490,6 @@ const mergeDailyUsageSQL = `INSERT INTO daily_usage(user_id, day_cn, used)
  SELECT ?, source.day_cn, source.used
  FROM (SELECT day_cn, used FROM daily_usage WHERE user_id = ?) AS source
  ON DUPLICATE KEY UPDATE used = daily_usage.used + VALUES(used)`
-
-const mergeUpgradeCreditsSQL = `INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
- SELECT ?, source.remaining, source.expire_at, ?
- FROM (SELECT remaining, expire_at FROM upgrade_credits WHERE user_id = ?) AS source
- ON DUPLICATE KEY UPDATE
-   remaining = upgrade_credits.remaining + VALUES(remaining),
-   expire_at = CASE
-     WHEN upgrade_credits.expire_at IS NULL OR VALUES(expire_at) IS NULL THEN NULL
-     WHEN upgrade_credits.expire_at > VALUES(expire_at) THEN upgrade_credits.expire_at
-     ELSE VALUES(expire_at)
-   END,
-   updated_at = VALUES(updated_at)`
-
-const insertUpgradeCreditCompensationSQL = `INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
- VALUES (?, ?, NULL, ?)
- ON DUPLICATE KEY UPDATE
-   remaining = upgrade_credits.remaining + VALUES(remaining),
-   expire_at = NULL,
-   updated_at = VALUES(updated_at)`
 
 const mergeSessionGenerationSQL = `INSERT INTO session_generation(user_id, generation, cleared_at, updated_at)
  SELECT ?, source.generation, source.cleared_at, ?
@@ -600,45 +559,6 @@ func mergeEffectiveEntitlements(targetTier Tier, targetExpireAt *int64, sourceTi
 		return TierFree, nil
 	}
 	return targetTier, maxInt64Ptr(targetExpireAt, sourceExpireAt)
-}
-
-func (s *Store) legacyPlusUpgradeCompensationTx(
-	ctx context.Context,
-	tx *sql.Tx,
-	oldUserID string,
-	newUserID string,
-	targetTier Tier,
-	targetExpireAt *int64,
-	sourceTier Tier,
-	sourceExpireAt *int64,
-	nowMs int64,
-) (int, error) {
-	if targetTier == TierPro && sourceTier == TierPlus {
-		return s.remainingPlusQuotaCompensationTx(ctx, tx, oldUserID, sourceExpireAt, nowMs)
-	}
-	if targetTier == TierPlus && sourceTier == TierPro {
-		return s.remainingPlusQuotaCompensationTx(ctx, tx, newUserID, targetExpireAt, nowMs)
-	}
-	return 0, nil
-}
-
-func (s *Store) remainingPlusQuotaCompensationTx(ctx context.Context, tx *sql.Tx, userID string, expireAt *int64, nowMs int64) (int, error) {
-	dayCN := GetTodayKeyCN(s.shanghai, time.UnixMilli(nowMs))
-	usedToday, err := s.getOrCreateDailyUsage(ctx, tx, userID, dayCN)
-	if err != nil {
-		return 0, err
-	}
-	return remainingPlusQuotaCompensation(usedToday, expireAt, nowMs, s.shanghai), nil
-}
-
-func remainingPlusQuotaCompensation(usedToday int, expireAt *int64, nowMs int64, loc *time.Location) int {
-	todayRemainingPlus := maxInt(0, tierLimits[TierPlus]-usedToday)
-	expireAtOld := nowMs
-	if expireAt != nil {
-		expireAtOld = *expireAt
-	}
-	remainingFullDays := maxInt(0, dayIndexFromTsCN(loc, expireAtOld)-dayIndexFromTsCN(loc, nowMs))
-	return todayRemainingPlus + remainingFullDays*tierLimits[TierPlus]
 }
 
 func cloneInt64Ptr(value *int64) *int64 {

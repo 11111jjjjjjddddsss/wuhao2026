@@ -611,24 +611,7 @@ func (s *Store) GetTopupStatus(ctx context.Context, userID string) (int, *int64,
 }
 
 func (s *Store) GetUpgradeRemaining(ctx context.Context, userID string) (int, error) {
-	var remaining sql.NullInt64
-	var expireAt sql.NullInt64
-	err := s.db.QueryRowContext(
-		ctx,
-		"SELECT remaining, expire_at FROM upgrade_credits WHERE user_id = ? LIMIT 1",
-		userID,
-	).Scan(&remaining, &expireAt)
-	if err == sql.ErrNoRows {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	now := time.Now().UnixMilli()
-	if expireAt.Valid && expireAt.Int64 <= now {
-		return 0, nil
-	}
-	return maxInt(0, int(remaining.Int64)), nil
+	return 0, nil
 }
 
 func (s *Store) RenewPlus(ctx context.Context, userID string, orderID string) (bool, Tier, int64, error) {
@@ -741,10 +724,10 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 			return false, 0, "", 0, 0, err
 		}
 		return true,
-			int(payloadFloat64(payload["compensation"])),
+			0,
 			Tier(asString(payload["tier"])),
 			payloadInt64(payload["tier_expire_at"]),
-			int(payloadFloat64(payload["upgrade_remaining"])),
+			0,
 			nil
 	}
 
@@ -759,8 +742,7 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 		return false, 0, "", 0, 0, err
 	}
 
-	nowTime := time.Now()
-	now := nowTime.UnixMilli()
+	now := time.Now().UnixMilli()
 	effectiveTier, _, err := effectiveTierFromRow(currentTier, tierExpireAt, TierFree, now)
 	if err != nil {
 		return false, 0, "", 0, 0, err
@@ -773,19 +755,6 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 		return false, 0, "", 0, 0, fmt.Errorf("FORBIDDEN_TIER")
 	}
 
-	dayCN := GetTodayKeyCN(s.shanghai, nowTime)
-	usedToday, err := s.getOrCreateDailyUsage(ctx, tx, userID, dayCN)
-	if err != nil {
-		return false, 0, "", 0, 0, err
-	}
-	todayRemainingPlus := maxInt(0, tierLimits[TierPlus]-usedToday)
-
-	expireAtOld := now
-	if tierExpireAt.Valid {
-		expireAtOld = tierExpireAt.Int64
-	}
-	remainingFullDays := maxInt(0, dayIndexFromTsCN(s.shanghai, expireAtOld)-dayIndexFromTsCN(s.shanghai, now))
-	compensation := todayRemainingPlus + remainingFullDays*tierLimits[TierPlus]
 	newTierExpireAt := addDays(now, membershipTermDays)
 
 	if _, err := tx.ExecContext(
@@ -798,36 +767,12 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 	); err != nil {
 		return false, 0, "", 0, 0, err
 	}
-	if _, err := tx.ExecContext(
-		ctx,
-		`INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
-		 VALUES (?, ?, ?, ?)
-		 ON DUPLICATE KEY UPDATE
-		   remaining = remaining + VALUES(remaining),
-		   expire_at = NULL,
-		   updated_at = VALUES(updated_at)`,
-		userID,
-		compensation,
-		nil,
-		now,
-	); err != nil {
-		return false, 0, "", 0, 0, err
-	}
-
-	var upgradeRemaining sql.NullInt64
-	if err := tx.QueryRowContext(
-		ctx,
-		"SELECT remaining FROM upgrade_credits WHERE user_id = ? LIMIT 1",
-		userID,
-	).Scan(&upgradeRemaining); err != nil {
-		return false, 0, "", 0, 0, err
-	}
 
 	result := map[string]any{
-		"compensation":      compensation,
+		"compensation":      0,
 		"tier":              string(TierPro),
 		"tier_expire_at":    newTierExpireAt,
-		"upgrade_remaining": int(upgradeRemaining.Int64),
+		"upgrade_remaining": 0,
 	}
 	resultJSON, _ := json.Marshal(result)
 	if _, err := tx.ExecContext(
@@ -845,7 +790,7 @@ func (s *Store) UpgradePlusToPro(ctx context.Context, userID string, orderID str
 	if err := tx.Commit(); err != nil {
 		return false, 0, "", 0, 0, err
 	}
-	return false, compensation, TierPro, newTierExpireAt, int(upgradeRemaining.Int64), nil
+	return false, 0, TierPro, newTierExpireAt, 0, nil
 }
 
 func (s *Store) renewTier(ctx context.Context, userID string, orderID string, targetTier Tier) (bool, Tier, int64, error) {
@@ -955,37 +900,9 @@ func effectiveTierFromRow(tier sql.NullString, expireAt sql.NullInt64, fallback 
 }
 
 func (s *Store) consumeOverflowQuota(ctx context.Context, tx *sql.Tx, userID string, now int64) (*QuotaSource, error) {
-	var upgradeRemaining sql.NullInt64
-	err := tx.QueryRowContext(
-		ctx,
-		`SELECT remaining
-		 FROM upgrade_credits
-		 WHERE user_id = ? AND remaining > 0 AND updated_at <= ? AND (expire_at IS NULL OR expire_at > ?)
-		 LIMIT 1
-		 FOR UPDATE`,
-		userID,
-		now,
-		now,
-	).Scan(&upgradeRemaining)
-	if err == nil {
-		if _, err := tx.ExecContext(
-			ctx,
-			"UPDATE upgrade_credits SET remaining = remaining - 1, updated_at = ? WHERE user_id = ?",
-			now,
-			userID,
-		); err != nil {
-			return nil, err
-		}
-		value := QuotaSourceUpgrade
-		return &value, nil
-	}
-	if err != nil && err != sql.ErrNoRows {
-		return nil, err
-	}
-
 	var packID sql.NullString
 	var packRemaining sql.NullInt64
-	err = tx.QueryRowContext(
+	err := tx.QueryRowContext(
 		ctx,
 		`SELECT pack_id, remaining
 		 FROM topup_packs

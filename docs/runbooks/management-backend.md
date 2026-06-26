@@ -37,8 +37,8 @@
 - 同日监控页首屏新增“程序需处理项”：只展示 `launch_readiness` 中 `manual!=true` 且未 ready 的条目，优先把 blocked 红色项排在前面，并保留负责人、状态和入口。它用于承接代码、配置、部署或后台操作可推进的问题；“上线人工确认项”继续只放 App 公安备案、AccessKey 轮换、短信余额、费用 / 套餐成本、SLS 首封邮件、最终 release 物料和真机最终确认等需要人确认的事项。正式上架检查明细卡也会额外显示“程序处理 / 人工确认”小标签和可选确认方式，避免人工确认项在明细区被普通“需处理”状态误读。`scripts/check-admin-surface.mjs` 会检查这个区域存在，并拦截人工项被混入程序处理区、确认方式渲染被删或明细卡分类标签被删。
 - 性能边界：总览、监控面板和产品洞察这三类聚合接口在服务端共享 4 秒查询超时；`033_monitoring_query_indexes.sql` 已给 App 日志等级 / 事件时间窗、有效 session 统计和待回复反馈队列补索引，`034_admin_performance_indexes.sql` 已给账号、会员、额度和加油包后台统计补索引，`035_admin_order_gift_indexes.sql` 已给订单按账号查询和礼品卡失败原因聚合补索引。后台慢查询会按内部错误收口和记录日志，不应长时间占住请求或影响主聊天 SSE。
 - 检查更新验收口径：`app_update_logs` 和物料齐全只代表“可测 / 有阶段信号”，不能替代旧包真机覆盖安装；`launch_readiness` 的“安装包更新”在版本号、HTTPS APK、SHA-256 和文件大小都齐时仍保持 `attention`，完成旧包“检查更新 -> 下载 -> 校验 -> 系统安装页 -> 覆盖安装成功”前不要当成正式验收。
-- 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；主账号在列表和详情里都能直接看到并复制加密保存的完整手机号，详情可点拨打，账号ID可复制，筛选可清空，反馈列可直接跳到对应帮助反馈会话。页面同时展示会员、额度、加油包、升级补偿、订单、礼品卡、最近问诊、App 日志和反馈；低权限巡检账号只看脱敏号。
-- 会员额度：除用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、`upgrade_credits` 升级补偿、订单记录和礼品卡兑换记录外，现已补 `GET /admin-api/v1/entitlements/summary` 全局盘子和扣次自动对账视图。页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额、有升级补偿人数，以及 `quota_consume_outbox` 自动追账状态；日常不要求负责人手动处理待补扣，owner 修账接口只作为技术应急口保留。监控面板另有“扣次自动对账”卡，普通 pending / needs_ops 表示系统低频追账中，长期无法安全追扣的记录会自动终结为 `uncollectable`。
+- 用户管理：`GET /admin-api/v1/users`、`GET /admin-api/v1/users/detail`，按账号ID（底层字段仍叫 `user_id`）/ 手机号查询，完整手机号查询会在服务端按 `phone_hash` 精确匹配，不记录明文查询值；主账号在列表和详情里都能直接看到并复制加密保存的完整手机号，详情可点拨打，账号ID可复制，筛选可清空，反馈列可直接跳到对应帮助反馈会话。页面同时展示会员、额度、加油包、订单、礼品卡、最近问诊、App 日志和反馈；低权限巡检账号只看脱敏号。
+- 会员额度：用户级只读展示当前档位、到期时间、每日额度、`quota_ledger` 扣次流水、`topup_packs` 加油包包明细、订单记录和礼品卡兑换记录；`upgrade_credits` 只作为历史遗留表保留，不在当前后台权益页展示。`GET /admin-api/v1/entitlements/summary` 提供全局盘子和扣次自动对账视图，页面可直接看注册用户、当前会员总数、Free / Plus / Pro 分布、7 / 30 天内到期、今日基础额度用满、有加油包余额，以及 `quota_consume_outbox` 自动追账状态；日常不要求负责人手动处理待补扣，owner 修账接口只作为技术应急口保留。监控面板另有“扣次自动对账”卡，普通 pending / needs_ops 表示系统低频追账中，长期无法安全追扣的记录会自动终结为 `uncollectable`。
 - 订单：`GET /admin-api/v1/orders`，授权角色可按账号ID筛选或留空查看最近支付订单 / 会员变更记录；`POST /admin-api/v1/orders/grant` 仅允许 `owner / finance_ops` 对已付款但权益未成功的支付订单人工补发权益；后台另提供 `query / refund / close-expired / reconciliation` 等财务运营入口。页面不提供伪造支付成功或随意改权益；退款只允许财务角色发起，正式已发权益订单会被后端拦截并要求人工核查，内部 0.01 测试订单可退款验收但不自动扣回测试权益；本地关闭超时待支付订单不等于支付宝关单；对账摘要只能作为联调 / 核查信息，不得当成完整财务报表。0.01 联调订单保留为测试订单但不计入正式支付金额。
 - 礼品卡：`GET/POST /admin-api/v1/gift-cards/batches`、`GET /admin-api/v1/gift-cards/summary`、`GET /admin-api/v1/gift-cards/cards`、`POST /admin-api/v1/gift-cards/void`、`GET /admin-api/v1/gift-cards/attempts`；可创建 Plus / Pro 礼品卡批次、查询全局汇总，owner / finance_ops 可直接查看并复制新生成礼品卡完整卡码，按批次 / 状态 / 账号ID / 卡码尾号追溯卡状态，按账号ID / 尾号 / 成功状态 / 失败原因查询兑换尝试，并可作废未兑换卡。创建批次必须输入“张数 + 档位 + 天数”确认，例如 `3 Pro 30`；作废必须输入“作废”确认，服务端也会强制校验。完整卡码使用 `APP_SECRET` 派生密钥加密保存，兑换仍用 hash 校验；后台非授权角色查询礼品卡列表或用户详情时不读取 / 不解密完整卡码；旧卡若没有加密字段，只能显示掩码 / 尾号。
 - 用户侧礼品卡兑换：`POST /api/gift-cards/redeem`，鉴权后事务内校验卡状态并发会员权益，记录成功 / 失败尝试、地区和脱敏 IP；Android 设置页“礼品卡”已经接真实兑换接口。
@@ -98,7 +98,7 @@
 - 总览：服务健康、今日请求量、错误量、登录 / 短信状态、模型 Key 池健康、Redis / RDS / OSS / SLS 状态、最近 5xx / 慢请求。
 - 用户查询：按 `user_id`、完整手机号精确匹配 / 脱敏手机号线索、最近活跃时间、App 版本、设备、地区可信度、会员状态、额度、加油包、最近反馈、最近 App 自动日志。
 - 用户地区 / 来源：按注册、最近活跃、问诊、图片问诊、会员成交、加油包购买和帮助反馈聚合省市分布；优先使用用户授权粗略定位后的系统反查地区，IP 粗定位只作为低可信参考，不保存经纬度或轨迹。
-- 会员与额度：只读展示当前档位、到期时间、每日额度、今日已用、加油包余额、升级补偿、`quota_ledger` 和扣次自动对账状态；`quota_consume_outbox` 由后端 worker 自动追账或自动终结，owner 修账能力只作为技术应急口保留并写审计。
+- 会员与额度：只读展示当前档位、到期时间、每日额度、今日已用、加油包余额、`quota_ledger` 和扣次自动对账状态；`quota_consume_outbox` 由后端 worker 自动追账或自动终结，owner 修账能力只作为技术应急口保留并写审计。
 - 订单 / 支付：后台当前可核查支付订单和权益发放状态，可按账号ID或最近记录查看权益变更来源；已付款但权益未成功的支付订单可由 `owner / finance_ops` 二次确认后人工补发。生产放量前仍需完成回调验收、对账、退款和异常补偿流程。
 - 礼品卡：首版已接入批次、生成、兑换、卡状态、失败尝试查询、失败原因聚合和未兑换卡作废；批量发放、发放对象管理和更细风控后续再补。
 - 帮助与反馈：会话列表、未回复队列、详情、后台回复、处理状态、关闭 / 重开和搜索已接入；后续补正式坐席分配、标签、站外通知、客服绩效和消息保存 / 删除规则。
@@ -120,7 +120,7 @@
 | 后台审计 | 可直接接 | `admin_audit_logs`、`/internal/admin/audit-logs` | 后台账号 actor、角色、请求 ID |
 | 后台账号安全 | 已接入首版 | `admin_users`、`admin_sessions`、`/admin-api/v1/auth/change-password` | 受控重置、账号禁用、角色管理 |
 | 用户查询 | 已接入首版 | `app_accounts`、`auth_sessions`、`session_ab`、`session_round_archive`、`/admin-api/v1/users*` | session 管理、更多筛选和导出审批 |
-| 会员 / 额度 | 已接入用户级只读、全局统计和扣次自动对账 | `user_entitlement`、`daily_usage`、`quota_ledger`、`quota_consume_outbox`、`topup_packs`、`upgrade_credits` | 后续接真实支付对账、退款和异常补偿 |
+| 会员 / 额度 | 已接入用户级只读、全局统计和扣次自动对账 | `user_entitlement`、`daily_usage`、`quota_ledger`、`quota_consume_outbox`、`topup_packs` | 后续接真实支付对账、退款和异常处理 |
 | 今日农情 | 已接入状态查看和补跑 | `daily_agri_cards`、内部生成接口、`/admin-api/v1/today-agri/cards`、`/admin-api/v1/today-agri/generate`、`nongji-daily-agri-failed` AlertHub 告警 | 停用 API、首封告警邮件送达确认和发布记录 |
 | 检查更新 | 已接入发布 / 停更配置、发布历史和排障日志 | `app_release_configs`、`app_release_events`、`/api/app/update`、`/admin-api/v1/app-update/android*`、`app_update.*` 自动日志 | APK 上传、完整回滚入口和更细二次确认 |
 | 订单 / 订购 | 已接订单核查和窄口径人工补发，不能当正式收费完成 | `payment_orders` / `payment_notifications` 记录支付订单与通知，历史 `orders` 仍仅开发期权益变更记录，`/admin-api/v1/orders` 查询，`/admin-api/v1/orders/grant` 仅按已付款异常订单补发权益 | 生产小额实付验收、退款、对账、异常补偿和运营 SOP |

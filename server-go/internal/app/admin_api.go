@@ -314,7 +314,6 @@ type AdminUserListEntry struct {
 	Daily                 DailyQuotaStatus  `json:"daily"`
 	TopupRemaining        int               `json:"topup_remaining"`
 	TopupExpireAt         *int64            `json:"topup_expire_at,omitempty"`
-	UpgradeRemaining      int               `json:"upgrade_remaining"`
 	RoundTotal            int               `json:"round_total"`
 	LastSeenAt            *int64            `json:"last_seen_at,omitempty"`
 	LastRegion            string            `json:"last_region,omitempty"`
@@ -330,7 +329,6 @@ type AdminUserDetail struct {
 	User             AdminUserListEntry      `json:"user"`
 	QuotaLedger      []AdminQuotaLedgerEntry `json:"quota_ledger"`
 	TopupPacks       []AdminTopupPackEntry   `json:"topup_packs"`
-	UpgradeCredits   []AdminUpgradeCredit    `json:"upgrade_credits"`
 	RecentRounds     []AdminRoundExcerpt     `json:"recent_rounds"`
 	RecentAppLogs    []ClientAppLogEntry     `json:"recent_app_logs"`
 	SupportSummary   *AdminSupportSummary    `json:"support_summary,omitempty"`
@@ -352,7 +350,6 @@ type AdminEntitlementSummary struct {
 	ExpiringIn30d            int64 `json:"expiring_in_30d"`
 	DailyLimitExhaustedUsers int64 `json:"daily_limit_exhausted_users"`
 	TopupActiveUsers         int64 `json:"topup_active_users"`
-	UpgradeCreditUsers       int64 `json:"upgrade_credit_users"`
 	NowMs                    int64 `json:"now_ms"`
 }
 
@@ -382,13 +379,6 @@ type AdminTopupPackEntry struct {
 	ExpireAt  *int64 `json:"expire_at,omitempty"`
 	Status    string `json:"status"`
 	CreatedAt int64  `json:"created_at"`
-}
-
-type AdminUpgradeCredit struct {
-	UserID    string `json:"user_id"`
-	Remaining int    `json:"remaining"`
-	ExpireAt  *int64 `json:"expire_at,omitempty"`
-	UpdatedAt int64  `json:"updated_at"`
 }
 
 type AdminRoundExcerpt struct {
@@ -3773,10 +3763,6 @@ func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN str
 	if err != nil {
 		return AdminUserDetail{}, err
 	}
-	upgradeCredits, err := s.ListAdminUpgradeCredits(ctx, userID)
-	if err != nil {
-		return AdminUserDetail{}, err
-	}
 	rounds := []AdminRoundExcerpt{}
 	if includeChatRoundExcerpts {
 		var err error
@@ -3818,7 +3804,6 @@ func (s *Store) GetAdminUserDetail(ctx context.Context, userID string, dayCN str
 		User:             user,
 		QuotaLedger:      ledger,
 		TopupPacks:       topupPacks,
-		UpgradeCredits:   upgradeCredits,
 		RecentRounds:     rounds,
 		RecentAppLogs:    appLogs,
 		SupportSummary:   adminSupportSummary,
@@ -3844,11 +3829,6 @@ func (s *Store) fillAdminUserQuota(ctx context.Context, user *AdminUserListEntry
 	}
 	user.TopupRemaining = topup
 	user.TopupExpireAt = topupExpire
-	upgrade, err := s.GetUpgradeRemaining(ctx, user.UserID)
-	if err != nil {
-		return err
-	}
-	user.UpgradeRemaining = upgrade
 	return nil
 }
 
@@ -3919,9 +3899,6 @@ func (s *Store) ReadAdminEntitlementSummary(ctx context.Context, dayCN string, n
 	if summary.TopupActiveUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM topup_packs WHERE remaining > 0 AND (expire_at IS NULL OR expire_at > ?)", []any{nowMs}); err != nil {
 		return summary, err
 	}
-	if summary.UpgradeCreditUsers, err = s.countQuery(ctx, "SELECT COUNT(DISTINCT user_id) FROM upgrade_credits WHERE remaining > 0 AND (expire_at IS NULL OR expire_at > ?)", []any{nowMs}); err != nil {
-		return summary, err
-	}
 	return summary, nil
 }
 
@@ -3990,34 +3967,6 @@ func (s *Store) ListAdminTopupPacks(ctx context.Context, userID string, limit in
 		packs = append(packs, pack)
 	}
 	return packs, rows.Err()
-}
-
-func (s *Store) ListAdminUpgradeCredits(ctx context.Context, userID string) ([]AdminUpgradeCredit, error) {
-	rows, err := s.db.QueryContext(
-		ctx,
-		`SELECT user_id, remaining, expire_at, updated_at
-		   FROM upgrade_credits
-		  WHERE user_id = ?
-		  ORDER BY updated_at DESC`,
-		userID,
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	credits := []AdminUpgradeCredit{}
-	for rows.Next() {
-		var credit AdminUpgradeCredit
-		var expire sql.NullInt64
-		if err := rows.Scan(&credit.UserID, &credit.Remaining, &expire, &credit.UpdatedAt); err != nil {
-			return nil, err
-		}
-		if expire.Valid {
-			credit.ExpireAt = int64Ptr(expire.Int64)
-		}
-		credits = append(credits, credit)
-	}
-	return credits, rows.Err()
 }
 
 func (s *Store) ListAdminRoundExcerpts(ctx context.Context, userID string, limit int) ([]AdminRoundExcerpt, error) {

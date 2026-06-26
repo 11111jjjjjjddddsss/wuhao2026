@@ -101,6 +101,7 @@ $migrationPath = Join-Path $RepoRoot "server-go/migrations/044_alipay_payment_or
 $testMetadataMigrationPath = Join-Path $RepoRoot "server-go/migrations/045_payment_order_test_metadata.sql"
 $opsClosureMigrationPath = Join-Path $RepoRoot "server-go/migrations/046_payment_order_ops_closure.sql"
 $paymentsRunbookPath = Join-Path $RepoRoot "docs/runbooks/payments.md"
+$agentsPath = Join-Path $RepoRoot "AGENTS.md"
 $currentStatusPath = Join-Path $RepoRoot "docs/project-state/current-status.md"
 $openRisksPath = Join-Path $RepoRoot "docs/project-state/open-risks.md"
 $pendingDecisionsPath = Join-Path $RepoRoot "docs/project-state/pending-decisions.md"
@@ -121,6 +122,13 @@ $migration = Read-SourceFile $migrationPath
 $testMetadataMigration = Read-SourceFile $testMetadataMigrationPath
 $opsClosureMigration = Read-SourceFile $opsClosureMigrationPath
 $paymentsRunbook = Read-SourceFile $paymentsRunbookPath
+$agents = Read-SourceFile $agentsPath
+$currentPaymentDocs = @(
+    $agents,
+    (Read-SourceFile $currentStatusPath),
+    (Read-SourceFile $openRisksPath),
+    $paymentsRunbook
+) -join "`n"
 $projectPaymentDocs = @(
     (Read-SourceFile $currentStatusPath),
     (Read-SourceFile $openRisksPath),
@@ -194,6 +202,13 @@ Require-Match -Name "server_payment_order_busy_code" -Content $payments -Pattern
 Require-Match -Name "server_payment_pending_order_auto_close_guard" -Content $payments -Pattern "CloseUnpaidPendingPaymentOrdersForProduct(?s:.*?)LOCAL_REPLACED"
 Require-NoMatch -Name "server_payment_no_invisible_pending_order_block" -Content $payments -Pattern "PAYMENT_PENDING_ORDER_EXISTS"
 Require-NoMatch -Name "payment_docs_no_old_pending_block_copy" -Content $projectPaymentDocs -Pattern "近 30 分钟.?同类待支付|已有待支付订单，请先完成|PAYMENT_PENDING_ORDER_EXISTS"
+Require-Match -Name "server_plus_to_pro_prorated_amount" -Content $payments -Pattern "plusToProUpgradeAmountCents"
+Require-Match -Name "server_plus_remaining_discount" -Content $payments -Pattern "plusRemainingValueDiscountCents"
+Require-Match -Name "server_plus_to_pro_order_amount_resolved_before_create" -Content $payments -Pattern "ResolvePaymentProductForOrder(?s:.*?)CreatePaymentOrder"
+Require-Match -Name "payment_current_docs_plus_to_pro_discount" -Content $currentPaymentDocs -Pattern "Plus 升 Pro(?s:.*?)剩余有效天数(?s:.*?)金额抵扣"
+Require-Match -Name "payment_current_docs_plus_to_pro_min_delta" -Content $currentPaymentDocs -Pattern "最低补差价 10\.00 元"
+Require-Match -Name "payment_current_docs_upgrade_credits_inactive" -Content $currentPaymentDocs -Pattern "补偿次数(?s:.*?)退出当前业务|当前扣次顺序(?s:.*?)每日额度(?s:.*?)加油包"
+Require-NoMatch -Name "payment_current_docs_no_old_plus_to_pro_compensation_copy" -Content $currentPaymentDocs -Pattern "不做[^。\r\n]*现金[^。\r\n]*抵扣|按 Pro 开通价升级|Plus 升 Pro 补偿次数按既有账本|剩余[^。\r\n]*折成(?!金额抵扣)[^。\r\n]*补偿次数|每日额度\s*[-→]\s*历史补偿|历史补偿\s*[-→]\s*加油包"
 Require-Match -Name "server_alipay_no_paid_downgrade" -Content $payments -Pattern 'order\.Status\s*==\s*paymentStatusPaid(?s:.*?)last_notify_json'
 Require-Match -Name "server_alipay_refund_unknown_on_failed_response" -Content $payments -Pattern "MarkPaymentRefundUnknown"
 Require-Match -Name "server_alipay_refund_order_update_tx" -Content $payments -Pattern "CreatePaymentRefundPending(?s:.*?)BeginTx(?s:.*?)UPDATE payment_orders"

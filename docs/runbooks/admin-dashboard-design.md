@@ -51,7 +51,7 @@
 - 成功问诊轮次：`session_round_archive`、`session_round_ledger`。
 - 问诊地区：`session_round_archive.region/source/reliability`、`session_ab.last_region*`。
 - 额度消耗：`daily_usage`、`quota_ledger`。
-- 会员 / 加油包 / 升级补偿：`user_entitlement`、`topup_packs`、`upgrade_credits`。
+- 会员 / 加油包：`user_entitlement`、`topup_packs`；`upgrade_credits` 只作历史遗留表，不进入当前权益页。
 - 帮助与反馈：`support_messages` 和内部会话接口。
 - App 自动日志：`client_app_logs`。
 - 今日农情：`daily_agri_cards`。
@@ -127,7 +127,7 @@
 - 用户
 - 会员
 - 今日剩余次数
-- 加油包 / 升级补偿
+- 加油包
 - 最近问诊
 - 最近登录
 - 地区
@@ -138,7 +138,7 @@
 详情抽屉：
 
 - 基本信息：账号、创建时间、最近活跃、登录方式、设备概况。
-- 会员权益：档位、到期、每日额度、今日已用、加油包、升级补偿。
+- 会员权益：档位、到期、每日额度、今日已用、加油包。
 - 业务轨迹：最近问诊轮次、图片问诊比例、帮助反馈、App 日志、订单。
 - 地区轨迹：最近可靠系统反查地区、IP 粗定位地区、最近问诊地区。
 - 风险提示：频繁失败、频繁超额、同一设备多账号、异常高频请求。
@@ -184,19 +184,19 @@
 - 每日额度使用分布。
 - 今日次数耗尽用户。
 - 加油包余额分布。
-- 升级补偿次数余额。
+- 历史遗留补偿表不展示为当前余额。
 - `quota_ledger` 扣次流水。
 
 用户详情内可看：
 
 - 今日额度记录。
 - 加油包状态：active / used_up / expired。
-- 升级补偿剩余。
+- 加油包剩余。
 - 最近扣次来源：daily / topup / upgrade。
 
 高风险操作：
 
-- 人工补偿次数。
+- 人工异常处理记录。
 - 手动修正会员。
 - 作废加油包。
 

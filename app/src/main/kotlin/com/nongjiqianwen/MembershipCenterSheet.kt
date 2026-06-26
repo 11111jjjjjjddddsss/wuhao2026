@@ -75,6 +75,9 @@ internal data class MembershipPaymentConfirmation(
     val product: MembershipPaymentProduct,
     val subject: String,
     val amountCents: Int,
+    val originalAmountCents: Int? = null,
+    val listAmountCents: Int? = null,
+    val discountAmountCents: Int? = null,
     val outTradeSuffix: String
 )
 
@@ -255,7 +258,6 @@ internal fun MembershipCenterBody(
     }
     MembershipPlanSection(
         activeTier = entitlement.activeMembershipTier(displayLoadState),
-        upgradeRemaining = loadedEntitlement?.upgradeRemaining ?: 0,
         topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
         paymentState = paymentState,
         onStartPayment = onStartPayment
@@ -485,6 +487,17 @@ internal fun MembershipPaymentConfirmOverlay(
                                 value = membershipPaymentConfirmTitle(item.product, item.subject),
                                 valueTextAlign = TextAlign.Start
                             )
+                            if (item.shouldShowPaymentDiscount()) {
+                                MembershipPaymentInfoRow(
+                                    label = "原价",
+                                    value = formatPaymentAmountText(item.listAmountCents ?: 0)
+                                )
+                                MembershipPaymentInfoRow(
+                                    label = "抵扣",
+                                    value = "-${formatPaymentAmountText(item.discountAmountCents ?: 0)}",
+                                    valueWeight = FontWeight.SemiBold
+                                )
+                            }
                             MembershipPaymentInfoRow(
                                 label = "金额",
                                 value = formatPaymentAmountText(item.amountCents),
@@ -499,7 +512,7 @@ internal fun MembershipPaymentConfirmOverlay(
                             }
                             MembershipPaymentInfoRow(
                                 label = "说明",
-                                value = membershipPaymentProductNote(item.product),
+                                value = membershipPaymentProductNote(item),
                                 valueTextAlign = TextAlign.Start
                             )
                         }
@@ -759,13 +772,11 @@ internal fun MembershipQuotaSummary(
 @Composable
 internal fun MembershipPlanSectionPreview(
     activeTier: String,
-    upgradeRemaining: Int = 0,
     topupRemaining: Int = 0,
     paymentState: MembershipPaymentState = MembershipPaymentState()
 ) {
     MembershipPlanSection(
         activeTier = activeTier,
-        upgradeRemaining = upgradeRemaining,
         topupRemaining = topupRemaining,
         paymentState = paymentState,
         onStartPayment = {}
@@ -796,6 +807,9 @@ internal fun MembershipPaymentConfirmPreview(
     product: MembershipPaymentProduct = MembershipPaymentProduct.RenewPro,
     subject: String = "农技千查 Pro 会员30天（联调测试）",
     amountCents: Int = 1,
+    originalAmountCents: Int? = null,
+    listAmountCents: Int? = null,
+    discountAmountCents: Int? = null,
     outTradeSuffix: String = "12345678"
 ) {
     Box(
@@ -809,6 +823,9 @@ internal fun MembershipPaymentConfirmPreview(
                 product = product,
                 subject = subject,
                 amountCents = amountCents,
+                originalAmountCents = originalAmountCents,
+                listAmountCents = listAmountCents,
+                discountAmountCents = discountAmountCents,
                 outTradeSuffix = outTradeSuffix
             ),
             onConfirm = {},
@@ -867,7 +884,6 @@ private fun MembershipExtraCountPill(text: String) {
 @Composable
 private fun MembershipPlanSection(
     activeTier: String,
-    upgradeRemaining: Int,
     topupRemaining: Int,
     paymentState: MembershipPaymentState,
     onStartPayment: (MembershipPaymentProduct) -> Unit
@@ -895,7 +911,6 @@ private fun MembershipPlanSection(
     }
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         MembershipPlanSectionTitle(
-            upgradeRemaining = upgradeRemaining,
             topupRemaining = topupRemaining
         )
         MembershipPlanCard(
@@ -912,7 +927,11 @@ private fun MembershipPlanSection(
             price = MEMBERSHIP_PRO_PRICE_TEXT,
             badge = "推荐",
             active = activeTier == "pro",
-            highlights = listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "一次购买30天，不自动续费", "复杂问题推理更强"),
+            highlights = if (activeTier == "plus") {
+                listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "Plus剩余天数自动抵扣", "复杂问题推理更强")
+            } else {
+                listOf("每天${MEMBERSHIP_PRO_DAILY_LIMIT}次问诊", "一次购买30天，不自动续费", "复杂问题推理更强")
+            },
             actionText = proActionText,
             actionEnabled = proEnabled && paymentState.activeProduct == null,
             onActionClick = { onStartPayment(proProduct) }
@@ -923,7 +942,6 @@ private fun MembershipPlanSection(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun MembershipPlanSectionTitle(
-    upgradeRemaining: Int,
     topupRemaining: Int
 ) {
     Column(
@@ -942,18 +960,13 @@ private fun MembershipPlanSectionTitle(
                 .heightIn(min = 24.dp)
                 .wrapContentHeight(Alignment.CenterVertically)
         )
-        if (upgradeRemaining > 0 || topupRemaining > 0) {
+        if (topupRemaining > 0) {
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                if (upgradeRemaining > 0) {
-                    MembershipExtraCountPill(text = "升级补偿次数 ${upgradeRemaining}次")
-                }
-                if (topupRemaining > 0) {
-                    MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
-                }
+                MembershipExtraCountPill(text = "加油包 ${topupRemaining}次")
             }
         }
     }
@@ -1211,17 +1224,17 @@ private fun MembershipRulesSection() {
             ) {
                 MembershipRuleLine(
                     title = "Plus升级Pro",
-                    body = "通过礼品卡或后续支付升级 Pro 后，Plus 剩余权益会自动折成补偿次数。"
+                    body = "支付升级 Pro 时，Plus 剩余有效天数会折成金额抵扣。"
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(
                     title = "扣次顺序",
-                    body = "每日额度 → 升级补偿 → 加油包。"
+                    body = "每日额度 → 加油包。"
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(
-                    title = "补偿和加油包",
-                    body = "升级补偿和加油包未用完不随会员到期清零。"
+                    title = "加油包",
+                    body = "未用完次数长期保留，用完后可再买。"
                 )
                 HorizontalDivider(thickness = 0.7.dp, color = Color(0xFFE7E9ED))
                 MembershipRuleLine(
@@ -1328,10 +1341,25 @@ private fun membershipPaymentConfirmTitle(
     return membershipPaymentProductTitle(product) + testSuffix
 }
 
-private fun membershipPaymentProductNote(product: MembershipPaymentProduct): String =
-    when (product) {
+private fun MembershipPaymentConfirmation.shouldShowPaymentDiscount(): Boolean {
+    val listAmount = listAmountCents ?: return false
+    val discountAmount = discountAmountCents ?: return false
+    val originalAmount = originalAmountCents ?: amountCents
+    return product == MembershipPaymentProduct.UpgradePlusToPro &&
+        discountAmount > 0 &&
+        listAmount > originalAmount &&
+        listAmount - discountAmount == originalAmount &&
+        amountCents == originalAmount
+}
+
+private fun membershipPaymentProductNote(item: MembershipPaymentConfirmation): String =
+    when (item.product) {
         MembershipPaymentProduct.BuyTopup -> "额外80次问诊次数，长期保留"
-        MembershipPaymentProduct.UpgradePlusToPro -> "升级后立刻生效，Plus剩余会折成补偿次数"
+        MembershipPaymentProduct.UpgradePlusToPro -> if (item.subject.contains("联调测试")) {
+            "Plus剩余有效天数按正式价抵扣；联调金额按测试配置处理"
+        } else {
+            "Plus剩余有效天数已在本次金额中抵扣，升级后立刻生效"
+        }
         else -> "一次购买30天，不自动续费；未到期会顺延"
     }
 

@@ -267,13 +267,19 @@ private data class PendingMembershipPaymentOrder(
     val orderString: String,
     val outTradeNo: String,
     val subject: String,
-    val amountCents: Int
+    val amountCents: Int,
+    val originalAmountCents: Int? = null,
+    val listAmountCents: Int? = null,
+    val discountAmountCents: Int? = null
 ) {
     fun confirmation(): MembershipPaymentConfirmation =
         MembershipPaymentConfirmation(
             product = product,
             subject = subject,
             amountCents = amountCents,
+            originalAmountCents = originalAmountCents,
+            listAmountCents = listAmountCents,
+            discountAmountCents = discountAmountCents,
             outTradeSuffix = outTradeNo.takeLast(8)
         )
 }
@@ -4073,7 +4079,6 @@ fun ChatScreen() {
             membershipEntitlement = entitlement
             if (
                 (entitlement.dailyRemaining ?: 0) > 0 ||
-                (entitlement.upgradeRemaining ?: 0) > 0 ||
                 (entitlement.topupRemaining ?: 0) > 0
             ) {
                 quotaExhaustedDayKey = null
@@ -4407,7 +4412,10 @@ fun ChatScreen() {
                 orderString = orderString,
                 outTradeNo = outTradeNo,
                 subject = order?.subject.orEmpty(),
-                amountCents = amountCents
+                amountCents = amountCents,
+                originalAmountCents = order?.originalAmountCents,
+                listAmountCents = order?.listAmountCents,
+                discountAmountCents = order?.discountAmountCents
             )
             membershipPaymentState = MembershipPaymentState(
                 activeProduct = product,
@@ -9251,7 +9259,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("Free 基础额度", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipFreeSummary),
                     UiCopyPreviewItem(
                         "Free 额外次数",
-                        "到期后仍可显示升级补偿次数 / 加油包",
+                        "到期后仍可显示加油包",
                         UiCopyPreviewKind.MembershipFreeExtraSummary
                     ),
                     UiCopyPreviewItem(
@@ -9275,11 +9283,12 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("确认付款：联调", "0.01 测试订单、订单尾号和竖排支付按钮", UiCopyPreviewKind.MembershipPaymentConfirm),
                     UiCopyPreviewItem("购买 Plus", "Plus 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPlus),
                     UiCopyPreviewItem("购买 Pro", "Pro 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPro),
-                    UiCopyPreviewItem("升级 Pro", "Plus 升级 Pro 的正式确认页", UiCopyPreviewKind.MembershipPaymentConfirmUpgradePro),
+                    UiCopyPreviewItem("升级 Pro", "Plus 剩余天数抵扣后的确认页", UiCopyPreviewKind.MembershipPaymentConfirmUpgradePro),
+                    UiCopyPreviewItem("升级联调", "0.01 测试金额下隐藏折扣明细", UiCopyPreviewKind.MembershipPaymentConfirmUpgradeProTest),
                     UiCopyPreviewItem("购买加油包", "80 次加油包正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmTopup),
                     UiCopyPreviewItem("确认付款大字体", "1.6x 字体下可滚动查看确认和取消", UiCopyPreviewKind.MembershipPaymentConfirmLargeFont),
                     UiCopyPreviewItem("权益生效提示", "支付完成后展示后端确认的权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
-                    UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序 / 补偿与加油包", UiCopyPreviewKind.MembershipRules)
+                    UiCopyPreviewItem("规则说明", "升级抵扣 / 扣次顺序 / 加油包", UiCopyPreviewKind.MembershipRules)
                 )
             ),
             UiCopyPreviewGroup(
@@ -9645,6 +9654,7 @@ private enum class UiCopyPreviewKind {
     MembershipPaymentConfirmPlus,
     MembershipPaymentConfirmPro,
     MembershipPaymentConfirmUpgradePro,
+    MembershipPaymentConfirmUpgradeProTest,
     MembershipPaymentConfirmTopup,
     MembershipPaymentConfirmLargeFont,
     MembershipPurchaseSuccess,
@@ -9999,8 +10009,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         entitlement = SessionApi.EntitlementSnapshot(
                             tier = "free",
                             dailyRemaining = 2,
-                            topupRemaining = 15,
-                            upgradeRemaining = 3
+                            topupRemaining = 15
                         ),
                         loadState = MembershipLoadState.Loaded,
                         activeTier = "free"
@@ -10013,7 +10022,6 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 24),
                             dailyRemaining = 18,
                             topupRemaining = 0,
-                            upgradeRemaining = 0,
                             membershipSource = "gift_card",
                             giftCardRedeemedAt = uiCopyPreviewExpireAtMs(daysFromNow = -6)
                         ),
@@ -10062,7 +10070,6 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     UiCopyPreviewNarrowFrame {
                         MembershipPlanSectionPreview(
                             activeTier = "plus",
-                            upgradeRemaining = 88,
                             topupRemaining = 80
                         )
                     }
@@ -10124,9 +10131,23 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.MembershipPaymentConfirmUpgradePro -> {
                     MembershipPaymentConfirmPreview(
                         product = MembershipPaymentProduct.UpgradePlusToPro,
-                        subject = "农技千查 升级Pro会员",
-                        amountCents = 1000,
-                        outTradeSuffix = "UPPRO100"
+                        subject = "农技千查升级 Pro 会员30天",
+                        amountCents = 1995,
+                        outTradeSuffix = "UPRO1995",
+                        originalAmountCents = 1995,
+                        listAmountCents = 2990,
+                        discountAmountCents = 995
+                    )
+                }
+                UiCopyPreviewKind.MembershipPaymentConfirmUpgradeProTest -> {
+                    MembershipPaymentConfirmPreview(
+                        product = MembershipPaymentProduct.UpgradePlusToPro,
+                        subject = "农技千查升级 Pro 会员30天（联调测试）",
+                        amountCents = 1,
+                        outTradeSuffix = "UPRO0001",
+                        originalAmountCents = 1995,
+                        listAmountCents = 2990,
+                        discountAmountCents = 995
                     )
                 }
                 UiCopyPreviewKind.MembershipPaymentConfirmTopup -> {
@@ -11043,7 +11064,6 @@ private fun UiCopyPreviewMembershipSummaryWithPlans(
         )
         MembershipPlanSectionPreview(
             activeTier = activeTier,
-            upgradeRemaining = entitlement.upgradeRemaining ?: 0,
             topupRemaining = entitlement.topupRemaining ?: 0
         )
     }

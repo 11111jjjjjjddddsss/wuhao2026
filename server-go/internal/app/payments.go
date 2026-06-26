@@ -50,6 +50,9 @@ const (
 
 	paymentGrantProcessingRetryAfter      = 5 * time.Minute
 	paymentMembershipMinRemainingForOrder = 45 * time.Minute
+	paymentRenewPlusAmountCents           = 1990
+	paymentRenewProAmountCents            = 2990
+	paymentTopupAmountCents               = 600
 
 	alipayPaymentPublicEnabledEnv     = "ALIPAY_PAYMENT_PUBLIC_ENABLED"
 	alipayPaymentAllowedUserIDsEnv    = "ALIPAY_PAYMENT_ALLOWED_USER_IDS"
@@ -673,17 +676,10 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 		s.writeError(w, http.StatusBadRequest, "INVALID_PRODUCT")
 		return
 	}
-	originalAmountCents := product.AmountCents
 	if !alipayPaymentOrderGateAllows(auth.UserID, body) {
 		s.logger.Info("alipay order blocked by payment gate", "product", body.ProductType, "clientBuildType", normalizeAlipayClientBuildType(body.ClientBuildType), "gate", alipayPaymentOrderGateStatus())
 		s.writeError(w, http.StatusServiceUnavailable, "ALIPAY_NOT_CONFIGURED")
 		return
-	}
-	isTestOrder := false
-	if overridden, applied := applyAlipayPaymentTestAmount(product, auth.UserID, body); applied {
-		product = overridden
-		isTestOrder = true
-		s.logger.Info("alipay test amount applied", "product", product.Type, "amountCents", product.AmountCents)
 	}
 	ctx := r.Context()
 	if err := s.store.EnsureUser(ctx, auth.UserID, TierFree); err != nil {
@@ -691,19 +687,35 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if err := s.store.ValidatePaymentProduct(ctx, auth.UserID, product.Type); err != nil {
-		s.writeError(w, paymentProductHTTPStatus(err), err.Error())
-		return
-	}
 	var (
-		now                time.Time
-		closedPendingCount int64
-		outTradeNo         string
-		orderString        string
+		now                 time.Time
+		closedPendingCount  int64
+		outTradeNo          string
+		orderString         string
+		originalAmountCents int
+		listAmountCents     int
+		discountAmountCents int
+		isTestOrder         bool
 	)
 	if err := s.store.WithPaymentOrderCreateGate(ctx, auth.UserID, product.Type, func(lockCtx context.Context) error {
 		var err error
 		now = time.Now()
+		if err := s.store.ValidatePaymentProduct(lockCtx, auth.UserID, product.Type); err != nil {
+			return err
+		}
+		product, err = s.store.ResolvePaymentProductForOrder(lockCtx, auth.UserID, product, now.UnixMilli())
+		if err != nil {
+			return err
+		}
+		originalAmountCents = product.AmountCents
+		listAmountCents = paymentProductListAmountCents(product.Type)
+		discountAmountCents = paymentProductDiscountAmountCents(product.Type, originalAmountCents)
+		isTestOrder = false
+		if overridden, applied := applyAlipayPaymentTestAmount(product, auth.UserID, body); applied {
+			product = overridden
+			isTestOrder = true
+			s.logger.Info("alipay test amount applied", "product", product.Type, "amountCents", product.AmountCents)
+		}
 		closedPendingCount, err = s.store.CloseUnpaidPendingPaymentOrdersForProduct(lockCtx, auth.UserID, product.Type, now.UnixMilli())
 		if err != nil {
 			return err
@@ -738,6 +750,10 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 			s.writeError(w, http.StatusConflict, errPaymentOrderCreateBusy.Error())
 			return
 		}
+		if status := paymentProductHTTPStatus(err); status != http.StatusInternalServerError {
+			s.writeError(w, status, err.Error())
+			return
+		}
 		s.logger.Error("create alipay order failed", "userId", auth.UserID, "product", product.Type, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
@@ -747,13 +763,16 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 	}
 	s.logger.Info("alipay order created", "userId", auth.UserID, "outTradeSuffix", paymentIDLogSuffix(outTradeNo), "product", product.Type, "amountCents", product.AmountCents)
 	s.writeJSON(w, http.StatusOK, map[string]any{
-		"ok":           true,
-		"provider":     paymentProviderAlipay,
-		"out_trade_no": outTradeNo,
-		"product_type": product.Type,
-		"subject":      product.Subject,
-		"amount_cents": product.AmountCents,
-		"order_string": orderString,
+		"ok":                    true,
+		"provider":              paymentProviderAlipay,
+		"out_trade_no":          outTradeNo,
+		"product_type":          product.Type,
+		"subject":               product.Subject,
+		"amount_cents":          product.AmountCents,
+		"original_amount_cents": originalAmountCents,
+		"list_amount_cents":     listAmountCents,
+		"discount_amount_cents": discountAmountCents,
+		"order_string":          orderString,
 	})
 }
 
@@ -908,6 +927,88 @@ func (s *Store) ValidatePaymentProduct(ctx context.Context, userID string, produ
 		return fmt.Errorf("INVALID_PRODUCT")
 	}
 	return nil
+}
+
+func (s *Store) ResolvePaymentProductForOrder(ctx context.Context, userID string, product paymentProduct, nowMs int64) (paymentProduct, error) {
+	if product.Type != paymentProductUpgradePlusPro {
+		return product, nil
+	}
+	tier, expireAt, err := s.GetTierForUser(ctx, userID, TierFree)
+	if err != nil {
+		return product, err
+	}
+	switch tier {
+	case TierPro:
+		return product, fmt.Errorf("ALREADY_PRO")
+	case TierPlus:
+	default:
+		return product, fmt.Errorf("FORBIDDEN_TIER")
+	}
+	product.AmountCents = plusToProUpgradeAmountCents(nowMs, expireAt)
+	product.Body = "升级为 Pro 会员30天，Plus剩余天数已抵扣"
+	return product, nil
+}
+
+func plusToProUpgradeAmountCents(nowMs int64, plusExpireAt *int64) int {
+	discount := plusRemainingValueDiscountCents(nowMs, plusExpireAt)
+	amount := paymentRenewProAmountCents - discount
+	minAmount := paymentRenewProAmountCents - paymentRenewPlusAmountCents
+	if amount < minAmount {
+		return minAmount
+	}
+	if amount <= 0 {
+		return 1
+	}
+	return amount
+}
+
+func plusRemainingValueDiscountCents(nowMs int64, plusExpireAt *int64) int {
+	if plusExpireAt == nil {
+		return 0
+	}
+	if nowMs <= 0 {
+		nowMs = time.Now().UnixMilli()
+	}
+	remainingMs := *plusExpireAt - nowMs
+	if remainingMs <= 0 {
+		return 0
+	}
+	termMs := int64((time.Duration(membershipTermDays) * 24 * time.Hour) / time.Millisecond)
+	if termMs <= 0 {
+		return 0
+	}
+	if remainingMs > termMs {
+		remainingMs = termMs
+	}
+	discount := int((int64(paymentRenewPlusAmountCents)*remainingMs + termMs/2) / termMs)
+	if discount < 0 {
+		return 0
+	}
+	if discount > paymentRenewPlusAmountCents {
+		return paymentRenewPlusAmountCents
+	}
+	return discount
+}
+
+func paymentProductListAmountCents(productType string) int {
+	switch productType {
+	case paymentProductRenewPlus:
+		return paymentRenewPlusAmountCents
+	case paymentProductRenewPro, paymentProductUpgradePlusPro:
+		return paymentRenewProAmountCents
+	case paymentProductBuyTopup:
+		return paymentTopupAmountCents
+	default:
+		return 0
+	}
+}
+
+func paymentProductDiscountAmountCents(productType string, amountCents int) int {
+	listAmount := paymentProductListAmountCents(productType)
+	if listAmount <= 0 || amountCents <= 0 || amountCents >= listAmount {
+		return 0
+	}
+	return listAmount - amountCents
 }
 
 func paymentProductPendingFamily(productType string) []string {
@@ -1953,28 +2054,28 @@ func paymentProductByType(raw string) (paymentProduct, bool) {
 			Type:        paymentProductRenewPlus,
 			Subject:     "农技千查 Plus 会员30天",
 			Body:        "每天25次问诊，会员有效期30天",
-			AmountCents: 1990,
+			AmountCents: paymentRenewPlusAmountCents,
 		}, true
 	case paymentProductRenewPro:
 		return paymentProduct{
 			Type:        paymentProductRenewPro,
 			Subject:     "农技千查 Pro 会员30天",
 			Body:        "每天40次问诊，会员有效期30天",
-			AmountCents: 2990,
+			AmountCents: paymentRenewProAmountCents,
 		}, true
 	case paymentProductUpgradePlusPro:
 		return paymentProduct{
 			Type:        paymentProductUpgradePlusPro,
 			Subject:     "农技千查升级 Pro 会员30天",
-			Body:        "升级为 Pro 会员30天，Plus剩余权益补为次数",
-			AmountCents: 2990,
+			Body:        "升级为 Pro 会员30天，Plus剩余天数已抵扣",
+			AmountCents: paymentRenewProAmountCents,
 		}, true
 	case paymentProductBuyTopup:
 		return paymentProduct{
 			Type:        paymentProductBuyTopup,
 			Subject:     "农技千查加油包80次",
 			Body:        "额外80次问诊次数，长期保留",
-			AmountCents: 600,
+			AmountCents: paymentTopupAmountCents,
 		}, true
 	default:
 		return paymentProduct{}, false

@@ -30,7 +30,6 @@ import type {
   AdminRole,
   AdminUserDetail,
   AdminUserListEntry,
-  AdminUpgradeCredit,
   AuthPayload,
   ClientAppLogEntry,
   ClientAppLogSummaryEntry,
@@ -767,7 +766,7 @@ async function entitlementsPage(): Promise<string> {
   }
   return userScopedPage({
     title: "会员额度",
-    desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包、补偿和自动扣次对账。",
+    desc: "先看会员总体情况，再按账号ID查询单人权益、额度、加油包、订单和自动扣次对账。",
     formID: "entitlements-form",
     inputName: "user_id",
     value: pageState.entitlementUserID,
@@ -785,16 +784,10 @@ async function entitlementsPage(): Promise<string> {
       return `
         ${summaryBlock}
         ${quotaOutboxBlock}
-        <div class="grid two">
-          <section class="card">
-            <div class="card-head"><div class="card-title">权益概览</div></div>
-            <div class="card-body">${entitlementSummary(detail)}</div>
-          </section>
-          <section class="card">
-            <div class="card-head"><div class="card-title">升级补偿</div><span class="small muted">${detail.upgrade_credits.length} 条</span></div>
-            <div class="table-wrap">${upgradeCreditsTable(detail.upgrade_credits)}</div>
-          </section>
-        </div>
+        <section class="card" style="margin-top:12px">
+          <div class="card-head"><div class="card-title">权益概览</div></div>
+          <div class="card-body">${entitlementSummary(detail)}</div>
+        </section>
         <section class="card" style="margin-top:12px">
           <div class="card-head"><div class="card-title">加油包明细</div><span class="small muted">${detail.topup_packs.length} 条</span></div>
           <div class="table-wrap">${topupPacksTable(detail.topup_packs)}</div>
@@ -2297,7 +2290,6 @@ function normalizeUserDetail(detail: AdminUserDetail): AdminUserDetail {
     ...detail,
     quota_ledger: detail.quota_ledger ?? [],
     topup_packs: detail.topup_packs ?? [],
-    upgrade_credits: detail.upgrade_credits ?? [],
     recent_rounds: detail.recent_rounds ?? [],
     recent_app_logs: detail.recent_app_logs ?? [],
     support_messages: detail.support_messages ?? [],
@@ -2606,7 +2598,6 @@ function userKV(user: AdminUserListEntry): string {
       <dt>会员</dt><dd>${escapeHTML(user.tier || "free")}</dd>
       <dt>今日额度</dt><dd>${quotaText(user.daily)}</dd>
       <dt>加油包</dt><dd>${user.topup_remaining || 0}</dd>
-      <dt>升级补偿</dt><dd>${user.upgrade_remaining || 0}</dd>
       <dt>地区</dt><dd>${escapeHTML(user.last_region || "未知")}</dd>
     </dl>
   `;
@@ -2678,7 +2669,6 @@ function entitlementSummary(detail: AdminUserDetail): string {
       <dt>今日额度</dt><dd>${quotaText(user.daily)}</dd>
       <dt>加油包剩余</dt><dd>${user.topup_remaining || 0}</dd>
       <dt>加油包到期</dt><dd>${formatTime(user.topup_expire_at)}</dd>
-      <dt>升级补偿</dt><dd>${user.upgrade_remaining || 0}</dd>
       <dt>总问诊轮次</dt><dd>${user.round_total || 0}</dd>
     </dl>
   `;
@@ -2711,7 +2701,6 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
               ${metricRow("迁移期旧身份记录会员", legacyMembers)}
               ${metricRow("今日基础额度用满", summary.daily_limit_exhausted_users)}
               ${metricRow("有加油包余额", summary.topup_active_users)}
-              ${metricRow("有升级补偿", summary.upgrade_credit_users)}
             </tbody>
           </table>
         </div>
@@ -2725,7 +2714,7 @@ function entitlementOverviewBlock(summary: AdminEntitlementSummary): string {
               ? notice("账号ID收敛中", `还有 ${legacyMembers} 个当前会员仍归属迁移期旧身份记录，因此“账号用户”“账号内会员”和“当前会员总数”暂时不会完全一一对应。`, "warn")
               : ""
           }
-          ${notice("额度耗尽", "这里统计的是“今日基础额度用满”的账号数，不代表加油包和升级补偿也已经同时用完。", "info")}
+          ${notice("额度耗尽", "这里统计的是“今日基础额度用满”的账号数，不代表加油包也已经同时用完。", "info")}
         </div>
       </section>
     </div>
@@ -3005,29 +2994,6 @@ function topupPacksTable(rows: AdminTopupPackEntry[]): string {
                 ${tableCell("剩余", String(row.remaining))}
                 ${tableCell("到期", formatTime(row.expire_at))}
                 ${tableCell("创建时间", formatTime(row.created_at))}
-              </tr>
-            `,
-          )
-          .join("")}
-      </tbody>
-    </table>
-  `;
-}
-
-function upgradeCreditsTable(rows: AdminUpgradeCredit[]): string {
-  if (!rows.length) return emptyState("没有升级补偿", "该用户没有升级补偿次数记录。");
-  return `
-    <table class="table mobile-card-table">
-      <thead><tr><th>账号ID</th><th>剩余次数</th><th>到期</th><th>更新时间</th></tr></thead>
-      <tbody>
-        ${rows
-          .map(
-            (row) => `
-              <tr>
-                ${tableCell("账号ID", escapeHTML(row.user_id))}
-                ${tableCell("剩余次数", String(row.remaining))}
-                ${tableCell("到期", formatTime(row.expire_at))}
-                ${tableCell("更新时间", formatTime(row.updated_at))}
               </tr>
             `,
           )

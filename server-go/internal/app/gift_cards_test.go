@@ -510,7 +510,7 @@ func TestRedeemGiftCardIgnoresFutureValidFromAndAppliesImmediately(t *testing.T)
 	}
 }
 
-func TestApplyGiftCardTierPlusToProCreatesUpgradeCredit(t *testing.T) {
+func TestApplyGiftCardTierPlusToProDoesNotCreateUpgradeCredit(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()
 
@@ -521,21 +521,11 @@ func TestApplyGiftCardTierPlusToProCreatesUpgradeCredit(t *testing.T) {
 	nowMs := now.UnixMilli()
 	currentExpireAt := now.AddDate(0, 0, 2).UnixMilli()
 	newExpireAt := now.AddDate(0, 0, 30).UnixMilli()
-	dayCN := GetTodayKeyCN(shanghai, now)
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE")).
 		WithArgs(userID).
 		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierPlus), currentExpireAt))
-	mock.ExpectExec("INSERT INTO daily_usage").
-		WithArgs(userID, dayCN).
-		WillReturnResult(sqlmock.NewResult(1, 1))
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT used FROM daily_usage WHERE user_id = ? AND day_cn = ? LIMIT 1 FOR UPDATE")).
-		WithArgs(userID, dayCN).
-		WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(7))
-	mock.ExpectExec("INSERT INTO upgrade_credits").
-		WithArgs(userID, 68, nil, nowMs).
-		WillReturnResult(sqlmock.NewResult(1, 1))
 	mock.ExpectExec("INSERT INTO user_entitlement").
 		WithArgs(userID, string(TierPro), newExpireAt, nowMs).
 		WillReturnResult(sqlmock.NewResult(1, 1))

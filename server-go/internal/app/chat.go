@@ -350,13 +350,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	upgradeBefore, err := s.store.GetUpgradeRemaining(ctx, auth.UserID)
-	if err != nil {
-		s.logger.Error("get upgrade remaining failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	if before.Remaining <= 0 && topupBefore <= 0 && upgradeBefore <= 0 {
+	if before.Remaining <= 0 && topupBefore <= 0 {
 		s.writeError(w, http.StatusPaymentRequired, "今日次数用完")
 		return
 	}

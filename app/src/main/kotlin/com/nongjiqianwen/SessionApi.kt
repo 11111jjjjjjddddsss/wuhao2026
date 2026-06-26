@@ -175,6 +175,9 @@ object SessionApi {
         @SerializedName("product_type") val productType: String? = null,
         val subject: String? = null,
         @SerializedName("amount_cents") val amountCents: Int? = null,
+        @SerializedName("original_amount_cents") val originalAmountCents: Int? = null,
+        @SerializedName("list_amount_cents") val listAmountCents: Int? = null,
+        @SerializedName("discount_amount_cents") val discountAmountCents: Int? = null,
         @SerializedName("order_string") val orderString: String? = null
     )
 

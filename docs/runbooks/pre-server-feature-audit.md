@@ -25,10 +25,10 @@
 
 - Android 主界面会员入口和设置页会员入口复用 `MembershipCenterBody`。
 - Android 的开通 Plus、开通 Pro、升级 Pro、购买加油包按钮当前已进入支付宝 APP 支付联调链路：先调用后端创建支付宝订单，再调起支付宝 SDK；生产正式收费仍需完成真实小额支付、异步通知、对账、退款和异常补偿验收。
-- 后端 `/api/me` 是会员等级、到期时间、每日剩余次数、升级补偿次数和加油包次数的当前真相。
+- 后端 `/api/me` 是会员等级、到期时间、每日剩余次数和加油包次数的当前真相；`upgrade_remaining` 只保留兼容字段并固定为 0。
 - Android `/api/me` 会员信息刷新带本地 request epoch；底部会员中心打开、设置页会员中心刷新或订购成功刷新重叠时，旧慢请求晚回来不会覆盖最新 UI 状态。
 - 后端有效会员等级按 `tier_expire_at` 实时计算；Plus / Pro 到期或付费 tier 缺失到期时间时按 Free 处理。
-- 扣次主链在回答归档成功后执行：先每日额度，再升级补偿，再加油包；`quota_ledger` 用 `user_id + client_msg_id` 防重复扣。
+- 扣次主链在回答归档成功后执行：先每日额度，再加油包；`quota_ledger` 用 `user_id + client_msg_id` 防重复扣。
 - 旧 `6元/100次` 只存在近期变更历史记录里；当前 Android 文案、后端常量和根规则都是 `6元/80次`。
 
 上线前必须补：
@@ -36,12 +36,12 @@
 - 接手机号登录或等价账号体系，生产环境启用 `APP_SECRET + AUTH_STRICT=true`，不能继续公开依赖裸 `X-User-Id`。
 - 保持开发期订单直改接口关闭：生产必须 `APP_ENV=production`，且 `ALLOW_DEV_ORDER_ENDPOINTS` 不设置或为 false。
 - 接真实支付下单、支付回调验签、金额 / 商品 / 用户二次校验、幂等发放、失败 / 退款 / 对账任务；不能只买服务器就把当前占位按钮改成真收费。
-- 补最小管理 / 只读查询入口，至少能按 `user_id` 查 `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`upgrade_credits`、`orders`，用于客服处理会员异常。
+- 补最小管理 / 只读查询入口，至少能按 `user_id` 查 `user_entitlement`、`daily_usage`、`quota_ledger`、`topup_packs`、`orders`，用于客服处理会员异常；`upgrade_credits` 只按历史遗留表处理，不作为当前权益入口。
 
 后续优化：
 
 - `/api/me` 后续可返回 `daily_limit`、套餐价格和加油包规格，减少 Android 端硬编码 `6 / 25 / 40`、`19.9 / 29.9`、`80次 / 6元` 带来的未来口径漂移。
-- 补一条数据库集成测试覆盖“每日额度 -> 升级补偿 -> 加油包”的真实扣减顺序。
+- 补一条数据库集成测试覆盖“每日额度 -> 加油包”的真实扣减顺序。
 
 ### 2. Go 后端高并发与性能边界
 
@@ -437,7 +437,7 @@
 
 - Android 会员开通、升级和加油包按钮会先向后端创建支付宝订单，拿到 `order_string` 后调起支付宝 SDK；客户端同步结果只用于提示和轮询，不直接发放权益。
 - 后端新增正式支付订单表 `payment_orders`、通知表 `payment_notifications`、支付宝下单接口、订单状态查询接口和异步通知接口。
-- Plus / Pro 会员按 30 天开通或续期；加油包 80 次和 Plus 升 Pro 补偿次数按既有账本口径长期保留，不随会员到期清零。
+- Plus / Pro 会员按 30 天开通或续期；加油包 80 次长期保留，不随会员到期清零。Plus 升 Pro 补偿次数已退出当前业务。
 - 开发期直改接口 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍默认关闭，只允许本地 / 测试环境显式打开，不作为正式收费入口。
 - 后台订单页核查支付宝订单和权益发放状态；已付款但权益未成功的订单可由 `owner / finance_ops` 人工补发权益，不提供手工伪造支付成功、直接随意改权益、退款或对账写入口。
 - 微信支付、自动续费、退款处理、自动对账和完整人工补偿闭环仍未完成。

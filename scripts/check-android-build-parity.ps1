@@ -582,8 +582,10 @@ if ($failures.Count -eq 0) {
         "Membership topup copy must not keep the old vague validity-period wording."
     Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPlanSectionTitle(?s:.*?)heightIn\(min\s*=\s*24\.dp\)' `
         "Membership section title must use a minimum height instead of a fixed height so large fonts are not clipped."
-    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPlanSectionTitle(?s:.*?)FlowRow\((?s:.*?)horizontalArrangement\s*=\s*Arrangement\.spacedBy\(8\.dp\)(?s:.*?)MembershipExtraCountPill\(text\s*=\s*"升级补偿次数\s+\$\{upgradeRemaining\}次"\)(?s:.*?)MembershipExtraCountPill\(text\s*=\s*"加油包\s+\$\{topupRemaining\}次"\)' `
-        "Membership extra-count pills must stay in a horizontal wrapping row instead of stacking vertically."
+    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPlanSectionTitle(?s:.*?)FlowRow\((?s:.*?)horizontalArrangement\s*=\s*Arrangement\.spacedBy\(8\.dp\)(?s:.*?)MembershipExtraCountPill\(text\s*=\s*"加油包\s+\$\{topupRemaining\}次"\)' `
+        "Membership topup count pill must stay in a horizontal wrapping row instead of stacking vertically."
+    Require-NoMatch $failures $membershipCenterSheet '历史补偿|升级补偿|补偿次数|upgradeRemaining' `
+        "Membership center must not re-expose old upgrade compensation counts."
     Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipActionButton(?s:.*?)heightIn\(min\s*=\s*46\.dp\)(?s:.*?)maxLines\s*=\s*2' `
         "Membership action buttons must allow two-line text and avoid fixed-height clipping on large font settings."
     Require-Match $failures $hamburgerMenuSheet ('private\s+fun\s+HamburgerMenuMainPage(?s:.*?)title\s*=\s*"' + $settingsLabelMembership + '"(?s:.*?)title\s*=\s*"' + $settingsLabelAccount + '"(?s:.*?)title\s*=\s*"' + $settingsLabelSupport + '"(?s:.*?)title\s*=\s*"' + $settingsLabelTodayAgri + '"(?s:.*?)title\s*=\s*"' + $settingsLabelUpdate + '"(?s:.*?)title\s*=\s*"' + $settingsLabelGiftCard + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLegal + '"(?s:.*?)title\s*=\s*"' + $settingsLabelLogout + '"') `
@@ -697,8 +699,14 @@ if ($failures.Count -eq 0) {
         "Membership center close button must keep a larger touch target and visible close glyph."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单尾号"(?s:.*?)value\s*=\s*item\.outTradeSuffix' `
         "Payment confirmation must show only the safe order suffix for user support, not the full order number."
-    Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单"(?s:.*?)value\s*=\s*membershipPaymentConfirmTitle\(item\.product,\s*item\.subject\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start(?s:.*?)label\s*=\s*"说明"(?s:.*?)value\s*=\s*membershipPaymentProductNote\(item\.product\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start' `
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单"(?s:.*?)value\s*=\s*membershipPaymentConfirmTitle\(item\.product,\s*item\.subject\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start(?s:.*?)label\s*=\s*"说明"(?s:.*?)value\s*=\s*membershipPaymentProductNote\(item\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start' `
         "Payment confirmation must use short product names and keep multi-line notes left-aligned."
+    Require-Match $failures $sessionApi 'original_amount_cents(?s:.*?)originalAmountCents(?s:.*?)list_amount_cents(?s:.*?)listAmountCents(?s:.*?)discount_amount_cents(?s:.*?)discountAmountCents' `
+        "Alipay order response must keep original/list/discount amount fields for Plus-to-Pro discount display."
+    Require-Match $failures $chatScreen 'PendingMembershipPaymentOrder(?s:.*?)originalAmountCents(?s:.*?)listAmountCents(?s:.*?)discountAmountCents(?s:.*?)MembershipPaymentConfirmation(?s:.*?)originalAmountCents\s*=\s*originalAmountCents(?s:.*?)listAmountCents\s*=\s*listAmountCents(?s:.*?)discountAmountCents\s*=\s*discountAmountCents' `
+        "Membership pending order must carry original/list/discount amounts into the payment confirmation."
+    Require-Match $failures $chatScreen 'originalAmountCents\s*=\s*order\?\.originalAmountCents(?s:.*?)listAmountCents\s*=\s*order\?\.listAmountCents(?s:.*?)discountAmountCents\s*=\s*order\?\.discountAmountCents' `
+        "Created Alipay orders must copy discount fields from the backend response into the pending payment state."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)MembershipPaymentMethodChip\((?s:.*?)text\s*=\s*"支付宝"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)text\s*=\s*"微信支付 暂未开通"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"确认并打开支付宝"(?s:.*?)Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"取消"' `
         "Payment confirmation must keep the four payment/action capsules stacked vertically on narrow phones."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)zIndex\(130f\)(?s:.*?)BoxWithConstraints(?s:.*?)panelMaxHeight(?s:.*?)heightIn\(max\s*=\s*panelMaxHeight\)(?s:.*?)verticalScroll\(rememberScrollState\(\)\)' `
@@ -713,8 +721,14 @@ if ($failures.Count -eq 0) {
         "Payment confirmation titles must stay concise while preserving the internal test suffix when present."
     Require-Match $failures $membershipCenterSheet 'val\s+plusEnabled\s*=\s*activeTier\s*==\s*"free"\s*\|\|\s*activeTier\s*==\s*"plus"(?s:.*?)activeTier\s*==\s*"pro"\s*->\s*"当前为 Pro"(?s:.*?)actionEnabled\s*=\s*plusEnabled\s*&&\s*paymentState\.activeProduct\s*==\s*null' `
         "Membership plans must keep Plus disabled for Pro users."
-    Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.BuyTopup\s*->\s*"额外80次问诊次数，长期保留"(?s:.*?)MembershipPaymentProduct\.UpgradePlusToPro\s*->\s*"升级后立刻生效，Plus剩余会折成补偿次数"(?s:.*?)else\s*->\s*"一次购买30天，不自动续费；未到期会顺延"' `
-        "Payment confirmation notes must explain topup retention, Plus-to-Pro compensation, and membership renewal extension."
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.BuyTopup\s*->\s*"额外80次问诊次数，长期保留"(?s:.*?)MembershipPaymentProduct\.UpgradePlusToPro\s*->(?s:.*?)Plus剩余有效天数(?s:.*?)抵扣(?s:.*?)else\s*->\s*"一次购买30天，不自动续费；未到期会顺延"' `
+        "Payment confirmation notes must explain topup retention, Plus-to-Pro remaining-day discount, and membership renewal extension."
+    Require-Match $failures $membershipCenterSheet 'shouldShowPaymentDiscount\(\)(?s:.*?)listAmount\s*-\s*discountAmount\s*==\s*originalAmount(?s:.*?)amountCents\s*==\s*originalAmount' `
+        "Plus-to-Pro discount rows must only show when backend discount math matches the displayed payment amount."
+    Require-Match $failures $chatScreen 'MembershipPaymentConfirmUpgradeProTest(?s:.*?)subject\s*=\s*"农技千查升级 Pro 会员30天（联调测试）"(?s:.*?)amountCents\s*=\s*1(?s:.*?)originalAmountCents\s*=\s*1995(?s:.*?)listAmountCents\s*=\s*2990(?s:.*?)discountAmountCents\s*=\s*995' `
+        "Debug preview must cover Plus-to-Pro 0.01 test orders without showing a misleading formal discount total."
+    Require-NoMatch $failures $membershipCenterSheet 'Plus剩余.*折成补偿次数|Plus\s*剩余.*补偿次数|Plus\s*剩余权益补为次数' `
+        "Payment upgrade copy must not revert to the old Plus-to-Pro compensation wording."
     Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)zIndex\(132f\)(?s:.*?)fillMaxSize\(\)(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.46f\)\)(?s:.*?)widthIn\(max\s*=\s*360\.dp\)(?s:.*?)fontSize\s*=\s*22\.sp(?s:.*?)width\(232\.dp\)(?s:.*?)heightIn\(min\s*=\s*52\.dp\)' `
         "Membership purchase success overlay must keep the modal dimming treatment and enlarged confirmation card."
     Require-Match $failures $chatScreen 'orderStatus\s*==\s*"paid"\s*&&\s*grantStatus\s*==\s*"success"(?s:.*?)membershipPaymentState\s*=\s*MembershipPaymentState\(\)(?s:.*?)membershipPurchaseSuccessVisible\s*=\s*true(?s:.*?)refreshMembershipEntitlement\(\)' `

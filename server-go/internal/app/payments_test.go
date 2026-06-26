@@ -40,6 +40,151 @@ func TestPaymentAmountCentsParsing(t *testing.T) {
 	}
 }
 
+func TestPlusToProUpgradeAmountCentsProratesRemainingPlusDays(t *testing.T) {
+	now := time.Date(2026, 6, 26, 10, 0, 0, 0, time.UTC).UnixMilli()
+	expireIn := func(d time.Duration) *int64 {
+		value := now + int64(d/time.Millisecond)
+		return &value
+	}
+	tests := []struct {
+		name     string
+		expireAt *int64
+		want     int
+	}{
+		{name: "no_plus_remaining", expireAt: nil, want: paymentRenewProAmountCents},
+		{name: "expired", expireAt: expireIn(-time.Hour), want: paymentRenewProAmountCents},
+		{name: "one_day_remaining", expireAt: expireIn(24 * time.Hour), want: 2924},
+		{name: "half_term_remaining", expireAt: expireIn(15 * 24 * time.Hour), want: 1995},
+		{name: "full_term_remaining", expireAt: expireIn(30 * 24 * time.Hour), want: 1000},
+		{name: "cap_more_than_full_term", expireAt: expireIn(45 * 24 * time.Hour), want: 1000},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := plusToProUpgradeAmountCents(now, tc.expireAt); got != tc.want {
+				t.Fatalf("plusToProUpgradeAmountCents=%d want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolvePaymentProductForOrderAppliesPlusToProDiscount(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	store := &Store{db: db}
+	userID := "acct_upgrade_discount"
+	now := time.Date(2026, 6, 26, 10, 0, 0, 0, time.UTC).UnixMilli()
+	expireAt := now + int64((15*24*time.Hour)/time.Millisecond)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierPlus), expireAt))
+
+	product, ok := paymentProductByType(paymentProductUpgradePlusPro)
+	if !ok {
+		t.Fatal("upgrade product missing")
+	}
+	got, err := store.ResolvePaymentProductForOrder(context.Background(), userID, product, now)
+	if err != nil {
+		t.Fatalf("ResolvePaymentProductForOrder error: %v", err)
+	}
+	if got.AmountCents != 1995 {
+		t.Fatalf("upgrade amount=%d want 1995", got.AmountCents)
+	}
+	if !strings.Contains(got.Body, "抵扣") {
+		t.Fatalf("upgrade body should mention discount, got %q", got.Body)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
+func TestCreatePaymentOrderStoresUpgradeDiscountOriginalAmountWhenTestAmountApplies(t *testing.T) {
+	clearAlipayPaymentGateTestEnv(t)
+	t.Setenv(alipayPaymentAllowedUserIDsEnv, "acct_upgrade_test")
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug")
+	t.Setenv(alipayPaymentTestAmountCentsEnv, "1")
+
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+
+	store := &Store{db: db}
+	userID := "acct_upgrade_test"
+	nowMs := time.Date(2026, 6, 26, 10, 0, 0, 0, time.UTC).UnixMilli()
+	expireAt := nowMs + int64((15*24*time.Hour)/time.Millisecond)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierPlus), expireAt))
+
+	product, ok := paymentProductByType(paymentProductUpgradePlusPro)
+	if !ok {
+		t.Fatal("upgrade product missing")
+	}
+	product, err = store.ResolvePaymentProductForOrder(context.Background(), userID, product, nowMs)
+	if err != nil {
+		t.Fatalf("ResolvePaymentProductForOrder error: %v", err)
+	}
+	originalAmountCents := product.AmountCents
+	if originalAmountCents != 1995 {
+		t.Fatalf("original upgrade amount=%d want 1995", originalAmountCents)
+	}
+
+	product, isTestOrder := applyAlipayPaymentTestAmount(product, userID, createAlipayOrderRequest{ClientBuildType: "debug"})
+	if !isTestOrder || product.AmountCents != 1 {
+		t.Fatalf("test amount applied=%v amount=%d, want 1 cent", isTestOrder, product.AmountCents)
+	}
+
+	outTradeNo := "NJQ202606260001"
+	mock.ExpectExec("INSERT INTO payment_orders").
+		WithArgs(
+			outTradeNo,
+			userID,
+			paymentProviderAlipay,
+			paymentProductUpgradePlusPro,
+			1,
+			"CNY",
+			product.Subject,
+			paymentStatusPending,
+			paymentGrantPending,
+			"1.0.10",
+			"android",
+			"debug",
+			11,
+			"1.2.3.x",
+			1,
+			originalAmountCents,
+			nowMs,
+			nowMs,
+		).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+
+	err = store.CreatePaymentOrder(context.Background(), paymentOrder{
+		OutTradeNo:          outTradeNo,
+		UserID:              userID,
+		Provider:            paymentProviderAlipay,
+		ProductType:         paymentProductUpgradePlusPro,
+		AmountCents:         product.AmountCents,
+		OriginalAmountCents: originalAmountCents,
+		Currency:            "CNY",
+		Subject:             product.Subject,
+		IsTestOrder:         isTestOrder,
+		CreatedAt:           nowMs,
+		UpdatedAt:           nowMs,
+	}, "1.0.10", "android", "debug", 11, "1.2.3.x")
+	if err != nil {
+		t.Fatalf("CreatePaymentOrder error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 func clearAlipayPaymentGateTestEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv(alipayPaymentPublicEnabledEnv, "")

@@ -385,12 +385,6 @@ func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	upgradeRemaining, err := s.store.GetUpgradeRemaining(ctx, auth.UserID)
-	if err != nil {
-		s.logger.Error("get upgrade remaining failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
 	membershipSource := ""
 	var giftCardRedeemedAt *int64
 	if tier == TierPlus || tier == TierPro {
@@ -408,7 +402,7 @@ func (s *Server) handleGetMe(w http.ResponseWriter, r *http.Request) {
 		"daily_remaining":          status.Remaining,
 		"topup_remaining":          topupRemaining,
 		"topup_earliest_expire_at": topupExpireAt,
-		"upgrade_remaining":        upgradeRemaining,
+		"upgrade_remaining":        0,
 		"membership_source":        membershipSource,
 		"gift_card_redeemed_at":    giftCardRedeemedAt,
 	})
@@ -697,7 +691,7 @@ func (s *Server) handleUpgradePlusToPro(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	replay, compensation, tier, tierExpireAt, upgradeRemaining, err := s.store.UpgradePlusToPro(ctx, auth.UserID, orderID)
+	replay, compensation, tier, tierExpireAt, _, err := s.store.UpgradePlusToPro(ctx, auth.UserID, orderID)
 	if err != nil {
 		switch err.Error() {
 		case "ALREADY_PRO":
@@ -722,7 +716,7 @@ func (s *Server) handleUpgradePlusToPro(w http.ResponseWriter, r *http.Request) 
 		"compensation":      compensation,
 		"tier":              tier,
 		"tier_expire_at":    tierExpireAt,
-		"upgrade_remaining": upgradeRemaining,
+		"upgrade_remaining": 0,
 	})
 }
 

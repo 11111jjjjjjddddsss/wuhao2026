@@ -1012,35 +1012,6 @@ func (s *Store) applyGiftCardTierTx(ctx context.Context, tx *sql.Tx, userID stri
 		base = *currentExpire
 	}
 	newExpire := time.UnixMilli(base).AddDate(0, 0, durationDays).UnixMilli()
-	if currentTier == TierPlus && cardTier == TierPro {
-		dayCN := GetTodayKeyCN(s.shanghai, time.UnixMilli(nowMs))
-		usedToday, err := s.getOrCreateDailyUsage(ctx, tx, userID, dayCN)
-		if err != nil {
-			return "", 0, err
-		}
-		todayRemainingPlus := maxInt(0, tierLimits[TierPlus]-usedToday)
-		expireAtOld := nowMs
-		if currentExpire != nil {
-			expireAtOld = *currentExpire
-		}
-		remainingFullDays := maxInt(0, dayIndexFromTsCN(s.shanghai, expireAtOld)-dayIndexFromTsCN(s.shanghai, nowMs))
-		compensation := todayRemainingPlus + remainingFullDays*tierLimits[TierPlus]
-		if _, err := tx.ExecContext(
-			ctx,
-			`INSERT INTO upgrade_credits(user_id, remaining, expire_at, updated_at)
-			 VALUES (?, ?, ?, ?)
-			 ON DUPLICATE KEY UPDATE
-			   remaining = remaining + VALUES(remaining),
-			   expire_at = NULL,
-			   updated_at = VALUES(updated_at)`,
-			userID,
-			compensation,
-			nil,
-			nowMs,
-		); err != nil {
-			return "", 0, err
-		}
-	}
 	if _, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO user_entitlement(user_id, tier, tier_expire_at, updated_at)

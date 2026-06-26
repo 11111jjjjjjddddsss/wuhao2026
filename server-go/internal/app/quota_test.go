@@ -438,13 +438,6 @@ func TestConsumeOnDoneAtDoesNotUseBenefitsCreatedAfterCompletion(t *testing.T) {
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT used FROM daily_usage WHERE user_id = ? AND day_cn = ? LIMIT 1 FOR UPDATE")).
 		WithArgs(userID, dayCN).
 		WillReturnRows(sqlmock.NewRows([]string{"used"}).AddRow(tierLimits[TierFree]))
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT remaining
-		 FROM upgrade_credits
-		 WHERE user_id = ? AND remaining > 0 AND updated_at <= ? AND (expire_at IS NULL OR expire_at > ?)
-		 LIMIT 1
-		 FOR UPDATE`)).
-		WithArgs(userID, completionAt, completionAt).
-		WillReturnRows(sqlmock.NewRows([]string{"remaining"}))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT pack_id, remaining
 		 FROM topup_packs
 		 WHERE user_id = ? AND status = 'active' AND remaining > 0 AND created_at <= ? AND (expire_at IS NULL OR expire_at > ?)

@@ -198,6 +198,8 @@ func TestShouldForceSearchForExplicitSearchIntent(t *testing.T) {
 	for _, text := range []string{
 		"这张叶片是什么病",
 		"帮我看看怎么用肥",
+		"亩产多少算正常",
+		"这个药多少天见效",
 		"葡萄叶子发黄怎么办",
 		"最新这片地苗情咋样",
 	} {
