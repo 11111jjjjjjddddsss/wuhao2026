@@ -7,11 +7,12 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
-func TestPrimaryChatClientUsesConfiguredModelSearchAndNoThinking(t *testing.T) {
+func TestPrimaryChatClientChatModeUsesConfiguredModelSearchAndNoThinking(t *testing.T) {
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {
@@ -29,10 +30,12 @@ func TestPrimaryChatClientUsesConfiguredModelSearchAndNoThinking(t *testing.T) {
 	defer server.Close()
 
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
 	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
 	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
 	t.Setenv("CHAT_PRIMARY_FORCE_SEARCH", "true")
+	t.Setenv("CHAT_PRIMARY_REASONING_EFFORT", "none")
 
 	response, err := NewPrimaryChatClientFromEnv().OpenStream(
 		context.Background(),
@@ -58,6 +61,9 @@ func TestPrimaryChatClientUsesConfiguredModelSearchAndNoThinking(t *testing.T) {
 	}
 	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
+	}
+	if got := captured["reasoning_effort"]; got != "none" {
+		t.Fatalf("reasoning_effort mismatch: %#v", got)
 	}
 	if _, ok := captured["thinking_budget"]; ok {
 		t.Fatalf("thinking_budget should be omitted when primary thinking is disabled: %#v", captured["thinking_budget"])
@@ -86,6 +92,7 @@ func TestPrimaryChatClientDoesNotForceSearchForImageMessages(t *testing.T) {
 	defer server.Close()
 
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
 	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
 	t.Setenv("CHAT_PRIMARY_FORCE_SEARCH", "true")
@@ -112,6 +119,181 @@ func TestPrimaryChatClientDoesNotForceSearchForImageMessages(t *testing.T) {
 	}
 	if got := searchOptions["forced_search"]; got != false {
 		t.Fatalf("forced_search for image message = %#v, want false", got)
+	}
+	if _, ok := captured["reasoning_effort"]; ok {
+		t.Fatalf("reasoning_effort should be omitted when not configured: %#v", captured["reasoning_effort"])
+	}
+}
+
+func TestPrimaryChatClientResponsesModeUsesAutoWebSearchAndLowReasoning(t *testing.T) {
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer primary-key" {
+			t.Fatalf("authorization header mismatch: %q", got)
+		}
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {\"response\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\n"))
+	}))
+	defer server.Close()
+
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
+	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
+	t.Setenv("CHAT_PRIMARY_REASONING_EFFORT", "none")
+
+	response, err := NewPrimaryChatClientFromEnv().OpenStream(
+		context.Background(),
+		[]BailianMessage{
+			{Role: "system", Content: "系统锚点"},
+			{Role: "user", Content: "今天尿素价格怎么样"},
+		},
+		BailianStreamOptions{ForceSearch: true},
+	)
+	if err != nil {
+		t.Fatalf("open primary responses stream: %v", err)
+	}
+	defer response.Body.Close()
+
+	if got := captured["model"]; got != "gpt-5.5" {
+		t.Fatalf("model mismatch: %#v", got)
+	}
+	if got := captured["stream"]; got != true {
+		t.Fatalf("stream mismatch: %#v", got)
+	}
+	if _, ok := captured["temperature"]; ok {
+		t.Fatalf("responses mode should leave temperature to provider default: %#v", captured["temperature"])
+	}
+	if _, ok := captured["max_output_tokens"]; ok {
+		t.Fatalf("responses mode should not hard-cap output tokens: %#v", captured["max_output_tokens"])
+	}
+	if _, ok := captured["max_tokens"]; ok {
+		t.Fatalf("responses mode should not set max_tokens: %#v", captured["max_tokens"])
+	}
+	if got := captured["tool_choice"]; got != "auto" {
+		t.Fatalf("tool_choice mismatch: %#v", got)
+	}
+	tools, ok := captured["tools"].([]any)
+	if !ok || len(tools) != 1 {
+		t.Fatalf("tools mismatch: %#v", captured["tools"])
+	}
+	tool, _ := tools[0].(map[string]any)
+	if got := tool["type"]; got != "web_search" {
+		t.Fatalf("tool type mismatch: %#v", got)
+	}
+	if got := tool["search_context_size"]; got != "low" {
+		t.Fatalf("search_context_size mismatch: %#v", got)
+	}
+	reasoning, ok := captured["reasoning"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing reasoning: %#v", captured["reasoning"])
+	}
+	if got := reasoning["effort"]; got != "low" {
+		t.Fatalf("responses reasoning effort should ignore chat-mode env and default low, got %#v", got)
+	}
+	instructions, _ := captured["instructions"].(string)
+	if !strings.Contains(instructions, "系统锚点") || !strings.Contains(instructions, "可按问题需要自行决定是否使用联网搜索") {
+		t.Fatalf("instructions missing expected text: %q", instructions)
+	}
+	input, ok := captured["input"].([]any)
+	if !ok || len(input) != 1 {
+		t.Fatalf("input mismatch: %#v", captured["input"])
+	}
+	first, _ := input[0].(map[string]any)
+	if got := first["role"]; got != "user" {
+		t.Fatalf("input role mismatch: %#v", got)
+	}
+	if got := first["content"]; got != "今天尿素价格怎么样" {
+		t.Fatalf("input content mismatch: %#v", got)
+	}
+}
+
+func TestPrimaryChatResponsesModeConvertsImageURLContent(t *testing.T) {
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {}\n\n"))
+	}))
+	defer server.Close()
+
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
+	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+
+	response, err := NewPrimaryChatClientFromEnv().OpenStream(
+		context.Background(),
+		[]BailianMessage{{
+			Role: "user",
+			Content: []map[string]any{
+				{"type": "text", "text": "看图诊断"},
+				{"type": "image_url", "image_url": map[string]any{"url": "https://example.com/a.jpg"}},
+			},
+		}},
+		BailianStreamOptions{},
+	)
+	if err != nil {
+		t.Fatalf("open primary responses stream: %v", err)
+	}
+	defer response.Body.Close()
+
+	input := captured["input"].([]any)
+	first := input[0].(map[string]any)
+	content := first["content"].([]any)
+	if got := content[0].(map[string]any)["type"]; got != "input_text" {
+		t.Fatalf("text part type = %#v", got)
+	}
+	if got := content[1].(map[string]any)["type"]; got != "input_image" {
+		t.Fatalf("image part type = %#v", got)
+	}
+	if got := content[1].(map[string]any)["image_url"]; got != "https://example.com/a.jpg" {
+		t.Fatalf("image_url = %#v", got)
+	}
+}
+
+func TestPrimaryChatRejectsUnsafeEndpointURL(t *testing.T) {
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", "http://evil.example")
+	if primaryChatConfigured() {
+		t.Fatalf("primary chat should reject non-local http endpoint")
+	}
+
+	t.Setenv("CHAT_PRIMARY_BASE_URL", "https://user:pass@example.com")
+	if primaryChatConfigured() {
+		t.Fatalf("primary chat should reject endpoint with userinfo")
+	}
+
+	t.Setenv("CHAT_PRIMARY_BASE_URL", "http://127.0.0.1:8080")
+	if !primaryChatConfigured() {
+		t.Fatalf("primary chat should allow local http endpoint for tests")
+	}
+}
+
+func TestPrimaryChatProviderLabelFallsBackForUnsafeValues(t *testing.T) {
+	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "中转联盟")
+	if got := primaryChatProviderLabel(); got != "中转联盟" {
+		t.Fatalf("safe provider label = %q", got)
+	}
+
+	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "https://gateway.example/v1")
+	if got := primaryChatProviderLabel(); got != "中转站" {
+		t.Fatalf("url provider label should fall back, got %q", got)
+	}
+
+	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "sk-abcdefghijklmnopqrstuvwxyz")
+	if got := primaryChatProviderLabel(); got != "中转站" {
+		t.Fatalf("secret-looking provider label should fall back, got %q", got)
 	}
 }
 
@@ -166,6 +348,7 @@ func TestOpenValidatedChatStreamPrefersPrimaryWhenHealthy(t *testing.T) {
 	defer bailianServer.Close()
 
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", primaryServer.URL)
 	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
 	t.Setenv("DASHSCOPE_API_KEY", "dashscope-key")
@@ -208,6 +391,7 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenPrimaryFailsBeforeStream(t
 	defer bailianServer.Close()
 
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", primaryServer.URL)
 	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
 	t.Setenv("DASHSCOPE_API_KEY", "dashscope-key")
@@ -232,5 +416,59 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenPrimaryFailsBeforeStream(t
 	}
 	if bailianHits != 1 {
 		t.Fatalf("bailian hits=%d, want 1", bailianHits)
+	}
+}
+
+func TestOpenValidatedChatStreamSkipsPrimaryForForcedSearch(t *testing.T) {
+	primaryHits := 0
+	primaryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		primaryHits++
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer primaryServer.Close()
+	var bailianCaptured map[string]any
+	bailianServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&bailianCaptured); err != nil {
+			t.Fatalf("decode bailian request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer bailianServer.Close()
+
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", primaryServer.URL)
+	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("DASHSCOPE_API_KEY", "dashscope-key")
+	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
+
+	server := &Server{
+		logger:      slog.New(slog.NewTextHandler(io.Discard, nil)),
+		primaryChat: NewPrimaryChatClientFromEnv(),
+		bailian:     NewBailianClient(),
+	}
+	response, provider, err := server.openValidatedChatStreamWithFallback(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "查一下今天小麦价格"}},
+		BailianStreamOptions{ForceSearch: true},
+	)
+	if err != nil {
+		t.Fatalf("open chat stream: %v", err)
+	}
+	defer response.Body.Close()
+	if provider != "bailian" {
+		t.Fatalf("provider = %q, want bailian", provider)
+	}
+	if primaryHits != 0 {
+		t.Fatalf("primary hits=%d, want 0", primaryHits)
+	}
+	searchOptions, ok := bailianCaptured["search_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing search_options: %#v", bailianCaptured["search_options"])
+	}
+	if got := searchOptions["forced_search"]; got != true {
+		t.Fatalf("bailian forced_search=%#v, want true", got)
 	}
 }

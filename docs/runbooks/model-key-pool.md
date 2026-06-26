@@ -7,8 +7,8 @@
 - Android 客户端不保存、不注入、不直连模型 Key；所有模型调用都只从 `server-go` 后端发起。
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
-- 当前后端会对主对话 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 Key 池，按配置顺序做主备使用。生产当前使用 `DASHSCOPE_KEY_SELECTION_MODE=fallback`：主 Key 优先吃满，副 Key 只在主 Key 开流前失败时兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
-- 主对话另有可选的“优先中转站”链路：`CHAT_PRIMARY_ENABLED=true` 时，后端会先调用中转站 OpenAI 兼容流式接口；开流前失败、超时、非 2xx 或非 SSE 时，立即回落原 DashScope / 百炼主备 Key 池。一旦上游 SSE 已开始，不在同一条回复中途切换。
+- 原千问主对话回落链路 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 DashScope / 百炼 Key 池，按配置顺序做主备使用。生产当前使用 `DASHSCOPE_KEY_SELECTION_MODE=fallback`：主 Key 优先吃满，副 Key 只在主 Key 开流前失败时兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
+- 主对话另有可选的“优先中转站”链路：`CHAT_PRIMARY_ENABLED=true` 时，后端会先调用中转站 OpenAI Responses 流式接口；开流前失败、超时、非 2xx、非 SSE，或已开流但 6 秒内没有用户可见正文时，立即回落原 DashScope / 百炼主备 Key 池。一旦已经向用户吐出可见正文，不在同一条回复中途切换。
 
 ## 环境变量
 
@@ -43,11 +43,15 @@ DASHSCOPE_API_KEYS
 
 ```text
 CHAT_PRIMARY_ENABLED=true
+CHAT_PRIMARY_API_MODE=responses
 CHAT_PRIMARY_BASE_URL=<中转站基础地址>
-CHAT_PRIMARY_CHAT_COMPLETIONS_URL=<可选，完整 /chat/completions 地址>
+CHAT_PRIMARY_RESPONSES_URL=<可选，完整 /responses 地址>
 CHAT_PRIMARY_API_KEY=<中转站Key>
+CHAT_PRIMARY_PROVIDER_LABEL=中转站
 CHAT_PRIMARY_MODEL=gpt-5.5
-CHAT_PRIMARY_FORCE_SEARCH=true
+CHAT_PRIMARY_RESPONSES_REASONING_EFFORT=low
+CHAT_PRIMARY_RESPONSES_SEARCH_CONTEXT_SIZE=low
+CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS=6
@@ -56,10 +60,14 @@ CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS=60
 
 说明：
 
-- `CHAT_PRIMARY_CHAT_COMPLETIONS_URL` 为空时，后端会把 `CHAT_PRIMARY_BASE_URL` 拼成 OpenAI 兼容 `/v1/chat/completions`。
-- 中转站请求显式发送 `temperature=0.8`、`enable_thinking=false`、`enable_search=true` 和流式返回，不发送 `top_p`、`max_tokens` 或 `thinking_budget`。
-- `CHAT_PRIMARY_FORCE_SEARCH=true` 表示优先中转站链路对纯文字主聊天强制联网；带图片消息不强制中转站搜索，避免“图片 + 强制搜索”在中转站侧长时间无响应。回落千问时仍按原主聊天搜索策略。
+- `CHAT_PRIMARY_API_MODE` 默认是 `responses`；仅应急回滚旧兼容链路时才设为 `chat`。
+- Responses 模式下，`CHAT_PRIMARY_RESPONSES_URL` 为空时，后端会把 `CHAT_PRIMARY_BASE_URL` 拼成 OpenAI 兼容 `/v1/responses`。
+- Responses 模式下，中转站请求会发送 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=low` 和流式返回；不发送 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或 `thinking_budget`，输出长度继续靠主聊天提示词控制。
+- Responses 模式只追加一条中性联网工具规则：模型可自行判断是否联网，涉及今天、最新、当前、实时、价格、行情、政策、天气、购买渠道等实时信息时再联网，普通农技知识和图片可见信息直接回答；不追加“简洁回答”、字数限制或质量测试提示。
+- `CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS` 按“用户可见正文首字”计算，不把搜索事件、空格、换行或内部事件当首字；超过该时间仍无可见正文时回落原千问链路。若回落时原请求本来是明确实时 / 价格 / 行情意图，千问仍按原 `ForceSearch` 口径走 `turbo` 搜索。
+- `CHAT_PRIMARY_PROVIDER_LABEL` 只用于后台监控展示备注，不参与请求、不暴露 Key。
 - 中转站密钥只能放服务器环境变量 / 本机私密配置，不写入仓库、runbook、聊天记录、日志或后台页面。
+- 旧 Chat Completions 兼容模式只作应急回滚：需要显式设置 `CHAT_PRIMARY_API_MODE=chat`，必要时再配置 `CHAT_PRIMARY_CHAT_COMPLETIONS_URL=<完整 /chat/completions 地址>`；该模式不是当前生产推荐配置。
 
 ## 运行策略
 
@@ -71,7 +79,7 @@ CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS=60
 - 如果某把 Key 在模型请求打开阶段返回 `401 / 403 / 429`，或返回带限流 / quota 语义的 `400`，后端会在响应交给业务层前换下一把 Key 再试。
 - 触发上述限流 / 鉴权类失败的 Key 会进入短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；后续请求会优先跳过冷却中的 Key。
 - 主对话只在 SSE 流真正开始前换 Key；一旦上游已经返回成功 SSE，后端不会在同一条回复生成过程中切换 Key，避免半条回复和重复成本。
-- 主对话优先中转站同样只在开流前回落：如果中转站已经返回成功 SSE 头，后端会继续读该条流；若后续首字慢或内容质量差，本轮不会中途换到千问，避免半条回答和重复扣费。需要优化首字体验时，优先调小 `CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS` 或直接关闭 `CHAT_PRIMARY_ENABLED`。
+- 主对话优先中转站会在开流前错误和 6 秒无可见正文两类场景回落；如果已经向用户吐出可见正文，本轮不会中途换到千问，避免半条回答和重复扣费。需要临时回滚时，优先关闭 `CHAT_PRIMARY_ENABLED`。
 - 如果所有 Key 都限流或不可用，最后一次上游错误会正常返回给业务层，Android 仍按现有失败提示处理。
 
 ## 联网搜索限流
@@ -79,7 +87,7 @@ CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS=60
 - 阿里云官方文档说明：联网搜索限流是 15 RPS，按阿里云主账号维度计算，所有 API Key 的联网搜索请求总和计入，不区分模型。
 - 超过联网搜索限流时，API 不会报错，但搜索链路不会触发；主聊天会自然退成未联网回答，不需要后端额外打一轮“不联网重试”。
 - 这个 15 RPS 是联网搜索链路限制，不等同于模型 RPM / TPM。模型请求仍受对应模型的 RPM / TPM 约束，Key 池 auto 模式只负责请求级分流和开流前错误 failover。
-- 原千问主聊天回落链路默认 `forced_search=false`，所以模型判断无需联网、或联网搜索触发限流时，都可能不触发搜索；中转站优先链路在纯文字主聊天可强制联网，带图片消息不强制中转站搜索。今日农情是强制联网生成，仍需单独观察生成任务成功率。
+- 原千问主聊天回落链路默认 `forced_search=false`，所以模型判断无需联网、或联网搜索触发限流时，都可能不触发搜索；当后端识别到价格、行情、购买渠道、查资料等明确联网意图时，会保留 `ForceSearch=true`，若中转站 6 秒无可见正文或开流失败回落千问，千问会按原口径走 `turbo` 搜索。今日农情是强制联网生成，仍需单独观察生成任务成功率。
 
 新增配置：
 
@@ -107,7 +115,7 @@ DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=120
 1. 确认后端运行环境变量已配置至少一把 Key，且没有把真实 Key 写进仓库。
 2. 如果仍频繁限流，先确认 Key 是否来自不同阿里云主账号；同主账号多个 Key 不会增加真实 RPM / TPM。
 3. 查看后端日志里的上游状态码：`429` 通常是请求或 token 限流，`401 / 403` 多数是 Key 权限、状态或账号问题。
-4. 如果主聊天慢，先看日志里的 `provider`：`primary` 表示走中转站，`bailian` 表示已回落千问。`/healthz` 的 `chat_primary=ok` 只代表中转站配置完整，不代表每条实际生成质量或首字速度都达标。
+4. 如果主聊天慢，先看日志里的 `provider`：`primary_responses` 表示走中转站 Responses，`primary` 表示旧 Chat Completions 兼容链路，`bailian` 表示已回落千问。`/healthz` 的 `chat_primary=ok` 只代表中转站配置完整，`chat_primary_api_mode / chat_primary_search_context_size / chat_primary_reasoning_effort / chat_primary_first_visible_timeout_seconds` 只说明当前参数口径，不代表每条实际生成质量、联网质量或首字速度都达标。
 5. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情当前固定使用 `qwen3.5-plus + OpenAI compatible chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`。`agent / agent_max` 会带来更多检索和 token 成本，今日农情默认不用。日志会尽量记录 `model_input_tokens / model_output_tokens / model_total_tokens / model_reasoning_tokens / model_search_count`，优先用这些字段判断成本、思考是否关闭和搜索是否触发；兼容 Chat 链路通常没有结构化搜索来源列表，`source_count=0` 不一定表示没联网。2026-06-08 的 `qwen3.5-plus + Responses web_search` 只是旧排障阶段结论，不再是当前生产主线。
 6. 如果在评估记忆文档摘要模型成本，不要只看 `qwen-plus` 资源包单价。按用户提供的两档包价计算：`12000千 token / 11.66元` 折合约 `0.972元 / 百万 token`，`110000千 token / 99.4元` 折合约 `0.904元 / 百万 token`；而 `qwen-plus` 按量输入约 `0.8元 / 百万`、输出约 `2元 / 百万`，后一档资源包也要输出 token 占比超过约 `8.6%` 才比 plus 按量更划算。记忆文档摘要通常是输入长、输出短，资源包本身不是省钱保证；当前先按质量优先固定 `qwen-plus`。
 7. 如果要临时回滚到单 Key，只保留 `DASHSCOPE_API_KEY` 或只保留 `DASHSCOPE_API_KEY_1`，删除其它 Key 槽位后重启后端。若要回滚中转站主链，只设置 `CHAT_PRIMARY_ENABLED=false` 或删除 `CHAT_PRIMARY_API_KEY` 后重启后端，不需要改 Android。

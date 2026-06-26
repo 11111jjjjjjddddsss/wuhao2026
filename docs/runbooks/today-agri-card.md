@@ -18,7 +18,7 @@
 - 后台补跑接口：`POST /admin-api/v1/today-agri/generate`，仅 `owner / content_ops`
 - 后台人工发布接口：`POST /admin-api/v1/today-agri/manual`，仅 `owner / content_ops`；该接口仍写同一张 `daily_agri_cards`，不是第二套内容系统
 - 当前生产推荐主链：ECS systemd timer 每天约 05:35 主触发一次，并有约 05:50 / 06:10 两次早晨补查；后台补跑只作为异常兜底。人工发布适合晚上准备次日 3 条内容，发布后会标记 `source_type=manual / manual_locked=1 / manual_by / manual_at`，同一天自动生成和补跑只复用缓存，不覆盖人工内容。没人人工发布时，原自动生成继续兜底
-- 主聊天联网链仍是百炼兼容模式 `chat/completions + enable_search=true + search_strategy=turbo + forced_search=false`；今日农情固定独立走 OpenAI 兼容 `chat/completions + qwen3.5-plus + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true`，两条链路分开，不互相影响。`enable_thinking=false` 必须放在请求顶层。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和更长延迟，今日农情默认不使用；当前不保留 Flash、qwen-turbo、Responses、multimodal 或 DashScope `text-generation/generation` 作为生产候选，也不提供环境变量模型切换入口。用户端已经取消外部链接点击，公开接口只返回标题、摘要和短来源名称；URL、source_index 和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户文本
+- 主聊天可启用中转站 Responses 优先链路并回落原千问主备 Key 池；今日农情仍固定独立走 OpenAI 兼容 `chat/completions + qwen3.5-plus + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true`，两条链路分开，不互相影响。`enable_thinking=false` 必须放在今日农情请求顶层。`agent / agent_max` 属于多轮检索整合且通常带来更多输入 token 和更长延迟，今日农情默认不使用；当前不保留 Flash、qwen-turbo、Responses、multimodal 或 DashScope `text-generation/generation` 作为今日农情生产候选，也不提供环境变量模型切换入口。用户端已经取消外部链接点击，公开接口只返回标题、摘要和短来源名称；URL、source_index 和发布日期只保留在服务端存储、后台和内部探针里，用于事实核对、去重和排查，不下发给 Android 用户文本
 
 ## 环境变量
 

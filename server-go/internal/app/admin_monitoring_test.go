@@ -453,6 +453,48 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 	}
 }
 
+func TestAdminMonitoringModelUsagePolicyWithPrimaryChat(t *testing.T) {
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", "https://primary.example")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "中转联盟")
+	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
+
+	rows := buildAdminMonitoringModelUsagePolicy()
+	mainRow := findAdminMonitoringModelPolicy(rows, "主聊天问诊")
+	if mainRow == nil {
+		t.Fatalf("missing main chat model usage policy: %#v", rows)
+	}
+	assertContainsAll(t, mainRow.Model, "中转联盟", "gpt-5.5", "兜底")
+	assertContainsAll(t, mainRow.SearchStrategy, "Responses", "自动联网最低档", "6 秒无可见正文回落千问 turbo")
+	if mainRow.ForcedSearch {
+		t.Fatalf("primary chat row should not claim blanket forced search: %#v", mainRow)
+	}
+	if mainRow.ThinkingDisabled {
+		t.Fatalf("primary chat row should describe low reasoning, not disabled thinking, on responses path: %#v", mainRow)
+	}
+	assertContainsAll(t, mainRow.CostNote, "Responses 流式模型", "搜索上下文低档", "思考低档", "6 秒无可见正文", "回落千问主备 Key")
+}
+
+func TestAdminMonitoringModelUsagePolicyWithPrimaryChatCompletionsCompatibility(t *testing.T) {
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", "https://primary.example")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "中转联盟")
+	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
+
+	rows := buildAdminMonitoringModelUsagePolicy()
+	mainRow := findAdminMonitoringModelPolicy(rows, "主聊天问诊")
+	if mainRow == nil {
+		t.Fatalf("missing main chat model usage policy: %#v", rows)
+	}
+	assertContainsAll(t, mainRow.SearchStrategy, "Chat Completions", "旧兼容链路", "回落千问 turbo")
+	if !strings.Contains(mainRow.CostNote, "旧兼容模式") || strings.Contains(mainRow.CostNote, "Responses 流式模型") {
+		t.Fatalf("chat compatibility row should not masquerade as responses: %#v", mainRow)
+	}
+}
+
 func TestAdminMonitoringLaunchReadinessRequiresRealChatEvidence(t *testing.T) {
 	base := AdminMonitoring{
 		Health: AdminHealthStatus{

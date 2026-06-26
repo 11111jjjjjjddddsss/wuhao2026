@@ -584,6 +584,7 @@ var (
 	dashScopeAPIKeyPattern        = regexp.MustCompile(`sk-[A-Za-z0-9_-]{8,}`)
 	dashScopePhonePattern         = regexp.MustCompile(`1[3-9][0-9]{9}`)
 	dashScopeCredentialPattern    = regexp.MustCompile(`(?i)(AccessKey(Id|Secret)?|SecurityToken|Signature(Nonce)?)[=:]\s*[^,\s"']+`)
+	dashScopeJSONSecretPattern    = regexp.MustCompile(`(?i)"(token|api[_-]?key|secret|password|passwd|pwd)"\s*:\s*"[^"]*"`)
 	dashScopeGenericSecretPattern = regexp.MustCompile(`(?i)\b(token|api[_-]?key|secret|password|passwd|pwd)\b\s*[=:]\s*[^,\s"']+`)
 )
 
@@ -597,6 +598,7 @@ func sanitizeDashScopeErrorMessage(message string) string {
 	cleaned = dashScopeAPIKeyPattern.ReplaceAllString(cleaned, "sk-[redacted]")
 	cleaned = dashScopePhonePattern.ReplaceAllString(cleaned, "[phone]")
 	cleaned = dashScopeCredentialPattern.ReplaceAllString(cleaned, "[redacted]")
+	cleaned = dashScopeJSONSecretPattern.ReplaceAllString(cleaned, `"$1":"[redacted]"`)
 	cleaned = dashScopeGenericSecretPattern.ReplaceAllString(cleaned, "[redacted]")
 	cleaned = strings.Join(strings.Fields(cleaned), " ")
 	return truncateRunes(cleaned, 160)

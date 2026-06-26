@@ -4329,7 +4329,7 @@ function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): str
                 ${tableCell("响应方式", escapeHTML(modelPolicyProtocolText(row)))}
                 ${tableCell("触发时机", escapeHTML(row.trigger || "未返回"))}
                 ${tableCell("联网", modelSearchPolicyText(row))}
-                ${tableCell("说明", `${escapeHTML(modelPolicyNoteText(row))}<div class="small muted">增强推理：${row.thinking_disabled ? "未启用" : "已启用"}</div>`)}
+                ${tableCell("说明", `${escapeHTML(modelPolicyNoteText(row))}<div class="small muted">思考：${escapeHTML(modelThinkingPolicyText(row))}</div>`)}
               </tr>
             `).join("")}
           </tbody>
@@ -4340,6 +4340,8 @@ function modelUsagePolicyBlock(rows: AdminMonitoring["model_usage_policy"]): str
 }
 
 function modelPolicyDisplayText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  if (row.title.includes("主聊天") && row.search_strategy?.includes("Responses")) return "中转站优先链路";
+  if (row.title.includes("主聊天") && row.search_strategy?.includes("中转站")) return "中转站优先链路";
   if (row.title.includes("主聊天")) return "生产问诊链路";
   if (row.title.includes("记忆")) return "生产记忆摘要链路";
   if (row.title.includes("今日农情")) return "生产农情生成链路";
@@ -4355,6 +4357,9 @@ function modelPolicyProtocolText(row: AdminMonitoring["model_usage_policy"][numb
 
 function modelPolicyNoteText(row: AdminMonitoring["model_usage_policy"][number]): string {
   if (row.title.includes("主聊天")) {
+    if (row.search_strategy?.includes("Responses")) {
+      return "优先走中转站 Responses 流式链路，联网和思考均为低档；6 秒无可见正文或开流失败会回落原后端主备链路。Android 不保存服务密钥。";
+    }
     if (row.search_strategy?.includes("中转站") || row.forced_search) {
       return "优先走中转站流式链路，开流失败会自动回落到原后端主备链路；Android 不保存服务密钥。";
     }
@@ -4366,9 +4371,15 @@ function modelPolicyNoteText(row: AdminMonitoring["model_usage_policy"][number])
 }
 
 function modelSearchPolicyText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  if (row.title.includes("主聊天") && row.search_strategy?.includes("Responses")) return "自动联网低档；6 秒无可见正文回落";
   if (row.title.includes("主聊天") && row.search_strategy?.includes("纯文字强制")) return "纯文字强制联网；带图不强制";
   if (!row.search_strategy) return row.forced_search ? "强制联网" : "不联网";
   return row.forced_search ? "强制联网" : "可联网";
+}
+
+function modelThinkingPolicyText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  if (row.title.includes("主聊天") && row.search_strategy?.includes("Responses")) return "低档";
+  return row.thinking_disabled ? "未启用" : "已启用";
 }
 
 function authTroubleshootingBlock(authLogs: AdminMonitoring["auth_logs"] | undefined): string {

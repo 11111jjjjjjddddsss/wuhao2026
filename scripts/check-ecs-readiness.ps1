@@ -425,7 +425,7 @@ for key in \
   LISTEN_ADDR LISTEN_HOST PORT \
   ALLOW_DEV_ORDER_ENDPOINTS \
   UPLOAD_STORAGE_BACKEND OSS_BUCKET OSS_ENDPOINT OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET \
-  CHAT_PRIMARY_ENABLED CHAT_PRIMARY_BASE_URL CHAT_PRIMARY_CHAT_COMPLETIONS_URL CHAT_PRIMARY_MODEL CHAT_PRIMARY_API_KEY CHAT_PRIMARY_FORCE_SEARCH CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS \
+  CHAT_PRIMARY_ENABLED CHAT_PRIMARY_PROVIDER_LABEL CHAT_PRIMARY_API_MODE CHAT_PRIMARY_BASE_URL CHAT_PRIMARY_CHAT_COMPLETIONS_URL CHAT_PRIMARY_RESPONSES_URL CHAT_PRIMARY_MODEL CHAT_PRIMARY_API_KEY CHAT_PRIMARY_REASONING_EFFORT CHAT_PRIMARY_RESPONSES_REASONING_EFFORT CHAT_PRIMARY_RESPONSES_SEARCH_CONTEXT_SIZE CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS CHAT_PRIMARY_FORCE_SEARCH CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS \
   DASHSCOPE_API_KEY DASHSCOPE_API_KEY_1 DASHSCOPE_API_KEY_2 DASHSCOPE_API_KEY_3 DASHSCOPE_API_KEYS DASHSCOPE_KEY_COOLDOWN_SECONDS \
   DASHSCOPE_KEY_SELECTION_MODE DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS \
   APP_ANDROID_UPDATE_ENABLED APP_UPDATE_ALLOW_FORCE_UPDATE APP_ANDROID_LATEST_VERSION_CODE APP_ANDROID_APK_URL APP_ANDROID_APK_SHA256 APP_ANDROID_FILE_SIZE_BYTES \
@@ -469,6 +469,27 @@ chat_primary_enabled=$(env_value CHAT_PRIMARY_ENABLED || true)
 if is_truthy "$chat_primary_enabled" && ! grep -q '"chat_primary":"ok"' "$health_body" 2>/dev/null; then
   echo 'CHAT_PRIMARY_ENABLED is true but healthz chat_primary is not ok' >&2
   exit 16
+fi
+if is_truthy "$chat_primary_enabled"; then
+  chat_primary_api_mode=$(env_value CHAT_PRIMARY_API_MODE || true)
+  if [ -z "$chat_primary_api_mode" ]; then
+    chat_primary_api_mode='responses'
+  fi
+  chat_primary_api_mode=$(printf '%s' "$chat_primary_api_mode" | tr '[:upper:]' '[:lower:]' | xargs)
+  if [ "$chat_primary_api_mode" != "responses" ]; then
+    echo 'CHAT_PRIMARY_ENABLED production readiness expects CHAT_PRIMARY_API_MODE=responses' >&2
+    exit 16
+  fi
+  for expected in \
+    '"chat_primary_api_mode":"responses"' \
+    '"chat_primary_search_context_size":"low"' \
+    '"chat_primary_reasoning_effort":"low"' \
+    '"chat_primary_first_visible_timeout_seconds":6'; do
+    if ! grep -q "$expected" "$health_body" 2>/dev/null; then
+      echo "healthz missing expected chat primary marker: $expected" >&2
+      exit 16
+    fi
+  done
 fi
 
 app_android_update_enabled=$(env_value APP_ANDROID_UPDATE_ENABLED || true)

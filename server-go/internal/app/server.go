@@ -303,7 +303,7 @@ func (s *Server) registerRoutes() {
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	redisStatus := redisHealthStatus(r.Context(), s.redisClient)
 	smsStatus := ternary(s.sms.HasConfigured() && redisStatus == "ok", "ok", "missing_config")
-	s.writeJSON(w, http.StatusOK, map[string]any{
+	payload := map[string]any{
 		"ok":                  true,
 		"bailian":             ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
 		"chat_primary":        primaryChatHealthStatus(s.primaryChat),
@@ -318,7 +318,16 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		"auth_strict":         IsAuthStrict(),
 		"dev_order_endpoints": devOrderEndpointsEnabled(),
 		"revision":            deploymentRevision(),
-	})
+	}
+	if primaryChatConfigured() {
+		payload["chat_primary_api_mode"] = primaryChatAPIMode()
+		if primaryChatUsesResponses() {
+			payload["chat_primary_search_context_size"] = primaryChatResponsesSearchContextSize()
+			payload["chat_primary_reasoning_effort"] = primaryChatResponsesReasoningEffort()
+			payload["chat_primary_first_visible_timeout_seconds"] = int(resolvePrimaryChatFirstVisibleTimeout(resolveChatStreamMaxDuration()).Seconds())
+		}
+	}
+	s.writeJSON(w, http.StatusOK, payload)
 }
 
 func deploymentRevision() string {
