@@ -140,7 +140,7 @@ func (s *Server) recordAdminAuditLog(r *http.Request, fallbackActor string, acti
 		Actor:        adminActorFromRequest(r, fallbackActor),
 		Action:       normalizeClientLogIdentifier(action, 96),
 		TargetType:   normalizeClientLogIdentifier(targetType, 64),
-		TargetID:     truncateRunes(strings.TrimSpace(targetID), 191),
+		TargetID:     "",
 		TargetUserID: truncateRunes(strings.TrimSpace(targetUserID), 191),
 		Success:      success,
 		StatusCode:   statusCode,
@@ -152,9 +152,21 @@ func (s *Server) recordAdminAuditLog(r *http.Request, fallbackActor string, acti
 	if input.Action == "" || input.TargetType == "" {
 		return
 	}
+	input.TargetID = truncateRunes(normalizeAdminAuditTargetID(input.TargetType, targetID), 191)
 	if err := s.store.CreateAdminAuditLog(ctx, input); err != nil {
 		s.logger.Warn("create admin audit log failed", "action", input.Action, "error", err)
 	}
+}
+
+func normalizeAdminAuditTargetID(targetType string, rawTargetID string) string {
+	targetID := strings.TrimSpace(rawTargetID)
+	if targetID == "" {
+		return ""
+	}
+	if targetType == "payment_orders" {
+		return paymentIDLogSuffix(targetID)
+	}
+	return targetID
 }
 
 func normalizeAdminAuditUserAgent(raw string) string {

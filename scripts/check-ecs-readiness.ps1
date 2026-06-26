@@ -1,7 +1,8 @@
 param(
     [string]$RegionId = "cn-beijing",
     [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
-    [string]$ExpectedRevision = ""
+    [string]$ExpectedRevision = "",
+    [string]$ExpectedAlipayPaymentGate = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -349,12 +350,16 @@ for expected in \
   fi
 done
 server_revision=$(sed -nE 's/.*"revision":"([^"]*)".*/\1/p' "$health_body" 2>/dev/null | head -n 1)
+alipay_payment_gate=$(sed -nE 's/.*"alipay_payment_gate":"([^"]*)".*/\1/p' "$health_body" 2>/dev/null | head -n 1)
 if [ -z "$server_revision" ]; then
   echo 'server_revision=missing'
   echo 'healthz revision is missing' >&2
   exit 12
 else
   echo "server_revision=$server_revision"
+fi
+if [ -n "$alipay_payment_gate" ]; then
+  echo "alipay_payment_gate=$alipay_payment_gate"
 fi
 
 echo
@@ -549,4 +554,14 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedRevision)) {
         throw "Readiness revision mismatch: expected=$ExpectedRevision actual=$actualRevision"
     }
     Write-Host "expected_revision_match=true"
+}
+if (-not [string]::IsNullOrWhiteSpace($ExpectedAlipayPaymentGate)) {
+    $actualGate = [regex]::Match($final.Output, "(?m)^alipay_payment_gate=([^\s]+)\s*$").Groups[1].Value
+    if ([string]::IsNullOrWhiteSpace($actualGate)) {
+        throw "Readiness check did not report alipay_payment_gate; expected $ExpectedAlipayPaymentGate"
+    }
+    if ($actualGate -ne $ExpectedAlipayPaymentGate) {
+        throw "Readiness Alipay payment gate mismatch: expected=$ExpectedAlipayPaymentGate actual=$actualGate"
+    }
+    Write-Host "expected_alipay_payment_gate_match=true"
 }

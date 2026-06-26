@@ -1106,11 +1106,12 @@ func (s *Server) handleAdminRefundPaymentOrder(w http.ResponseWriter, r *http.Re
 		s.writeError(w, http.StatusConflict, "payment_not_refundable")
 		return
 	}
-	if (order.GrantStatus == paymentGrantSuccess || order.EntitlementOrderID != "") && !order.IsTestOrder {
+	if (order.GrantStatus == paymentGrantSuccess || order.GrantedAt != nil) && !order.IsTestOrder {
 		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{
 			"error_code":            "payment_refund_requires_manual_entitlement_review",
 			"grant_status":          order.GrantStatus,
 			"has_entitlement_order": order.EntitlementOrderID != "",
+			"has_granted_at":        order.GrantedAt != nil,
 		})
 		s.writeError(w, http.StatusConflict, "payment_refund_requires_manual_entitlement_review")
 		return

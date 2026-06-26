@@ -2889,6 +2889,7 @@ function paymentOrderActions(row: AdminOrderEntry): string {
   const status = (row.status || "").toLowerCase();
   const grantStatus = (row.grant_status || "").toLowerCase();
   const refundStatus = (row.refund_status || "").toLowerCase();
+  const isTestOrder = row.is_test_order === true;
   const actions = [
     `<button class="button small-button" type="button" data-action="query-payment-order" data-out-trade-no="${escapeAttr(row.order_id)}">查单</button>`,
   ];
@@ -2897,7 +2898,7 @@ function paymentOrderActions(row: AdminOrderEntry): string {
   }
   if (
     status === "paid" &&
-    grantStatus !== "success" &&
+    (grantStatus !== "success" || isTestOrder) &&
     refundStatus !== "success" &&
     refundStatus !== "processing" &&
     refundStatus !== "unknown"

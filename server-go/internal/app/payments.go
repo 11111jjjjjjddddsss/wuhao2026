@@ -50,6 +50,7 @@ const (
 
 	paymentGrantProcessingRetryAfter      = 5 * time.Minute
 	paymentMembershipMinRemainingForOrder = 45 * time.Minute
+	paymentPendingOrderBlockWindow        = 30 * time.Minute
 
 	alipayPaymentPublicEnabledEnv     = "ALIPAY_PAYMENT_PUBLIC_ENABLED"
 	alipayPaymentAllowedUserIDsEnv    = "ALIPAY_PAYMENT_ALLOWED_USER_IDS"
@@ -693,13 +694,24 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 		s.writeError(w, paymentProductHTTPStatus(err), err.Error())
 		return
 	}
+	now := time.Now()
+	pending, found, err := s.store.FindRecentPendingPaymentOrderForProduct(ctx, auth.UserID, product.Type, now.Add(-paymentPendingOrderBlockWindow).UnixMilli())
+	if err != nil {
+		s.logger.Error("check pending payment order failed", "userId", auth.UserID, "product", product.Type, "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if found {
+		s.logger.Info("alipay order blocked by pending order", "userId", auth.UserID, "product", product.Type, "pendingOutTradeSuffix", paymentIDLogSuffix(pending.OutTradeNo))
+		s.writeError(w, http.StatusConflict, "PAYMENT_PENDING_ORDER_EXISTS")
+		return
+	}
 	outTradeNo, err := newPaymentOutTradeNo()
 	if err != nil {
 		s.logger.Error("create payment out_trade_no failed", "userId", auth.UserID, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	now := time.Now()
 	orderString, err := s.alipay.BuildAppPayOrder(outTradeNo, product, now)
 	if err != nil {
 		s.logger.Error("build alipay order failed", "userId", auth.UserID, "product", product.Type, "error", err)
@@ -889,6 +901,47 @@ func (s *Store) ValidatePaymentProduct(ctx context.Context, userID string, produ
 		return fmt.Errorf("INVALID_PRODUCT")
 	}
 	return nil
+}
+
+func paymentProductPendingFamily(productType string) []string {
+	switch productType {
+	case paymentProductBuyTopup:
+		return []string{paymentProductBuyTopup}
+	case paymentProductRenewPlus, paymentProductRenewPro, paymentProductUpgradePlusPro:
+		return []string{paymentProductRenewPlus, paymentProductRenewPro, paymentProductUpgradePlusPro}
+	default:
+		return nil
+	}
+}
+
+func (s *Store) FindRecentPendingPaymentOrderForProduct(ctx context.Context, userID string, productType string, sinceMs int64) (paymentOrder, bool, error) {
+	productTypes := paymentProductPendingFamily(productType)
+	if userID == "" || len(productTypes) == 0 || sinceMs <= 0 {
+		return paymentOrder{}, false, nil
+	}
+	placeholders := make([]string, 0, len(productTypes))
+	args := []any{userID, paymentProviderAlipay, paymentStatusPending, sinceMs}
+	for _, item := range productTypes {
+		placeholders = append(placeholders, "?")
+		args = append(args, item)
+	}
+	query := paymentOrderSelectSQL() + `
+		  WHERE user_id = ?
+		    AND provider = ?
+		    AND status = ?
+		    AND paid_at IS NULL
+		    AND created_at >= ?
+		    AND product_type IN (` + strings.Join(placeholders, ",") + `)
+		  ORDER BY created_at DESC
+		  LIMIT 1`
+	order, err := scanPaymentOrder(s.db.QueryRowContext(ctx, query, args...))
+	if err == sql.ErrNoRows {
+		return paymentOrder{}, false, nil
+	}
+	if err != nil {
+		return paymentOrder{}, false, err
+	}
+	return order, true, nil
 }
 
 func (s *Store) CreatePaymentOrder(ctx context.Context, order paymentOrder, clientAppVersion string, clientPlatform string, clientBuildType string, clientVersionCode int, clientIPMask string) error {

@@ -374,6 +374,69 @@ func TestValidatePaymentProductRejectsInvalidMembershipTransitions(t *testing.T)
 	}
 }
 
+func TestFindRecentPendingPaymentOrderForProductBlocksMembershipFamily(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	defer db.Close()
+
+	store := &Store{db: db}
+	userID := "acct_payment_user"
+	outTradeNo := "NJ20260626120000ABCDEF"
+	sinceMs := int64(1782600000000)
+	createdAt := sinceMs + 1000
+
+	mock.ExpectQuery("SELECT out_trade_no, user_id, provider, product_type").
+		WithArgs(
+			userID,
+			paymentProviderAlipay,
+			paymentStatusPending,
+			sinceMs,
+			paymentProductRenewPlus,
+			paymentProductRenewPro,
+			paymentProductUpgradePlusPro,
+		).
+		WillReturnRows(paymentOrderRows().AddRow(
+			outTradeNo,
+			userID,
+			paymentProviderAlipay,
+			paymentProductRenewPlus,
+			1990,
+			"CNY",
+			"农技千查 Plus 会员30天",
+			1990,
+			1,
+			paymentStatusPending,
+			nil,
+			nil,
+			nil,
+			paymentGrantPending,
+			nil,
+			nil,
+			0,
+			nil,
+			createdAt,
+			createdAt,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+		))
+
+	order, found, err := store.FindRecentPendingPaymentOrderForProduct(context.Background(), userID, paymentProductRenewPro, sinceMs)
+	if err != nil {
+		t.Fatalf("FindRecentPendingPaymentOrderForProduct error=%v", err)
+	}
+	if !found || order.OutTradeNo != outTradeNo || order.ProductType != paymentProductRenewPlus {
+		t.Fatalf("pending order mismatch found=%v order=%+v", found, order)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestGrantPaidPaymentOrderKeepsAlipayRetryWhenAlreadyProcessing(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

@@ -3,6 +3,7 @@
     [string]$BaseUrl = "https://api.nongjiqiancha.cn",
     [int]$TimeoutSec = 12,
     [switch]$SkipPublicHealth,
+    [switch]$StrictPublicHealth,
     [switch]$RunPublicNotifyProbe,
     [switch]$AllowPublicPayment,
     [switch]$AllowTestAmount
@@ -84,7 +85,7 @@ function Write-PrereqGroupStatus {
 }
 
 Write-Host "== payment readiness =="
-Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth run_public_notify_probe=$RunPublicNotifyProbe allow_public_payment=$AllowPublicPayment allow_test_amount=$AllowTestAmount"
+Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth strict_public_health=$StrictPublicHealth run_public_notify_probe=$RunPublicNotifyProbe allow_public_payment=$AllowPublicPayment allow_test_amount=$AllowTestAmount"
 
 $appBuildPath = Join-Path $RepoRoot "app/build.gradle.kts"
 $manifestPath = Join-Path $RepoRoot "app/src/main/AndroidManifest.xml"
@@ -172,6 +173,8 @@ Require-Match -Name "server_alipay_enabled_requires_seller" -Content $payments -
 Require-Match -Name "server_alipay_grant_retry_guard" -Content $payments -Pattern "PAYMENT_GRANT_IN_PROGRESS"
 Require-Match -Name "server_alipay_grant_claim_timestamp" -Content $payments -Pattern "COALESCE\(grant_claimed_at,\s*updated_at\)"
 Require-Match -Name "server_manual_payment_grant_uses_same_grant_path" -Content $payments -Pattern "manuallyGrantPaidPaymentOrder(?s:.*?)grantPaidPaymentOrder"
+Require-Match -Name "server_payment_pending_order_family_guard" -Content $payments -Pattern "paymentProductPendingFamily(?s:.*?)FindRecentPendingPaymentOrderForProduct"
+Require-Match -Name "server_payment_pending_order_conflict_code" -Content $payments -Pattern "PAYMENT_PENDING_ORDER_EXISTS"
 Require-Match -Name "server_alipay_no_paid_downgrade" -Content $payments -Pattern 'order\.Status\s*==\s*paymentStatusPaid(?s:.*?)last_notify_json'
 Require-Match -Name "server_alipay_refund_unknown_on_failed_response" -Content $payments -Pattern "MarkPaymentRefundUnknown"
 Require-Match -Name "server_alipay_refund_order_update_tx" -Content $payments -Pattern "CreatePaymentRefundPending(?s:.*?)BeginTx(?s:.*?)UPDATE payment_orders"
@@ -192,6 +195,7 @@ Require-Match -Name "admin_payment_grant_button" -Content $adminMain -Pattern "g
 Require-Match -Name "admin_payment_grant_confirmation" -Content $adminMain -Pattern 'confirmation:\s*"补发"'
 Require-Match -Name "admin_payment_query_button" -Content $adminMain -Pattern "query-payment-order"
 Require-Match -Name "admin_payment_refund_button" -Content $adminMain -Pattern "refund-payment-order"
+Require-Match -Name "admin_payment_test_order_refund_action" -Content $adminMain -Pattern 'row\.is_test_order === true(?s:.*?)grantStatus !== "success" \|\| isTestOrder'
 Require-Match -Name "admin_payment_reconciliation_panel" -Content $adminMain -Pattern "payment-reconciliation"
 Require-Match -Name "admin_payment_close_expired_panel" -Content $adminMain -Pattern "payment-close-expired"
 Require-Match -Name "admin_order_types_provider_fields" -Content $adminTypes -Pattern "provider_trade_no"
@@ -268,7 +272,12 @@ if (-not $SkipPublicHealth) {
             Write-Host "public_alipay_notify_fake_status=skipped"
         }
     } catch {
-        Add-WarningItem "public healthz probe failed: $($_.Exception.Message)"
+        $message = "public healthz probe failed: $($_.Exception.Message)"
+        if ($StrictPublicHealth) {
+            Add-ErrorItem $message
+        } else {
+            Add-WarningItem $message
+        }
     }
 }
 

@@ -296,6 +296,8 @@ if ($failures.Count -eq 0) {
         "Android app update availability must require a newer version, SHA-256 and a positive bounded file size."
     Require-Match $failures $sessionApi 'APP_UPDATE_OFFICIAL_APK_HOST\s*=\s*"download\.nongjiqiancha\.cn"(?s:.*?)APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\s*=\s*"/android/releases/"(?s:.*?)isStableAppUpdateApkUrl' `
         "Android app update availability must be limited to the official download domain and release APK path."
+    Require-Match $failures $sessionApi 'paymentSensitiveKeys\s*=\s*setOf\((?s:.*?)"order_string"(?s:.*?)"out_trade_no"(?s:.*?)"provider_trade_no"(?s:.*?)"trade_no"(?s:.*?)"memo"(?s:.*?)"raw_result"(?s:.*?)"payment_params"' `
+        "Android client-log sanitizer must hard-deny full payment order strings, trade numbers, memo/raw result, and payment params."
     Require-Match $failures $sessionApi 'parsed\.host\.equals\(APP_UPDATE_OFFICIAL_APK_HOST,\s*ignoreCase\s*=\s*true\)(?s:.*?)encodedPath\s*=\s*parsed\.encodedPath\.lowercase\(Locale\.US\)(?s:.*?)decodedPath\s*=\s*decodeAppUpdateUrlGuardValue\(parsed\.encodedPath\)\.lowercase\(Locale\.US\)(?s:.*?)encodedPath\.startsWith\(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\)(?s:.*?)decodedPath\.startsWith\(APP_UPDATE_OFFICIAL_APK_PATH_PREFIX\)' `
         "Android app update URL validation must reject external APK hosts and encoded/decoded non-release paths."
     Require-Match $failures $sessionApi 'encodedPath\.endsWith\("\.apk"\)(?s:.*?)decodedPath\.endsWith\("\.apk"\)(?s:.*?)encodedPath\.contains\("\.\."\)(?s:.*?)decodedPath\.contains\("\.\."\)(?s:.*?)internalMarkers\s*=\s*listOf\("test-apks",\s*"debug",\s*"internal",\s*"staging"\)(?s:.*?)decodedUrl\.contains\(marker\)(?s:.*?)decodedPath\.contains\(marker\)' `

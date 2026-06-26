@@ -9,10 +9,11 @@ const adminMain = read("admin/src/main.ts");
 const adminTypes = read("admin/src/types.ts");
 const serverRoutes = read("server-go/internal/app/server.go");
 const adminAPI = read("server-go/internal/app/admin_api.go");
+const adminAudit = read("server-go/internal/app/admin_audit.go");
 const giftCards = read("server-go/internal/app/gift_cards.go");
 const supportGo = read("server-go/internal/app/support.go");
 const uploadGo = read("server-go/internal/app/upload.go");
-const serverSurface = `${adminAPI}\n${giftCards}\n${supportGo}\n${uploadGo}`;
+const serverSurface = `${adminAPI}\n${adminAudit}\n${giftCards}\n${supportGo}\n${uploadGo}`;
 
 const fail = [];
 
@@ -207,6 +208,23 @@ rejectServerPattern("admin gift card monitoring must not gate on future valid_fr
 rejectServerPattern("admin gift card monitoring text must not imply activation gate", /生效且未过期/);
 expectAdminPattern("orders page warns about Alipay bill reconciliation", /生产放量前以支付宝账单和对账结果为准/);
 rejectAdminPattern("orders page must not imply actual income", /金额合计/);
+expectServerPattern("payment grant requires finance role", /handleAdminGrantPaymentOrder[\s\S]*?requireAdmin\(w,\s*r,\s*"finance_ops"\)/);
+expectServerPattern("payment query requires finance role", /handleAdminQueryPaymentOrder[\s\S]*?requireAdmin\(w,\s*r,\s*"finance_ops"\)/);
+expectServerPattern("payment refund requires finance role", /handleAdminRefundPaymentOrder[\s\S]*?requireAdmin\(w,\s*r,\s*"finance_ops"\)/);
+expectServerPattern("payment close requires finance role", /handleAdminCloseExpiredPaymentOrders[\s\S]*?requireAdmin\(w,\s*r,\s*"finance_ops"\)/);
+expectServerPattern("payment reconciliation requires finance role", /handleAdminPaymentReconciliation[\s\S]*?requireAdmin\(w,\s*r,\s*"finance_ops"\)/);
+expectServerPattern("payment grant requires typed keyword", /handleAdminGrantPaymentOrder[\s\S]*?body\.Confirmation\)\s*!=\s*"补发"/);
+expectServerPattern("payment query requires typed keyword", /handleAdminQueryPaymentOrder[\s\S]*?body\.Confirmation\)\s*!=\s*"查单"/);
+expectServerPattern("payment refund requires typed keyword", /handleAdminRefundPaymentOrder[\s\S]*?body\.Confirmation\)\s*!=\s*"退款"/);
+expectServerPattern("payment close requires typed keyword", /handleAdminCloseExpiredPaymentOrders[\s\S]*?body\.Confirmation\)\s*!=\s*"关闭"/);
+expectServerPattern("payment audit target stores suffix only", /normalizeAdminAuditTargetID[\s\S]*?targetType\s*==\s*"payment_orders"[\s\S]*?paymentIDLogSuffix\(targetID\)/);
+expectAdminPattern("payment grant asks for safe reason", /请输入补发原因。只写必要处理说明，不要写完整手机号、密钥、token 或支付参数全文。/);
+expectAdminPattern("payment query asks typed confirmation", /请输入 查单 确认同步这笔订单状态。/);
+expectAdminPattern("payment refund asks typed confirmation", /请输入 退款 确认发起全额退款。/);
+expectAdminPattern("payment close asks typed confirmation", /请输入 关闭 确认关闭超时待支付订单。/);
+expectAdminPattern("payment refund explains entitlement is manual", /会员或加油包权益不会自动扣回，需要人工核查/);
+expectAdminPattern("payment action rendering is finance gated", /paymentOrderActions[\s\S]*?!canManagePaymentOps\(\)[\s\S]*?data-action="query-payment-order"[\s\S]*?data-action="refund-payment-order"/);
+expectAdminPattern("payment test order paid success can still show refund action", /const isTestOrder = row\.is_test_order === true;[\s\S]*?\(grantStatus !== "success" \|\| isTestOrder\)[\s\S]*?data-action="refund-payment-order"/);
 expectAdminPattern("app update separates switch from delivery", /是否会下发/);
 expectAdminPattern("app update labels switch as switch", /发布开关/);
 expectAdminPattern("app update enable requires typed versionCode and release command", /请输入 \$\{latestVersionCode\} 确认已获正式发版口令，并对外启用这次更新/);

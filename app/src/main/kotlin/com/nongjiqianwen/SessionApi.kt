@@ -820,7 +820,28 @@ object SessionApi {
 
     private fun isSensitiveClientLogAttrKey(key: String): Boolean {
         val normalized = key.lowercase()
+        val paymentSensitiveKeys = setOf(
+            "order_string",
+            "alipay_order_string",
+            "payment_order_string",
+            "out_trade_no",
+            "provider_trade_no",
+            "trade_no",
+            "buyer_id",
+            "buyer_logon_id",
+            "seller_id",
+            "seller_email",
+            "memo",
+            "raw_memo",
+            "result",
+            "raw_result",
+            "payment_params",
+            "pay_params",
+        )
         return normalized.contains("phone") ||
+            normalized in paymentSensitiveKeys ||
+            normalized.endsWith("_order_string") ||
+            normalized.endsWith("-order-string") ||
             normalized == "token" ||
             normalized == "key" ||
             normalized == "url" ||
@@ -1324,6 +1345,7 @@ object SessionApi {
             errorCode == "ALREADY_PRO" -> "当前已是 Pro 会员"
             errorCode == "TOPUP_LIMIT_REACHED" -> "加油包用完后再购买，未用完次数会长期保留"
             errorCode == "MEMBERSHIP_EXPIRING_SOON" -> "会员快到期了，请先续费后再购买"
+            errorCode == "PAYMENT_PENDING_ORDER_EXISTS" -> "已有待支付订单，请先完成或稍后再试"
             errorCode == "INVALID_PRODUCT" -> "购买项目暂时不可用"
             statusCode >= 500 -> "下单失败，请稍后再试"
             else -> "下单失败，请稍后再试"
