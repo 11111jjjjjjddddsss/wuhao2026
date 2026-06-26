@@ -895,7 +895,7 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, messag
 	if s.primaryChat != nil && s.primaryChat.Enabled() {
 		response, err := s.openValidatedPrimaryChatStream(ctx, messages, options)
 		if err == nil {
-			s.logger.Info("primary chat upstream selected", "provider", "primary", "model", primaryChatModelName(), "forced_search", primaryChatForceSearch(options.ForceSearch))
+			s.logger.Info("primary chat upstream selected", "provider", "primary", "model", primaryChatModelName(), "forced_search", primaryChatForceSearch(options.ForceSearch, messages))
 			return response, "primary", nil
 		}
 		s.logger.Warn("primary chat upstream failed before stream; falling back to bailian", "provider", "primary", "model", primaryChatModelName(), "error", err)

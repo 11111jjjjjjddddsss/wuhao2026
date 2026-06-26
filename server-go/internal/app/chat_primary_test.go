@@ -74,16 +74,57 @@ func TestPrimaryChatClientUsesConfiguredModelSearchAndNoThinking(t *testing.T) {
 	}
 }
 
-func TestPrimaryChatClientDefaultsToThreeSecondOpenTimeouts(t *testing.T) {
+func TestPrimaryChatClientDoesNotForceSearchForImageMessages(t *testing.T) {
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
+	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_FORCE_SEARCH", "true")
+
+	response, err := NewPrimaryChatClientFromEnv().OpenStream(
+		context.Background(),
+		[]BailianMessage{{
+			Role: "user",
+			Content: []map[string]any{
+				{"type": "text", "text": "看图诊断"},
+				{"type": "image_url", "image_url": map[string]any{"url": "https://example.com/a.jpg"}},
+			},
+		}},
+		BailianStreamOptions{ForceSearch: true},
+	)
+	if err != nil {
+		t.Fatalf("open primary stream: %v", err)
+	}
+	defer response.Body.Close()
+
+	searchOptions, ok := captured["search_options"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing search_options: %#v", captured["search_options"])
+	}
+	if got := searchOptions["forced_search"]; got != false {
+		t.Fatalf("forced_search for image message = %#v, want false", got)
+	}
+}
+
+func TestPrimaryChatClientDefaultsToSixSecondOpenTimeouts(t *testing.T) {
 	transport, ok := NewPrimaryChatClientFromEnv().httpClient.Transport.(*http.Transport)
 	if !ok {
 		t.Fatalf("transport type = %T, want *http.Transport", NewPrimaryChatClientFromEnv().httpClient.Transport)
 	}
-	if got := transport.TLSHandshakeTimeout; got != 3*time.Second {
-		t.Fatalf("TLSHandshakeTimeout = %v, want 3s", got)
+	if got := transport.TLSHandshakeTimeout; got != 6*time.Second {
+		t.Fatalf("TLSHandshakeTimeout = %v, want 6s", got)
 	}
-	if got := transport.ResponseHeaderTimeout; got != 3*time.Second {
-		t.Fatalf("ResponseHeaderTimeout = %v, want 3s", got)
+	if got := transport.ResponseHeaderTimeout; got != 6*time.Second {
+		t.Fatalf("ResponseHeaderTimeout = %v, want 6s", got)
 	}
 }
 

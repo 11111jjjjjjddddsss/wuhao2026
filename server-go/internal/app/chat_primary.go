@@ -14,9 +14,9 @@ import (
 
 const (
 	defaultPrimaryChatModel                 = "gpt-5.5"
-	defaultPrimaryChatDialTimeout           = 3 * time.Second
-	defaultPrimaryChatTLSHandshakeTimeout   = 3 * time.Second
-	defaultPrimaryChatResponseHeaderTimeout = 3 * time.Second
+	defaultPrimaryChatDialTimeout           = 6 * time.Second
+	defaultPrimaryChatTLSHandshakeTimeout   = 6 * time.Second
+	defaultPrimaryChatResponseHeaderTimeout = 6 * time.Second
 	defaultPrimaryChatIdleConnTimeout       = 60 * time.Second
 )
 
@@ -70,7 +70,7 @@ func (c *PrimaryChatClient) OpenStream(ctx context.Context, messages []BailianMe
 		},
 		"enable_search": true,
 		"search_options": map[string]any{
-			"forced_search": primaryChatForceSearch(options.ForceSearch),
+			"forced_search": primaryChatForceSearch(options.ForceSearch, messages),
 		},
 		"messages": messages,
 	}
@@ -113,11 +113,45 @@ func primaryChatModelName() string {
 	return firstNonEmpty(strings.TrimSpace(os.Getenv("CHAT_PRIMARY_MODEL")), defaultPrimaryChatModel)
 }
 
-func primaryChatForceSearch(requestForceSearch bool) bool {
+func primaryChatForceSearch(requestForceSearch bool, messages []BailianMessage) bool {
+	if primaryChatMessagesContainImage(messages) {
+		return false
+	}
 	if parseBoolEnv(os.Getenv("CHAT_PRIMARY_FORCE_SEARCH")) {
 		return true
 	}
 	return requestForceSearch
+}
+
+func primaryChatMessagesContainImage(messages []BailianMessage) bool {
+	for _, message := range messages {
+		if contentContainsImageURL(message.Content) {
+			return true
+		}
+	}
+	return false
+}
+
+func contentContainsImageURL(content any) bool {
+	switch value := content.(type) {
+	case []map[string]any:
+		for _, item := range value {
+			if itemType, _ := item["type"].(string); strings.EqualFold(itemType, "image_url") {
+				return true
+			}
+		}
+	case []any:
+		for _, item := range value {
+			if contentContainsImageURL(item) {
+				return true
+			}
+		}
+	case map[string]any:
+		if itemType, _ := value["type"].(string); strings.EqualFold(itemType, "image_url") {
+			return true
+		}
+	}
+	return false
 }
 
 func primaryChatCompletionsURL() string {

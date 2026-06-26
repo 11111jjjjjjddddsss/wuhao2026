@@ -48,9 +48,9 @@ CHAT_PRIMARY_CHAT_COMPLETIONS_URL=<可选，完整 /chat/completions 地址>
 CHAT_PRIMARY_API_KEY=<中转站Key>
 CHAT_PRIMARY_MODEL=gpt-5.5
 CHAT_PRIMARY_FORCE_SEARCH=true
-CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS=3
-CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS=3
-CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS=3
+CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS=6
+CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS=6
+CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS=60
 ```
 
@@ -58,7 +58,7 @@ CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS=60
 
 - `CHAT_PRIMARY_CHAT_COMPLETIONS_URL` 为空时，后端会把 `CHAT_PRIMARY_BASE_URL` 拼成 OpenAI 兼容 `/v1/chat/completions`。
 - 中转站请求显式发送 `temperature=0.8`、`enable_thinking=false`、`enable_search=true` 和流式返回，不发送 `top_p`、`max_tokens` 或 `thinking_budget`。
-- `CHAT_PRIMARY_FORCE_SEARCH=true` 表示优先中转站链路默认强制联网；回落千问时仍按原主聊天搜索策略。
+- `CHAT_PRIMARY_FORCE_SEARCH=true` 表示优先中转站链路对纯文字主聊天强制联网；带图片消息不强制中转站搜索，避免“图片 + 强制搜索”在中转站侧长时间无响应。回落千问时仍按原主聊天搜索策略。
 - 中转站密钥只能放服务器环境变量 / 本机私密配置，不写入仓库、runbook、聊天记录、日志或后台页面。
 
 ## 运行策略

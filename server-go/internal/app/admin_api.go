@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -3316,7 +3317,7 @@ func mainChatMonitoringSearchStrategy() string {
 
 func mainChatMonitoringForcedSearch() bool {
 	if primaryChatConfigured() {
-		return primaryChatForceSearch(false)
+		return parseBoolEnv(os.Getenv("CHAT_PRIMARY_FORCE_SEARCH"))
 	}
 	return false
 }
@@ -3330,7 +3331,7 @@ func mainChatMonitoringThinkingDisabled() bool {
 
 func mainChatMonitoringCostNote() string {
 	if primaryChatConfigured() {
-		return "主聊天优先走中转站流式模型，联网开启、思考关闭；开流失败、超时、非流式或非 2xx 时快速回落千问主备 Key。Android 端仍不保存模型 Key。"
+		return "主聊天优先走中转站流式模型，纯文字强制联网、带图不强制搜索、思考关闭；开流失败、超时、非流式或非 2xx 时快速回落千问主备 Key。Android 端仍不保存模型 Key。"
 	}
 	return "纯文字默认非思考；带图问诊默认启用小预算思考。可联网但不强制搜索；不会在 Android 端保存模型 Key。"
 }
