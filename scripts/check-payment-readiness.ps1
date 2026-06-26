@@ -135,6 +135,7 @@ Require-NoMatch -Name "android_privacy_no_old_no_payment_sdk_copy" -Content $ham
 Require-Match -Name "server_create_alipay_order_route" -Content $server -Pattern 'POST /api/payments/alipay/orders'
 Require-Match -Name "server_get_payment_order_route" -Content $server -Pattern 'GET /api/payments/orders'
 Require-Match -Name "server_alipay_notify_route" -Content $server -Pattern 'POST /api/payments/alipay/notify'
+Require-Match -Name "server_admin_payment_grant_route" -Content $server -Pattern 'POST /admin-api/v1/orders/grant'
 Require-Match -Name "server_healthz_alipay" -Content $server -Pattern '"alipay"\s*:\s*s\.alipay\.HealthStatus\(\)'
 Require-Match -Name "server_healthz_alipay_payment_gate" -Content $server -Pattern '"alipay_payment_gate"\s*:\s*alipayPaymentOrderGateStatus\(\)'
 Require-Match -Name "server_alipay_app_pay_api" -Content $payments -Pattern "alipay\.trade\.app\.pay"
@@ -154,6 +155,7 @@ Require-Match -Name "server_alipay_seller_required" -Content $payments -Pattern 
 Require-Match -Name "server_alipay_enabled_requires_seller" -Content $payments -Pattern "c\.sellerID\s*!="
 Require-Match -Name "server_alipay_grant_retry_guard" -Content $payments -Pattern "PAYMENT_GRANT_IN_PROGRESS"
 Require-Match -Name "server_alipay_grant_claim_timestamp" -Content $payments -Pattern "COALESCE\(grant_claimed_at,\s*updated_at\)"
+Require-Match -Name "server_manual_payment_grant_uses_same_grant_path" -Content $payments -Pattern "manuallyGrantPaidPaymentOrder(?s:.*?)grantPaidPaymentOrder"
 Require-Match -Name "server_alipay_no_paid_downgrade" -Content $payments -Pattern 'order\.Status\s*==\s*paymentStatusPaid(?s:.*?)last_notify_json'
 Require-Match -Name "server_payment_log_suffix" -Content $payments -Pattern "paymentIDLogSuffix"
 Require-NoMatch -Name "server_no_full_payment_id_logs" -Content $payments -Pattern 'logger\.(Info|Warn|Error)\([^\\r\\n]*"(outTradeNo|tradeNo)"'
@@ -165,10 +167,13 @@ Require-Match -Name "db_payment_orders_test_metadata_upgrade" -Content $testMeta
 Require-Match -Name "db_payment_orders_test_metadata_index" -Content $testMetadataMigration -Pattern "idx_payment_orders_test_created"
 
 Require-Match -Name "admin_orders_mentions_payment" -Content $adminMain -Pattern "支付订单"
+Require-Match -Name "admin_payment_grant_button" -Content $adminMain -Pattern "grant-payment-order"
+Require-Match -Name "admin_payment_grant_confirmation" -Content $adminMain -Pattern 'confirmation:\s*"补发"'
 Require-Match -Name "admin_order_types_provider_fields" -Content $adminTypes -Pattern "provider_trade_no"
 Require-Match -Name "runbook_alipay_notify_url" -Content $paymentsRunbook -Pattern "https://api\.nongjiqiancha\.cn/api/payments/alipay/notify"
 Require-Match -Name "runbook_alipay_app_pay_api" -Content $paymentsRunbook -Pattern "alipay\.trade\.app\.pay"
 Require-Match -Name "runbook_formal_validation_gate" -Content $paymentsRunbook -Pattern "正式收费开放前"
+Require-Match -Name "runbook_manual_payment_grant_scope" -Content $paymentsRunbook -Pattern "status=paid"
 Require-Match -Name "site_third_party_mentions_alipay" -Content $thirdPartyPage -Pattern "支付宝 APP 支付 SDK"
 Require-NoMatch -Name "site_third_party_no_old_no_payment_sdk_copy" -Content $thirdPartyPage -Pattern "当前版本不接入[^。]*支付[^。]*第三方 SDK"
 

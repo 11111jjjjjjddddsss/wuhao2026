@@ -446,6 +446,119 @@ func TestGrantPaidPaymentOrderMarksNeedsOpsForBusinessConflict(t *testing.T) {
 	}
 }
 
+func TestManuallyGrantPaidPaymentOrderRetriesNeedsOps(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	defer db.Close()
+
+	store := &Store{db: db}
+	outTradeNo := "NJ20260623120000ABCDEF"
+	entitlementOrderID := "pay_" + outTradeNo
+	userID := "acct_payment_user"
+	nowMs := int64(1782200000000)
+
+	mock.ExpectExec("UPDATE payment_orders").
+		WithArgs(
+			paymentGrantPending,
+			nowMs,
+			outTradeNo,
+			paymentStatusPaid,
+			paymentGrantPending,
+			paymentGrantFailed,
+			paymentGrantNeedsOps,
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE payment_orders").
+		WithArgs(
+			paymentGrantProcessing,
+			nowMs,
+			nowMs,
+			outTradeNo,
+			paymentStatusPaid,
+			paymentGrantPending,
+			paymentGrantFailed,
+			paymentGrantProcessing,
+			sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT out_trade_no, user_id, provider, product_type").
+		WithArgs(outTradeNo).
+		WillReturnRows(paymentOrderRows().AddRow(
+			outTradeNo,
+			userID,
+			paymentProviderAlipay,
+			paymentProductRenewPlus,
+			1990,
+			"CNY",
+			"农技千查 Plus 会员30天",
+			1990,
+			0,
+			paymentStatusPaid,
+			"20260623220000000001",
+			"TRADE_SUCCESS",
+			nil,
+			paymentGrantProcessing,
+			nil,
+			nowMs-60000,
+			nowMs,
+			nowMs-1000,
+			nil,
+		))
+	mock.ExpectBegin()
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT user_id, type, result_json FROM orders WHERE order_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(entitlementOrderID).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1 FOR UPDATE")).
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierFree), nil))
+	mock.ExpectExec(regexp.QuoteMeta("UPDATE user_entitlement SET tier = ?, tier_expire_at = ?, updated_at = ? WHERE user_id = ?")).
+		WithArgs(string(TierPlus), sqlmock.AnyArg(), sqlmock.AnyArg(), userID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO orders").
+		WithArgs(entitlementOrderID, userID, "renew_plus", plusTierPrice, sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE payment_orders").
+		WithArgs(paymentGrantSuccess, entitlementOrderID, sqlmock.AnyArg(), sqlmock.AnyArg(), outTradeNo).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT out_trade_no, user_id, provider, product_type").
+		WithArgs(outTradeNo).
+		WillReturnRows(paymentOrderRows().AddRow(
+			outTradeNo,
+			userID,
+			paymentProviderAlipay,
+			paymentProductRenewPlus,
+			1990,
+			"CNY",
+			"农技千查 Plus 会员30天",
+			1990,
+			0,
+			paymentStatusPaid,
+			"20260623220000000001",
+			"TRADE_SUCCESS",
+			entitlementOrderID,
+			paymentGrantSuccess,
+			nil,
+			nowMs-60000,
+			nowMs,
+			nowMs-1000,
+			nowMs+1000,
+		))
+
+	order, err := store.manuallyGrantPaidPaymentOrder(context.Background(), outTradeNo, nowMs)
+	if err != nil {
+		t.Fatalf("manuallyGrantPaidPaymentOrder error=%v, want nil", err)
+	}
+	if order.GrantStatus != paymentGrantSuccess || order.EntitlementOrderID != entitlementOrderID {
+		t.Fatalf("order grant status=%q entitlement=%q, want success/%q", order.GrantStatus, order.EntitlementOrderID, entitlementOrderID)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
 func TestCompleteAlipayPaymentDoesNotDowngradePaidOrderOnClosedNotify(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

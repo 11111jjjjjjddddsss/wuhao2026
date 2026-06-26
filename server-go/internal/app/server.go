@@ -223,6 +223,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /admin-api/v1/quota-consume-outbox", s.handleAdminQuotaConsumeOutbox)
 	s.mux.HandleFunc("POST /admin-api/v1/quota-consume-outbox/action", s.handleAdminQuotaConsumeOutboxAction)
 	s.mux.HandleFunc("GET /admin-api/v1/orders", s.handleAdminOrders)
+	s.mux.HandleFunc("POST /admin-api/v1/orders/grant", s.handleAdminGrantPaymentOrder)
 	s.mux.HandleFunc("GET /admin-api/v1/users", s.handleAdminUsers)
 	s.mux.HandleFunc("GET /admin-api/v1/users/detail", s.handleAdminUserDetail)
 	s.mux.HandleFunc("GET /admin-api/v1/support/conversations", s.handleAdminSupportConversations)

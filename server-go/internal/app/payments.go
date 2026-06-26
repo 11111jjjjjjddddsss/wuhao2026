@@ -890,6 +890,33 @@ func (s *Store) grantPaidPaymentOrder(ctx context.Context, outTradeNo string, no
 	return err
 }
 
+func (s *Store) manuallyGrantPaidPaymentOrder(ctx context.Context, outTradeNo string, nowMs int64) (paymentOrder, error) {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE payment_orders
+		    SET grant_status = ?, grant_error = NULL, grant_claimed_at = NULL, updated_at = ?
+		  WHERE out_trade_no = ?
+		    AND status = ?
+		    AND grant_status IN (?, ?, ?)`,
+		paymentGrantPending,
+		nowMs,
+		outTradeNo,
+		paymentStatusPaid,
+		paymentGrantPending,
+		paymentGrantFailed,
+		paymentGrantNeedsOps,
+	)
+	if err != nil {
+		return paymentOrder{}, err
+	}
+	grantErr := s.grantPaidPaymentOrder(ctx, outTradeNo, nowMs)
+	order, getErr := s.getPaymentOrderByOutTradeNo(ctx, outTradeNo)
+	if getErr != nil {
+		return paymentOrder{}, getErr
+	}
+	return order, grantErr
+}
+
 func (s *Store) grantPaymentProduct(ctx context.Context, userID string, productType string, entitlementOrderID string) error {
 	switch productType {
 	case paymentProductRenewPlus:

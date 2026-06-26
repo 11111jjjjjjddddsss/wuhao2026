@@ -464,6 +464,12 @@ type AdminOrderQuery struct {
 	Limit  int    `json:"limit"`
 }
 
+type adminPaymentGrantRequest struct {
+	OutTradeNo   string `json:"out_trade_no"`
+	Reason       string `json:"reason"`
+	Confirmation string `json:"confirmation"`
+}
+
 type AdminPlaceholderStatus struct {
 	Status string `json:"status"`
 	Note   string `json:"note"`
@@ -794,6 +800,116 @@ func (s *Server) handleAdminOrders(w http.ResponseWriter, r *http.Request) {
 		"filter": filter,
 		"note":   "orders_readonly",
 	})
+}
+
+func (s *Server) handleAdminGrantPaymentOrder(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "finance_ops")
+	if !ok {
+		return
+	}
+	var body adminPaymentGrantRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	outTradeNo := normalizeAdminPaymentOutTradeNo(body.OutTradeNo)
+	reason := strings.TrimSpace(body.Reason)
+	if outTradeNo == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "out_trade_no_required"})
+		s.writeError(w, http.StatusBadRequest, "out_trade_no_required")
+		return
+	}
+	if reason == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "reason_required"})
+		s.writeError(w, http.StatusBadRequest, "reason_required")
+		return
+	}
+	if len([]rune(reason)) > 300 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "reason_too_long"})
+		s.writeError(w, http.StatusBadRequest, "reason_too_long")
+		return
+	}
+	if strings.TrimSpace(body.Confirmation) != "补发" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "confirmation_mismatch"})
+		s.writeError(w, http.StatusBadRequest, "confirmation_mismatch")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	existing, err := s.store.getPaymentOrderByOutTradeNo(ctx, outTradeNo)
+	if err != nil {
+		status := http.StatusInternalServerError
+		code := "internal_error"
+		if err == sql.ErrNoRows {
+			status = http.StatusNotFound
+			code = "payment_order_not_found"
+		}
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, "", false, status, map[string]any{"error_code": code})
+		s.writeError(w, status, code)
+		return
+	}
+	if existing.Status != paymentStatusPaid {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, existing.UserID, false, http.StatusConflict, map[string]any{
+			"error_code": "payment_not_paid",
+			"status":     existing.Status,
+		})
+		s.writeError(w, http.StatusConflict, "payment_not_paid")
+		return
+	}
+	if existing.GrantStatus == paymentGrantSuccess {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, existing.UserID, false, http.StatusConflict, map[string]any{"error_code": "payment_grant_already_success"})
+		s.writeError(w, http.StatusConflict, "payment_grant_already_success")
+		return
+	}
+
+	order, err := s.store.manuallyGrantPaidPaymentOrder(ctx, outTradeNo, time.Now().UnixMilli())
+	if err != nil {
+		statusCode := http.StatusInternalServerError
+		errorCode := "payment_grant_failed"
+		switch strings.ToUpper(strings.TrimSpace(err.Error())) {
+		case "PAYMENT_GRANT_IN_PROGRESS":
+			statusCode = http.StatusConflict
+			errorCode = "payment_grant_in_progress"
+		case "PAYMENT_NOT_PAID":
+			statusCode = http.StatusConflict
+			errorCode = "payment_not_paid"
+		case "PAYMENT_GRANT_NOT_CLAIMED":
+			statusCode = http.StatusConflict
+			errorCode = "payment_grant_not_claimed"
+		}
+		s.logger.Error("admin grant payment order failed", "outTradeSuffix", paymentIDLogSuffix(outTradeNo), "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, existing.UserID, false, statusCode, map[string]any{
+			"error_code":   safePaymentErrorCode(err),
+			"product_type": existing.ProductType,
+			"grant_status": existing.GrantStatus,
+			"reason":       truncateRunes(reason, 120),
+		})
+		s.writeError(w, statusCode, errorCode)
+		return
+	}
+	if order.GrantStatus != paymentGrantSuccess {
+		code := "payment_grant_not_completed"
+		if order.GrantStatus == paymentGrantNeedsOps {
+			code = "payment_grant_needs_ops"
+		}
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{
+			"error_code":   code,
+			"product_type": order.ProductType,
+			"grant_status": order.GrantStatus,
+			"reason":       truncateRunes(reason, 120),
+		})
+		s.writeError(w, http.StatusConflict, code)
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.grant", "payment_orders", outTradeNo, order.UserID, true, http.StatusOK, map[string]any{
+		"product_type":          order.ProductType,
+		"previous_grant_status": existing.GrantStatus,
+		"is_test_order":         order.IsTestOrder,
+		"reason":                truncateRunes(reason, 120),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "order": order})
 }
 
 func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
@@ -1583,7 +1699,7 @@ func (s *Store) BuildAdminOverview(ctx context.Context, health AdminHealthStatus
 	}
 	overview.Queues.AppErrorTop = summary
 	overview.Notes = []AdminStatusNote{
-		{Title: "订单 / 支付", Body: "支付订单后台当前仅做订单和权益发放状态只读核查；支付宝 APP 支付代码已接入，生产放量前仍需完成回调验收、对账、退款和异常补偿流程。", Level: "info"},
+		{Title: "订单 / 支付", Body: "支付订单后台已支持订单核查和按已付款异常订单人工补发权益；支付宝 APP 支付代码已接入，生产放量前仍需完成回调验收、对账、退款和异常补偿流程。", Level: "info"},
 		{Title: "礼品卡", Body: "礼品卡批次创建、卡状态、作废未兑换卡、兑换尝试和 Android 用户侧兑换已接入。", Level: "info"},
 		{Title: "产品洞察", Body: "后续从脱敏反馈、App 日志和归档摘要生成，不直接铺完整聊天全文。", Level: "info"},
 	}
@@ -2748,7 +2864,7 @@ func buildAdminMonitoringCapabilities() []AdminMonitoringCapability {
 		{Title: "礼品卡", Status: "ready", Body: "可生成批次、按账号ID / 批次 / 尾号追溯、查失败原因并作废未兑换卡；主账号后台可查看并复制完整卡码。", Route: "gift-cards"},
 		{Title: "今日农情", Status: "ready", Body: "可看自动生成、人工发布锁定、来源数量和失败原因；owner / content_ops 可人工发布次日内容，也可补跑当天自动兜底。", Route: "today-agri"},
 		{Title: "检查更新", Status: "ready", Body: "后台可直接维护 Android 版本、APK、SHA-256、文件大小和停更状态；当前默认只做普通更新，强制更新字段默认不生效。", Route: "app-update"},
-		{Title: "订单核查", Status: "partial", Body: "支付订单 / 会员变更记录可只读查询；退款、对账自动化、自动续费和人工补发权益仍未开放。", Route: "orders"},
+		{Title: "订单核查", Status: "partial", Body: "支付订单 / 会员变更记录可查询；已付款异常订单可由 owner / finance_ops 人工补发权益。退款、对账自动化和自动续费仍未开放。", Route: "orders"},
 		{Title: "SLS 告警", Status: "partial", Body: "Go 5xx、慢请求、Nginx upstream、公网黑盒探测、今日农情失败、扣次补偿异常、记忆待补偿状态异常和模型 / 认证配置错误按最近严格脚本巡检接入 AlertHub、邮件行动策略和最小仪表盘；资源水位另由云监控邮件承接。本页不实时读取云上规则，仍需确认首封 SLS 告警邮件送达。", Route: "health"},
 		{Title: "产品洞察", Status: "partial", Body: "首版脱敏聚合报表已接入；后续再补洞察日报、人工标签和处理状态。", Route: "insights"},
 	}
@@ -3973,6 +4089,20 @@ func parseAdminLimit(raw string) int {
 		return maxAdminListLimit
 	}
 	return limit
+}
+
+func normalizeAdminPaymentOutTradeNo(raw string) string {
+	value := strings.TrimSpace(raw)
+	if value == "" || len(value) > 64 {
+		return ""
+	}
+	for _, ch := range value {
+		if (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '_' || ch == '-' {
+			continue
+		}
+		return ""
+	}
+	return value
 }
 
 func adminDayStartMs(loc *time.Location, now time.Time) int64 {

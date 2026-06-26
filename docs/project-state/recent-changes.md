@@ -5,6 +5,7 @@
 
 ## 2026-06-26
 
+- 支付异常兜底补齐最小后台闭环：后端新增 `POST /admin-api/v1/orders/grant`，后台订单页新增“补发权益”按钮，仅 `owner / finance_ops` 可对 `payment_orders` 中 `status=paid` 且 `grant_status` 不是 `success` 的支付订单执行，必须填写原因并输入“补发”二次确认。补发复用服务端同一套 `pay_<out_trade_no>` 幂等发权益逻辑，未付款订单、已到账订单、开发期订单和普通只读 / 客服角色不能补发，避免把后台变成随意改权益工具。同步更新支付 runbook 和项目状态；退款、对账自动化和正式收费放量仍未完成，本轮不发布正式 APK、不改官网正式下载或检查更新。
 - 支付宝 0.01 内测出现首笔后端确认成功的权益到账测试单：只读核查最近 `payment_orders` 显示加油包测试单尾号 `1BF6F237` 为 `buy_topup / amount_cents=1 / original_cents=600 / is_test_order=1 / build=debug / versionCode=11 / status=paid / provider_status=TRADE_SUCCESS / grant_status=success / paid=true / granted=true`，说明支付宝实付、订单状态更新和权益发放主链已至少跑通一笔；同批较新的 Pro 测试单尾号 `F880F373` 仍是 `pending / pending`，不能误写成 Pro 会员已到账。按用户真机反馈，Android “权益已生效”结果卡整体放大，确认付款页订单名简化为 `Plus 会员 30天 / Pro 会员 30天 / 升级 Pro 会员 / 加油包 80次`，联调测试保留“（联调测试）”后缀，说明行改为左对齐自然换行。支付门禁进一步收紧：`limited` 模式硬要求 `client_build_type=debug`，即使误把 `release` 写入构建类型白名单，正式包也不能创建订单；正式收费仍只能显式打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。生产后端已部署到 `6c5a3b56` 并通过 ECS readiness，公网 `/healthz` 为 `alipay=ok / alipay_payment_gate=limited / revision=6c5a3b56`；已基于提交 `6c5a3b56e5d7` 生成内部 debug 测试包 `test-apks/debug/20260626/nongjiqiancha-debug-internal-20260626-082038-6c5a3b56e5d7.apk`，大小 `21,277,992` 字节，SHA-256 为 `9f8d7670e9510c2198f85cf139b82c487a4bd49761ee044c0c128255e31c900d`，并清理上一只 `518edd3a8ff3` 测试包。同步补 Android parity、支付 readiness、后端门禁单测和支付 runbook；本轮仍不发布正式 APK、不改官网正式下载或检查更新。
 
 ## 2026-06-25

@@ -56,7 +56,7 @@ const routes: RouteItem[] = [
   { key: "users", label: "用户管理", section: "用户与增长", hint: "可查", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "insights", label: "产品洞察", section: "用户与增长", hint: "聚合报表" },
   { key: "entitlements", label: "会员额度", section: "权益与交易", hint: "用户级只读", roles: ["ops_readonly", "support", "finance_ops", "auditor"] },
-  { key: "orders", label: "订单", section: "权益与交易", hint: "只读核查", roles: ["ops_readonly", "support", "finance_ops"] },
+  { key: "orders", label: "订单", section: "权益与交易", hint: "核查/补发", roles: ["ops_readonly", "support", "finance_ops"] },
   { key: "gift-cards", label: "礼品卡", section: "权益与交易", hint: "发卡/追溯", roles: ["finance_ops", "ops_readonly", "auditor"] },
   { key: "account-deletion", label: "注销申请", section: "运营工作台", hint: "待处理/核验", roles: ["support", "ops_readonly", "auditor", "finance_ops"] },
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "回复/查看", roles: ["support", "ops_readonly", "auditor"] },
@@ -819,7 +819,7 @@ async function entitlementsPage(): Promise<string> {
 async function ordersPage(): Promise<string> {
   return userScopedPage({
     title: "订单",
-    desc: "只读核查会员变更、支付订单和权益发放状态，不提供补发、退款或手动改权益。",
+    desc: "核查会员变更、支付订单和权益发放状态；只允许按已付款异常订单人工补发权益。",
     formID: "orders-form",
     inputName: "user_id",
     value: pageState.orderUserID,
@@ -836,7 +836,7 @@ async function ordersPage(): Promise<string> {
           ${kpi("正式支付金额", summary.amountText, "只统计非测试支付订单")}
         </div>
         <div class="grid two" style="margin-top:12px">
-          ${notice("只读核查", "这里只展示订单、渠道交易号和权益发放状态；不提供支付成功模拟、手动补发、退款或改权益按钮。", "info")}
+          ${notice("订单核查", "这里只按后端订单真相处理；不提供支付成功模拟、退款或随意改权益。已付款但权益未成功的订单，可由财务运营人工补发。", "info")}
           ${notice("测试单口径", "0.01 联调订单会保留为测试订单，不删除；后台汇总不把测试单计入正式支付金额。", "info")}
           ${notice("对账提醒", "生产放量前以支付宝账单和对账结果为准；看到 paid 但 grant_status 不是 success 时，先核对支付平台后台和服务端日志。", "warn")}
         </div>
@@ -1620,6 +1620,11 @@ async function handleAction(button: HTMLElement): Promise<void> {
     await voidGiftCard(button.dataset.cardId || "", button);
     return;
   }
+  if (action === "grant-payment-order") {
+    if (!canManagePaymentGrants()) return;
+    await grantPaymentOrder(button.dataset.outTradeNo || "", button);
+    return;
+  }
   if (action === "account-deletion-status") {
     if (!canManageAccountDeletion()) return;
     await updateAccountDeletionStatus(button.dataset.requestId || "", button.dataset.status || "", button);
@@ -2001,6 +2006,35 @@ async function voidGiftCard(cardID: string, button?: HTMLElement): Promise<void>
   }, "作废失败");
 }
 
+async function grantPaymentOrder(outTradeNo: string, button?: HTMLElement): Promise<void> {
+  if (!outTradeNo) return;
+  const suffix = outTradeNo.slice(-8).toUpperCase();
+  const reason = window.prompt("请输入补发原因。只写必要处理说明，不要写完整手机号、密钥、token 或支付参数全文。");
+  if (reason === null) return;
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    window.alert("补发原因不能为空。");
+    return;
+  }
+  if (!window.confirm(`确认按已付款订单尾号 ${suffix} 补发权益？\n\n后台只会对 paid 且权益未成功的支付订单执行补发。`)) {
+    return;
+  }
+  const typedConfirmation = window.prompt("请输入 补发 确认人工补发权益。");
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== "补发") {
+    window.alert("未输入“补发”，已取消操作。");
+    return;
+  }
+  await withButtonBusy(button, "补发中", async () => {
+    await apiFetch("/admin-api/v1/orders/grant", {
+      method: "POST",
+      json: { out_trade_no: outTradeNo, reason: trimmedReason, confirmation: "补发" },
+    });
+    await render();
+    showTransientNotice("已补发权益");
+  }, "补发失败");
+}
+
 async function updateSupportConversationStatus(userID: string, status: string, button?: HTMLElement): Promise<void> {
   if (!userID || !status) return;
   const labels: Record<string, string> = {
@@ -2217,7 +2251,7 @@ const pageGuides: Partial<Record<RouteKey, PageGuideItem[]>> = {
     { label: "扣次", value: "自动对账为主，不要求人工天天盯" },
   ],
   orders: [
-    { label: "当前用途", value: "只读核查支付订单和权益变更记录" },
+    { label: "当前用途", value: "核查支付订单，按已付款异常单补发权益" },
     { label: "不要误读", value: "生产放量前以支付平台账单和对账结果为准", level: "warn" },
     { label: "后续", value: "生产回调验收、对账、退款" },
   ],
@@ -2650,9 +2684,10 @@ function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
 
 function ordersTable(rows: AdminOrderEntry[]): string {
   if (!rows.length) return emptyState("没有订单数据", "当前筛选范围内没有现有订单、支付记录或会员变更记录。");
+  const showActions = canManagePaymentGrants();
   return `
     <table class="table mobile-card-table">
-      <thead><tr><th>订单</th><th>账号ID</th><th>来源</th><th>类型</th><th>金额</th><th>状态</th><th>权益</th><th>创建时间</th><th>结果</th></tr></thead>
+      <thead><tr><th>订单</th><th>账号ID</th><th>来源</th><th>类型</th><th>金额</th><th>状态</th><th>权益</th><th>创建时间</th><th>结果</th>${showActions ? "<th>操作</th>" : ""}</tr></thead>
       <tbody>
         ${rows
           .map(
@@ -2667,6 +2702,7 @@ function ordersTable(rows: AdminOrderEntry[]): string {
                 ${tableCell("权益", row.grant_status ? statusPill(row.grant_status) : '<span class="muted">-</span>')}
                 ${tableCell("创建时间", formatTime(row.created_at))}
                 ${tableCell("结果", jsonInline(redactSensitiveDisplayValue(row.result)), "wrap")}
+                ${showActions ? tableCell("操作", paymentGrantAction(row)) : ""}
               </tr>
             `,
           )
@@ -2674,6 +2710,14 @@ function ordersTable(rows: AdminOrderEntry[]): string {
       </tbody>
     </table>
   `;
+}
+
+function paymentGrantAction(row: AdminOrderEntry): string {
+  if (!canManagePaymentGrants()) return "";
+  if (row.source !== "payment") return '<span class="muted">-</span>';
+  if ((row.status || "").toLowerCase() !== "paid") return '<span class="muted">未付款</span>';
+  if ((row.grant_status || "").toLowerCase() === "success") return '<span class="muted">已到账</span>';
+  return `<button class="button small-button" type="button" data-action="grant-payment-order" data-out-trade-no="${escapeAttr(row.order_id)}">补发权益</button>`;
 }
 
 function orderSourceLabel(row: AdminOrderEntry): string {
@@ -5054,6 +5098,11 @@ function currentAdminRole(): AdminRole | undefined {
 }
 
 function canManageGiftCards(): boolean {
+  const role = currentAdminRole();
+  return role === "owner" || role === "finance_ops";
+}
+
+function canManagePaymentGrants(): boolean {
   const role = currentAdminRole();
   return role === "owner" || role === "finance_ops";
 }
