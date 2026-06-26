@@ -37,11 +37,12 @@ function Get-LocalAdminSmokeSecret {
         return ""
     }
     try {
-        $secrets = Get-Content -Raw -Path $secretPath | ConvertFrom-Json
+        $raw = Get-Content -Raw -Path $secretPath
         foreach ($name in $Names) {
-            $property = $secrets.PSObject.Properties[$name]
-            if ($null -ne $property -and -not [string]::IsNullOrWhiteSpace([string]$property.Value)) {
-                return [string]$property.Value
+            $pattern = '"' + [regex]::Escape($name) + '"\s*:\s*"((?:\\.|[^"\\])*)"'
+            $match = [regex]::Match($raw, $pattern)
+            if ($match.Success -and -not [string]::IsNullOrWhiteSpace($match.Groups[1].Value)) {
+                return ($match.Groups[1].Value -replace '\\"', '"' -replace "\\\\", "\")
             }
         }
     } catch {
