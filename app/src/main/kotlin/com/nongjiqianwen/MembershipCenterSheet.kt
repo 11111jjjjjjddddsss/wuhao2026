@@ -792,7 +792,12 @@ internal fun MembershipPaymentNoticePreview() {
 }
 
 @Composable
-internal fun MembershipPaymentConfirmPreview() {
+internal fun MembershipPaymentConfirmPreview(
+    product: MembershipPaymentProduct = MembershipPaymentProduct.RenewPro,
+    subject: String = "农技千查 Pro 会员30天（联调测试）",
+    amountCents: Int = 1,
+    outTradeSuffix: String = "12345678"
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -801,10 +806,10 @@ internal fun MembershipPaymentConfirmPreview() {
         MembershipPaymentConfirmOverlay(
             visible = true,
             confirmation = MembershipPaymentConfirmation(
-                product = MembershipPaymentProduct.RenewPro,
-                subject = "农技千查 Pro 会员30天",
-                amountCents = 1,
-                outTradeSuffix = "12345678"
+                product = product,
+                subject = subject,
+                amountCents = amountCents,
+                outTradeSuffix = outTradeSuffix
             ),
             onConfirm = {},
             onCancel = {}

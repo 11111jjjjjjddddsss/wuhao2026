@@ -374,7 +374,7 @@ func TestValidatePaymentProductRejectsInvalidMembershipTransitions(t *testing.T)
 	}
 }
 
-func TestFindRecentPendingPaymentOrderForProductBlocksMembershipFamily(t *testing.T) {
+func TestCloseUnpaidPendingPaymentOrdersForProductClosesMembershipFamily(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
 		t.Fatalf("sqlmock.New failed: %v", err)
@@ -383,57 +383,48 @@ func TestFindRecentPendingPaymentOrderForProductBlocksMembershipFamily(t *testin
 
 	store := &Store{db: db}
 	userID := "acct_payment_user"
-	outTradeNo := "NJ20260626120000ABCDEF"
-	sinceMs := int64(1782600000000)
-	createdAt := sinceMs + 1000
+	nowMs := int64(1782600000000)
 
-	mock.ExpectQuery("SELECT out_trade_no, user_id, provider, product_type").
+	mock.ExpectExec("UPDATE payment_orders").
 		WithArgs(
+			paymentStatusClosed,
+			nowMs,
+			nowMs,
 			userID,
 			paymentProviderAlipay,
 			paymentStatusPending,
-			sinceMs,
 			paymentProductRenewPlus,
 			paymentProductRenewPro,
 			paymentProductUpgradePlusPro,
 		).
-		WillReturnRows(paymentOrderRows().AddRow(
-			outTradeNo,
-			userID,
-			paymentProviderAlipay,
-			paymentProductRenewPlus,
-			1990,
-			"CNY",
-			"农技千查 Plus 会员30天",
-			1990,
-			1,
-			paymentStatusPending,
-			nil,
-			nil,
-			nil,
-			paymentGrantPending,
-			nil,
-			nil,
-			0,
-			nil,
-			createdAt,
-			createdAt,
-			nil,
-			nil,
-			nil,
-			nil,
-			nil,
-		))
+		WillReturnResult(sqlmock.NewResult(0, 2))
 
-	order, found, err := store.FindRecentPendingPaymentOrderForProduct(context.Background(), userID, paymentProductRenewPro, sinceMs)
+	affected, err := store.CloseUnpaidPendingPaymentOrdersForProduct(context.Background(), userID, paymentProductRenewPro, nowMs)
 	if err != nil {
-		t.Fatalf("FindRecentPendingPaymentOrderForProduct error=%v", err)
+		t.Fatalf("CloseUnpaidPendingPaymentOrdersForProduct error=%v", err)
 	}
-	if !found || order.OutTradeNo != outTradeNo || order.ProductType != paymentProductRenewPlus {
-		t.Fatalf("pending order mismatch found=%v order=%+v", found, order)
+	if affected != 2 {
+		t.Fatalf("affected=%d, want 2", affected)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestPaymentOrderCreateLockNameDoesNotExposeUserID(t *testing.T) {
+	userID := "acct_sensitive_payment_user"
+	name := paymentOrderCreateLockName(userID, paymentProductRenewPro)
+	if strings.Contains(name, userID) {
+		t.Fatalf("payment order lock name leaked user id: %q", name)
+	}
+	if len(name) > 64 {
+		t.Fatalf("payment order lock name too long for MySQL named lock: %d", len(name))
+	}
+	if name != paymentOrderCreateLockName(userID, paymentProductRenewPlus) {
+		t.Fatalf("membership products should share a create lock")
+	}
+	if name == paymentOrderCreateLockName(userID, paymentProductBuyTopup) {
+		t.Fatalf("topup should not share membership create lock")
 	}
 }
 
@@ -757,6 +748,141 @@ func TestCompleteAlipayPaymentDoesNotDowngradePaidOrderOnClosedNotify(t *testing
 		).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectCommit()
+
+	if err := store.CompleteAlipayPayment(context.Background(), payload, nowMs); err != nil {
+		t.Fatalf("CompleteAlipayPayment error: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("sql expectations: %v", err)
+	}
+}
+
+func TestCompleteAlipayPaymentGrantsClosedReplacedOrderOnPaidNotify(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New failed: %v", err)
+	}
+	defer db.Close()
+
+	store := &Store{db: db}
+	outTradeNo := "NJ20260623120000ABCDEF"
+	entitlementOrderID := "pay_" + outTradeNo
+	userID := "acct_payment_user"
+	nowMs := int64(1782200000000)
+	payload := alipayNotifyPayload{
+		AppID:            "2021006162639387",
+		NotifyID:         "2026062300000002",
+		OutTradeNo:       outTradeNo,
+		TradeNo:          "20260623220000008888",
+		BuyerID:          "2088000000000000",
+		TradeStatus:      "TRADE_SUCCESS",
+		TotalAmountCents: 2990,
+		RawSummary:       map[string]any{"trade_status": "TRADE_SUCCESS"},
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT out_trade_no, user_id, provider, product_type").
+		WithArgs(outTradeNo, paymentProviderAlipay).
+		WillReturnRows(paymentOrderRows().AddRow(
+			outTradeNo,
+			userID,
+			paymentProviderAlipay,
+			paymentProductRenewPro,
+			2990,
+			"CNY",
+			"农技千查 Pro 会员30天",
+			2990,
+			0,
+			paymentStatusClosed,
+			nil,
+			"LOCAL_REPLACED",
+			nil,
+			paymentGrantPending,
+			nil,
+			nil,
+			0,
+			nil,
+			nowMs-60000,
+			nowMs-5000,
+			nil,
+			nil,
+			nil,
+			nowMs-3000,
+			nil,
+		))
+	mock.ExpectExec("UPDATE payment_orders").
+		WithArgs(
+			paymentStatusPaid,
+			payload.TradeNo,
+			payload.BuyerID,
+			payload.TradeStatus,
+			sqlmock.AnyArg(),
+			nowMs,
+			nowMs,
+			outTradeNo,
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	mock.ExpectExec("UPDATE payment_orders").
+		WithArgs(
+			paymentGrantProcessing,
+			nowMs,
+			nowMs,
+			outTradeNo,
+			paymentStatusPaid,
+			paymentGrantPending,
+			paymentGrantFailed,
+			paymentGrantProcessing,
+			sqlmock.AnyArg(),
+		).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT out_trade_no, user_id, provider, product_type").
+		WithArgs(outTradeNo).
+		WillReturnRows(paymentOrderRows().AddRow(
+			outTradeNo,
+			userID,
+			paymentProviderAlipay,
+			paymentProductRenewPro,
+			2990,
+			"CNY",
+			"农技千查 Pro 会员30天",
+			2990,
+			0,
+			paymentStatusPaid,
+			payload.TradeNo,
+			payload.TradeStatus,
+			nil,
+			paymentGrantProcessing,
+			nil,
+			nil,
+			0,
+			nil,
+			nowMs-60000,
+			nowMs,
+			nowMs,
+			nil,
+			nil,
+			nowMs-3000,
+			nil,
+		))
+	mock.ExpectBegin()
+	mock.ExpectQuery("SELECT user_id, type, result_json FROM orders").
+		WithArgs(entitlementOrderID).
+		WillReturnError(sql.ErrNoRows)
+	mock.ExpectQuery("SELECT tier, tier_expire_at FROM user_entitlement").
+		WithArgs(userID).
+		WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(TierFree), nil))
+	mock.ExpectExec("UPDATE user_entitlement SET tier").
+		WithArgs(string(TierPro), sqlmock.AnyArg(), sqlmock.AnyArg(), userID).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO orders").
+		WithArgs(entitlementOrderID, userID, "renew_pro", proTierPrice, sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	mock.ExpectExec("UPDATE payment_orders").
+		WithArgs(paymentGrantSuccess, entitlementOrderID, sqlmock.AnyArg(), sqlmock.AnyArg(), outTradeNo).
+		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := store.CompleteAlipayPayment(context.Background(), payload, nowMs); err != nil {
 		t.Fatalf("CompleteAlipayPayment error: %v", err)

@@ -9272,7 +9272,11 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：未用完", "未用完时不能重复购买，后端和本地都会拦住", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
-                    UiCopyPreviewItem("确认付款", "订单尾号、竖排支付方式和续费顺延说明", UiCopyPreviewKind.MembershipPaymentConfirm),
+                    UiCopyPreviewItem("确认付款：联调", "0.01 测试订单、订单尾号和竖排支付按钮", UiCopyPreviewKind.MembershipPaymentConfirm),
+                    UiCopyPreviewItem("购买 Plus", "Plus 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPlus),
+                    UiCopyPreviewItem("购买 Pro", "Pro 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPro),
+                    UiCopyPreviewItem("升级 Pro", "Plus 升级 Pro 的正式确认页", UiCopyPreviewKind.MembershipPaymentConfirmUpgradePro),
+                    UiCopyPreviewItem("购买加油包", "80 次加油包正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmTopup),
                     UiCopyPreviewItem("确认付款大字体", "1.6x 字体下可滚动查看确认和取消", UiCopyPreviewKind.MembershipPaymentConfirmLargeFont),
                     UiCopyPreviewItem("权益生效提示", "支付完成后展示后端确认的权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
                     UiCopyPreviewItem("规则说明", "Plus升级Pro / 扣次顺序 / 补偿与加油包", UiCopyPreviewKind.MembershipRules)
@@ -9638,6 +9642,10 @@ private enum class UiCopyPreviewKind {
     MembershipTopupNarrow,
     MembershipPaymentNotice,
     MembershipPaymentConfirm,
+    MembershipPaymentConfirmPlus,
+    MembershipPaymentConfirmPro,
+    MembershipPaymentConfirmUpgradePro,
+    MembershipPaymentConfirmTopup,
     MembershipPaymentConfirmLargeFont,
     MembershipPurchaseSuccess,
     MembershipRules,
@@ -10096,6 +10104,38 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 }
                 UiCopyPreviewKind.MembershipPaymentConfirm -> {
                     MembershipPaymentConfirmPreview()
+                }
+                UiCopyPreviewKind.MembershipPaymentConfirmPlus -> {
+                    MembershipPaymentConfirmPreview(
+                        product = MembershipPaymentProduct.RenewPlus,
+                        subject = "农技千查 Plus 会员30天",
+                        amountCents = 1990,
+                        outTradeSuffix = "PLUS1990"
+                    )
+                }
+                UiCopyPreviewKind.MembershipPaymentConfirmPro -> {
+                    MembershipPaymentConfirmPreview(
+                        product = MembershipPaymentProduct.RenewPro,
+                        subject = "农技千查 Pro 会员30天",
+                        amountCents = 2990,
+                        outTradeSuffix = "PRO02990"
+                    )
+                }
+                UiCopyPreviewKind.MembershipPaymentConfirmUpgradePro -> {
+                    MembershipPaymentConfirmPreview(
+                        product = MembershipPaymentProduct.UpgradePlusToPro,
+                        subject = "农技千查 升级Pro会员",
+                        amountCents = 1000,
+                        outTradeSuffix = "UPPRO100"
+                    )
+                }
+                UiCopyPreviewKind.MembershipPaymentConfirmTopup -> {
+                    MembershipPaymentConfirmPreview(
+                        product = MembershipPaymentProduct.BuyTopup,
+                        subject = "农技千查 加油包80次",
+                        amountCents = 600,
+                        outTradeSuffix = "TOPUP600"
+                    )
                 }
                 UiCopyPreviewKind.MembershipPaymentConfirmLargeFont -> {
                     UiCopyPreviewLargeFont {

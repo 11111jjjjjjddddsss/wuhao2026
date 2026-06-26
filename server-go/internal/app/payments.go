@@ -50,7 +50,6 @@ const (
 
 	paymentGrantProcessingRetryAfter      = 5 * time.Minute
 	paymentMembershipMinRemainingForOrder = 45 * time.Minute
-	paymentPendingOrderBlockWindow        = 30 * time.Minute
 
 	alipayPaymentPublicEnabledEnv     = "ALIPAY_PAYMENT_PUBLIC_ENABLED"
 	alipayPaymentAllowedUserIDsEnv    = "ALIPAY_PAYMENT_ALLOWED_USER_IDS"
@@ -60,6 +59,8 @@ const (
 	alipayGatewayURL                  = "https://openapi.alipay.com/gateway.do"
 	alipayOpenAPIResponseLimit        = 256 * 1024
 )
+
+var errPaymentOrderCreateBusy = errors.New("PAYMENT_ORDER_BUSY")
 
 type paymentProduct struct {
 	Type        string
@@ -694,49 +695,55 @@ func (s *Server) handleCreateAlipayPaymentOrder(w http.ResponseWriter, r *http.R
 		s.writeError(w, paymentProductHTTPStatus(err), err.Error())
 		return
 	}
-	now := time.Now()
-	pending, found, err := s.store.FindRecentPendingPaymentOrderForProduct(ctx, auth.UserID, product.Type, now.Add(-paymentPendingOrderBlockWindow).UnixMilli())
-	if err != nil {
-		s.logger.Error("check pending payment order failed", "userId", auth.UserID, "product", product.Type, "error", err)
+	var (
+		now                time.Time
+		closedPendingCount int64
+		outTradeNo         string
+		orderString        string
+	)
+	if err := s.store.WithPaymentOrderCreateGate(ctx, auth.UserID, product.Type, func(lockCtx context.Context) error {
+		var err error
+		now = time.Now()
+		closedPendingCount, err = s.store.CloseUnpaidPendingPaymentOrdersForProduct(lockCtx, auth.UserID, product.Type, now.UnixMilli())
+		if err != nil {
+			return err
+		}
+		outTradeNo, err = newPaymentOutTradeNo()
+		if err != nil {
+			return err
+		}
+		orderString, err = s.alipay.BuildAppPayOrder(outTradeNo, product, now)
+		if err != nil {
+			return err
+		}
+		order := paymentOrder{
+			OutTradeNo:          outTradeNo,
+			UserID:              auth.UserID,
+			Provider:            paymentProviderAlipay,
+			ProductType:         product.Type,
+			AmountCents:         product.AmountCents,
+			OriginalAmountCents: originalAmountCents,
+			Currency:            "CNY",
+			Subject:             product.Subject,
+			Status:              paymentStatusPending,
+			GrantStatus:         paymentGrantPending,
+			IsTestOrder:         isTestOrder,
+			CreatedAt:           now.UnixMilli(),
+			UpdatedAt:           now.UnixMilli(),
+		}
+		return s.store.CreatePaymentOrder(lockCtx, order, body.ClientAppVersion, body.ClientPlatform, body.ClientBuildType, body.ClientVersionCode, maskIP(GetClientIP(r)))
+	}); err != nil {
+		if errors.Is(err, errPaymentOrderCreateBusy) {
+			s.logger.Info("alipay order create busy", "userId", auth.UserID, "product", product.Type)
+			s.writeError(w, http.StatusConflict, errPaymentOrderCreateBusy.Error())
+			return
+		}
+		s.logger.Error("create alipay order failed", "userId", auth.UserID, "product", product.Type, "error", err)
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	if found {
-		s.logger.Info("alipay order blocked by pending order", "userId", auth.UserID, "product", product.Type, "pendingOutTradeSuffix", paymentIDLogSuffix(pending.OutTradeNo))
-		s.writeError(w, http.StatusConflict, "PAYMENT_PENDING_ORDER_EXISTS")
-		return
-	}
-	outTradeNo, err := newPaymentOutTradeNo()
-	if err != nil {
-		s.logger.Error("create payment out_trade_no failed", "userId", auth.UserID, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	orderString, err := s.alipay.BuildAppPayOrder(outTradeNo, product, now)
-	if err != nil {
-		s.logger.Error("build alipay order failed", "userId", auth.UserID, "product", product.Type, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
-	}
-	order := paymentOrder{
-		OutTradeNo:          outTradeNo,
-		UserID:              auth.UserID,
-		Provider:            paymentProviderAlipay,
-		ProductType:         product.Type,
-		AmountCents:         product.AmountCents,
-		OriginalAmountCents: originalAmountCents,
-		Currency:            "CNY",
-		Subject:             product.Subject,
-		Status:              paymentStatusPending,
-		GrantStatus:         paymentGrantPending,
-		IsTestOrder:         isTestOrder,
-		CreatedAt:           now.UnixMilli(),
-		UpdatedAt:           now.UnixMilli(),
-	}
-	if err := s.store.CreatePaymentOrder(ctx, order, body.ClientAppVersion, body.ClientPlatform, body.ClientBuildType, body.ClientVersionCode, maskIP(GetClientIP(r))); err != nil {
-		s.logger.Error("create payment order failed", "userId", auth.UserID, "product", product.Type, "error", err)
-		s.writeError(w, http.StatusInternalServerError, "internal_error")
-		return
+	if closedPendingCount > 0 {
+		s.logger.Info("closed stale pending payment orders before alipay order create", "userId", auth.UserID, "product", product.Type, "closedCount", closedPendingCount)
 	}
 	s.logger.Info("alipay order created", "userId", auth.UserID, "outTradeSuffix", paymentIDLogSuffix(outTradeNo), "product", product.Type, "amountCents", product.AmountCents)
 	s.writeJSON(w, http.StatusOK, map[string]any{
@@ -914,34 +921,75 @@ func paymentProductPendingFamily(productType string) []string {
 	}
 }
 
-func (s *Store) FindRecentPendingPaymentOrderForProduct(ctx context.Context, userID string, productType string, sinceMs int64) (paymentOrder, bool, error) {
+func paymentOrderCreateLockName(userID string, productType string) string {
+	productFamily := paymentProductPendingFamily(productType)
+	familyKey := strings.Join(productFamily, ",")
+	if familyKey == "" {
+		familyKey = strings.TrimSpace(productType)
+	}
+	sum := sha256.Sum256([]byte(strings.TrimSpace(userID) + "|" + familyKey))
+	return "payment_order:" + base64.RawURLEncoding.EncodeToString(sum[:18])
+}
+
+func (s *Store) WithPaymentOrderCreateGate(ctx context.Context, userID string, productType string, fn func(context.Context) error) error {
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	lockName := paymentOrderCreateLockName(userID, productType)
+	var acquired sql.NullInt64
+	if err := conn.QueryRowContext(ctx, "SELECT GET_LOCK(?, 5)", lockName).Scan(&acquired); err != nil {
+		return err
+	}
+	if !acquired.Valid || acquired.Int64 != 1 {
+		return errPaymentOrderCreateBusy
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), "SELECT RELEASE_LOCK(?)", lockName)
+	}()
+
+	return fn(ctx)
+}
+
+func (s *Store) CloseUnpaidPendingPaymentOrdersForProduct(ctx context.Context, userID string, productType string, nowMs int64) (int64, error) {
 	productTypes := paymentProductPendingFamily(productType)
-	if userID == "" || len(productTypes) == 0 || sinceMs <= 0 {
-		return paymentOrder{}, false, nil
+	if userID == "" || len(productTypes) == 0 {
+		return 0, nil
+	}
+	if nowMs <= 0 {
+		nowMs = time.Now().UnixMilli()
 	}
 	placeholders := make([]string, 0, len(productTypes))
-	args := []any{userID, paymentProviderAlipay, paymentStatusPending, sinceMs}
+	args := []any{paymentStatusClosed, nowMs, nowMs, userID, paymentProviderAlipay, paymentStatusPending}
 	for _, item := range productTypes {
 		placeholders = append(placeholders, "?")
 		args = append(args, item)
 	}
-	query := paymentOrderSelectSQL() + `
+	result, err := s.db.ExecContext(
+		ctx,
+		`UPDATE payment_orders
+		    SET status = ?,
+		        provider_status = COALESCE(provider_status, 'LOCAL_REPLACED'),
+		        closed_at = COALESCE(closed_at, ?),
+		        updated_at = ?
 		  WHERE user_id = ?
 		    AND provider = ?
 		    AND status = ?
 		    AND paid_at IS NULL
-		    AND created_at >= ?
-		    AND product_type IN (` + strings.Join(placeholders, ",") + `)
-		  ORDER BY created_at DESC
-		  LIMIT 1`
-	order, err := scanPaymentOrder(s.db.QueryRowContext(ctx, query, args...))
-	if err == sql.ErrNoRows {
-		return paymentOrder{}, false, nil
-	}
+		    AND product_type IN (`+strings.Join(placeholders, ",")+`)
+		  `,
+		args...,
+	)
 	if err != nil {
-		return paymentOrder{}, false, err
+		return 0, err
 	}
-	return order, true, nil
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, nil
+	}
+	return affected, nil
 }
 
 func (s *Store) CreatePaymentOrder(ctx context.Context, order paymentOrder, clientAppVersion string, clientPlatform string, clientBuildType string, clientVersionCode int, clientIPMask string) error {

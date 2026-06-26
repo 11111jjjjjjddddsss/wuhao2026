@@ -101,6 +101,10 @@ $migrationPath = Join-Path $RepoRoot "server-go/migrations/044_alipay_payment_or
 $testMetadataMigrationPath = Join-Path $RepoRoot "server-go/migrations/045_payment_order_test_metadata.sql"
 $opsClosureMigrationPath = Join-Path $RepoRoot "server-go/migrations/046_payment_order_ops_closure.sql"
 $paymentsRunbookPath = Join-Path $RepoRoot "docs/runbooks/payments.md"
+$currentStatusPath = Join-Path $RepoRoot "docs/project-state/current-status.md"
+$openRisksPath = Join-Path $RepoRoot "docs/project-state/open-risks.md"
+$pendingDecisionsPath = Join-Path $RepoRoot "docs/project-state/pending-decisions.md"
+$recentChangesPath = Join-Path $RepoRoot "docs/project-state/recent-changes.md"
 $thirdPartyPagePath = Join-Path $RepoRoot "site/public/legal/third-party-sharing/index.html"
 
 $appBuild = Read-SourceFile $appBuildPath
@@ -117,6 +121,13 @@ $migration = Read-SourceFile $migrationPath
 $testMetadataMigration = Read-SourceFile $testMetadataMigrationPath
 $opsClosureMigration = Read-SourceFile $opsClosureMigrationPath
 $paymentsRunbook = Read-SourceFile $paymentsRunbookPath
+$projectPaymentDocs = @(
+    (Read-SourceFile $currentStatusPath),
+    (Read-SourceFile $openRisksPath),
+    (Read-SourceFile $pendingDecisionsPath),
+    (Read-SourceFile $recentChangesPath),
+    $paymentsRunbook
+) -join "`n"
 $thirdPartyPage = Read-SourceFile $thirdPartyPagePath
 
 Require-Match -Name "android_alipay_sdk_dependency" -Content $appBuild -Pattern "alipaysdk-android"
@@ -137,6 +148,11 @@ Require-Match -Name "android_alipay_sync_log" -Content $chatScreen -Pattern "pay
 Require-Match -Name "android_payment_grant_success_log" -Content $chatScreen -Pattern "payment\.grant_success"
 Require-Match -Name "android_payment_grant_failure_persistent" -Content $chatScreen -Pattern "支付已确认，权益处理异常"
 Require-NoMatch -Name "android_no_order_string_client_log" -Content $chatScreen -Pattern '"order_string"|orderString\s+to|"\s*orderString\s*"\s+to'
+Require-Match -Name "android_payment_preview_plus" -Content $chatScreen -Pattern "MembershipPaymentConfirmPlus"
+Require-Match -Name "android_payment_preview_pro" -Content $chatScreen -Pattern "MembershipPaymentConfirmPro"
+Require-Match -Name "android_payment_preview_upgrade_pro" -Content $chatScreen -Pattern "MembershipPaymentConfirmUpgradePro"
+Require-Match -Name "android_payment_preview_topup" -Content $chatScreen -Pattern "MembershipPaymentConfirmTopup"
+Require-Match -Name "android_payment_success_preview" -Content $chatScreen -Pattern "MembershipPurchaseSuccess"
 Require-Match -Name "android_privacy_mentions_alipay" -Content $hamburgerMenu -Pattern "支付宝 APP 支付 SDK"
 Require-NoMatch -Name "android_privacy_no_old_no_payment_sdk_copy" -Content $hamburgerMenu -Pattern "当前版本不接入[^。]*支付[^。]*第三方 SDK"
 
@@ -173,8 +189,11 @@ Require-Match -Name "server_alipay_enabled_requires_seller" -Content $payments -
 Require-Match -Name "server_alipay_grant_retry_guard" -Content $payments -Pattern "PAYMENT_GRANT_IN_PROGRESS"
 Require-Match -Name "server_alipay_grant_claim_timestamp" -Content $payments -Pattern "COALESCE\(grant_claimed_at,\s*updated_at\)"
 Require-Match -Name "server_manual_payment_grant_uses_same_grant_path" -Content $payments -Pattern "manuallyGrantPaidPaymentOrder(?s:.*?)grantPaidPaymentOrder"
-Require-Match -Name "server_payment_pending_order_family_guard" -Content $payments -Pattern "paymentProductPendingFamily(?s:.*?)FindRecentPendingPaymentOrderForProduct"
-Require-Match -Name "server_payment_pending_order_conflict_code" -Content $payments -Pattern "PAYMENT_PENDING_ORDER_EXISTS"
+Require-Match -Name "server_payment_order_create_gate" -Content $payments -Pattern "WithPaymentOrderCreateGate(?s:.*?)GET_LOCK"
+Require-Match -Name "server_payment_order_busy_code" -Content $payments -Pattern "PAYMENT_ORDER_BUSY"
+Require-Match -Name "server_payment_pending_order_auto_close_guard" -Content $payments -Pattern "CloseUnpaidPendingPaymentOrdersForProduct(?s:.*?)LOCAL_REPLACED"
+Require-NoMatch -Name "server_payment_no_invisible_pending_order_block" -Content $payments -Pattern "PAYMENT_PENDING_ORDER_EXISTS"
+Require-NoMatch -Name "payment_docs_no_old_pending_block_copy" -Content $projectPaymentDocs -Pattern "近 30 分钟.?同类待支付|已有待支付订单，请先完成|PAYMENT_PENDING_ORDER_EXISTS"
 Require-Match -Name "server_alipay_no_paid_downgrade" -Content $payments -Pattern 'order\.Status\s*==\s*paymentStatusPaid(?s:.*?)last_notify_json'
 Require-Match -Name "server_alipay_refund_unknown_on_failed_response" -Content $payments -Pattern "MarkPaymentRefundUnknown"
 Require-Match -Name "server_alipay_refund_order_update_tx" -Content $payments -Pattern "CreatePaymentRefundPending(?s:.*?)BeginTx(?s:.*?)UPDATE payment_orders"

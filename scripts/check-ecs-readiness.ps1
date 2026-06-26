@@ -2,7 +2,8 @@ param(
     [string]$RegionId = "cn-beijing",
     [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
     [string]$ExpectedRevision = "",
-    [string]$ExpectedAlipayPaymentGate = ""
+    [ValidateSet("closed", "limited", "public")]
+    [string]$ExpectedAlipayPaymentGate = "limited"
 )
 
 $ErrorActionPreference = "Stop"
@@ -429,6 +430,8 @@ for key in \
   APP_ANDROID_UPDATE_ENABLED APP_UPDATE_ALLOW_FORCE_UPDATE APP_ANDROID_LATEST_VERSION_CODE APP_ANDROID_APK_URL APP_ANDROID_APK_SHA256 APP_ANDROID_FILE_SIZE_BYTES \
   DYPNS_ACCESS_KEY_ID DYPNS_ACCESS_KEY_SECRET DYPNS_FUSION_SCHEME_CODE \
   AUTH_FUSION_COMPAT_ENABLED \
+  ALIPAY_APP_ID ALIPAY_SELLER_ID ALIPAY_APP_PRIVATE_KEY ALIPAY_APP_PRIVATE_KEY_FILE ALIPAY_PUBLIC_KEY ALIPAY_PUBLIC_KEY_FILE ALIPAY_NOTIFY_URL \
+  ALIPAY_PAYMENT_PUBLIC_ENABLED ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES ALIPAY_PAYMENT_ALLOWED_USER_IDS ALIPAY_PAYMENT_TEST_AMOUNT_CENTS \
   SMS_ACCESS_KEY_ID SMS_ACCESS_KEY_SECRET SMS_SIGN_NAME SMS_TEMPLATE_CODE \
   DYPNS_SMS_SIGN_NAME DYPNS_SMS_TEMPLATE_CODE \
   REDIS_ADDR REDIS_USERNAME REDIS_PASSWORD \
@@ -555,13 +558,17 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedRevision)) {
     }
     Write-Host "expected_revision_match=true"
 }
-if (-not [string]::IsNullOrWhiteSpace($ExpectedAlipayPaymentGate)) {
-    $actualGate = [regex]::Match($final.Output, "(?m)^alipay_payment_gate=([^\s]+)\s*$").Groups[1].Value
-    if ([string]::IsNullOrWhiteSpace($actualGate)) {
-        throw "Readiness check did not report alipay_payment_gate; expected $ExpectedAlipayPaymentGate"
+$actualGate = [regex]::Match($final.Output, "(?m)^alipay_payment_gate=([^\s]+)\s*$").Groups[1].Value
+if ([string]::IsNullOrWhiteSpace($actualGate)) {
+    throw "Readiness check did not report alipay_payment_gate; expected $ExpectedAlipayPaymentGate"
+}
+if ($actualGate -ne $ExpectedAlipayPaymentGate) {
+    throw "Readiness Alipay payment gate mismatch: expected=$ExpectedAlipayPaymentGate actual=$actualGate"
+}
+Write-Host "expected_alipay_payment_gate_match=true"
+if ($ExpectedAlipayPaymentGate -eq "public") {
+    $testAmountStatus = [regex]::Match($final.Output, "(?m)^ALIPAY_PAYMENT_TEST_AMOUNT_CENTS=([^\s]+)\s*$").Groups[1].Value
+    if ($testAmountStatus -eq "set" -or $testAmountStatus -eq "empty") {
+        throw "Formal public payment gate must not keep ALIPAY_PAYMENT_TEST_AMOUNT_CENTS in production env"
     }
-    if ($actualGate -ne $ExpectedAlipayPaymentGate) {
-        throw "Readiness Alipay payment gate mismatch: expected=$ExpectedAlipayPaymentGate actual=$actualGate"
-    }
-    Write-Host "expected_alipay_payment_gate_match=true"
 }
