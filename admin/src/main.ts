@@ -4366,6 +4366,7 @@ function modelPolicyNoteText(row: AdminMonitoring["model_usage_policy"][number])
 }
 
 function modelSearchPolicyText(row: AdminMonitoring["model_usage_policy"][number]): string {
+  if (row.title.includes("主聊天") && row.search_strategy?.includes("纯文字强制")) return "纯文字强制联网；带图不强制";
   if (!row.search_strategy) return row.forced_search ? "强制联网" : "不联网";
   return row.forced_search ? "强制联网" : "可联网";
 }

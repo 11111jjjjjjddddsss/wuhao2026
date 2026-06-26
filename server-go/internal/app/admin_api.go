@@ -7,7 +7,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -3310,14 +3309,14 @@ func mainChatMonitoringModelLabel() string {
 
 func mainChatMonitoringSearchStrategy() string {
 	if primaryChatConfigured() {
-		return "中转站联网开启；回落千问时仍按主聊天搜索策略"
+		return "中转站纯文字强制联网；带图不强制搜索；回落千问时仍按主聊天搜索策略"
 	}
 	return mainChatSearchStrategy
 }
 
 func mainChatMonitoringForcedSearch() bool {
 	if primaryChatConfigured() {
-		return parseBoolEnv(os.Getenv("CHAT_PRIMARY_FORCE_SEARCH"))
+		return false
 	}
 	return false
 }

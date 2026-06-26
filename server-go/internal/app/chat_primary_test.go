@@ -115,6 +115,27 @@ func TestPrimaryChatClientDoesNotForceSearchForImageMessages(t *testing.T) {
 	}
 }
 
+func TestPrimaryChatForceSearchDisabledWhenAnyMessageHasImage(t *testing.T) {
+	t.Setenv("CHAT_PRIMARY_FORCE_SEARCH", "true")
+
+	messages := []BailianMessage{
+		{Role: "user", Content: "上一轮文字"},
+		{Role: "assistant", Content: "上一轮回答"},
+		{
+			Role: "user",
+			Content: []any{
+				map[string]any{"type": "text", "text": "历史图片问题"},
+				map[string]any{"type": "image_url", "image_url": map[string]any{"url": "https://example.com/historical.jpg"}},
+			},
+		},
+		{Role: "user", Content: "本轮追问"},
+	}
+
+	if got := primaryChatForceSearch(true, messages); got {
+		t.Fatalf("primaryChatForceSearch with image in message history = true, want false")
+	}
+}
+
 func TestPrimaryChatClientDefaultsToSixSecondOpenTimeouts(t *testing.T) {
 	transport, ok := NewPrimaryChatClientFromEnv().httpClient.Transport.(*http.Transport)
 	if !ok {
