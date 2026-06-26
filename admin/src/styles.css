@@ -194,11 +194,39 @@ button {
   color: #a23b3b;
 }
 
+.button.danger-button {
+  border-color: #d39a9a;
+  color: #a23b3b;
+}
+
+.button.ghost {
+  background: #f7f8fa;
+  color: #556170;
+}
+
 .button.small-button {
   min-height: 28px;
   padding: 5px 9px;
   margin-top: 6px;
   font-size: 12px;
+}
+
+.stacked-cell,
+.action-stack,
+.reconciliation-summary {
+  display: grid;
+  gap: 6px;
+}
+
+.action-stack {
+  min-width: 96px;
+  align-items: start;
+}
+
+.reconciliation-summary {
+  border-top: 1px solid #edf0f3;
+  padding-top: 10px;
+  color: #334155;
 }
 
 .button[disabled] {

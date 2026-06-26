@@ -20,6 +20,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -1085,6 +1086,8 @@ internal fun shouldShowStreamingSectionDivider(
 ): Boolean {
     val current = models.getOrNull(index) ?: return false
     val previous = previousStreamingSectionDividerCandidate(models, index)
+    val next = nextStreamingSectionDividerCandidate(models, index)
+    if (next == null) return false
     return shouldShowStreamingSectionDivider(previous, current)
 }
 
@@ -1093,6 +1096,17 @@ internal fun previousStreamingSectionDividerCandidate(
     index: Int
 ): StreamingLineModel? {
     for (candidateIndex in index - 1 downTo 0) {
+        val candidate = models[candidateIndex]
+        if (candidate !is StreamingLineModel.Blank) return candidate
+    }
+    return null
+}
+
+internal fun nextStreamingSectionDividerCandidate(
+    models: List<StreamingLineModel>,
+    index: Int
+): StreamingLineModel? {
+    for (candidateIndex in index + 1 until models.size) {
         val candidate = models[candidateIndex]
         if (candidate !is StreamingLineModel.Blank) return candidate
     }
@@ -1137,13 +1151,11 @@ internal fun buildRendererStructureStats(content: String): RendererStructureStat
         addAll(blockState.completedBlocks.map(::classifyStreamingLine))
         blockState.activeBlock?.let { add(classifyActiveStreamingLine(it)) }
     }.filterNot { it is StreamingLineModel.Blank }
-    var previous: StreamingLineModel? = null
     var dividerHeadingCount = 0
-    models.forEach { model ->
-        if (shouldShowStreamingSectionDivider(previous, model)) {
+    models.forEachIndexed { index, _ ->
+        if (shouldShowStreamingSectionDivider(models, index)) {
             dividerHeadingCount += 1
         }
-        previous = model
     }
     return RendererStructureStats(
         blockCount = models.size,
@@ -2979,7 +2991,6 @@ private fun RendererMarkdownTableImpl(
     onStatusHint: ((String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    if (table.rows.isEmpty()) return
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val currentOnStatusHint = rememberUpdatedState(onStatusHint)
@@ -2994,12 +3005,6 @@ private fun RendererMarkdownTableImpl(
             table.headers.size,
             table.rows.maxOfOrNull { row -> row.size } ?: 0
         ).coerceAtLeast(1)
-    }
-    val tableWidth = remember(columnCount) {
-        val widthValue = (0 until columnCount)
-            .sumOf { columnIndex -> rendererMarkdownTableColumnWidth(columnCount, columnIndex).value.toDouble() }
-            .toFloat()
-        widthValue.dp
     }
     Column(modifier = modifier.fillMaxWidth()) {
         if (copyEnabled) {
@@ -3019,33 +3024,50 @@ private fun RendererMarkdownTableImpl(
                 .background(Color.White)
                 .border(width = 0.7.dp, color = Color(0xFFE1E5EA), shape = RoundedCornerShape(8.dp))
         ) {
-            Column(
-                modifier = Modifier.horizontalScroll(scrollState)
-            ) {
-                RendererMarkdownTableHorizontalRowImpl(
-                    cells = table.headers,
-                    columnCount = columnCount,
-                    rowWidth = tableWidth,
-                    isHeader = true,
-                    inlineMode = inlineMode,
-                    linksEnabled = linksEnabled,
-                    onStatusHint = onStatusHint
-                )
-                table.rows.forEach { row ->
-                    HorizontalDivider(
-                        modifier = Modifier.width(tableWidth),
-                        thickness = 0.6.dp,
-                        color = Color(0xFFE8EBEF)
-                    )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val columnWidths = remember(columnCount, maxWidth) {
+                    val baseWidths = (0 until columnCount).map { columnIndex ->
+                        rendererMarkdownTableColumnWidth(columnCount, columnIndex)
+                    }
+                    val baseWidthValue = baseWidths.sumOf { it.value.toDouble() }.toFloat()
+                    if (baseWidthValue >= maxWidth.value) {
+                        baseWidths
+                    } else {
+                        val extraPerColumn = ((maxWidth.value - baseWidthValue) / columnCount).dp
+                        baseWidths.map { width -> width + extraPerColumn }
+                    }
+                }
+                val tableWidth = remember(columnWidths) {
+                    columnWidths.sumOf { it.value.toDouble() }.toFloat().dp
+                }
+                Column(
+                    modifier = Modifier.horizontalScroll(scrollState)
+                ) {
                     RendererMarkdownTableHorizontalRowImpl(
-                        cells = row,
-                        columnCount = columnCount,
+                        cells = table.headers,
+                        columnWidths = columnWidths,
                         rowWidth = tableWidth,
-                        isHeader = false,
+                        isHeader = true,
                         inlineMode = inlineMode,
                         linksEnabled = linksEnabled,
                         onStatusHint = onStatusHint
                     )
+                    table.rows.forEach { row ->
+                        HorizontalDivider(
+                            modifier = Modifier.width(tableWidth),
+                            thickness = 0.6.dp,
+                            color = Color(0xFFE8EBEF)
+                        )
+                        RendererMarkdownTableHorizontalRowImpl(
+                            cells = row,
+                            columnWidths = columnWidths,
+                            rowWidth = tableWidth,
+                            isHeader = false,
+                            inlineMode = inlineMode,
+                            linksEnabled = linksEnabled,
+                            onStatusHint = onStatusHint
+                        )
+                    }
                 }
             }
         }
@@ -3055,7 +3077,7 @@ private fun RendererMarkdownTableImpl(
 @Composable
 private fun RendererMarkdownTableHorizontalRowImpl(
     cells: List<String>,
-    columnCount: Int,
+    columnWidths: List<Dp>,
     rowWidth: Dp,
     isHeader: Boolean,
     inlineMode: RendererInlineMode,
@@ -3078,11 +3100,11 @@ private fun RendererMarkdownTableHorizontalRowImpl(
             .height(IntrinsicSize.Min)
             .heightIn(min = if (isHeader) 44.dp else 48.dp)
     ) {
-        repeat(columnCount) { columnIndex ->
+        columnWidths.forEachIndexed { columnIndex, columnWidth ->
             val borderColor = if (isHeader) Color(0xFFE2E6EA) else Color(0xFFEEF0F3)
             Box(
                 modifier = Modifier
-                    .width(rendererMarkdownTableColumnWidth(columnCount, columnIndex))
+                    .width(columnWidth)
                     .heightIn(min = if (isHeader) 44.dp else 48.dp)
                     .fillMaxHeight()
                     .border(width = 0.4.dp, color = borderColor)

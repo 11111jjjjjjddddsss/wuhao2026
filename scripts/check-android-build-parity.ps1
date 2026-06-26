@@ -564,6 +564,14 @@ if ($failures.Count -eq 0) {
         "App update must not mark a version as prompted before permission, download, and install-intent stages have succeeded."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("礼品卡生效规则",\s*"生成即可兑换，不做预约生效",\s*UiCopyPreviewKind\.HamburgerGiftCardImmediateRule\)' `
         "Debug UI copy preview must show the current gift-card immediate-effect rule."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("Pro 到期日",\s*"Plus 置灰不可购买，Pro 可继续续费",\s*UiCopyPreviewKind\.MembershipProSummary\)' `
+        "Debug UI preview must show that Pro users cannot buy Plus and can renew Pro."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("套餐区：Pro",\s*"Plus 显示当前为 Pro 且置灰，Pro 可续费",\s*UiCopyPreviewKind\.MembershipPlanPro\)' `
+        "Debug UI preview plan sample must keep Pro state clear: Plus disabled, Pro renewable."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("确认付款大字体",\s*"1\.6x 字体下可滚动查看确认和取消",\s*UiCopyPreviewKind\.MembershipPaymentConfirmLargeFont\)' `
+        "Debug UI preview must keep a large-font payment confirmation sample."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("设置支付成功",\s*"设置页会员中心也显示同一权益生效弹层",\s*UiCopyPreviewKind\.HamburgerMembershipPurchaseSuccess\)' `
+        "Debug UI preview must show the settings membership page success overlay path."
     Require-Match $failures $chatScreen 'valid_from 只作创建追溯，不作为预约生效门槛' `
         "Debug UI copy preview must explain that gift-card valid_from is not a future activation gate."
     Require-Match $failures $membershipCenterSheet ([regex]::Escape('仅 Plus / Pro 会员可购买；未用完次数长期保留，用完后可再买。')) `
@@ -596,8 +604,10 @@ if ($failures.Count -eq 0) {
         "Legal page titles must leave room for the floating back button and wrap up to three lines on narrow screens."
     Require-Match $failures $membershipCenterSheet '会员信息刷新失败，请检查网络后重试(?s:.*?)heightIn\(min\s*=\s*34\.dp\)(?s:.*?)text\s*=\s*"重试"' `
         "Membership refresh failure notice must use plain user-facing wording and avoid fixed-height clipping."
-    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.34f\)\)(?s:.*?)width\(216\.dp\)(?s:.*?)heightIn\(min\s*=\s*50\.dp\)' `
+    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)zIndex\(132f\)(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.46f\)\)(?s:.*?)width\(232\.dp\)(?s:.*?)heightIn\(min\s*=\s*52\.dp\)' `
         "Membership success overlay must dim the refreshed membership page and keep a large non-clipping confirmation button."
+    Require-NoMatch $failures $membershipCenterSheet 'visible\s*=\s*visible\s*&&\s*purchaseSuccessVisible|purchaseSuccessVisible:\s*Boolean|onPurchaseSuccessConfirm' `
+        "Membership success overlay must not be nested inside only the top-right membership sheet; settings membership purchases need the same top-level success card."
     Require-Match $failures $sessionApi 'gift_card_lower_tier"\s*->\s*"当前已是更高档会员，这张礼品卡不能叠加使用"' `
         "Gift card lower-tier rejection must keep the concise formal user-facing copy."
     Require-Match $failures $hamburgerMenuSheet '正在读取反馈记录\.\.\.(?s:.*?)反馈记录加载失败' `
@@ -679,6 +689,8 @@ if ($failures.Count -eq 0) {
         "Membership topup must require the current topup balance to be used up before another purchase."
     Require-Match $failures $chatScreen 'product\s*==\s*MembershipPaymentProduct\.BuyTopup\s*&&(?s:.*?)membershipEntitlement\?\.topupRemaining\s*\?:\s*0\)\s*>\s*0(?s:.*?)"reason"\s+to\s+"topup_remaining"(?s:.*?)"加油包用完后再购买，未用完次数会长期保留"' `
         "Membership topup active-balance taps must be blocked locally before creating an order."
+    Require-Match $failures $chatScreen 'product\s*==\s*MembershipPaymentProduct\.RenewPlus\s*&&(?s:.*?)currentMembershipTierForPaymentLog\(\)\s*==\s*"pro"(?s:.*?)"reason"\s+to\s+"pro_cannot_buy_plus"(?s:.*?)"当前已是 Pro，不能购买 Plus"' `
+        "Membership purchase flow must locally block Pro users from creating a Plus payment order."
     Require-Match $failures $membershipCenterSheet '\.size\(48\.dp\)(?s:.*?)contentDescription\s*=\s*"关闭会员中心"(?s:.*?)fontSize\s*=\s*29\.sp' `
         "Membership center close button must keep a larger touch target and visible close glyph."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单尾号"(?s:.*?)value\s*=\s*item\.outTradeSuffix' `
@@ -687,16 +699,28 @@ if ($failures.Count -eq 0) {
         "Payment confirmation must use short product names and keep multi-line notes left-aligned."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)MembershipPaymentMethodChip\((?s:.*?)text\s*=\s*"支付宝"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)text\s*=\s*"微信支付 暂未开通"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"确认并打开支付宝"(?s:.*?)Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"取消"' `
         "Payment confirmation must keep the four payment/action capsules stacked vertically on narrow phones."
-    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPaymentMethodChip(?s:.*?)heightIn\(min\s*=\s*48\.dp\)(?s:.*?)fontSize\s*=\s*15\.sp(?s:.*?)lineHeight\s*=\s*20\.sp' `
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)zIndex\(130f\)(?s:.*?)BoxWithConstraints(?s:.*?)panelMaxHeight(?s:.*?)heightIn\(max\s*=\s*panelMaxHeight\)(?s:.*?)verticalScroll\(rememberScrollState\(\)\)' `
+        "Payment confirmation sheet must stay above global hints and scroll within a bounded panel on small screens or large font settings."
+    Require-Match $failures $chatScreen 'UiCopyPreviewKind\.MembershipPaymentConfirmLargeFont\s*->\s*\{(?s:.*?)UiCopyPreviewLargeFont\s*\{(?s:.*?)UiCopyPreviewNarrowFrame\(width\s*=\s*300\.dp\)\s*\{(?s:.*?)MembershipPaymentConfirmPreview\(\)' `
+        "Payment confirmation preview must exercise large font plus narrow-screen layout."
+    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPaymentMethodChip(?s:.*?)heightIn\(min\s*=\s*50\.dp\)(?s:.*?)fontSize\s*=\s*16\.sp(?s:.*?)lineHeight\s*=\s*22\.sp' `
         "Payment method capsules must keep readable typography on real phones."
+    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPaymentConfirmButton(?s:.*?)val\s+isCancel\s*=\s*text\s*==\s*"取消"(?s:.*?)heightIn\(min\s*=\s*50\.dp\)(?s:.*?)fontSize\s*=\s*if\s*\(isCancel\)\s*17\.sp\s*else\s*16\.sp' `
+        "Payment confirmation buttons must keep 50dp tap targets, with the cancel button using the larger user-approved text."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.RenewPlus\s*->\s*"Plus 会员 30天"(?s:.*?)MembershipPaymentProduct\.RenewPro\s*->\s*"Pro 会员 30天"(?s:.*?)MembershipPaymentProduct\.BuyTopup\s*->\s*"加油包 80次"(?s:.*?)membershipPaymentConfirmTitle\((?s:.*?)subject\.contains\("联调测试"\)' `
         "Payment confirmation titles must stay concise while preserving the internal test suffix when present."
+    Require-Match $failures $membershipCenterSheet 'val\s+plusEnabled\s*=\s*activeTier\s*==\s*"free"\s*\|\|\s*activeTier\s*==\s*"plus"(?s:.*?)activeTier\s*==\s*"pro"\s*->\s*"当前为 Pro"(?s:.*?)actionEnabled\s*=\s*plusEnabled\s*&&\s*paymentState\.activeProduct\s*==\s*null' `
+        "Membership plans must keep Plus disabled for Pro users."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.BuyTopup\s*->\s*"额外80次问诊次数，长期保留"(?s:.*?)MembershipPaymentProduct\.UpgradePlusToPro\s*->\s*"升级后立刻生效，Plus剩余会折成补偿次数"(?s:.*?)else\s*->\s*"一次购买30天，不自动续费；未到期会顺延"' `
         "Payment confirmation notes must explain topup retention, Plus-to-Pro compensation, and membership renewal extension."
-    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)fillMaxSize\(\)(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.34f\)\)(?s:.*?)widthIn\(max\s*=\s*340\.dp\)(?s:.*?)fontSize\s*=\s*21\.sp(?s:.*?)width\(216\.dp\)(?s:.*?)heightIn\(min\s*=\s*50\.dp\)' `
+    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)zIndex\(132f\)(?s:.*?)fillMaxSize\(\)(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.46f\)\)(?s:.*?)widthIn\(max\s*=\s*360\.dp\)(?s:.*?)fontSize\s*=\s*22\.sp(?s:.*?)width\(232\.dp\)(?s:.*?)heightIn\(min\s*=\s*52\.dp\)' `
         "Membership purchase success overlay must keep the modal dimming treatment and enlarged confirmation card."
     Require-Match $failures $chatScreen 'orderStatus\s*==\s*"paid"\s*&&\s*grantStatus\s*==\s*"success"(?s:.*?)membershipPaymentState\s*=\s*MembershipPaymentState\(\)(?s:.*?)membershipPurchaseSuccessVisible\s*=\s*true(?s:.*?)refreshMembershipEntitlement\(\)' `
         "Membership purchase success must avoid inserting an auto-clearing inline notice that makes the membership sheet jump."
+    Require-Match $failures $chatScreen 'MembershipCenterBottomSheet\((?s:.*?)HamburgerMenuSheet\((?s:.*?)MembershipPaymentConfirmOverlay\((?s:.*?)MembershipPurchaseSuccessOverlay\((?s:.*?)visible\s*=\s*membershipPurchaseSuccessVisible' `
+        "Membership purchase success overlay must be mounted at the ChatScreen layer so both the top-right and settings membership entry points can show it."
+    Require-Match $failures $chatScreen 'private\s+fun\s+UiCopyPreviewHamburgerMembershipPurchaseSuccess\(userId:\s*String\)(?s:.*?)HamburgerMembershipCenterPagePreview\(userId\s*=\s*userId\)(?s:.*?)MembershipPurchaseSuccessOverlay\((?s:.*?)visible\s*=\s*true' `
+        "Settings membership preview must render the same success overlay on top of the hamburger membership page."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.5\.sp\s*else\s*17\.5\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*30\.sp\s*else\s*27\.sp(?s:.*?)fontWeight\s*=\s*FontWeight\.Bold' `
         "Assistant headings must keep the earlier roomier bold layout."
     Require-Match $failures $chatScreen 'val\s+globalStatusHintVisible\s*=\s*globalStatusHintText\s*!=\s*null\s*&&\s*inputSelectionToolbarState\s*==\s*null\s*&&\s*activeMessageSelectionState\s*==\s*null(?s:.*?)ComposerAttachmentBottomSheet\((?s:.*?)GlobalStatusHint\((?s:.*?)\.zIndex\(120f\)' `
@@ -1052,8 +1076,8 @@ if ($failures.Count -eq 0) {
         "Markdown table copy must have a unit test proving the table button does not include hidden raw headers or surrounding assistant text."
     Require-NoMatch $failures $chatStreamingRenderer 'if\s*\(\s*rawRows\.isEmpty\(\)\s*\)\s*return\s+null' `
         "Markdown tables must be allowed to render a streaming shell after the header and delimiter are confirmed, before body rows arrive."
-    Require-Match $failures $chatStreamingRenderer 'if\s*\(\s*table\.rows\.isEmpty\(\)\s*\)\s*return' `
-        "Markdown table UI must avoid showing a redundant raw header-summary strip before any body row arrives."
+    Require-NoMatch $failures $chatStreamingRenderer 'if\s*\(\s*table\.rows\.isEmpty\(\)\s*\)\s*return' `
+        "Markdown table UI must keep the confirmed horizontal header shell visible before body rows arrive, instead of dropping the table."
     Require-NoMatch $failures $chatStreamingRenderer 'RendererMarkdownTableHeaderImpl' `
         "Markdown table UI must not reintroduce the redundant header-summary strip above the first row."
     Require-NoMatch $failures $chatStreamingRenderer 'RendererMarkdownTableRowImpl' `
@@ -1074,6 +1098,8 @@ if ($failures.Count -eq 0) {
         "Debug preview panel must mention the latest horizontal-table/copy-button visual contract."
     Require-Match $failures $chatStreamingRenderer 'private\s+fun\s+rendererMarkdownTableColumnWidth\(columnCount:\s*Int,\s*columnIndex:\s*Int\):\s*Dp\s*=(?s:.*?)columnIndex\s*==\s*0\s*&&\s*columnCount\s*<=\s*2\s*->\s*132\.dp(?s:.*?)columnIndex\s*==\s*0\s*->\s*112\.dp(?s:.*?)columnCount\s*<=\s*2\s*->\s*190\.dp(?s:.*?)columnCount\s*==\s*3\s*->\s*148\.dp(?s:.*?)else\s*->\s*132\.dp' `
         "Markdown table columns must keep stable fixed widths so tables scroll horizontally instead of collapsing into vertical cards."
+    Require-Match $failures $chatStreamingRenderer 'BoxWithConstraints\(modifier\s*=\s*Modifier\.fillMaxWidth\(\)\)(?s:.*?)baseWidthValue\s*>=\s*maxWidth\.value(?s:.*?)extraPerColumn\s*=\s*\(\(maxWidth\.value\s*-\s*baseWidthValue\)\s*/\s*columnCount\)\.dp(?s:.*?)baseWidths\.map\s*\{\s*width\s*->\s*width\s*\+\s*extraPerColumn\s*\}' `
+        "Markdown table columns must expand to fill the visible frame when there are only a few columns, avoiding a fake blank right edge."
     Require-Match $failures $chatStreamingRenderer 'headerColumnCount\s*=\s*splitRendererMarkdownTableCells\(current\)\.size(?s:.*?)separatorColumnCount\s*=\s*splitRendererMarkdownTableCells\(lines\[index \+ 1\]\)\.size(?s:.*?)headerColumnCount\s*!=\s*separatorColumnCount(?s:.*?)expectedColumnCount\s*=\s*headerColumnCount(?s:.*?)bodyRowsWithoutEdgeMode(?s:.*?)looksLikeRendererMarkdownTableBodyRow\((?s:.*?)expectedColumnCount\s*=\s*expectedColumnCount' `
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
     Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)trimmed\.matches\(Regex\("""\[-\+\*\]\\s\+\.\+"""\)\)' `

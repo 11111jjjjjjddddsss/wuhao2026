@@ -1205,22 +1205,28 @@ object SessionApi {
                     val parsed = runCatching {
                         gson.fromJson(body, AlipayOrderResponse::class.java)
                     }.getOrNull()
-                    val valid = parsed?.takeIf { order ->
-                        order.ok == true &&
-                            !order.outTradeNo.isNullOrBlank() &&
-                            !order.orderString.isNullOrBlank()
-                    }
-                    if (valid == null) {
-                        reportClientLog(
-                            level = "warn",
-                            event = "payment.order_create_failed",
-                            message = "Payment order create failed",
-                            attrs = mapOf("reason" to "invalid_response")
-                        )
-                        postToMain { onResult(null, "下单失败，请稍后再试") }
-                    } else {
-                        postToMain { onResult(valid, null) }
-                    }
+					val valid = parsed?.takeIf { order ->
+						order.ok == true &&
+							order.provider.equals("alipay", ignoreCase = true) &&
+							order.productType == productType &&
+							(order.amountCents ?: 0) > 0 &&
+							!order.outTradeNo.isNullOrBlank() &&
+							!order.orderString.isNullOrBlank()
+					}
+					if (valid == null) {
+						reportClientLog(
+							level = "warn",
+							event = "payment.order_create_failed",
+							message = "Payment order create failed",
+							attrs = mapOf(
+								"reason" to "invalid_response",
+								"product_type" to productType
+							)
+						)
+						postToMain { onResult(null, "订单信息异常，请稍后再试") }
+					} else {
+						postToMain { onResult(valid, null) }
+					}
                 }
             },
             onFailure = { error ->
@@ -1277,12 +1283,23 @@ object SessionApi {
                         postToMain { onResult(null, paymentStatusErrorMessage(it.code, errorCode)) }
                         return@use
                     }
-                    val parsed = runCatching {
-                        gson.fromJson(body, PaymentOrderStatusResponse::class.java)
-                    }.getOrNull()
-                    postToMain { onResult(parsed?.order, null) }
-                }
-            },
+					val parsed = runCatching {
+						gson.fromJson(body, PaymentOrderStatusResponse::class.java)
+					}.getOrNull()
+					val order = parsed?.takeIf { status -> status.ok == true }?.order
+					if (order == null) {
+						reportClientLog(
+							level = "warn",
+							event = "payment.order_status_failed",
+							message = "Payment order status failed",
+							attrs = mapOf("reason" to "invalid_response")
+						)
+						postToMain { onResult(null, "支付状态暂时不可查") }
+					} else {
+						postToMain { onResult(order, null) }
+					}
+				}
+			},
             onFailure = { error ->
                 reportClientLog(
                     level = "warn",

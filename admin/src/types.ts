@@ -488,7 +488,18 @@ export interface AdminOrderEntry {
   source?: string;
   provider?: string;
   provider_trade_no?: string;
+  provider_trade_suffix?: string;
+  provider_status?: string;
   grant_status?: string;
+  grant_error?: string;
+  paid_at?: number;
+  granted_at?: number;
+  refund_status?: string;
+  refund_amount?: string;
+  refunded_at?: number;
+  closed_at?: number;
+  last_query_at?: number;
+  last_query_error?: string;
   is_test_order?: boolean;
   client_build_type?: string;
   client_version_code?: number;
@@ -502,6 +513,22 @@ export interface AdminOrdersResponse {
     limit?: number;
   };
   note?: string;
+}
+
+export interface AdminPaymentReconciliation {
+  day: string;
+  local_paid_count: number;
+  local_paid_amount: string;
+  local_test_paid_count: number;
+  local_test_paid_amount: string;
+  local_refunded_count: number;
+  local_refunded_amount: string;
+  local_pending_grant_count: number;
+  local_pending_order_count: number;
+  alipay_bill_download_ok: boolean;
+  alipay_bill_url_available: boolean;
+  alipay_bill_error?: string;
+  note: string;
 }
 
 export interface ClientAppLogEntry {

@@ -321,6 +321,59 @@ func TestValidatePaymentProductRejectsTopupWhenPackRemaining(t *testing.T) {
 	}
 }
 
+func TestValidatePaymentProductRejectsInvalidMembershipTransitions(t *testing.T) {
+	tests := []struct {
+		name        string
+		currentTier Tier
+		productType string
+		wantErr     string
+	}{
+		{
+			name:        "pro_cannot_buy_plus",
+			currentTier: TierPro,
+			productType: paymentProductRenewPlus,
+			wantErr:     "FORBIDDEN_TIER",
+		},
+		{
+			name:        "plus_must_use_upgrade_to_pro",
+			currentTier: TierPlus,
+			productType: paymentProductRenewPro,
+			wantErr:     "USE_UPGRADE_PLUS_TO_PRO",
+		},
+		{
+			name:        "free_cannot_upgrade_directly",
+			currentTier: TierFree,
+			productType: paymentProductUpgradePlusPro,
+			wantErr:     "FORBIDDEN_TIER",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			if err != nil {
+				t.Fatalf("sqlmock.New: %v", err)
+			}
+			defer db.Close()
+
+			store := &Store{db: db}
+			userID := "acct_membership_transition"
+			expireAt := time.Now().Add(24 * time.Hour).UnixMilli()
+			mock.ExpectQuery(regexp.QuoteMeta("SELECT tier, tier_expire_at FROM user_entitlement WHERE user_id = ? LIMIT 1")).
+				WithArgs(userID).
+				WillReturnRows(sqlmock.NewRows([]string{"tier", "tier_expire_at"}).AddRow(string(tc.currentTier), expireAt))
+
+			err = store.ValidatePaymentProduct(context.Background(), userID, tc.productType)
+			if err == nil || err.Error() != tc.wantErr {
+				t.Fatalf("ValidatePaymentProduct err = %v, want %s", err, tc.wantErr)
+			}
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Fatalf("unmet expectations: %v", err)
+			}
+		})
+	}
+}
+
 func TestGrantPaidPaymentOrderKeepsAlipayRetryWhenAlreadyProcessing(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -363,9 +416,15 @@ func TestGrantPaidPaymentOrderKeepsAlipayRetryWhenAlreadyProcessing(t *testing.T
 			nil,
 			paymentGrantProcessing,
 			nil,
+			nil,
+			0,
+			nil,
 			nowMs-60000,
 			nowMs,
 			nowMs-1000,
+			nil,
+			nil,
+			nil,
 			nil,
 		))
 
@@ -421,9 +480,15 @@ func TestGrantPaidPaymentOrderMarksNeedsOpsForBusinessConflict(t *testing.T) {
 			nil,
 			paymentGrantProcessing,
 			nil,
+			nil,
+			0,
+			nil,
 			nowMs-60000,
 			nowMs,
 			nowMs-1000,
+			nil,
+			nil,
+			nil,
 			nil,
 		))
 	mock.ExpectBegin()
@@ -501,9 +566,15 @@ func TestManuallyGrantPaidPaymentOrderRetriesNeedsOps(t *testing.T) {
 			nil,
 			paymentGrantProcessing,
 			nil,
+			nil,
+			0,
+			nil,
 			nowMs-60000,
 			nowMs,
 			nowMs-1000,
+			nil,
+			nil,
+			nil,
 			nil,
 		))
 	mock.ExpectBegin()
@@ -541,10 +612,16 @@ func TestManuallyGrantPaidPaymentOrderRetriesNeedsOps(t *testing.T) {
 			entitlementOrderID,
 			paymentGrantSuccess,
 			nil,
+			nil,
+			0,
+			nil,
 			nowMs-60000,
 			nowMs,
 			nowMs-1000,
 			nowMs+1000,
+			nil,
+			nil,
+			nil,
 		))
 
 	order, err := store.manuallyGrantPaidPaymentOrder(context.Background(), outTradeNo, nowMs)
@@ -598,10 +675,16 @@ func TestCompleteAlipayPaymentDoesNotDowngradePaidOrderOnClosedNotify(t *testing
 			"pay_"+outTradeNo,
 			paymentGrantSuccess,
 			nil,
+			nil,
+			0,
+			nil,
 			nowMs-60000,
 			nowMs-1000,
 			nowMs-1000,
 			nowMs-500,
+			nil,
+			nil,
+			nil,
 		))
 	mock.ExpectExec("UPDATE payment_orders").
 		WithArgs(
@@ -651,10 +734,16 @@ func paymentOrderRows() *sqlmock.Rows {
 		"entitlement_order_id",
 		"grant_status",
 		"grant_error",
+		"refund_status",
+		"refund_amount_cents",
+		"last_query_error",
 		"created_at",
 		"updated_at",
 		"paid_at",
 		"granted_at",
+		"refunded_at",
+		"closed_at",
+		"last_query_at",
 	})
 }
 

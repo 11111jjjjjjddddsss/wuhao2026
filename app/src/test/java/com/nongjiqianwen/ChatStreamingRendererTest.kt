@@ -978,6 +978,35 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun chineseSectionHeadingsWithDunhaoAndParenthesesCreateDividersAfterContent() {
+        val variants = listOf(
+            "二、 中等敏感作物（少施或不施含氯化肥）",
+            "三、耐氯作物（可正常施用含氯化肥）",
+            "五、使用建议",
+            "**二、 中等敏感作物**（少施或不施含氯化肥）",
+            "**三、耐氯作物**（可正常施用含氯化肥）",
+            "**五、使用建议**"
+        )
+
+        variants.forEach { line ->
+            val model = classifyStreamingLine(line)
+
+            assertTrue(
+                "Expected Chinese section heading: $line",
+                model is StreamingLineModel.Heading &&
+                    model.source == StreamingHeadingSource.ChineseSection
+            )
+            assertTrue(
+                "Expected divider for Chinese section heading: $line",
+                shouldShowStreamingSectionDivider(
+                    previous = classifyStreamingLine("上一段已经说明主要分类。"),
+                    current = model
+                )
+            )
+        }
+    }
+
+    @Test
     fun numberedHeadingsWithParentheticalSuffixCreateDividersAfterContent() {
         val variants = listOf(
             "1. 营养需求重点（膨果期）",
@@ -1148,7 +1177,21 @@ class ChatStreamingRendererTest {
         assertTrue(models[3] is StreamingLineModel.Numbered)
         assertTrue(shouldShowStreamingSectionDivider(models, 1))
         assertTrue(shouldShowStreamingSectionDivider(models, 2))
-        assertTrue(shouldShowStreamingSectionDivider(models, 3))
+        assertFalse(shouldShowStreamingSectionDivider(models, 3))
+    }
+
+    @Test
+    fun tailChineseSectionHeadingDoesNotCreateDanglingDivider() {
+        val state = splitStreamingBlockState(
+            "前面说完。\n\n" +
+                "**五、使用建议**",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertTrue(models.last() is StreamingLineModel.Heading)
+        assertFalse(shouldShowStreamingSectionDivider(models, models.lastIndex))
     }
 
     @Test

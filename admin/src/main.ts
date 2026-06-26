@@ -18,6 +18,7 @@ import type {
   AdminOrderEntry,
   AdminOrdersResponse,
   AdminOverview,
+  AdminPaymentReconciliation,
   AdminQuotaConsumeOutboxEntry,
   AdminQuotaLedgerEntry,
   AdminRegionMetric,
@@ -819,7 +820,7 @@ async function entitlementsPage(): Promise<string> {
 async function ordersPage(): Promise<string> {
   return userScopedPage({
     title: "订单",
-    desc: "核查会员变更、支付订单和权益发放状态；只允许按已付款异常订单人工补发权益。",
+    desc: "核查会员变更、支付订单、权益发放和受控售后；财务动作仅限 owner / finance_ops。",
     formID: "orders-form",
     inputName: "user_id",
     value: pageState.orderUserID,
@@ -836,10 +837,11 @@ async function ordersPage(): Promise<string> {
           ${kpi("正式支付金额", summary.amountText, "只统计非测试支付订单")}
         </div>
         <div class="grid two" style="margin-top:12px">
-          ${notice("订单核查", "这里只按后端订单真相处理；不提供支付成功模拟、退款或随意改权益。已付款但权益未成功的订单，可由财务运营人工补发。", "info")}
+          ${notice("订单核查", "以服务端订单和支付宝查询结果为准；生产放量前以支付宝账单和对账结果为准。已付款但权益未成功的订单，可由财务运营人工补发。", "info")}
           ${notice("测试单口径", "0.01 联调订单会保留为测试订单，不删除；后台汇总不把测试单计入正式支付金额。", "info")}
-          ${notice("对账提醒", "生产放量前以支付宝账单和对账结果为准；看到 paid 但 grant_status 不是 success 时，先核对支付平台后台和服务端日志。", "warn")}
+          ${notice("售后提醒", "退款入口只做全额退款并保留审计；退款后权益不自动扣回，需人工核查。正式放量前仍要跑小额退款和对账验收。", "warn")}
         </div>
+        ${paymentOpsPanel()}
         <section class="card">
           <div class="card-head"><div class="card-title">${userID ? "用户订单" : "最近订单"}</div><span class="small muted">${orders.length} 条</span></div>
           <div class="table-wrap">${ordersTable(orders)}</div>
@@ -847,6 +849,47 @@ async function ordersPage(): Promise<string> {
       `;
     },
   });
+}
+
+function paymentOpsPanel(): string {
+  if (!canManagePaymentOps()) {
+    return `
+      <section class="card" style="margin-top:12px">
+        <div class="card-head"><div class="card-title">支付处理</div></div>
+        <p class="muted">当前账号可查看订单；查单、退款、关闭超时单和对账由财务运营处理。</p>
+      </section>
+    `;
+  }
+  const yesterday = shanghaiDateInputValue(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  return `
+    <section class="card" style="margin-top:12px">
+      <div class="card-head">
+        <div class="card-title">支付处理</div>
+        <span class="small muted">查单 / 退款 / 关单 / 对账</span>
+      </div>
+      <div class="grid two">
+        <div>
+          <div class="section-title-row" style="margin-bottom:8px">
+            <strong>对账摘要</strong>
+            <button class="button small-button" type="button" data-action="payment-reconciliation">生成</button>
+          </div>
+          <label class="field-label">日期</label>
+          <input class="input" type="date" data-payment-reconciliation-day value="${escapeAttr(yesterday)}" />
+          <p class="small muted">只展示本地汇总和支付宝账单是否可取，不在页面展示完整账单链接。</p>
+        </div>
+        <div>
+          <div class="section-title-row" style="margin-bottom:8px">
+            <strong>关闭超时待支付</strong>
+            <button class="button small-button" type="button" data-action="payment-close-expired">执行</button>
+          </div>
+          <label class="field-label">超过多少分钟</label>
+          <input class="input" type="number" min="30" max="1440" step="30" data-payment-close-minutes value="180" />
+          <p class="small muted">只本地关闭 pending 且未付款订单，不等同于支付宝侧撤单。</p>
+        </div>
+      </div>
+      <div id="payment-reconciliation-result" class="small muted" style="margin-top:10px"></div>
+    </section>
+  `;
 }
 
 async function giftCardsPage(): Promise<string> {
@@ -1621,8 +1664,28 @@ async function handleAction(button: HTMLElement): Promise<void> {
     return;
   }
   if (action === "grant-payment-order") {
-    if (!canManagePaymentGrants()) return;
+    if (!canManagePaymentOps()) return;
     await grantPaymentOrder(button.dataset.outTradeNo || "", button);
+    return;
+  }
+  if (action === "query-payment-order") {
+    if (!canManagePaymentOps()) return;
+    await queryPaymentOrder(button.dataset.outTradeNo || "", button);
+    return;
+  }
+  if (action === "refund-payment-order") {
+    if (!canManagePaymentOps()) return;
+    await refundPaymentOrder(button.dataset.outTradeNo || "", button);
+    return;
+  }
+  if (action === "payment-close-expired") {
+    if (!canManagePaymentOps()) return;
+    await closeExpiredPaymentOrders(button);
+    return;
+  }
+  if (action === "payment-reconciliation") {
+    if (!canManagePaymentOps()) return;
+    await generatePaymentReconciliation(button);
     return;
   }
   if (action === "account-deletion-status") {
@@ -2033,6 +2096,105 @@ async function grantPaymentOrder(outTradeNo: string, button?: HTMLElement): Prom
     await render();
     showTransientNotice("已补发权益");
   }, "补发失败");
+}
+
+async function queryPaymentOrder(outTradeNo: string, button?: HTMLElement): Promise<void> {
+  if (!outTradeNo) return;
+  const suffix = outTradeNo.slice(-8).toUpperCase();
+  if (!window.confirm(`确认向支付宝查单并同步订单尾号 ${suffix} 的状态？\n\n如果查到已支付，后端会按同一套幂等逻辑发放权益。`)) {
+    return;
+  }
+  const typedConfirmation = window.prompt("请输入 查单 确认同步这笔订单状态。");
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== "查单") {
+    window.alert("未输入“查单”，已取消操作。");
+    return;
+  }
+  await withButtonBusy(button, "查单中", async () => {
+    await apiFetch("/admin-api/v1/orders/query", {
+      method: "POST",
+      json: { out_trade_no: outTradeNo, confirmation: "查单" },
+    });
+    await render();
+    showTransientNotice("查单完成");
+  }, "查单失败");
+}
+
+async function refundPaymentOrder(outTradeNo: string, button?: HTMLElement): Promise<void> {
+  if (!outTradeNo) return;
+  const suffix = outTradeNo.slice(-8).toUpperCase();
+  const reason = window.prompt("请输入退款原因。只写必要处理说明，不要写完整手机号、密钥、token 或支付参数全文。");
+  if (reason === null) return;
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    window.alert("退款原因不能为空。");
+    return;
+  }
+  if (!window.confirm(`确认全额退款订单尾号 ${suffix}？\n\n退款成功后，系统只记录退款状态；会员或加油包权益不会自动扣回，需要人工核查。`)) {
+    return;
+  }
+  const typedConfirmation = window.prompt("请输入 退款 确认发起全额退款。");
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== "退款") {
+    window.alert("未输入“退款”，已取消操作。");
+    return;
+  }
+  await withButtonBusy(button, "退款中", async () => {
+    await apiFetch("/admin-api/v1/orders/refund", {
+      method: "POST",
+      json: { out_trade_no: outTradeNo, reason: trimmedReason, confirmation: "退款" },
+    });
+    await render();
+    showTransientNotice("退款已提交");
+  }, "退款失败");
+}
+
+async function closeExpiredPaymentOrders(button?: HTMLElement): Promise<void> {
+  const input = document.querySelector<HTMLInputElement>("[data-payment-close-minutes]");
+  const minutes = Number(input?.value || "180");
+  if (!Number.isInteger(minutes) || minutes < 30 || minutes > 1440) {
+    window.alert("关闭阈值必须在 30 到 1440 分钟之间。");
+    return;
+  }
+  const reason = window.prompt("请输入关闭原因。建议写：超时未支付订单清理。");
+  if (reason === null) return;
+  const trimmedReason = reason.trim();
+  if (!trimmedReason) {
+    window.alert("关闭原因不能为空。");
+    return;
+  }
+  if (!window.confirm(`确认本地关闭超过 ${minutes} 分钟仍未支付的 pending 订单？\n\n不会关闭已付款订单；这不等同于支付宝侧撤单。`)) {
+    return;
+  }
+  const typedConfirmation = window.prompt("请输入 关闭 确认关闭超时待支付订单。");
+  if (typedConfirmation === null) return;
+  if (typedConfirmation.trim() !== "关闭") {
+    window.alert("未输入“关闭”，已取消操作。");
+    return;
+  }
+  await withButtonBusy(button, "关闭中", async () => {
+    const result = await apiFetch<{ affected?: number }>("/admin-api/v1/orders/close-expired", {
+      method: "POST",
+      json: { older_than_minutes: minutes, reason: trimmedReason, confirmation: "关闭" },
+    });
+    await render();
+    showTransientNotice(`已关闭 ${result.affected || 0} 笔`);
+  }, "关闭失败");
+}
+
+async function generatePaymentReconciliation(button?: HTMLElement): Promise<void> {
+  const input = document.querySelector<HTMLInputElement>("[data-payment-reconciliation-day]");
+  const day = input?.value || "";
+  await withButtonBusy(button, "生成中", async () => {
+    const response = await apiFetch<{ reconciliation: AdminPaymentReconciliation }>(
+      `/admin-api/v1/orders/reconciliation${toQuery({ day })}`,
+    );
+    const result = response.reconciliation;
+    const target = document.getElementById("payment-reconciliation-result");
+    if (target) {
+      target.innerHTML = paymentReconciliationHTML(result);
+    }
+  }, "对账失败");
 }
 
 async function updateSupportConversationStatus(userID: string, status: string, button?: HTMLElement): Promise<void> {
@@ -2684,7 +2846,7 @@ function quotaLedgerTable(rows: AdminQuotaLedgerEntry[]): string {
 
 function ordersTable(rows: AdminOrderEntry[]): string {
   if (!rows.length) return emptyState("没有订单数据", "当前筛选范围内没有现有订单、支付记录或会员变更记录。");
-  const showActions = canManagePaymentGrants();
+  const showActions = canManagePaymentOps();
   return `
     <table class="table mobile-card-table">
       <thead><tr><th>订单</th><th>账号ID</th><th>来源</th><th>类型</th><th>金额</th><th>状态</th><th>权益</th><th>创建时间</th><th>结果</th>${showActions ? "<th>操作</th>" : ""}</tr></thead>
@@ -2693,7 +2855,7 @@ function ordersTable(rows: AdminOrderEntry[]): string {
           .map(
             (row) => `
               <tr>
-                ${tableCell("订单", escapeHTML(row.order_id))}
+                ${tableCell("订单", orderIDCell(row))}
                 ${tableCell("账号ID", `<div class="truncate" style="max-width:220px">${escapeHTML(row.user_id)}</div>`)}
                 ${tableCell("来源", escapeHTML(orderSourceLabel(row)))}
                 ${tableCell("类型", escapeHTML(row.type))}
@@ -2701,8 +2863,8 @@ function ordersTable(rows: AdminOrderEntry[]): string {
                 ${tableCell("状态", statusPill(row.status))}
                 ${tableCell("权益", row.grant_status ? statusPill(row.grant_status) : '<span class="muted">-</span>')}
                 ${tableCell("创建时间", formatTime(row.created_at))}
-                ${tableCell("结果", jsonInline(redactSensitiveDisplayValue(row.result)), "wrap")}
-                ${showActions ? tableCell("操作", paymentGrantAction(row)) : ""}
+                ${tableCell("结果", orderStatusSummary(row), "wrap")}
+                ${showActions ? tableCell("操作", paymentOrderActions(row)) : ""}
               </tr>
             `,
           )
@@ -2712,12 +2874,51 @@ function ordersTable(rows: AdminOrderEntry[]): string {
   `;
 }
 
-function paymentGrantAction(row: AdminOrderEntry): string {
-  if (!canManagePaymentGrants()) return "";
+function orderIDCell(row: AdminOrderEntry): string {
+  const suffix = row.order_id ? row.order_id.slice(-8).toUpperCase() : "-";
+  const parts = [`<strong>${escapeHTML(suffix)}</strong>`];
+  if (canManagePaymentOps() && row.order_id) {
+    parts.push(`<button class="button small-button ghost" type="button" data-action="copy-text" data-copy="${escapeAttr(row.order_id)}">复制完整号</button>`);
+  }
+  return `<div class="stacked-cell">${parts.join("")}</div>`;
+}
+
+function paymentOrderActions(row: AdminOrderEntry): string {
+  if (!canManagePaymentOps()) return "";
   if (row.source !== "payment") return '<span class="muted">-</span>';
-  if ((row.status || "").toLowerCase() !== "paid") return '<span class="muted">未付款</span>';
-  if ((row.grant_status || "").toLowerCase() === "success") return '<span class="muted">已到账</span>';
-  return `<button class="button small-button" type="button" data-action="grant-payment-order" data-out-trade-no="${escapeAttr(row.order_id)}">补发权益</button>`;
+  const status = (row.status || "").toLowerCase();
+  const grantStatus = (row.grant_status || "").toLowerCase();
+  const refundStatus = (row.refund_status || "").toLowerCase();
+  const actions = [
+    `<button class="button small-button" type="button" data-action="query-payment-order" data-out-trade-no="${escapeAttr(row.order_id)}">查单</button>`,
+  ];
+  if (status === "paid" && grantStatus !== "success") {
+    actions.push(`<button class="button small-button" type="button" data-action="grant-payment-order" data-out-trade-no="${escapeAttr(row.order_id)}">补发</button>`);
+  }
+  if (
+    status === "paid" &&
+    grantStatus !== "success" &&
+    refundStatus !== "success" &&
+    refundStatus !== "processing" &&
+    refundStatus !== "unknown"
+  ) {
+    actions.push(`<button class="button small-button danger-button" type="button" data-action="refund-payment-order" data-out-trade-no="${escapeAttr(row.order_id)}">退款</button>`);
+  }
+  return `<div class="action-stack">${actions.join("")}</div>`;
+}
+
+function orderStatusSummary(row: AdminOrderEntry): string {
+  const parts: string[] = [];
+  if (row.provider_status) parts.push(`<div>渠道：${escapeHTML(row.provider_status)}</div>`);
+  if (row.provider_trade_suffix) parts.push(`<div>交易尾号：${escapeHTML(row.provider_trade_suffix)}</div>`);
+  if (row.refund_status) parts.push(`<div>退款：${statusPill(row.refund_status)}${row.refund_amount ? ` ${escapeHTML(row.refund_amount)}` : ""}</div>`);
+  if (row.grant_error) parts.push(`<div>权益错误：${escapeHTML(row.grant_error)}</div>`);
+  if (row.last_query_at) parts.push(`<div>查单：${formatTime(row.last_query_at)}</div>`);
+  if (row.last_query_error) parts.push(`<div>查单错误：${escapeHTML(row.last_query_error)}</div>`);
+  if (row.closed_at) parts.push(`<div>关闭：${formatTime(row.closed_at)}</div>`);
+  if (row.refunded_at) parts.push(`<div>退款时间：${formatTime(row.refunded_at)}</div>`);
+  if (!parts.length) return '<span class="muted">-</span>';
+  return `<div class="stacked-cell">${parts.join("")}</div>`;
 }
 
 function orderSourceLabel(row: AdminOrderEntry): string {
@@ -2768,6 +2969,21 @@ function summarizeOrders(rows: AdminOrderEntry[]): { success: number; failed: nu
     failed,
     amountText: new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" }).format(amountTotal),
   };
+}
+
+function paymentReconciliationHTML(result: AdminPaymentReconciliation): string {
+  return `
+    <div class="reconciliation-summary">
+      <strong>${escapeHTML(result.day)} 对账摘要</strong>
+      <span>正式支付 ${result.local_paid_count} 笔 / ${escapeHTML(result.local_paid_amount)}</span>
+      <span>测试支付 ${result.local_test_paid_count} 笔 / ${escapeHTML(result.local_test_paid_amount)}</span>
+      <span>退款 ${result.local_refunded_count} 笔 / ${escapeHTML(result.local_refunded_amount)}</span>
+      <span>待发权益 ${result.local_pending_grant_count} 笔</span>
+      <span>待支付 ${result.local_pending_order_count} 笔</span>
+      <span>支付宝账单：${result.alipay_bill_download_ok ? "可取" : `不可取${result.alipay_bill_error ? `（${escapeHTML(result.alipay_bill_error)}）` : ""}`}</span>
+      <span class="muted">${escapeHTML(result.note || "")}</span>
+    </div>
+  `;
 }
 
 function topupPacksTable(rows: AdminTopupPackEntry[]): string {
@@ -3691,7 +3907,7 @@ function auditTable(rows: AdminAuditLogEntry[]): string {
                 ${tableCell("时间", formatTime(row.created_at))}
                 ${tableCell("actor", escapeHTML(row.actor))}
                 ${tableCell("action", escapeHTML(row.action))}
-                ${tableCell("目标", escapeHTML([row.target_type, row.target_id].filter(Boolean).join(" / ")))}
+                ${tableCell("目标", escapeHTML(auditTargetDisplay(row)))}
                 ${tableCell("目标账号ID", escapeHTML(row.target_user_id || ""))}
                 ${tableCell("结果", row.success ? statusPill("success", "ok") : statusPill("failed", "bad"))}
                 ${tableCell("状态码", String(row.status_code || ""))}
@@ -3703,6 +3919,16 @@ function auditTable(rows: AdminAuditLogEntry[]): string {
       </tbody>
     </table>
   `;
+}
+
+function auditTargetDisplay(row: AdminAuditLogEntry): string {
+  const targetType = row.target_type || "";
+  const targetID = row.target_id || "";
+  if (!targetID) return targetType;
+  if (targetType === "payment_orders" && targetID.length > 8) {
+    return `${targetType} / ${targetID.slice(-8).toUpperCase()}`;
+  }
+  return [targetType, targetID].filter(Boolean).join(" / ");
 }
 
 function appUpdateConfig(config: AdminAppUpdateConfig): string {
@@ -5102,9 +5328,9 @@ function canManageGiftCards(): boolean {
   return role === "owner" || role === "finance_ops";
 }
 
-function canManagePaymentGrants(): boolean {
-  const role = currentAdminRole();
-  return role === "owner" || role === "finance_ops";
+function canManagePaymentOps(): boolean {
+	const role = currentAdminRole();
+	return role === "owner" || role === "finance_ops";
 }
 
 function canViewGiftCardCodes(): boolean {
@@ -5425,6 +5651,17 @@ function formatTime(value?: number | null): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function shanghaiDateInputValue(value: Date): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
 }
 
 function formatPercent(value: number): string {

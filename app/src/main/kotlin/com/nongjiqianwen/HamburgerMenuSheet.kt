@@ -1283,7 +1283,6 @@ private fun HamburgerMembershipCenterContent(
         MembershipCenterBody(
             entitlement = entitlement,
             loadState = loadState,
-            paymentNoticeResetKey = userId,
             paymentState = paymentState,
             onStartPayment = onStartPayment,
             onRetryLoad = onRetryLoad

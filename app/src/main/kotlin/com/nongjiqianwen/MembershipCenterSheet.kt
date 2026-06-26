@@ -86,14 +86,12 @@ internal fun MembershipCenterBottomSheet(
     visible: Boolean,
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
-    purchaseSuccessVisible: Boolean,
     userId: String,
     paymentState: MembershipPaymentState = MembershipPaymentState(),
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onStartPayment: (MembershipPaymentProduct) -> Unit,
-    onRetryLoad: () -> Unit = {},
-    onPurchaseSuccessConfirm: () -> Unit
+    onRetryLoad: () -> Unit = {}
 ) {
     Box(
         modifier = modifier
@@ -152,7 +150,6 @@ internal fun MembershipCenterBottomSheet(
                         MembershipCenterBody(
                             entitlement = entitlement,
                             loadState = loadState,
-                            paymentNoticeResetKey = visible,
                             paymentState = paymentState,
                             onStartPayment = onStartPayment,
                             onRetryLoad = onRetryLoad
@@ -161,12 +158,6 @@ internal fun MembershipCenterBottomSheet(
                 }
             }
         }
-        MembershipPurchaseSuccessOverlay(
-            visible = visible && purchaseSuccessVisible,
-            onConfirm = onPurchaseSuccessConfirm,
-            modifier = Modifier
-                .fillMaxSize()
-        )
     }
 }
 
@@ -242,7 +233,6 @@ internal fun MembershipCenterHeaderPreview(userId: String) {
 internal fun MembershipCenterBody(
     entitlement: SessionApi.EntitlementSnapshot?,
     loadState: MembershipLoadState,
-    paymentNoticeResetKey: Any?,
     paymentState: MembershipPaymentState = MembershipPaymentState(),
     onStartPayment: (MembershipPaymentProduct) -> Unit,
     onRetryLoad: () -> Unit = {}
@@ -351,7 +341,7 @@ private fun MembershipInlineNotice(text: String) {
 }
 
 @Composable
-private fun MembershipPurchaseSuccessOverlay(
+internal fun MembershipPurchaseSuccessOverlay(
     visible: Boolean,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier
@@ -361,12 +351,12 @@ private fun MembershipPurchaseSuccessOverlay(
         enter = fadeIn(animationSpec = tween(durationMillis = 90)),
         exit = ExitTransition.None,
         modifier = modifier
-            .zIndex(96f)
+            .zIndex(132f)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.34f))
+                .background(Color.Black.copy(alpha = 0.46f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -380,19 +370,19 @@ private fun MembershipPurchaseSuccessOverlay(
                 shadowElevation = 24.dp,
                 border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.14f)),
                 modifier = Modifier
-                    .padding(horizontal = 36.dp)
-                    .widthIn(max = 340.dp)
+                    .padding(horizontal = 32.dp)
+                    .widthIn(max = 360.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 26.dp, vertical = 28.dp),
+                    modifier = Modifier.padding(horizontal = 30.dp, vertical = 32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(22.dp)
                 ) {
                     Text(
                         text = "权益已生效",
                         color = Color.White,
-                        fontSize = 21.sp,
-                        lineHeight = 28.sp,
+                        fontSize = 22.sp,
+                        lineHeight = 30.sp,
                         fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
                     )
@@ -400,8 +390,8 @@ private fun MembershipPurchaseSuccessOverlay(
                         color = Color.White,
                         shape = RoundedCornerShape(999.dp),
                         modifier = Modifier
-                            .width(216.dp)
-                            .heightIn(min = 50.dp)
+                            .width(232.dp)
+                            .heightIn(min = 52.dp)
                             .clickable(
                                 interactionSource = remember { MutableInteractionSource() },
                                 indication = null,
@@ -442,15 +432,16 @@ internal fun MembershipPaymentConfirmOverlay(
         exit = ExitTransition.None,
         modifier = modifier
             .fillMaxSize()
-            .zIndex(94f)
+            .zIndex(130f)
     ) {
         confirmation?.let { item ->
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color.Black.copy(alpha = 0.18f)),
                 contentAlignment = Alignment.Center
             ) {
+                val panelMaxHeight = (maxHeight - 40.dp).coerceAtLeast(260.dp)
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -468,6 +459,7 @@ internal fun MembershipPaymentConfirmOverlay(
                     modifier = Modifier
                         .padding(horizontal = 28.dp)
                         .widthIn(max = 360.dp)
+                        .heightIn(max = panelMaxHeight)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -475,7 +467,9 @@ internal fun MembershipPaymentConfirmOverlay(
                         )
                 ) {
                     Column(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                        modifier = Modifier
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
                         verticalArrangement = Arrangement.spacedBy(15.dp)
                     ) {
                         Text(
@@ -607,7 +601,7 @@ private fun MembershipPaymentMethodChip(
             0.8.dp,
             if (selected) Color(0xFF111111) else Color(0xFFE1E4E8)
         ),
-        modifier = modifier.heightIn(min = 48.dp)
+        modifier = modifier.heightIn(min = 50.dp)
     ) {
         Box(
             modifier = Modifier.fillMaxWidth(),
@@ -620,8 +614,8 @@ private fun MembershipPaymentMethodChip(
                     enabled -> Color(0xFF202124)
                     else -> Color(0xFF9297A0)
                 },
-                fontSize = 15.sp,
-                lineHeight = 20.sp,
+                fontSize = 16.sp,
+                lineHeight = 22.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
@@ -637,12 +631,13 @@ private fun MembershipPaymentConfirmButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
+    val isCancel = text == "取消"
     Surface(
         color = if (primary) Color(0xFF111111) else Color.White,
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(0.8.dp, if (primary) Color(0xFF111111) else Color(0xFFDDE1E6)),
         modifier = modifier
-            .heightIn(min = 44.dp)
+            .heightIn(min = 50.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -654,8 +649,8 @@ private fun MembershipPaymentConfirmButton(
             Text(
                 text = text,
                 color = if (primary) Color.White else Color(0xFF202124),
-                fontSize = 14.sp,
-                lineHeight = 19.sp,
+                fontSize = if (isCancel) 17.sp else 16.sp,
+                lineHeight = if (isCancel) 22.sp else 21.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 11.dp)

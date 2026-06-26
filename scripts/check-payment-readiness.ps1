@@ -3,6 +3,7 @@
     [string]$BaseUrl = "https://api.nongjiqiancha.cn",
     [int]$TimeoutSec = 12,
     [switch]$SkipPublicHealth,
+    [switch]$RunPublicNotifyProbe,
     [switch]$AllowPublicPayment,
     [switch]$AllowTestAmount
 )
@@ -83,7 +84,7 @@ function Write-PrereqGroupStatus {
 }
 
 Write-Host "== payment readiness =="
-Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth allow_public_payment=$AllowPublicPayment allow_test_amount=$AllowTestAmount"
+Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth run_public_notify_probe=$RunPublicNotifyProbe allow_public_payment=$AllowPublicPayment allow_test_amount=$AllowTestAmount"
 
 $appBuildPath = Join-Path $RepoRoot "app/build.gradle.kts"
 $manifestPath = Join-Path $RepoRoot "app/src/main/AndroidManifest.xml"
@@ -97,6 +98,7 @@ $serverPath = Join-Path $RepoRoot "server-go/internal/app/server.go"
 $paymentsPath = Join-Path $RepoRoot "server-go/internal/app/payments.go"
 $migrationPath = Join-Path $RepoRoot "server-go/migrations/044_alipay_payment_orders.sql"
 $testMetadataMigrationPath = Join-Path $RepoRoot "server-go/migrations/045_payment_order_test_metadata.sql"
+$opsClosureMigrationPath = Join-Path $RepoRoot "server-go/migrations/046_payment_order_ops_closure.sql"
 $paymentsRunbookPath = Join-Path $RepoRoot "docs/runbooks/payments.md"
 $thirdPartyPagePath = Join-Path $RepoRoot "site/public/legal/third-party-sharing/index.html"
 
@@ -112,6 +114,7 @@ $server = Read-SourceFile $serverPath
 $payments = Read-SourceFile $paymentsPath
 $migration = Read-SourceFile $migrationPath
 $testMetadataMigration = Read-SourceFile $testMetadataMigrationPath
+$opsClosureMigration = Read-SourceFile $opsClosureMigrationPath
 $paymentsRunbook = Read-SourceFile $paymentsRunbookPath
 $thirdPartyPage = Read-SourceFile $thirdPartyPagePath
 
@@ -122,9 +125,13 @@ Require-Match -Name "android_alipay_payv2" -Content $paymentClient -Pattern "pay
 Require-Match -Name "android_alipay_unknown_result_polling" -Content $paymentClient -Pattern '"8000",\s*"6004",\s*"6006"'
 Require-Match -Name "android_create_alipay_order_api" -Content $sessionApi -Pattern "/api/payments/alipay/orders"
 Require-Match -Name "android_create_alipay_order_build_type" -Content $sessionApi -Pattern "client_build_type"
+Require-Match -Name "android_create_alipay_order_fail_closed_provider" -Content $sessionApi -Pattern 'order\.provider\.equals\("alipay",\s*ignoreCase\s*=\s*true\)'
+Require-Match -Name "android_create_alipay_order_fail_closed_amount" -Content $sessionApi -Pattern '\(order\.amountCents\s*\?:\s*0\)\s*>\s*0'
 Require-Match -Name "android_get_payment_order_api" -Content $sessionApi -Pattern "/api/payments/orders"
+Require-Match -Name "android_get_payment_order_ok_required" -Content $sessionApi -Pattern 'status\s*->\s*status\.ok\s*==\s*true'
 Require-Match -Name "android_payment_start_log" -Content $chatScreen -Pattern "payment\.start"
 Require-Match -Name "android_payment_confirmation_log" -Content $chatScreen -Pattern "payment\.confirmation_shown"
+Require-Match -Name "android_payment_order_poll_fail_closed" -Content $chatScreen -Pattern 'payment[.]order_poll_invalid'
 Require-Match -Name "android_alipay_sync_log" -Content $chatScreen -Pattern "payment\.alipay_sync_result"
 Require-Match -Name "android_payment_grant_success_log" -Content $chatScreen -Pattern "payment\.grant_success"
 Require-Match -Name "android_payment_grant_failure_persistent" -Content $chatScreen -Pattern "支付已确认，权益处理异常"
@@ -136,9 +143,18 @@ Require-Match -Name "server_create_alipay_order_route" -Content $server -Pattern
 Require-Match -Name "server_get_payment_order_route" -Content $server -Pattern 'GET /api/payments/orders'
 Require-Match -Name "server_alipay_notify_route" -Content $server -Pattern 'POST /api/payments/alipay/notify'
 Require-Match -Name "server_admin_payment_grant_route" -Content $server -Pattern 'POST /admin-api/v1/orders/grant'
+Require-Match -Name "server_admin_payment_query_route" -Content $server -Pattern 'POST /admin-api/v1/orders/query'
+Require-Match -Name "server_admin_payment_refund_route" -Content $server -Pattern 'POST /admin-api/v1/orders/refund'
+Require-Match -Name "server_admin_payment_close_expired_route" -Content $server -Pattern 'POST /admin-api/v1/orders/close-expired'
+Require-Match -Name "server_admin_payment_reconciliation_route" -Content $server -Pattern 'GET /admin-api/v1/orders/reconciliation'
 Require-Match -Name "server_healthz_alipay" -Content $server -Pattern '"alipay"\s*:\s*s\.alipay\.HealthStatus\(\)'
 Require-Match -Name "server_healthz_alipay_payment_gate" -Content $server -Pattern '"alipay_payment_gate"\s*:\s*alipayPaymentOrderGateStatus\(\)'
 Require-Match -Name "server_alipay_app_pay_api" -Content $payments -Pattern "alipay\.trade\.app\.pay"
+Require-Match -Name "server_alipay_trade_query_api" -Content $payments -Pattern "alipay\.trade\.query"
+Require-Match -Name "server_alipay_trade_refund_api" -Content $payments -Pattern "alipay\.trade\.refund"
+Require-Match -Name "server_alipay_bill_download_api" -Content $payments -Pattern "alipay\.data\.dataservice\.bill\.downloadurl\.query"
+Require-Match -Name "server_alipay_openapi_response_sign_required" -Content $payments -Pattern "alipay response sign missing"
+Require-Match -Name "server_alipay_refund_fund_change_required" -Content $payments -Pattern "fund_change"
 Require-Match -Name "server_alipay_order_format_json" -Content $payments -Pattern 'format"\s*,\s*"json'
 Require-Match -Name "server_alipay_order_biz_seller_id" -Content $payments -Pattern 'SellerID:\s*c\.sellerID'
 Require-Match -Name "server_alipay_order_sign_keeps_sign_type" -Content $payments -Pattern 'BuildAppPayOrder(?s:.*?)alipaySignContent\(params,\s*"sign"\)'
@@ -157,6 +173,8 @@ Require-Match -Name "server_alipay_grant_retry_guard" -Content $payments -Patter
 Require-Match -Name "server_alipay_grant_claim_timestamp" -Content $payments -Pattern "COALESCE\(grant_claimed_at,\s*updated_at\)"
 Require-Match -Name "server_manual_payment_grant_uses_same_grant_path" -Content $payments -Pattern "manuallyGrantPaidPaymentOrder(?s:.*?)grantPaidPaymentOrder"
 Require-Match -Name "server_alipay_no_paid_downgrade" -Content $payments -Pattern 'order\.Status\s*==\s*paymentStatusPaid(?s:.*?)last_notify_json'
+Require-Match -Name "server_alipay_refund_unknown_on_failed_response" -Content $payments -Pattern "MarkPaymentRefundUnknown"
+Require-Match -Name "server_alipay_refund_order_update_tx" -Content $payments -Pattern "CreatePaymentRefundPending(?s:.*?)BeginTx(?s:.*?)UPDATE payment_orders"
 Require-Match -Name "server_payment_log_suffix" -Content $payments -Pattern "paymentIDLogSuffix"
 Require-NoMatch -Name "server_no_full_payment_id_logs" -Content $payments -Pattern 'logger\.(Info|Warn|Error)\([^\\r\\n]*"(outTradeNo|tradeNo)"'
 Require-Match -Name "db_payment_orders" -Content $migration -Pattern "CREATE TABLE IF NOT EXISTS payment_orders"
@@ -165,10 +183,17 @@ Require-Match -Name "db_payment_orders_grant_claimed_at" -Content $migration -Pa
 Require-Match -Name "db_payment_orders_test_metadata" -Content $migration -Pattern "is_test_order TINYINT"
 Require-Match -Name "db_payment_orders_test_metadata_upgrade" -Content $testMetadataMigration -Pattern "ALTER TABLE payment_orders ADD COLUMN is_test_order"
 Require-Match -Name "db_payment_orders_test_metadata_index" -Content $testMetadataMigration -Pattern "idx_payment_orders_test_created"
+Require-Match -Name "db_payment_orders_refund_status" -Content $opsClosureMigration -Pattern "refund_status"
+Require-Match -Name "db_payment_orders_last_query_error" -Content $opsClosureMigration -Pattern "last_query_error"
+Require-Match -Name "db_payment_refunds" -Content $opsClosureMigration -Pattern "CREATE TABLE IF NOT EXISTS payment_refunds"
 
 Require-Match -Name "admin_orders_mentions_payment" -Content $adminMain -Pattern "支付订单"
 Require-Match -Name "admin_payment_grant_button" -Content $adminMain -Pattern "grant-payment-order"
 Require-Match -Name "admin_payment_grant_confirmation" -Content $adminMain -Pattern 'confirmation:\s*"补发"'
+Require-Match -Name "admin_payment_query_button" -Content $adminMain -Pattern "query-payment-order"
+Require-Match -Name "admin_payment_refund_button" -Content $adminMain -Pattern "refund-payment-order"
+Require-Match -Name "admin_payment_reconciliation_panel" -Content $adminMain -Pattern "payment-reconciliation"
+Require-Match -Name "admin_payment_close_expired_panel" -Content $adminMain -Pattern "payment-close-expired"
 Require-Match -Name "admin_order_types_provider_fields" -Content $adminTypes -Pattern "provider_trade_no"
 Require-Match -Name "runbook_alipay_notify_url" -Content $paymentsRunbook -Pattern "https://api\.nongjiqiancha\.cn/api/payments/alipay/notify"
 Require-Match -Name "runbook_alipay_app_pay_api" -Content $paymentsRunbook -Pattern "alipay\.trade\.app\.pay"
@@ -218,25 +243,29 @@ if (-not $SkipPublicHealth) {
             }
         }
 
-        $notifyProbeUrl = ($BaseUrl.TrimEnd("/") + "/api/payments/alipay/notify")
-        try {
-            $notifyProbe = Invoke-WebRequest -Method Post -Uri $notifyProbeUrl -TimeoutSec $TimeoutSec -ContentType "application/x-www-form-urlencoded" -Body "out_trade_no=NJPROBE&notify_id=PROBE&sign=bad" -Headers @{
-                "User-Agent" = "nongjiqiancha-payment-readiness/1.1"
-            } -UseBasicParsing
-            Write-Host "public_alipay_notify_fake_status=$($notifyProbe.StatusCode)"
-            if ([int]$notifyProbe.StatusCode -ne 200) {
-                Add-ErrorItem "fake alipay notify probe should return HTTP 200, got $($notifyProbe.StatusCode)"
+        if ($RunPublicNotifyProbe) {
+            $notifyProbeUrl = ($BaseUrl.TrimEnd("/") + "/api/payments/alipay/notify")
+            try {
+                $notifyProbe = Invoke-WebRequest -Method Post -Uri $notifyProbeUrl -TimeoutSec $TimeoutSec -ContentType "application/x-www-form-urlencoded" -Body "out_trade_no=NJPROBE&notify_id=PROBE&sign=bad" -Headers @{
+                    "User-Agent" = "nongjiqiancha-payment-readiness/1.1"
+                } -UseBasicParsing
+                Write-Host "public_alipay_notify_fake_status=$($notifyProbe.StatusCode)"
+                if ([int]$notifyProbe.StatusCode -ne 200) {
+                    Add-ErrorItem "fake alipay notify probe should return HTTP 200, got $($notifyProbe.StatusCode)"
+                }
+                if (($notifyProbe.Content | Out-String).Trim() -ne "failure") {
+                    Add-ErrorItem "fake alipay notify probe should return failure"
+                }
+            } catch {
+                $statusCode = 0
+                if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+                    $statusCode = [int]$_.Exception.Response.StatusCode
+                }
+                Write-Host "public_alipay_notify_fake_status=$statusCode"
+                Add-ErrorItem "fake alipay notify probe should return HTTP 200 + failure, got status=$statusCode"
             }
-            if (($notifyProbe.Content | Out-String).Trim() -ne "failure") {
-                Add-ErrorItem "fake alipay notify probe should return failure"
-            }
-        } catch {
-            $statusCode = 0
-            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
-                $statusCode = [int]$_.Exception.Response.StatusCode
-            }
-            Write-Host "public_alipay_notify_fake_status=$statusCode"
-            Add-ErrorItem "fake alipay notify probe should return HTTP 200 + failure, got status=$statusCode"
+        } else {
+            Write-Host "public_alipay_notify_fake_status=skipped"
         }
     } catch {
         Add-WarningItem "public healthz probe failed: $($_.Exception.Message)"
@@ -261,7 +290,7 @@ if (Test-AnyEnvironmentVariable -Names @("ALIPAY_PAYMENT_PUBLIC_ENABLED") -and -
 if (Test-AnyEnvironmentVariable -Names @("ALIPAY_PAYMENT_TEST_AMOUNT_CENTS") -and -not $AllowTestAmount) {
     Add-WarningItem "local ALIPAY_PAYMENT_TEST_AMOUNT_CENTS is set; remove it after 0.01 payment test"
 }
-Write-Host "payment_readiness_note=Code and documents are aligned for Alipay APP Pay, but production charging still requires live env config, callback validation, reconciliation, refund handling, and manual acceptance."
+Write-Host "payment_readiness_note=Code and documents are aligned for Alipay APP Pay operations, but production charging still requires live env config, callback validation, reconciliation, refund SOP, and manual acceptance."
 
 if ($warnings.Count -gt 0) {
     foreach ($warning in $warnings) {

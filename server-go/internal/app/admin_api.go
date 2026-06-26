@@ -14,10 +14,11 @@ import (
 )
 
 const (
-	defaultAdminListLimit = 50
-	maxAdminListLimit     = 100
-	adminExcerptRunes     = 96
-	adminDashboardTimeout = 4 * time.Second
+	defaultAdminListLimit        = 50
+	maxAdminListLimit            = 100
+	adminExcerptRunes            = 96
+	adminDashboardTimeout        = 4 * time.Second
+	adminPaymentOperationTimeout = 12 * time.Second
 )
 
 type AdminOverview struct {
@@ -442,21 +443,32 @@ type AdminSupportMessage struct {
 }
 
 type AdminOrderEntry struct {
-	OrderID           string          `json:"order_id"`
-	UserID            string          `json:"user_id"`
-	Type              string          `json:"type"`
-	Amount            string          `json:"amount"`
-	OriginalAmount    string          `json:"original_amount,omitempty"`
-	CreatedAt         int64           `json:"created_at"`
-	Status            string          `json:"status"`
-	Source            string          `json:"source,omitempty"`
-	Provider          string          `json:"provider,omitempty"`
-	ProviderTradeNo   string          `json:"provider_trade_no,omitempty"`
-	GrantStatus       string          `json:"grant_status,omitempty"`
-	IsTestOrder       bool            `json:"is_test_order,omitempty"`
-	ClientBuildType   string          `json:"client_build_type,omitempty"`
-	ClientVersionCode int             `json:"client_version_code,omitempty"`
-	Result            json.RawMessage `json:"result,omitempty"`
+	OrderID             string          `json:"order_id"`
+	UserID              string          `json:"user_id"`
+	Type                string          `json:"type"`
+	Amount              string          `json:"amount"`
+	OriginalAmount      string          `json:"original_amount,omitempty"`
+	CreatedAt           int64           `json:"created_at"`
+	Status              string          `json:"status"`
+	Source              string          `json:"source,omitempty"`
+	Provider            string          `json:"provider,omitempty"`
+	ProviderTradeNo     string          `json:"provider_trade_no,omitempty"`
+	ProviderTradeSuffix string          `json:"provider_trade_suffix,omitempty"`
+	ProviderStatus      string          `json:"provider_status,omitempty"`
+	GrantStatus         string          `json:"grant_status,omitempty"`
+	GrantError          string          `json:"grant_error,omitempty"`
+	PaidAt              *int64          `json:"paid_at,omitempty"`
+	GrantedAt           *int64          `json:"granted_at,omitempty"`
+	RefundStatus        string          `json:"refund_status,omitempty"`
+	RefundAmount        string          `json:"refund_amount,omitempty"`
+	RefundedAt          *int64          `json:"refunded_at,omitempty"`
+	ClosedAt            *int64          `json:"closed_at,omitempty"`
+	LastQueryAt         *int64          `json:"last_query_at,omitempty"`
+	LastQueryError      string          `json:"last_query_error,omitempty"`
+	IsTestOrder         bool            `json:"is_test_order,omitempty"`
+	ClientBuildType     string          `json:"client_build_type,omitempty"`
+	ClientVersionCode   int             `json:"client_version_code,omitempty"`
+	Result              json.RawMessage `json:"result,omitempty"`
 }
 
 type AdminOrderQuery struct {
@@ -468,6 +480,40 @@ type adminPaymentGrantRequest struct {
 	OutTradeNo   string `json:"out_trade_no"`
 	Reason       string `json:"reason"`
 	Confirmation string `json:"confirmation"`
+}
+
+type adminPaymentQueryRequest struct {
+	OutTradeNo   string `json:"out_trade_no"`
+	Reason       string `json:"reason,omitempty"`
+	Confirmation string `json:"confirmation"`
+}
+
+type adminPaymentRefundRequest struct {
+	OutTradeNo   string `json:"out_trade_no"`
+	Reason       string `json:"reason"`
+	Confirmation string `json:"confirmation"`
+}
+
+type adminPaymentCloseExpiredRequest struct {
+	OlderThanMinutes int    `json:"older_than_minutes"`
+	Reason           string `json:"reason"`
+	Confirmation     string `json:"confirmation"`
+}
+
+type AdminPaymentReconciliation struct {
+	Day                    string `json:"day"`
+	LocalPaidCount         int64  `json:"local_paid_count"`
+	LocalPaidAmount        string `json:"local_paid_amount"`
+	LocalTestPaidCount     int64  `json:"local_test_paid_count"`
+	LocalTestPaidAmount    string `json:"local_test_paid_amount"`
+	LocalRefundedCount     int64  `json:"local_refunded_count"`
+	LocalRefundedAmount    string `json:"local_refunded_amount"`
+	LocalPendingGrantCount int64  `json:"local_pending_grant_count"`
+	LocalPendingOrderCount int64  `json:"local_pending_order_count"`
+	AlipayBillDownloadOK   bool   `json:"alipay_bill_download_ok"`
+	AlipayBillURLAvailable bool   `json:"alipay_bill_url_available"`
+	AlipayBillError        string `json:"alipay_bill_error,omitempty"`
+	Note                   string `json:"note"`
 }
 
 type AdminPlaceholderStatus struct {
@@ -794,12 +840,28 @@ func (s *Server) handleAdminOrders(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	if !adminCanViewFullPaymentIdentifiers(admin.User.Role) {
+		redactAdminOrderIdentifiers(orders)
+	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.orders", "orders", "", filter.UserID, true, http.StatusOK, map[string]any{"row_count": len(orders), "limit": filter.Limit})
 	s.writeJSON(w, http.StatusOK, map[string]any{
 		"orders": orders,
 		"filter": filter,
 		"note":   "orders_readonly",
 	})
+}
+
+func adminCanViewFullPaymentIdentifiers(role string) bool {
+	return adminRoleAllowed(role, "finance_ops")
+}
+
+func redactAdminOrderIdentifiers(entries []AdminOrderEntry) {
+	for i := range entries {
+		if entries[i].Source == "payment" {
+			entries[i].OrderID = paymentIDLogSuffix(entries[i].OrderID)
+			entries[i].ProviderTradeNo = ""
+		}
+	}
 }
 
 func (s *Server) handleAdminGrantPaymentOrder(w http.ResponseWriter, r *http.Request) {
@@ -912,6 +974,323 @@ func (s *Server) handleAdminGrantPaymentOrder(w http.ResponseWriter, r *http.Req
 	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "order": order})
 }
 
+func (s *Server) handleAdminQueryPaymentOrder(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "finance_ops")
+	if !ok {
+		return
+	}
+	var body adminPaymentQueryRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	outTradeNo := normalizeAdminPaymentOutTradeNo(body.OutTradeNo)
+	reason := strings.TrimSpace(body.Reason)
+	if outTradeNo == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "out_trade_no_required"})
+		s.writeError(w, http.StatusBadRequest, "out_trade_no_required")
+		return
+	}
+	if len([]rune(reason)) > 300 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "reason_too_long"})
+		s.writeError(w, http.StatusBadRequest, "reason_too_long")
+		return
+	}
+	if strings.TrimSpace(body.Confirmation) != "查单" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "confirmation_mismatch"})
+		s.writeError(w, http.StatusBadRequest, "confirmation_mismatch")
+		return
+	}
+	if s.alipay == nil || !s.alipay.Enabled() {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", outTradeNo, "", false, http.StatusServiceUnavailable, map[string]any{"error_code": "alipay_not_configured"})
+		s.writeError(w, http.StatusServiceUnavailable, "ALIPAY_NOT_CONFIGURED")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), adminPaymentOperationTimeout)
+	defer cancel()
+	existing, err := s.store.getPaymentOrderByOutTradeNo(ctx, outTradeNo)
+	if err != nil {
+		status, code := adminPaymentOrderLookupError(err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", outTradeNo, "", false, status, map[string]any{"error_code": code})
+		s.writeError(w, status, code)
+		return
+	}
+	result, err := s.alipay.QueryTrade(ctx, outTradeNo)
+	if err != nil {
+		code := safePaymentErrorCode(err)
+		_ = s.store.markPaymentOrderQueryError(ctx, outTradeNo, code, time.Now().UnixMilli())
+		s.logger.Warn("admin query alipay order failed", "outTradeSuffix", paymentIDLogSuffix(outTradeNo), "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", outTradeNo, existing.UserID, false, http.StatusBadGateway, map[string]any{
+			"error_code":   code,
+			"product_type": existing.ProductType,
+			"reason":       truncateRunes(reason, 120),
+		})
+		s.writeError(w, http.StatusBadGateway, "alipay_query_failed")
+		return
+	}
+	order, err := s.store.ApplyAlipayTradeQueryResult(ctx, result, time.Now().UnixMilli())
+	if err != nil {
+		code := safePaymentErrorCode(err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", outTradeNo, existing.UserID, false, http.StatusConflict, map[string]any{
+			"error_code":      code,
+			"trade_status":    result.TradeStatus,
+			"amount_cents_ok": result.TotalAmountCents == existing.AmountCents,
+			"reason":          truncateRunes(reason, 120),
+		})
+		s.writeError(w, http.StatusConflict, strings.ToLower(code))
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.query", "payment_orders", outTradeNo, order.UserID, true, http.StatusOK, map[string]any{
+		"trade_status": result.TradeStatus,
+		"status":       order.Status,
+		"grant_status": order.GrantStatus,
+		"reason":       truncateRunes(reason, 120),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "order": order})
+}
+
+func (s *Server) handleAdminRefundPaymentOrder(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "finance_ops")
+	if !ok {
+		return
+	}
+	var body adminPaymentRefundRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	outTradeNo := normalizeAdminPaymentOutTradeNo(body.OutTradeNo)
+	reason := strings.TrimSpace(body.Reason)
+	if outTradeNo == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "out_trade_no_required"})
+		s.writeError(w, http.StatusBadRequest, "out_trade_no_required")
+		return
+	}
+	if reason == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "reason_required"})
+		s.writeError(w, http.StatusBadRequest, "reason_required")
+		return
+	}
+	if len([]rune(reason)) > 300 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "reason_too_long"})
+		s.writeError(w, http.StatusBadRequest, "reason_too_long")
+		return
+	}
+	if strings.TrimSpace(body.Confirmation) != "退款" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, "", false, http.StatusBadRequest, map[string]any{"error_code": "confirmation_mismatch"})
+		s.writeError(w, http.StatusBadRequest, "confirmation_mismatch")
+		return
+	}
+	if s.alipay == nil || !s.alipay.Enabled() {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, "", false, http.StatusServiceUnavailable, map[string]any{"error_code": "alipay_not_configured"})
+		s.writeError(w, http.StatusServiceUnavailable, "ALIPAY_NOT_CONFIGURED")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), adminPaymentOperationTimeout)
+	defer cancel()
+	order, err := s.store.getPaymentOrderByOutTradeNo(ctx, outTradeNo)
+	if err != nil {
+		status, code := adminPaymentOrderLookupError(err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, "", false, status, map[string]any{"error_code": code})
+		s.writeError(w, status, code)
+		return
+	}
+	if order.Provider != paymentProviderAlipay || order.Status != paymentStatusPaid || order.AmountCents <= 0 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{
+			"error_code": "payment_not_refundable",
+			"status":     order.Status,
+			"provider":   order.Provider,
+		})
+		s.writeError(w, http.StatusConflict, "payment_not_refundable")
+		return
+	}
+	if (order.GrantStatus == paymentGrantSuccess || order.EntitlementOrderID != "") && !order.IsTestOrder {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{
+			"error_code":            "payment_refund_requires_manual_entitlement_review",
+			"grant_status":          order.GrantStatus,
+			"has_entitlement_order": order.EntitlementOrderID != "",
+		})
+		s.writeError(w, http.StatusConflict, "payment_refund_requires_manual_entitlement_review")
+		return
+	}
+	if order.RefundStatus == paymentRefundSuccess || order.Status == paymentStatusRefunded {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{"error_code": "payment_already_refunded"})
+		s.writeError(w, http.StatusConflict, "payment_already_refunded")
+		return
+	}
+	if order.RefundStatus == paymentRefundProcessing || order.RefundStatus == paymentRefundUnknown {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{"error_code": "payment_refund_status_uncertain", "refund_status": order.RefundStatus})
+		s.writeError(w, http.StatusConflict, "payment_refund_status_uncertain")
+		return
+	}
+	refundRequestNo := adminPaymentRefundRequestNo(outTradeNo)
+	refund, existed, err := s.store.CreatePaymentRefundPending(ctx, order, refundRequestNo, reason, admin.User.Username, time.Now().UnixMilli())
+	if err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusInternalServerError, map[string]any{"error_code": "refund_record_create_failed"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if existed && refund.Status == paymentRefundSuccess {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, true, http.StatusOK, map[string]any{
+			"amount_cents":  order.AmountCents,
+			"is_test_order": order.IsTestOrder,
+			"note":          "refund_already_success",
+		})
+		s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "refund": refund, "note": "refund_already_success"})
+		return
+	}
+	if existed && refund.Status != paymentRefundFailed {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{"error_code": "payment_refund_status_uncertain", "refund_status": refund.Status})
+		s.writeError(w, http.StatusConflict, "payment_refund_status_uncertain")
+		return
+	}
+	result, err := s.alipay.RefundTrade(ctx, outTradeNo, order.ProviderTradeNo, refundRequestNo, order.AmountCents, reason)
+	if err != nil {
+		code := safePaymentErrorCode(err)
+		if isAlipayAPIError(err) {
+			_ = s.store.FailPaymentRefund(ctx, refundRequestNo, code, time.Now().UnixMilli())
+		} else {
+			_ = s.store.MarkPaymentRefundUnknown(ctx, refundRequestNo, result, code, time.Now().UnixMilli())
+		}
+		s.logger.Warn("admin refund alipay order failed", "outTradeSuffix", paymentIDLogSuffix(outTradeNo), "error", err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusBadGateway, map[string]any{
+			"error_code":    code,
+			"amount_cents":  order.AmountCents,
+			"is_test_order": order.IsTestOrder,
+			"reason":        truncateRunes(reason, 120),
+		})
+		s.writeError(w, http.StatusBadGateway, "alipay_refund_failed")
+		return
+	}
+	updatedRefund, err := s.store.CompletePaymentRefund(ctx, refundRequestNo, result, time.Now().UnixMilli())
+	if err != nil {
+		code := safePaymentErrorCode(err)
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, false, http.StatusConflict, map[string]any{"error_code": code, "amount_cents": order.AmountCents})
+		s.writeError(w, http.StatusConflict, strings.ToLower(code))
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.refund", "payment_orders", outTradeNo, order.UserID, true, http.StatusOK, map[string]any{
+		"amount_cents":  order.AmountCents,
+		"is_test_order": order.IsTestOrder,
+		"grant_status":  order.GrantStatus,
+		"reason":        truncateRunes(reason, 120),
+		"note":          firstNonEmpty(testOrderRefundNote(order), "entitlement_manual_review_required"),
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{
+		"ok":     true,
+		"refund": updatedRefund,
+		"note":   firstNonEmpty(testOrderRefundNote(order), "refund_success_entitlement_manual_review_required"),
+	})
+}
+
+func (s *Server) handleAdminCloseExpiredPaymentOrders(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "finance_ops")
+	if !ok {
+		return
+	}
+	var body adminPaymentCloseExpiredRequest
+	if err := decodeJSONBodyLimited(r, &body, 4*1024); err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.close_expired", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_json"})
+		s.writeJSONDecodeError(w, err)
+		return
+	}
+	reason := strings.TrimSpace(body.Reason)
+	if reason == "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.close_expired", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "reason_required"})
+		s.writeError(w, http.StatusBadRequest, "reason_required")
+		return
+	}
+	if len([]rune(reason)) > 300 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.close_expired", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "reason_too_long"})
+		s.writeError(w, http.StatusBadRequest, "reason_too_long")
+		return
+	}
+	if strings.TrimSpace(body.Confirmation) != "关闭" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.close_expired", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "confirmation_mismatch"})
+		s.writeError(w, http.StatusBadRequest, "confirmation_mismatch")
+		return
+	}
+	minutes := body.OlderThanMinutes
+	if minutes <= 0 {
+		minutes = 180
+	}
+	if minutes < 30 || minutes > 1440 {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.close_expired", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": "invalid_older_than_minutes", "older_than_minutes": minutes})
+		s.writeError(w, http.StatusBadRequest, "invalid_older_than_minutes")
+		return
+	}
+	nowMs := time.Now().UnixMilli()
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	affected, err := s.store.CloseExpiredPaymentOrders(ctx, nowMs-int64(minutes)*int64(time.Minute/time.Millisecond), nowMs)
+	if err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.close_expired", "payment_orders", "", "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.close_expired", "payment_orders", "", "", true, http.StatusOK, map[string]any{
+		"affected":           affected,
+		"older_than_minutes": minutes,
+		"reason":             truncateRunes(reason, 120),
+		"local_close_only":   true,
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "affected": affected, "note": "local_close_only"})
+}
+
+func (s *Server) handleAdminPaymentReconciliation(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "finance_ops")
+	if !ok {
+		return
+	}
+	day, validationError := parseAdminPaymentReconciliationDay(r.URL.Query().Get("day"), s.shanghai, time.Now())
+	if validationError != "" {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.reconciliation", "payment_orders", "", "", false, http.StatusBadRequest, map[string]any{"error_code": validationError})
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), adminPaymentOperationTimeout)
+	defer cancel()
+	result, err := s.store.BuildPaymentReconciliation(ctx, day, s.shanghai)
+	if err != nil {
+		s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.reconciliation", "payment_orders", day, "", false, http.StatusInternalServerError, map[string]any{"error_code": "internal_error"})
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	if s.alipay != nil && s.alipay.Enabled() {
+		bill, err := s.alipay.QueryBillDownloadURL(ctx, day)
+		result.AlipayBillDownloadOK = err == nil
+		result.AlipayBillURLAvailable = err == nil && strings.TrimSpace(bill.BillDownloadURL) != ""
+		if err != nil {
+			result.AlipayBillError = safePaymentErrorCode(err)
+		}
+	} else {
+		result.AlipayBillError = "ALIPAY_NOT_CONFIGURED"
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.orders.reconciliation", "payment_orders", day, "", true, http.StatusOK, map[string]any{
+		"local_paid_count":        result.LocalPaidCount,
+		"local_refunded_count":    result.LocalRefundedCount,
+		"local_pending_grant":     result.LocalPendingGrantCount,
+		"alipay_bill_download_ok": result.AlipayBillDownloadOK,
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"ok": true, "reconciliation": result})
+}
+
+func adminPaymentOrderLookupError(err error) (int, string) {
+	if err == sql.ErrNoRows {
+		return http.StatusNotFound, "payment_order_not_found"
+	}
+	return http.StatusInternalServerError, "internal_error"
+}
+
+func testOrderRefundNote(order paymentOrder) string {
+	if order.IsTestOrder && (order.GrantStatus == paymentGrantSuccess || order.EntitlementOrderID != "") {
+		return "test_order_refund_keep_entitlement"
+	}
+	return ""
+}
+
 func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	admin, ok := s.requireAdmin(w, r, "ops_readonly", "support", "finance_ops")
 	if !ok {
@@ -946,6 +1325,9 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	giftCardNotesVisible := adminCanViewGiftCardNotes(admin.User.Role)
 	if !giftCardNotesVisible {
 		stripGiftCardNotes(detail.GiftCards)
+	}
+	if !adminCanViewFullPaymentIdentifiers(admin.User.Role) {
+		redactAdminOrderIdentifiers(detail.Orders)
 	}
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.detail", "app_accounts", userID, userID, true, http.StatusOK, map[string]any{
 		"recent_rounds":               len(detail.RecentRounds),
@@ -1199,11 +1581,20 @@ func (s *Server) handleAdminAuditLogs(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
+	redactAdminAuditPaymentTargets(logs)
 	s.recordAdminAuditLog(r, admin.User.Username, "admin.audit_logs.list", "admin_audit_logs", "", filter.TargetUserID, true, http.StatusOK, map[string]any{
 		"row_count": len(logs),
 		"action":    filter.Action,
 	})
 	s.writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "filter": filter})
+}
+
+func redactAdminAuditPaymentTargets(entries []AdminAuditLogEntry) {
+	for i := range entries {
+		if entries[i].TargetType == "payment_orders" && strings.TrimSpace(entries[i].TargetID) != "" {
+			entries[i].TargetID = paymentIDLogSuffix(entries[i].TargetID)
+		}
+	}
 }
 
 func (s *Server) handleAdminTodayAgriCards(w http.ResponseWriter, r *http.Request) {
@@ -3706,6 +4097,79 @@ func (s *Store) ListAdminOrders(ctx context.Context, filter AdminOrderQuery) ([]
 	return entries, nil
 }
 
+func (s *Store) BuildPaymentReconciliation(ctx context.Context, day string, loc *time.Location) (AdminPaymentReconciliation, error) {
+	if loc == nil {
+		loc = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	parsed, err := time.ParseInLocation("2006-01-02", day, loc)
+	if err != nil {
+		return AdminPaymentReconciliation{}, err
+	}
+	startMs := time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, loc).UnixMilli()
+	endMs := startMs + int64(24*time.Hour/time.Millisecond)
+	row := s.db.QueryRowContext(
+		ctx,
+		`SELECT
+		   COALESCE(SUM(CASE WHEN status IN (?, ?) AND COALESCE(is_test_order,0) = 0 AND paid_at >= ? AND paid_at < ? THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN status IN (?, ?) AND COALESCE(is_test_order,0) = 0 AND paid_at >= ? AND paid_at < ? THEN amount_cents ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN status IN (?, ?) AND COALESCE(is_test_order,0) <> 0 AND paid_at >= ? AND paid_at < ? THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN status IN (?, ?) AND COALESCE(is_test_order,0) <> 0 AND paid_at >= ? AND paid_at < ? THEN amount_cents ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN (status = ? OR refund_status = ?) AND refunded_at >= ? AND refunded_at < ? THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN (status = ? OR refund_status = ?) AND refunded_at >= ? AND refunded_at < ? THEN refund_amount_cents ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN status = ? AND paid_at IS NOT NULL AND paid_at < ? AND grant_status <> ? THEN 1 ELSE 0 END), 0),
+		   COALESCE(SUM(CASE WHEN status = ? AND created_at >= ? AND created_at < ? THEN 1 ELSE 0 END), 0)
+		 FROM payment_orders
+		 WHERE provider = ?`,
+		paymentStatusPaid,
+		paymentStatusRefunded,
+		startMs,
+		endMs,
+		paymentStatusPaid,
+		paymentStatusRefunded,
+		startMs,
+		endMs,
+		paymentStatusPaid,
+		paymentStatusRefunded,
+		startMs,
+		endMs,
+		paymentStatusPaid,
+		paymentStatusRefunded,
+		startMs,
+		endMs,
+		paymentStatusRefunded,
+		paymentRefundSuccess,
+		startMs,
+		endMs,
+		paymentStatusRefunded,
+		paymentRefundSuccess,
+		startMs,
+		endMs,
+		paymentStatusPaid,
+		endMs,
+		paymentGrantSuccess,
+		paymentStatusPending,
+		startMs,
+		endMs,
+		paymentProviderAlipay,
+	)
+	var paidCount, paidAmount, testPaidCount, testPaidAmount, refundedCount, refundedAmount, pendingGrantCount, pendingOrderCount int64
+	if err := row.Scan(&paidCount, &paidAmount, &testPaidCount, &testPaidAmount, &refundedCount, &refundedAmount, &pendingGrantCount, &pendingOrderCount); err != nil {
+		return AdminPaymentReconciliation{}, err
+	}
+	return AdminPaymentReconciliation{
+		Day:                    day,
+		LocalPaidCount:         paidCount,
+		LocalPaidAmount:        formatAmountCents(int(paidAmount)),
+		LocalTestPaidCount:     testPaidCount,
+		LocalTestPaidAmount:    formatAmountCents(int(testPaidAmount)),
+		LocalRefundedCount:     refundedCount,
+		LocalRefundedAmount:    formatAmountCents(int(refundedAmount)),
+		LocalPendingGrantCount: pendingGrantCount,
+		LocalPendingOrderCount: pendingOrderCount,
+		Note:                   "本地收款按支付时间统计，退款按退款时间统计，待支付按创建时间统计；正式对账仍以支付宝账单和人工核对为准。",
+	}, nil
+}
+
 func (s *Store) listAdminLegacyOrders(ctx context.Context, filter AdminOrderQuery) ([]AdminOrderEntry, error) {
 	query := `SELECT order_id, user_id, type, CAST(amount AS CHAR), created_at, status, result_json
 		   FROM orders`
@@ -3745,7 +4209,8 @@ func (s *Store) listAdminLegacyOrders(ctx context.Context, filter AdminOrderQuer
 func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQuery) ([]AdminOrderEntry, error) {
 	query := `SELECT out_trade_no, user_id, provider, product_type, amount_cents, created_at, status,
 		          provider_trade_no, provider_status, grant_status, grant_error, paid_at, granted_at,
-		          is_test_order, original_amount_cents, client_build_type, client_version_code
+		          is_test_order, original_amount_cents, client_build_type, client_version_code,
+		          refund_status, refund_amount_cents, refunded_at, closed_at, last_query_at, last_query_error
 		   FROM payment_orders`
 	args := []any{}
 	if strings.TrimSpace(filter.UserID) != "" {
@@ -3777,6 +4242,12 @@ func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQue
 			originalAmount    sql.NullInt64
 			clientBuildType   sql.NullString
 			clientVersionCode sql.NullInt64
+			refundStatus      sql.NullString
+			refundAmount      sql.NullInt64
+			refundedAt        sql.NullInt64
+			closedAt          sql.NullInt64
+			lastQueryAt       sql.NullInt64
+			lastQueryError    sql.NullString
 		)
 		if err := rows.Scan(
 			&entry.OrderID,
@@ -3796,6 +4267,12 @@ func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQue
 			&originalAmount,
 			&clientBuildType,
 			&clientVersionCode,
+			&refundStatus,
+			&refundAmount,
+			&refundedAt,
+			&closedAt,
+			&lastQueryAt,
+			&lastQueryError,
 		); err != nil {
 			return nil, err
 		}
@@ -3809,16 +4286,36 @@ func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQue
 		if clientVersionCode.Valid && clientVersionCode.Int64 > 0 {
 			entry.ClientVersionCode = int(clientVersionCode.Int64)
 		}
-		entry.ProviderTradeNo = nullStringValue(providerTrade)
+		fullProviderTradeNo := nullStringValue(providerTrade)
+		entry.ProviderTradeSuffix = paymentIDLogSuffix(fullProviderTradeNo)
+		entry.ProviderStatus = nullStringValue(providerStatus)
 		entry.GrantStatus = nullStringValue(grantStatus)
+		entry.GrantError = nullStringValue(grantError)
+		entry.PaidAt = nullInt64ToPtr(paidAt)
+		entry.GrantedAt = nullInt64ToPtr(grantedAt)
+		entry.RefundStatus = nullStringValue(refundStatus)
+		if refundAmount.Valid && refundAmount.Int64 > 0 {
+			entry.RefundAmount = formatAmountCents(int(refundAmount.Int64))
+		}
+		entry.RefundedAt = nullInt64ToPtr(refundedAt)
+		entry.ClosedAt = nullInt64ToPtr(closedAt)
+		entry.LastQueryAt = nullInt64ToPtr(lastQueryAt)
+		entry.LastQueryError = nullStringValue(lastQueryError)
 		result := map[string]any{
-			"provider":        entry.Provider,
-			"provider_status": nullStringValue(providerStatus),
-			"grant_status":    entry.GrantStatus,
-			"grant_error":     nullStringValue(grantError),
-			"paid_at":         nullInt64ToPtr(paidAt),
-			"granted_at":      nullInt64ToPtr(grantedAt),
-			"is_test_order":   entry.IsTestOrder,
+			"provider":              entry.Provider,
+			"provider_status":       entry.ProviderStatus,
+			"provider_trade_suffix": entry.ProviderTradeSuffix,
+			"grant_status":          entry.GrantStatus,
+			"grant_error":           entry.GrantError,
+			"paid_at":               entry.PaidAt,
+			"granted_at":            entry.GrantedAt,
+			"refund_status":         entry.RefundStatus,
+			"refund_amount":         entry.RefundAmount,
+			"refunded_at":           entry.RefundedAt,
+			"closed_at":             entry.ClosedAt,
+			"last_query_at":         entry.LastQueryAt,
+			"last_query_error":      entry.LastQueryError,
+			"is_test_order":         entry.IsTestOrder,
 		}
 		if entry.OriginalAmount != "" {
 			result["original_amount"] = entry.OriginalAmount
@@ -3828,9 +4325,6 @@ func (s *Store) listAdminPaymentOrders(ctx context.Context, filter AdminOrderQue
 		}
 		if entry.ClientVersionCode > 0 {
 			result["client_version_code"] = entry.ClientVersionCode
-		}
-		if entry.ProviderTradeNo != "" {
-			result["provider_trade_no"] = entry.ProviderTradeNo
 		}
 		raw, _ := json.Marshal(result)
 		entry.Result = raw
@@ -4115,6 +4609,32 @@ func normalizeAdminPaymentOutTradeNo(raw string) string {
 		return ""
 	}
 	return value
+}
+
+func adminPaymentRefundRequestNo(outTradeNo string) string {
+	normalized := normalizeAdminPaymentOutTradeNo(outTradeNo)
+	if normalized == "" {
+		return ""
+	}
+	return "RF_" + normalized
+}
+
+func parseAdminPaymentReconciliationDay(raw string, loc *time.Location, now time.Time) (string, string) {
+	if loc == nil {
+		loc = time.FixedZone("Asia/Shanghai", 8*60*60)
+	}
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return now.In(loc).AddDate(0, 0, -1).Format("2006-01-02"), ""
+	}
+	parsed, err := time.ParseInLocation("2006-01-02", trimmed, loc)
+	if err != nil {
+		return "", "invalid_day"
+	}
+	if parsed.After(now.In(loc).AddDate(0, 0, 1)) {
+		return "", "invalid_day"
+	}
+	return parsed.Format("2006-01-02"), ""
 }
 
 func adminDayStartMs(loc *time.Location, now time.Time) int64 {
