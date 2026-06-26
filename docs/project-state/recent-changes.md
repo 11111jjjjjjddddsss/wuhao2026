@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”、旧会诊对象选择或旧模型链路 / 旧中转站 / 旧 Chat Completions 表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-27
+
+- 主聊天“中转联盟” Responses 主链已部署到生产后端 `ddf52138`，后台静态页同步部署；公网 `/healthz` 显示 `chat_primary=ok / chat_primary_api_mode=responses / chat_primary_search_context_size=low / chat_primary_reasoning_effort=low / chat_primary_first_visible_timeout_seconds=6 / alipay=ok / alipay_payment_gate=limited / ok=true`，ECS readiness 通过。用生产严格鉴权临时账号从公网域名跑真实链路后，普通文字问诊走 `primary_responses` 成功，后端真实首字约 4.0 秒；正常尺寸测试图片经 `/upload` 上传后走 `primary_responses` 成功，后端真实首字约 5.1 秒、总耗时约 8.3 秒；明确实时价格问题在中转站 6 秒无可见正文后按设计回落千问并最终成功，但首字约 20.7 秒，说明实时联网类问题仍要继续观察延迟。测试后已清理临时账号业务数据；一次 1 像素无效图片探针触发的上游 502 / 400 已用正常图片复测排除为测试素材问题，不代表 App 图片链路故障。本轮不发布正式 APK、不改官网正式下载或检查更新，支付仍保持 `limited` 内测门禁。
+
 ## 2026-06-26
 
 - 主聊天优先中转站从旧 Chat Completions 方案收口为“中转联盟” Responses 流式方案：不改 Android、账号鉴权、额度、上下文组装、归档、记忆文档和今日农情链路，后端优先调用 `gpt-5.5 /v1/responses`，请求使用 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=low`，并只追加一条中性联网工具规则：模型可自行判断是否联网，涉及今天 / 最新 / 当前 / 实时 / 价格 / 行情 / 政策 / 天气 / 购买渠道等实时信息时再联网，普通农技知识和图片可见信息直接回答；不追加“简洁回答”、字数限制或质量测试提示。Responses 主链不显式设置 `temperature / top_p / max_tokens / max_output_tokens`；输出长度继续靠主聊天提示词控制。中转站开流失败、非 2xx、非 SSE 或 6 秒无用户可见正文时自动回落原 `qwen3.5-plus` 主备 Key 池；一旦已经向用户吐出可见正文，不在同一条回复中途切模型。后台监控、readiness 白名单、`/healthz` 非敏感状态、模型 Key runbook、项目状态和风险文档均同步到 Responses / 低档联网 / 低档思考 / 首字回落口径。密钥只放本机私密配置和服务器环境变量，不进仓库、文档、日志或聊天复述；残余风险是第三方中转站会接触主聊天文本和普通问诊图片，需要继续观察质量、首字、联网、图片和成本。

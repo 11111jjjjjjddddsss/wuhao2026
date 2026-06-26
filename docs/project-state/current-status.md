@@ -1,6 +1,6 @@
 # 当前状态
 
-最后更新：2026-06-26
+最后更新：2026-06-27
 
 ## 项目概况
 
@@ -11,6 +11,7 @@
 ## 当前代码真相
 
 - 2026-06-26 主对话后端优先中转站链路已从旧 Chat Completions 方案收口为“中转联盟” Responses 流式方案：主聊天仍由后端组装同一套上下文、账号、额度、归档和日志，Android 不直连模型、不保存 Key；配置 `CHAT_PRIMARY_ENABLED=true`、`CHAT_PRIMARY_API_MODE=responses`、`CHAT_PRIMARY_BASE_URL` 和服务器环境变量里的中转站 Key 后，会优先调用 `gpt-5.5` `/v1/responses`。请求使用 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=low`，并只追加一条中性联网工具规则：模型可自行判断是否联网，涉及今天、最新、当前、实时、价格、行情、政策、天气、购买渠道等实时信息时再联网，普通农技知识和图片可见信息直接回答；不追加“简洁回答”、字数限制或质量测试提示。该链路不显式设置 `temperature / top_p / max_tokens / max_output_tokens`；原千问回落链路、记忆文档摘要和今日农情仍按各自原固定链路运行。中转站连接失败、超时、非 2xx、非 SSE 或 6 秒无用户可见正文时自动回落原千问主备 Key 池；若原请求是明确实时 / 价格 / 行情意图，回落千问仍保留原 `ForceSearch` 搜索口径。一旦已经向用户吐出可见正文，不在同一条回复中途切模型。密钥不进仓库、文档、日志或聊天复述；第三方中转会接触用户主聊天文本和普通问诊图片，图片、联网、质量、首字、成本和隐私责任仍需继续观察。
+- 2026-06-27 凌晨生产后端已部署到 `ddf52138`，后台静态页同步部署；公网 `/healthz` 返回 `revision=ddf52138 / chat_primary=ok / chat_primary_api_mode=responses / chat_primary_search_context_size=low / chat_primary_reasoning_effort=low / chat_primary_first_visible_timeout_seconds=6 / alipay=ok / alipay_payment_gate=limited / ok=true`，ECS readiness 通过。用生产严格鉴权临时测试账号从公网域名跑了真实主聊天：普通文字问诊走 `primary_responses` 成功，后端真实首字约 4.0 秒；正常尺寸测试图片经 `/upload` 上传后走 `primary_responses` 成功，后端真实首字约 5.1 秒、总耗时约 8.3 秒；一轮明确实时价格问题在中转站 6 秒无可见正文后按设计回落千问，最终成功返回，但首字约 20.7 秒，说明实时联网类问题仍需持续观察延迟。测试后已清理临时账号业务数据。一次 1 像素无效图片探针曾触发上游 502 / 400，已被正常图片复测排除为测试图片问题，不代表 App 图片链路故障。
 - 2026-06-26 Plus 升 Pro 价格口径已从旧的“原价升级后补偿次数”方案改为“创建支付订单时直接折金额”：后端按 Plus 剩余有效天数计算抵扣，Pro 29.9 元减去剩余 Plus 时间价值，抵扣上限为一个 Plus 周期 19.9 元，最低补差价 10.00 元；0.01 内测仍只改实际支付金额，订单会保留正式折后原价用于对账。补偿次数已退出当前业务，不再新增、不展示、不作为扣次来源；旧 `upgrade_credits` 表只作历史遗留数据容器保留。当前扣次顺序为每日额度 -> 加油包。Android 会员中心、确认付款页和 debug-only 预览面板已同步显示抵扣口径。
 - 2026-06-26 支付收口最新生产后端已部署到 `c86645a7`：支付宝下单前会自动把同账号同类旧未支付 `pending` 订单本地标记为 `closed / LOCAL_REPLACED` 后创建新单，不再让用户被看不见的待支付单卡住；旧单若后来真实付款成功，验签回调仍可更新为已支付并走幂等发权益。部署后 `check-ecs-readiness.ps1 -ExpectedRevision c86645a7`、`check-payment-readiness.ps1 -StrictPublicHealth`、公网黑盒和后台 surface 均通过，公网 `/healthz` 为 `alipay=ok / alipay_payment_gate=limited / dev_order_endpoints=false / ok=true`。正式收费仍未 public 放量，`ALIPAY_PAYMENT_PUBLIC_ENABLED` 未作为正式入口启用；当前只允许白名单账号 + 内部 debug 测试包继续 0.01 联调。
 - 2026-06-26 已基于提交 `c86645a7b926` 生成最新内部 debug 测试包 `test-apks/debug/20260626/nongjiqiancha-debug-internal-20260626-143723-c86645a7b926.apk`，大小 `21,284,401` 字节，SHA-256 为 `763bcb2658d9922b17b51ccea72b321721c1044f421785dbdc5c4d45e2a639eb`，下载探针 200 / range 206 均通过，并清理上一只 `test-apks/debug/20260626/nongjiqiancha-debug-internal-20260626-133744-9d6364dc9ed4.apk`。该包只用于内部 0.01 支付、会员中心和 debug-only 预览面板复测；不发布正式 APK、不改官网正式下载或检查更新。
