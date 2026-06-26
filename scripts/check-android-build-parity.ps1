@@ -596,8 +596,8 @@ if ($failures.Count -eq 0) {
         "Legal page titles must leave room for the floating back button and wrap up to three lines on narrow screens."
     Require-Match $failures $membershipCenterSheet '会员信息刷新失败，请检查网络后重试(?s:.*?)heightIn\(min\s*=\s*34\.dp\)(?s:.*?)text\s*=\s*"重试"' `
         "Membership refresh failure notice must use plain user-facing wording and avoid fixed-height clipping."
-    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessCard(?s:.*?)width\(204\.dp\)(?s:.*?)heightIn\(min\s*=\s*46\.dp\)' `
-        "Membership success confirmation button must avoid fixed-height clipping on large font settings."
+    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.34f\)\)(?s:.*?)width\(216\.dp\)(?s:.*?)heightIn\(min\s*=\s*50\.dp\)' `
+        "Membership success overlay must dim the refreshed membership page and keep a large non-clipping confirmation button."
     Require-Match $failures $sessionApi 'gift_card_lower_tier"\s*->\s*"当前已是更高档会员，这张礼品卡不能叠加使用"' `
         "Gift card lower-tier rejection must keep the concise formal user-facing copy."
     Require-Match $failures $hamburgerMenuSheet '正在读取反馈记录\.\.\.(?s:.*?)反馈记录加载失败' `
@@ -687,12 +687,16 @@ if ($failures.Count -eq 0) {
         "Payment confirmation must use short product names and keep multi-line notes left-aligned."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)MembershipPaymentMethodChip\((?s:.*?)text\s*=\s*"支付宝"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)text\s*=\s*"微信支付 暂未开通"(?s:.*?)modifier\s*=\s*Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"确认并打开支付宝"(?s:.*?)Modifier\.fillMaxWidth\(\)(?s:.*?)MembershipPaymentConfirmButton\((?s:.*?)text\s*=\s*"取消"' `
         "Payment confirmation must keep the four payment/action capsules stacked vertically on narrow phones."
+    Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPaymentMethodChip(?s:.*?)heightIn\(min\s*=\s*48\.dp\)(?s:.*?)fontSize\s*=\s*15\.sp(?s:.*?)lineHeight\s*=\s*20\.sp' `
+        "Payment method capsules must keep readable typography on real phones."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.RenewPlus\s*->\s*"Plus 会员 30天"(?s:.*?)MembershipPaymentProduct\.RenewPro\s*->\s*"Pro 会员 30天"(?s:.*?)MembershipPaymentProduct\.BuyTopup\s*->\s*"加油包 80次"(?s:.*?)membershipPaymentConfirmTitle\((?s:.*?)subject\.contains\("联调测试"\)' `
         "Payment confirmation titles must stay concise while preserving the internal test suffix when present."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.BuyTopup\s*->\s*"额外80次问诊次数，长期保留"(?s:.*?)MembershipPaymentProduct\.UpgradePlusToPro\s*->\s*"升级后立刻生效，Plus剩余会折成补偿次数"(?s:.*?)else\s*->\s*"一次购买30天，不自动续费；未到期会顺延"' `
         "Payment confirmation notes must explain topup retention, Plus-to-Pro compensation, and membership renewal extension."
-    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessCard(?s:.*?)padding\(horizontal\s*=\s*30\.dp\)(?s:.*?)widthIn\(max\s*=\s*340\.dp\)(?s:.*?)fontSize\s*=\s*20\.sp(?s:.*?)width\(204\.dp\)(?s:.*?)heightIn\(min\s*=\s*46\.dp\)' `
-        "Membership purchase success card must keep the enlarged confirmation treatment."
+    Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)fillMaxSize\(\)(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.34f\)\)(?s:.*?)widthIn\(max\s*=\s*340\.dp\)(?s:.*?)fontSize\s*=\s*21\.sp(?s:.*?)width\(216\.dp\)(?s:.*?)heightIn\(min\s*=\s*50\.dp\)' `
+        "Membership purchase success overlay must keep the modal dimming treatment and enlarged confirmation card."
+    Require-Match $failures $chatScreen 'orderStatus\s*==\s*"paid"\s*&&\s*grantStatus\s*==\s*"success"(?s:.*?)membershipPaymentState\s*=\s*MembershipPaymentState\(\)(?s:.*?)membershipPurchaseSuccessVisible\s*=\s*true(?s:.*?)refreshMembershipEntitlement\(\)' `
+        "Membership purchase success must avoid inserting an auto-clearing inline notice that makes the membership sheet jump."
     Require-Match $failures $chatScreen 'internal\s+fun\s+assistantHeadingTextStyle\(level:\s*Int\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*if\s*\(level\s*<=\s*2\)\s*19\.5\.sp\s*else\s*17\.5\.sp(?s:.*?)lineHeight\s*=\s*if\s*\(level\s*<=\s*2\)\s*30\.sp\s*else\s*27\.sp(?s:.*?)fontWeight\s*=\s*FontWeight\.Bold' `
         "Assistant headings must keep the earlier roomier bold layout."
     Require-Match $failures $chatScreen 'val\s+globalStatusHintVisible\s*=\s*globalStatusHintText\s*!=\s*null\s*&&\s*inputSelectionToolbarState\s*==\s*null\s*&&\s*activeMessageSelectionState\s*==\s*null(?s:.*?)ComposerAttachmentBottomSheet\((?s:.*?)GlobalStatusHint\((?s:.*?)\.zIndex\(120f\)' `

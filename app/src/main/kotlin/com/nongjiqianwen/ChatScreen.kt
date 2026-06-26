@@ -4157,9 +4157,9 @@ fun ChatScreen() {
             )
             when {
                 orderStatus == "paid" && grantStatus == "success" -> {
-                    refreshMembershipEntitlement()
-                    membershipPaymentState = MembershipPaymentState(notice = "权益已生效")
+                    membershipPaymentState = MembershipPaymentState()
                     membershipPurchaseSuccessVisible = true
+                    refreshMembershipEntitlement()
                     reportMembershipPaymentLog(
                         level = "info",
                         event = "payment.grant_success",

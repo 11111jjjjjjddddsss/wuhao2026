@@ -161,12 +161,11 @@ internal fun MembershipCenterBottomSheet(
                 }
             }
         }
-        MembershipPurchaseSuccessCard(
+        MembershipPurchaseSuccessOverlay(
             visible = visible && purchaseSuccessVisible,
             onConfirm = onPurchaseSuccessConfirm,
             modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 30.dp)
+                .fillMaxSize()
         )
     }
 }
@@ -352,7 +351,7 @@ private fun MembershipInlineNotice(text: String) {
 }
 
 @Composable
-private fun MembershipPurchaseSuccessCard(
+private fun MembershipPurchaseSuccessOverlay(
     visible: Boolean,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier
@@ -362,49 +361,63 @@ private fun MembershipPurchaseSuccessCard(
         enter = fadeIn(animationSpec = tween(durationMillis = 90)),
         exit = ExitTransition.None,
         modifier = modifier
-            .fillMaxWidth()
-            .zIndex(90f)
+            .zIndex(96f)
     ) {
-        Surface(
-            color = Color(0xFF111111),
-            shape = RoundedCornerShape(20.dp),
-            shadowElevation = 20.dp,
-            modifier = Modifier.widthIn(max = 340.dp)
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.34f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {}
+                ),
+            contentAlignment = Alignment.Center
         ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 26.dp, vertical = 24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+            Surface(
+                color = Color(0xFF111111),
+                shape = RoundedCornerShape(22.dp),
+                shadowElevation = 24.dp,
+                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.14f)),
+                modifier = Modifier
+                    .padding(horizontal = 36.dp)
+                    .widthIn(max = 340.dp)
             ) {
-                Text(
-                    text = "权益已生效",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    lineHeight = 27.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center
-                )
-                Surface(
-                    color = Color.White,
-                    shape = RoundedCornerShape(999.dp),
-                    modifier = Modifier
-                        .width(204.dp)
-                        .heightIn(min = 46.dp)
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            role = Role.Button,
-                            onClick = onConfirm
-                        )
+                Column(
+                    modifier = Modifier.padding(horizontal = 26.dp, vertical = 28.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(22.dp)
                 ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Text(
-                            text = "确定",
-                            color = Color(0xFF111111),
-                            fontSize = 16.sp,
-                            lineHeight = 21.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    Text(
+                        text = "权益已生效",
+                        color = Color.White,
+                        fontSize = 21.sp,
+                        lineHeight = 28.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center
+                    )
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(999.dp),
+                        modifier = Modifier
+                            .width(216.dp)
+                            .heightIn(min = 50.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                role = Role.Button,
+                                onClick = onConfirm
+                            )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "确定",
+                                color = Color(0xFF111111),
+                                fontSize = 16.sp,
+                                lineHeight = 21.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
             }
@@ -594,7 +607,7 @@ private fun MembershipPaymentMethodChip(
             0.8.dp,
             if (selected) Color(0xFF111111) else Color(0xFFE1E4E8)
         ),
-        modifier = modifier.heightIn(min = 44.dp)
+        modifier = modifier.heightIn(min = 48.dp)
     ) {
         Box(
             modifier = Modifier.fillMaxWidth(),
@@ -607,11 +620,11 @@ private fun MembershipPaymentMethodChip(
                     enabled -> Color(0xFF202124)
                     else -> Color(0xFF9297A0)
                 },
-                fontSize = 13.sp,
-                lineHeight = 18.sp,
+                fontSize = 15.sp,
+                lineHeight = 20.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp)
             )
         }
     }
@@ -809,13 +822,13 @@ internal fun MembershipPurchaseSuccessPreview() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(168.dp),
+            .height(360.dp),
         contentAlignment = Alignment.Center
     ) {
-        MembershipPurchaseSuccessCard(
+        MembershipPurchaseSuccessOverlay(
             visible = true,
             onConfirm = {},
-            modifier = Modifier.padding(horizontal = 18.dp)
+            modifier = Modifier.fillMaxSize()
         )
     }
 }
