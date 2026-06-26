@@ -1,6 +1,6 @@
 # 支付与会员订单 Runbook
 
-最后更新：2026-06-25
+最后更新：2026-06-26
 
 ## 目的
 
@@ -11,7 +11,7 @@
 ## 当前代码真相
 
 - Android 会员中心的 Plus、Pro 和加油包按钮已改为真实支付入口：先请求后端 `POST /api/payments/alipay/orders` 创建订单，再展示确认付款页；用户点“确认并打开支付宝”后，Android 才把后端返回的 `order_string` 交给支付宝 SDK `PayTask.payV2` 调起支付。
-- Android 创建支付宝订单时会带 `client_build_type` 和 `client_version_code`；后端用它配合账号白名单控制“内部测试包可测、正式包继续不可用”。旧正式包不带构建类型时不会通过测试门禁；测试期只配 `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug` 或只配账号白名单也不会放行。
+- Android 创建支付宝订单时会带 `client_build_type` 和 `client_version_code`；后端用它配合账号白名单控制“内部测试包可测、正式包继续不可用”。旧正式包不带构建类型时不会通过测试门禁；测试期只配 `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug` 或只配账号白名单也不会放行。`limited` 模式额外硬限制只接受 `client_build_type=debug`，即使误把 `release` 写进构建类型白名单，正式包也不能创建订单；正式收费只能显式打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。
 - Android 不保存、不生成、不读取支付宝应用私钥、支付宝公钥、商户密钥或任何支付渠道密钥；客户端同步结果只用于提示和轮询订单状态，不直接发放权益。
 - Android 确认付款页会展示订单、金额、订单尾号、支付方式和“一次购买30天，不自动续费；未到期会顺延”或“加油包长期保留”说明；支付宝为当前可选方式，微信支付只展示“暂未开通”占位。支付方式、微信占位、确认和取消按钮按竖排胶囊展示，避免窄屏横向挤压；确认页支持取消、遮罩取消和返回键取消；取消不会打开支付宝，也不会发权益。
 - Android 会把 `9000` 视为同步成功、`8000 / 6004 / 6006` 视为处理中、`6002` 视为网络异常并继续轮询后端订单；只有后端订单达到 `paid + grant_status=success` 才提示权益已生效。支付宝 SDK 返回的 `memo` 不上传原文，只记录是否存在备注，避免第三方自由文本进入 App 日志。

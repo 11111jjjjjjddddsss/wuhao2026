@@ -187,6 +187,9 @@ func alipayPaymentOrderGateAllows(userID string, body createAlipayOrderRequest) 
 		return false
 	}
 	normalizedBuildType := normalizeAlipayClientBuildType(body.ClientBuildType)
+	if normalizedBuildType != "debug" {
+		return false
+	}
 	if !allowedBuildTypes[normalizedBuildType] {
 		return false
 	}
@@ -197,8 +200,9 @@ func alipayPaymentOrderGateStatus() string {
 	if alipayPaymentPublicEnabled() {
 		return "public"
 	}
-	if len(paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedUserIDsEnv), normalizePaymentAllowlistUserID)) > 0 &&
-		len(paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedBuildTypesEnv), normalizeAlipayClientBuildType)) > 0 {
+	allowedUsers := paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedUserIDsEnv), normalizePaymentAllowlistUserID)
+	allowedBuildTypes := paymentEnvTokenSet(os.Getenv(alipayPaymentAllowedBuildTypesEnv), normalizeAlipayClientBuildType)
+	if len(allowedUsers) > 0 && allowedBuildTypes["debug"] {
 		return "limited"
 	}
 	return "closed"

@@ -107,6 +107,32 @@ func TestAlipayPaymentOrderGateRequiresBothUserAndBuildWhenBothConfigured(t *tes
 	}
 }
 
+func TestAlipayPaymentOrderGateLimitedHardRequiresDebugBuild(t *testing.T) {
+	clearAlipayPaymentGateTestEnv(t)
+	t.Setenv(alipayPaymentAllowedUserIDsEnv, "acct_allowed")
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "debug,release")
+
+	if !alipayPaymentOrderGateAllows("acct_allowed", createAlipayOrderRequest{ClientBuildType: "debug"}) {
+		t.Fatal("limited gate should allow the whitelisted debug build")
+	}
+	if alipayPaymentOrderGateAllows("acct_allowed", createAlipayOrderRequest{ClientBuildType: "release"}) {
+		t.Fatal("limited gate must not allow release builds even when release is misconfigured in the allowlist")
+	}
+	if got := alipayPaymentOrderGateStatus(); got != "limited" {
+		t.Fatalf("gate status=%q want limited when debug is still allowed", got)
+	}
+
+	clearAlipayPaymentGateTestEnv(t)
+	t.Setenv(alipayPaymentAllowedUserIDsEnv, "acct_allowed")
+	t.Setenv(alipayPaymentAllowedBuildTypesEnv, "release")
+	if alipayPaymentOrderGateAllows("acct_allowed", createAlipayOrderRequest{ClientBuildType: "release"}) {
+		t.Fatal("release-only allowlist must not open the limited gate")
+	}
+	if got := alipayPaymentOrderGateStatus(); got != "closed" {
+		t.Fatalf("release-only gate status=%q want closed", got)
+	}
+}
+
 func TestAlipayPaymentOrderGatePublicEnabledAllowsAll(t *testing.T) {
 	clearAlipayPaymentGateTestEnv(t)
 	t.Setenv(alipayPaymentPublicEnabledEnv, "true")

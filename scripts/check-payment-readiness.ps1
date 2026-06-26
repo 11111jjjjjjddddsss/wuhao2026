@@ -143,6 +143,8 @@ Require-Match -Name "server_alipay_order_biz_seller_id" -Content $payments -Patt
 Require-Match -Name "server_alipay_order_sign_keeps_sign_type" -Content $payments -Pattern 'BuildAppPayOrder(?s:.*?)alipaySignContent\(params,\s*"sign"\)'
 Require-Match -Name "server_alipay_payment_gate_default_closed" -Content $payments -Pattern "ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES"
 Require-Match -Name "server_alipay_payment_gate_requires_user_and_build" -Content $payments -Pattern "len\(allowedUsers\)\s*==\s*0\s*\|\|\s*len\(allowedBuildTypes\)\s*==\s*0"
+Require-Match -Name "server_alipay_payment_limited_debug_only" -Content $payments -Pattern 'alipayPaymentOrderGateAllows(?s:.*?)normalizedBuildType\s*!=\s*"debug"'
+Require-Match -Name "server_alipay_payment_limited_status_requires_debug" -Content $payments -Pattern 'alipayPaymentOrderGateStatus(?s:.*?)allowedBuildTypes\["debug"\]'
 Require-Match -Name "server_alipay_payment_public_switch" -Content $payments -Pattern "ALIPAY_PAYMENT_PUBLIC_ENABLED"
 Require-Match -Name "server_alipay_payment_test_amount_guard" -Content $payments -Pattern "ALIPAY_PAYMENT_TEST_AMOUNT_CENTS"
 Require-Match -Name "server_alipay_payment_test_amount_debug_only" -Content $payments -Pattern 'normalizedBuildType\s*!=\s*"debug"'

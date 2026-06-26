@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”或旧会诊对象选择等表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-26
+
+- 支付宝 0.01 内测出现首笔后端确认成功的权益到账测试单：只读核查最近 `payment_orders` 显示加油包测试单尾号 `1BF6F237` 为 `buy_topup / amount_cents=1 / original_cents=600 / is_test_order=1 / build=debug / versionCode=11 / status=paid / provider_status=TRADE_SUCCESS / grant_status=success / paid=true / granted=true`，说明支付宝实付、订单状态更新和权益发放主链已至少跑通一笔；同批较新的 Pro 测试单尾号 `F880F373` 仍是 `pending / pending`，不能误写成 Pro 会员已到账。按用户真机反馈，Android “权益已生效”结果卡整体放大，确认付款页订单名简化为 `Plus 会员 30天 / Pro 会员 30天 / 升级 Pro 会员 / 加油包 80次`，联调测试保留“（联调测试）”后缀，说明行改为左对齐自然换行。支付门禁进一步收紧：`limited` 模式硬要求 `client_build_type=debug`，即使误把 `release` 写入构建类型白名单，正式包也不能创建订单；正式收费仍只能显式打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。同步补 Android parity、支付 readiness、后端门禁单测和支付 runbook；本轮仍不发布正式 APK、不改官网正式下载或检查更新。
+
 ## 2026-06-25
 
 - Android 会员 / 支付确认页按真机反馈继续收口：会员中心右上关闭按钮放大到 48dp，`×` 字号同步放大；“确认付款”页改为竖排 4 个胶囊（支付宝、微信支付暂未开通、确认并打开支付宝、取消），补展示安全订单尾号，并把会员续费说明改成“一次购买30天，不自动续费；未到期会顺延”，Plus 升 Pro 说明改成升级后立刻生效且 Plus 剩余折成补偿次数。Plus / Pro 未到期同档续费继续允许并顺延，Pro 不能降买 Plus，加油包收回到“未用完长期保留、用完后再买”，Android 本地和后端创建订单阶段都会拦住已有加油包余额的重复购买；支付成功后的权益生效卡片仍由后端 `paid + grant_status=success` 触发，Plus、Pro、升级 Pro 和加油包共用一套结果卡。同步更新 debug-only 预览说明、支付 runbook、Android parity 护栏、支付 readiness 护栏和项目记忆；本轮不发布正式 APK、不改官网正式下载或检查更新。

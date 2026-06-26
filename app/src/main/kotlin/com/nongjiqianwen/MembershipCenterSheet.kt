@@ -166,7 +166,7 @@ internal fun MembershipCenterBottomSheet(
             onConfirm = onPurchaseSuccessConfirm,
             modifier = Modifier
                 .align(Alignment.Center)
-                .padding(horizontal = 42.dp)
+                .padding(horizontal = 30.dp)
         )
     }
 }
@@ -367,20 +367,20 @@ private fun MembershipPurchaseSuccessCard(
     ) {
         Surface(
             color = Color(0xFF111111),
-            shape = RoundedCornerShape(18.dp),
-            shadowElevation = 18.dp,
-            modifier = Modifier.widthIn(max = 320.dp)
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 20.dp,
+            modifier = Modifier.widthIn(max = 340.dp)
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 22.dp, vertical = 20.dp),
+                modifier = Modifier.padding(horizontal = 26.dp, vertical = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 Text(
                     text = "权益已生效",
                     color = Color.White,
-                    fontSize = 18.sp,
-                    lineHeight = 24.sp,
+                    fontSize = 20.sp,
+                    lineHeight = 27.sp,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center
                 )
@@ -388,8 +388,8 @@ private fun MembershipPurchaseSuccessCard(
                     color = Color.White,
                     shape = RoundedCornerShape(999.dp),
                     modifier = Modifier
-                        .width(168.dp)
-                        .heightIn(min = 40.dp)
+                        .width(204.dp)
+                        .heightIn(min = 46.dp)
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -401,8 +401,8 @@ private fun MembershipPurchaseSuccessCard(
                         Text(
                             text = "确定",
                             color = Color(0xFF111111),
-                            fontSize = 15.sp,
-                            lineHeight = 20.sp,
+                            fontSize = 16.sp,
+                            lineHeight = 21.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
@@ -475,7 +475,8 @@ internal fun MembershipPaymentConfirmOverlay(
                         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                             MembershipPaymentInfoRow(
                                 label = "订单",
-                                value = item.subject.ifBlank { membershipPaymentProductTitle(item.product) }
+                                value = membershipPaymentConfirmTitle(item.product, item.subject),
+                                valueTextAlign = TextAlign.Start
                             )
                             MembershipPaymentInfoRow(
                                 label = "金额",
@@ -491,7 +492,8 @@ internal fun MembershipPaymentConfirmOverlay(
                             }
                             MembershipPaymentInfoRow(
                                 label = "说明",
-                                value = membershipPaymentProductNote(item.product)
+                                value = membershipPaymentProductNote(item.product),
+                                valueTextAlign = TextAlign.Start
                             )
                         }
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -548,7 +550,8 @@ internal fun MembershipPaymentConfirmOverlay(
 private fun MembershipPaymentInfoRow(
     label: String,
     value: String,
-    valueWeight: FontWeight = FontWeight.Normal
+    valueWeight: FontWeight = FontWeight.Normal,
+    valueTextAlign: TextAlign = TextAlign.End
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -568,7 +571,7 @@ private fun MembershipPaymentInfoRow(
             fontSize = 13.sp,
             lineHeight = 19.sp,
             fontWeight = valueWeight,
-            textAlign = TextAlign.End,
+            textAlign = valueTextAlign,
             modifier = Modifier.weight(1f)
         )
     }
@@ -806,7 +809,7 @@ internal fun MembershipPurchaseSuccessPreview() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(136.dp),
+            .height(168.dp),
         contentAlignment = Alignment.Center
     ) {
         MembershipPurchaseSuccessCard(
@@ -1298,11 +1301,19 @@ private fun formatMembershipExpireDate(expireAtMs: Long?): String? {
 
 private fun membershipPaymentProductTitle(product: MembershipPaymentProduct): String =
     when (product) {
-        MembershipPaymentProduct.RenewPlus -> "农技千查 Plus 会员30天"
-        MembershipPaymentProduct.RenewPro -> "农技千查 Pro 会员30天"
-        MembershipPaymentProduct.UpgradePlusToPro -> "农技千查升级 Pro 会员30天"
-        MembershipPaymentProduct.BuyTopup -> "农技千查加油包80次"
+        MembershipPaymentProduct.RenewPlus -> "Plus 会员 30天"
+        MembershipPaymentProduct.RenewPro -> "Pro 会员 30天"
+        MembershipPaymentProduct.UpgradePlusToPro -> "升级 Pro 会员"
+        MembershipPaymentProduct.BuyTopup -> "加油包 80次"
     }
+
+private fun membershipPaymentConfirmTitle(
+    product: MembershipPaymentProduct,
+    subject: String
+): String {
+    val testSuffix = if (subject.contains("联调测试")) "（联调测试）" else ""
+    return membershipPaymentProductTitle(product) + testSuffix
+}
 
 private fun membershipPaymentProductNote(product: MembershipPaymentProduct): String =
     when (product) {
