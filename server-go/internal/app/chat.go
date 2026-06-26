@@ -413,7 +413,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	upstreamCtx, cancelUpstream := context.WithTimeout(context.Background(), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
-	upstream, err := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages, thinkingOptions)
+	upstream, upstreamProvider, err := s.openValidatedChatStreamWithFallback(upstreamCtx, promptMessages, thinkingOptions)
 	if err != nil {
 		s.respondUpstreamOpenError(
 			w,
@@ -439,8 +439,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	upstreamRequestID := firstNonEmpty(upstream.Header.Get("x-request-id"), upstream.Header.Get("request-id"))
-	s.logger.Info("bailian search config",
+	s.logger.Info("chat upstream search config",
 		"request_id", upstreamRequestID,
+		"provider", upstreamProvider,
 		"enable_search", true,
 		"strategy", "turbo",
 		"forced_search", forceSearch,
@@ -549,6 +550,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				"userId", auth.UserID,
 				"clientMsgId", clientMsgID,
 				"request_id", upstreamRequestID,
+				"provider", upstreamProvider,
 				"kind", streamTimeoutKind,
 				"timeout_seconds", int(firstVisibleTimeout.Seconds()),
 				"forced_search", forceSearch,
@@ -572,6 +574,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				"userId", auth.UserID,
 				"clientMsgId", clientMsgID,
 				"request_id", upstreamRequestID,
+				"provider", upstreamProvider,
 				"kind", streamTimeoutKind,
 				"timeout_seconds", int(idleTimeout.Seconds()),
 				"forced_search", forceSearch,
@@ -888,18 +891,49 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 	}
 }
 
+func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, string, error) {
+	if s.primaryChat != nil && s.primaryChat.Enabled() {
+		response, err := s.openValidatedPrimaryChatStream(ctx, messages, options)
+		if err == nil {
+			s.logger.Info("primary chat upstream selected", "provider", "primary", "model", primaryChatModelName(), "forced_search", primaryChatForceSearch(options.ForceSearch))
+			return response, "primary", nil
+		}
+		s.logger.Warn("primary chat upstream failed before stream; falling back to bailian", "provider", "primary", "model", primaryChatModelName(), "error", err)
+	}
+	response, err := s.openValidatedBailianStreamWithRetry(ctx, messages, options)
+	if err != nil {
+		return nil, "bailian", err
+	}
+	return response, "bailian", nil
+}
+
+func (s *Server) openValidatedPrimaryChatStream(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
+	return s.openValidatedStreamWithRetry(ctx, "primary", 1, func(openCtx context.Context) (*http.Response, error) {
+		return s.primaryChat.OpenStream(openCtx, messages, options)
+	})
+}
+
 func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
+	return s.openValidatedStreamWithRetry(ctx, "bailian", upstreamMaxAttempts, func(openCtx context.Context) (*http.Response, error) {
+		return s.bailian.OpenStream(openCtx, messages, options)
+	})
+}
+
+func (s *Server) openValidatedStreamWithRetry(ctx context.Context, provider string, maxAttempts int, open func(context.Context) (*http.Response, error)) (*http.Response, error) {
 	var lastErr error
-	for attempt := 1; attempt <= upstreamMaxAttempts; attempt++ {
-		response, err := s.bailian.OpenStream(ctx, messages, options)
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		response, err := open(ctx)
 		if err != nil {
 			lastErr = &upstreamStreamOpenError{
 				Message:    "upstream request failed",
 				Kind:       "request",
 				StatusCode: http.StatusBadGateway,
 			}
-			if attempt < upstreamMaxAttempts && ctx.Err() == nil {
-				s.logger.Warn("upstream open retry scheduled after request failure", "attempt", attempt, "maxAttempts", upstreamMaxAttempts, "error", err)
+			if attempt < maxAttempts && ctx.Err() == nil {
+				s.logger.Warn("upstream open retry scheduled after request failure", "provider", provider, "attempt", attempt, "maxAttempts", maxAttempts, "error", err)
 				if waitErr := waitForRetryDelay(ctx, upstreamRetryBaseWait*time.Duration(attempt)); waitErr != nil {
 					return nil, waitErr
 				}
@@ -918,8 +952,8 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 				StatusCode:  response.StatusCode,
 				BodyPreview: sanitizeUpstreamErrorPreview(string(bodyPreview)),
 			}
-			if attempt < upstreamMaxAttempts && isRetryableUpstreamStatus(response.StatusCode) && ctx.Err() == nil {
-				s.logger.Warn("upstream open retry scheduled after non-200 response", "attempt", attempt, "maxAttempts", upstreamMaxAttempts, "status", response.StatusCode)
+			if attempt < maxAttempts && isRetryableUpstreamStatus(response.StatusCode) && ctx.Err() == nil {
+				s.logger.Warn("upstream open retry scheduled after non-200 response", "provider", provider, "attempt", attempt, "maxAttempts", maxAttempts, "status", response.StatusCode)
 				if waitErr := waitForRetryDelay(ctx, upstreamRetryBaseWait*time.Duration(attempt)); waitErr != nil {
 					return nil, waitErr
 				}
@@ -937,8 +971,8 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 				StatusCode:  http.StatusBadGateway,
 				ContentType: contentType,
 			}
-			if attempt < upstreamMaxAttempts && ctx.Err() == nil {
-				s.logger.Warn("upstream open retry scheduled after non-SSE response", "attempt", attempt, "maxAttempts", upstreamMaxAttempts, "contentType", contentType)
+			if attempt < maxAttempts && ctx.Err() == nil {
+				s.logger.Warn("upstream open retry scheduled after non-SSE response", "provider", provider, "attempt", attempt, "maxAttempts", maxAttempts, "contentType", contentType)
 				if waitErr := waitForRetryDelay(ctx, upstreamRetryBaseWait*time.Duration(attempt)); waitErr != nil {
 					return nil, waitErr
 				}
@@ -948,7 +982,7 @@ func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messag
 		}
 
 		if attempt > 1 {
-			s.logger.Info("upstream open recovered after retry", "attempt", attempt, "maxAttempts", upstreamMaxAttempts)
+			s.logger.Info("upstream open recovered after retry", "provider", provider, "attempt", attempt, "maxAttempts", maxAttempts)
 		}
 		return response, nil
 	}

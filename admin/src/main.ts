@@ -4354,7 +4354,12 @@ function modelPolicyProtocolText(row: AdminMonitoring["model_usage_policy"][numb
 }
 
 function modelPolicyNoteText(row: AdminMonitoring["model_usage_policy"][number]): string {
-  if (row.title.includes("主聊天")) return "可联网但不强制搜索；Android 不保存服务密钥。";
+  if (row.title.includes("主聊天")) {
+    if (row.search_strategy?.includes("中转站") || row.forced_search) {
+      return "优先走中转站流式链路，开流失败会自动回落到原后端主备链路；Android 不保存服务密钥。";
+    }
+    return "可联网但不强制搜索；Android 不保存服务密钥。";
+  }
   if (row.title.includes("记忆")) return "不联网，后端异步维护用户记忆文档。";
   if (row.title.includes("今日农情")) return "自动生成时联网检索并带来源；人工发布锁定当天内容；用户侧不点击外链，不扣问诊次数。";
   return "后端统一调用，前端不保存服务密钥。";
@@ -5385,6 +5390,7 @@ function healthFieldNeedsAttention(key: string, value: unknown): boolean {
   if (key === "dypns" || key === "dypns_fusion" || key === "dypns_sms") return false;
   if (typeof value === "boolean") return false;
   const normalized = String(value).toLowerCase();
+  if (key === "chat_primary") return normalized !== "ok" && normalized !== "disabled";
   return normalized !== "ok" && normalized !== "oss";
 }
 
@@ -5399,6 +5405,7 @@ function healthHint(key: string, value: unknown): string {
   if (key === "auth_strict") return value ? "公网业务入口应保持严格鉴权" : "生产风险：严格鉴权未开启";
   if (key === "dev_order_endpoints") return value ? "生产风险：开发订单接口开启" : "开发订单接口关闭";
   if (key === "upload_storage") return "当前上传存储后端";
+  if (key === "chat_primary") return value === "ok" ? "主聊天中转站优先链路配置完整" : value === "disabled" ? "未启用时主聊天直接走原后端主备链路" : "主聊天中转站配置需要检查";
   return "来自后台 overview health";
 }
 
@@ -5597,6 +5604,7 @@ function labelFor(key: string): string {
   const labels: Record<string, string> = {
     api: "API",
     bailian: "智能分析服务",
+    chat_primary: "主聊天中转站",
     dypns: "旧DYPNS",
     dypns_fusion: "旧融合兼容",
     dypns_sms: "旧短信兼容",

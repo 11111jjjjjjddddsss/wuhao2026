@@ -32,6 +32,7 @@ type AdminOverview struct {
 type AdminHealthStatus struct {
 	API               string `json:"api"`
 	Bailian           string `json:"bailian"`
+	ChatPrimary       string `json:"chat_primary,omitempty"`
 	Dypns             string `json:"dypns"`
 	DypnsFusion       string `json:"dypns_fusion"`
 	DypnsSMS          string `json:"dypns_sms"`
@@ -3269,13 +3270,13 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 	return []AdminMonitoringModelUsageRow{
 		{
 			Title:            "主聊天问诊",
-			Model:            mainChatModel,
+			Model:            mainChatMonitoringModelLabel(),
 			Protocol:         "OpenAI兼容流式",
 			Trigger:          "用户发送文字 / 图片问诊时触发",
-			SearchStrategy:   mainChatSearchStrategy,
-			ForcedSearch:     false,
-			ThinkingDisabled: false,
-			CostNote:         "纯文字默认非思考；带图问诊默认启用小预算思考。可联网但不强制搜索；不会在 Android 端保存模型 Key。",
+			SearchStrategy:   mainChatMonitoringSearchStrategy(),
+			ForcedSearch:     mainChatMonitoringForcedSearch(),
+			ThinkingDisabled: mainChatMonitoringThinkingDisabled(),
+			CostNote:         mainChatMonitoringCostNote(),
 		},
 		{
 			Title:            "记忆文档摘要",
@@ -3297,6 +3298,41 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 			CostNote:         dailyAgriMonitoringCostNote(dailyModel),
 		},
 	}
+}
+
+func mainChatMonitoringModelLabel() string {
+	if primaryChatConfigured() {
+		return primaryChatModelName() + " 优先 / " + mainChatModel + " 兜底"
+	}
+	return mainChatModel
+}
+
+func mainChatMonitoringSearchStrategy() string {
+	if primaryChatConfigured() {
+		return "中转站联网开启；回落千问时仍按主聊天搜索策略"
+	}
+	return mainChatSearchStrategy
+}
+
+func mainChatMonitoringForcedSearch() bool {
+	if primaryChatConfigured() {
+		return primaryChatForceSearch(false)
+	}
+	return false
+}
+
+func mainChatMonitoringThinkingDisabled() bool {
+	if primaryChatConfigured() {
+		return true
+	}
+	return false
+}
+
+func mainChatMonitoringCostNote() string {
+	if primaryChatConfigured() {
+		return "主聊天优先走中转站流式模型，联网开启、思考关闭；开流失败、超时、非流式或非 2xx 时快速回落千问主备 Key。Android 端仍不保存模型 Key。"
+	}
+	return "纯文字默认非思考；带图问诊默认启用小预算思考。可联网但不强制搜索；不会在 Android 端保存模型 Key。"
 }
 
 func dailyAgriMonitoringProtocol(model string) string {
@@ -3631,6 +3667,10 @@ func countUnreadyAdminDependencies(health AdminHealthStatus) int64 {
 		count++
 	}
 	if strings.ToLower(strings.TrimSpace(health.Bailian)) != "ok" {
+		count++
+	}
+	chatPrimary := strings.ToLower(strings.TrimSpace(health.ChatPrimary))
+	if chatPrimary != "" && chatPrimary != "ok" && chatPrimary != "disabled" {
 		count++
 	}
 	if strings.ToLower(strings.TrimSpace(health.SMS)) != "ok" {
@@ -4601,6 +4641,7 @@ func (s *Server) adminHealthStatus() AdminHealthStatus {
 	return AdminHealthStatus{
 		API:               "ok",
 		Bailian:           ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
+		ChatPrimary:       primaryChatHealthStatus(s.primaryChat),
 		Dypns:             ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		DypnsFusion:       ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
 		DypnsSMS:          ternary(s.sms.HasConfigured() && redisStatus == "ok", "ok", "missing_config"),
