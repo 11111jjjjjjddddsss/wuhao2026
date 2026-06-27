@@ -1584,7 +1584,7 @@ internal fun HamburgerServiceAgreementContent(
             ),
             HamburgerLegalSection(
                 title = "四、会员、支付、加油包和礼品卡",
-                body = "Plus / Pro 会员按 30 天计算，为一次性购买，不自动续费；每日额度不结转，会员到期后按基础权益计算。加油包为额外问诊次数，未用完次数长期保留；Plus 升级 Pro 的实际金额和礼品卡权益以 App 页面和平台记录为准。付费服务应通过 App 页面展示的官方渠道完成；未展示可购买状态的入口不会发起真实扣费。已付款但权益未到账时，请通过帮助与反馈联系客服；核实后优先补发权益，重复扣款、无法提供服务、依法或支付平台规则应退款的情形，按核验结果处理退款或其他售后。支付凭证或发票需求可通过帮助与反馈提交，我们会按实际经营和税务规则处理。"
+                body = "Plus / Pro 会员按 30 天计算，为一次性购买，不自动续费；每日额度不结转，会员到期后按基础权益计算。加油包为额外问诊次数，未用完次数长期保留；Plus 升级 Pro 的实际应付金额、礼品卡权益和加油包规则，以 App 页面和平台记录为准。付费服务应通过 App 页面展示的官方渠道完成；未展示可购买状态的入口不会发起真实扣费。已付款但权益未到账时，请通过帮助与反馈联系客服；核实后优先补发权益，重复扣款、无法提供服务、依法或支付平台规则应退款的情形，按核验结果处理退款或其他售后。支付凭证或发票需求可通过帮助与反馈提交，我们会按实际经营和税务规则处理。"
             ),
             HamburgerLegalSection(
                 title = "五、农资信息和购买提醒",
@@ -1598,7 +1598,7 @@ internal fun HamburgerServiceAgreementContent(
     }
     HamburgerLegalTextPage(
         title = "服务协议",
-        meta = "更新日期：2026年6月25日\n生效日期：2026年6月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+        meta = "更新日期：2026年6月28日\n生效日期：2026年6月28日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
         sections = sections,
         modifier = modifier,
     )
@@ -1664,7 +1664,7 @@ internal fun HamburgerPrivacyPolicyContent(
     ) {
         HamburgerLegalPageTitle("隐私政策")
         Text(
-            text = "更新日期：2026年6月25日\n生效日期：2026年6月25日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
+            text = "更新日期：2026年6月28日\n生效日期：2026年6月28日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1735,7 +1735,7 @@ private fun HamburgerRiskNoticeContent(
     ) {
         HamburgerLegalPageTitle("风险提示")
         Text(
-            text = "更新日期：2026年6月25日\n生效日期：2026年6月25日",
+            text = "更新日期：2026年6月28日\n生效日期：2026年6月28日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1833,7 +1833,7 @@ private fun HamburgerThirdPartyListContent(
     ) {
         HamburgerLegalPageTitle("第三方信息共享清单")
         Text(
-            text = "更新日期：2026年6月25日",
+            text = "更新日期：2026年6月28日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1860,7 +1860,7 @@ private fun HamburgerThirdPartyListContent(
         )
         HamburgerAgreementSection(
             title = "六、支付服务",
-            body = "共享类型：支付宝 APP 支付 SDK / 支付服务接口。\n服务提供方：支付宝（中国）网络技术有限公司及支付宝开放平台相关服务。\n服务类别：支付渠道服务。\n使用场景：您主动购买会员、加油包或其他付费服务时，调起支付宝完成支付。\n涉及信息：订单号、服务 / 权益信息、支付金额、支付状态、退款和售后处理所需信息，以及支付宝 SDK 完成支付所需的设备和支付环境必要信息。\n共享方式：由农技千查后端创建订单并生成支付参数，Android 端仅将支付参数交给支付宝 SDK 调起支付；权益发放以后端验签通知或订单状态核验为准，客户端同步结果不直接发放权益。\n第三方处理规则：支付宝隐私权政策及支付宝开放平台公开规则。"
+            body = "共享类型：支付宝 APP 支付 SDK / 支付服务接口。\nSDK 名称：App 支付宝客户端 SDK。\nSDK 包名：com.alipay.sdk。\n当前接入版本：15.8.42。\n服务提供方：支付宝（中国）网络技术有限公司及支付宝开放平台相关服务。\n服务类别：支付渠道服务。\n使用场景：您主动购买会员、加油包或其他付费服务时，调起支付宝完成支付。\n涉及信息：订单号、服务 / 权益信息、支付金额、支付状态、退款和售后处理所需信息，以及支付宝 SDK 完成支付所需的设备和支付环境必要信息。\n共享方式：由农技千查后端创建订单并生成支付参数，Android 端仅将支付参数交给支付宝 SDK 调起支付；权益发放以后端验签通知或订单状态核验为准，客户端同步结果不直接发放权益。\n第三方处理规则：支付宝隐私权政策及支付宝开放平台公开规则。"
         )
         HamburgerAgreementSection(
             title = "七、当前未接入的第三方 SDK",
@@ -1908,7 +1908,7 @@ private fun HamburgerPersonalInfoListContent(
     ) {
         HamburgerLegalPageTitle("个人信息收集清单")
         Text(
-            text = "更新日期：2026年6月25日",
+            text = "更新日期：2026年6月28日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -1927,7 +1927,7 @@ private fun HamburgerPersonalInfoListContent(
         )
         HamburgerAgreementSection(
             title = "四、会员、支付、礼品卡和更新",
-            body = "信息类型：会员档位、额度、加油包、礼品卡兑换状态、订单 / 权益状态、版本号、安装包校验信息和更新结果。\n使用目的：核对权益、处理兑换、展示更新、校验安装包和处理售后争议。\n使用场景：会员中心、礼品卡兑换、检查更新、购买入口开放后的订单和退款处理。\n收集方式：由您主动兑换、主动检查更新、购买入口开放后主动下单，或由服务器根据权益变化生成。\n处理方式：由平台服务器记录和核对；未展示可购买状态的入口不会发起真实扣费。\n拒绝影响：不提供礼品卡码或订单必要信息时，将无法兑换权益或完成购买 / 售后处理。"
+            body = "信息类型：会员档位、额度、加油包、礼品卡兑换状态、订单 / 权益状态、版本号、安装包校验信息和更新结果。\n使用目的：核对权益、处理兑换、展示更新、校验安装包和处理售后争议。\n使用场景：会员中心、礼品卡兑换、检查更新、主动购买付费服务后的订单和退款处理。\n收集方式：由您主动兑换、主动检查更新、主动下单，或由服务器根据权益变化生成。\n处理方式：由平台服务器记录和核对；支付由支付宝等页面展示的官方渠道处理，权益发放以后端验签通知或订单状态核验为准。\n拒绝影响：不提供礼品卡码或订单必要信息时，将无法兑换权益或完成购买 / 售后处理。"
         )
         HamburgerAgreementSection(
             title = "五、帮助与反馈",
@@ -1979,7 +1979,7 @@ private fun HamburgerPermissionListContent(
     ) {
         HamburgerLegalPageTitle("应用权限")
         Text(
-            text = "更新日期：2026年6月25日",
+            text = "更新日期：2026年6月28日",
             color = Color(0xFF5F646D),
             fontSize = 14.sp,
             lineHeight = 22.sp
@@ -3511,52 +3511,6 @@ private fun HamburgerSupportEmptyState() {
             .fillMaxWidth()
             .padding(vertical = 28.dp, horizontal = 12.dp)
     ) {
-        Surface(
-            color = Color.White,
-            shape = CircleShape,
-            border = BorderStroke(0.8.dp, Color(0xFFE4E6EA))
-        ) {
-            Canvas(
-                modifier = Modifier
-                    .size(42.dp)
-                    .padding(10.dp)
-            ) {
-                val stroke = Stroke(
-                    width = 2.dp.toPx(),
-                    cap = StrokeCap.Round,
-                    join = StrokeJoin.Round
-                )
-                val bubbleSize = Size(width = size.width * 0.86f, height = size.height * 0.64f)
-                drawRoundRect(
-                    color = Color(0xFF111111),
-                    topLeft = Offset(x = size.width * 0.04f, y = size.height * 0.08f),
-                    size = bubbleSize,
-                    cornerRadius = CornerRadius(6.dp.toPx(), 6.dp.toPx()),
-                    style = stroke
-                )
-                drawLine(
-                    color = Color(0xFF111111),
-                    start = Offset(x = size.width * 0.28f, y = size.height * 0.72f),
-                    end = Offset(x = size.width * 0.18f, y = size.height * 0.94f),
-                    strokeWidth = 2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = Color(0xFF111111),
-                    start = Offset(x = size.width * 0.46f, y = size.height * 0.34f),
-                    end = Offset(x = size.width * 0.72f, y = size.height * 0.34f),
-                    strokeWidth = 2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = Color(0xFF111111),
-                    start = Offset(x = size.width * 0.28f, y = size.height * 0.52f),
-                    end = Offset(x = size.width * 0.68f, y = size.height * 0.52f),
-                    strokeWidth = 2.dp.toPx(),
-                    cap = StrokeCap.Round
-                )
-            }
-        }
         Text(
             text = "提交问题后，处理进展会在这里持续更新",
             color = Color(0xFF4B5158),
