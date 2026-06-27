@@ -5,6 +5,7 @@
 
 ## 2026-06-27
 
+- 基于提交 `fda2d17fbf53` 生成内部 debug 测试包 `test-apks/debug/20260627/nongjiqiancha-debug-internal-20260627-235609-fda2d17fbf53.apk`，大小 `21,298,196` 字节，SHA-256 为 `082e1c1322904b75eb3bc1ab0586bd0520acadc6ecb00ef38f715f8440231ac4`，包名 / 签名匹配 / debug 属性 / OSS `test-apks/` 3 天生命周期 / 200 与 206 下载探针均通过，并清理上一只 `20260627-223757-333c946e91b3` 测试包。该包用于验证 DashScope 主组 / 副组 Key 池口径已同步、重发 / 重试尾部动态省略号、debug-only 完整分类预览、礼品卡 / 协议 / 帮助反馈 / 今日农情等隐藏入口、支付状态中部浮层、权益异常联系客服文案、编号标题 / 编号加粗标签渲染、支付确认页正式文案、limited 0.01 内测金额边界、加粗黑度、首屏工作线和既有千问主链；本轮只发内部测试包，不发布正式 APK、不改官网正式下载或检查更新。
 - 同步 DashScope / 百炼 Key 池文档口径：根规则、当前状态、未关闭风险、ECS 部署 runbook 和今日农情 runbook 均改成当前“`DASHSCOPE_PRIMARY_API_KEY_1...4` 主组轮询、`DASHSCOPE_SECONDARY_API_KEY_1` 副组兜底”的生产真相；旧 `DASHSCOPE_API_KEY_*` 平铺变量只保留兼容 / 回滚说明。该变更只修文档和项目记忆，不改后端代码、不改线上环境、不暴露真实 Key。
 - 后端 DashScope / 百炼 Key 池补主组 / 副组层级：生产可把 4 把同主账号 Key 配到 `DASHSCOPE_PRIMARY_API_KEY_1...4`，健康时只在主组内按请求轮询；主组在开流前遇到限流 / 额度 / 鉴权类错误并全部失败后，才切 `DASHSCOPE_SECONDARY_API_KEY_1` 副账号兜底。旧 `DASHSCOPE_API_KEY_1/2/3`、`DASHSCOPE_API_KEY`、`DASHSCOPE_API_KEYS` 平铺配置继续兼容，但一旦配置 `DASHSCOPE_PRIMARY_* / DASHSCOPE_SECONDARY_*` 就优先按分组读取。脱敏脚本和 ECS readiness 同步覆盖新变量名；真实 Key 不进仓库、日志、文档或聊天复述。该改动不改模型、温度、联网 turbo、主对话锚点、输出约束、Android 直连模型边界或支付链路。
 - Android 主聊天失败尾部的进行中态补动态省略号：`正在重试...`、`正在重发...` 不再是静态文案，三个点会按固定节奏递进亮起，且保留三点占位避免黑色胶囊宽度跳动。debug-only 预览面板“消息尾部”两项同步更新为动态省略号说明，Android parity 新增真实聊天和预览护栏；本轮只改 Android UI 展示，不改重试 / 重发业务链路、后端接口、主聊天滚动链、模型提示词、输出约束、官网正式包或检查更新。
