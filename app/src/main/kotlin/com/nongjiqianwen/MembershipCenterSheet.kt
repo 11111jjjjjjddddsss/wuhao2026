@@ -1115,7 +1115,7 @@ private fun MembershipTopupCard(
                 )
             }
             Text(
-                text = "仅 Plus / Pro 会员可购买；未用完次数长期保留，用完后可再买。",
+                text = "仅 Plus / Pro 会员可购买；未用完次数长期保留，用完后可再买。会员到期后，剩余次数仍可用。",
                 color = Color(0xFF666A72),
                 fontSize = 13.sp,
                 lineHeight = 19.sp
@@ -1355,7 +1355,7 @@ private fun membershipPaymentProductNote(item: MembershipPaymentConfirmation): S
         MembershipPaymentProduct.UpgradePlusToPro -> if (item.subject.contains("联调测试")) {
             "Plus剩余有效天数按正式价抵扣；联调金额按测试配置处理"
         } else {
-            "Plus剩余有效天数已在本次金额中抵扣，升级后立刻生效"
+            "Plus剩余有效天数已在本次金额中抵扣，支付成功后立即生效"
         }
         else -> "一次购买30天，不自动续费；未到期会顺延"
     }

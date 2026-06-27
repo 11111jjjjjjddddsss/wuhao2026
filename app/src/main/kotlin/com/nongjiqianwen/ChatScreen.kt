@@ -4091,7 +4091,7 @@ fun ChatScreen() {
     }
 
     fun currentMembershipTierForPaymentLog(): String {
-        if (membershipLoadState != MembershipLoadState.Loaded) return "unknown"
+        if (membershipLoadState != MembershipLoadState.Loaded && membershipEntitlement == null) return "unknown"
         return when (membershipEntitlement?.tier?.trim()?.lowercase(Locale.ROOT)) {
             "plus" -> "plus"
             "pro" -> "pro"
@@ -4262,20 +4262,6 @@ fun ChatScreen() {
         )
         if (
             product == MembershipPaymentProduct.BuyTopup &&
-            currentMembershipTierForPaymentLog() !in setOf("plus", "pro")
-        ) {
-            reportMembershipPaymentLog(
-                level = "info",
-                event = "payment.button_blocked",
-                message = "Membership payment button blocked locally",
-                product = product,
-                extraAttrs = mapOf("reason" to "topup_requires_paid_tier")
-            )
-            membershipPaymentState = MembershipPaymentState(notice = "加油包仅 Plus / Pro 会员可购买，请先开通会员")
-            return
-        }
-        if (
-            product == MembershipPaymentProduct.BuyTopup &&
             (membershipEntitlement?.topupRemaining ?: 0) > 0
         ) {
             reportMembershipPaymentLog(
@@ -4286,6 +4272,20 @@ fun ChatScreen() {
                 extraAttrs = mapOf("reason" to "topup_remaining")
             )
             membershipPaymentState = MembershipPaymentState(notice = "加油包用完后再购买，未用完次数会长期保留")
+            return
+        }
+        if (
+            product == MembershipPaymentProduct.BuyTopup &&
+            currentMembershipTierForPaymentLog() !in setOf("plus", "pro")
+        ) {
+            reportMembershipPaymentLog(
+                level = "info",
+                event = "payment.button_blocked",
+                message = "Membership payment button blocked locally",
+                product = product,
+                extraAttrs = mapOf("reason" to "topup_requires_paid_tier")
+            )
+            membershipPaymentState = MembershipPaymentState(notice = "加油包仅 Plus / Pro 会员可购买，请先开通会员")
             return
         }
         if (
@@ -4590,16 +4590,10 @@ fun ChatScreen() {
     LaunchedEffect(membershipPaymentState.notice, membershipPaymentState.activeProduct, uiRuntimeResetKey) {
         val notice = membershipPaymentState.notice ?: return@LaunchedEffect
         if (membershipPaymentState.activeProduct != null) return@LaunchedEffect
-        val autoClearPaymentNotice = notice in setOf(
-            "权益已生效",
-            "支付已取消",
-            "支付未完成，请稍后重试",
-            "服务暂时不可用，请稍后再试",
-            "当前页面无法打开支付宝，请稍后再试",
-            "下单失败，请稍后再试"
-        )
-        if (!autoClearPaymentNotice) return@LaunchedEffect
-        delay(2_600L)
+        if (notice.isBlank()) return@LaunchedEffect
+        composerStatusHintText = notice
+        composerStatusHintTick++
+        delay(120L)
         if (membershipPaymentState.notice == notice && membershipPaymentState.activeProduct == null) {
             membershipPaymentState = MembershipPaymentState()
         }
@@ -9294,7 +9288,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：付费档位可买", "Plus / Pro 可购买，未用完次数长期保留，用完后可再买", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "未用完时不能重复购买，后端和本地都会拦住", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
-                    UiCopyPreviewItem("支付状态不占位", "支付取消 / 创建订单不再插入横条", UiCopyPreviewKind.MembershipPaymentNotice),
+                    UiCopyPreviewItem("支付状态浮层", "支付失败 / 权益异常统一走中部浮层，不挤会员中心", UiCopyPreviewKind.MembershipPaymentNotice),
                     UiCopyPreviewItem("确认付款：联调", "0.01 测试订单、订单尾号和竖排支付按钮", UiCopyPreviewKind.MembershipPaymentConfirm),
                     UiCopyPreviewItem("购买 Plus", "Plus 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPlus),
                     UiCopyPreviewItem("购买 Pro", "Pro 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPro),
@@ -10135,7 +10129,31 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     }
                 }
                 UiCopyPreviewKind.MembershipPaymentNotice -> {
-                    MembershipPaymentNoticePreview()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(520.dp)
+                    ) {
+                        MembershipCenterBody(
+                            entitlement = SessionApi.EntitlementSnapshot(
+                                tier = "pro",
+                                tierExpireAt = uiCopyPreviewExpireAtMs(daysFromNow = 30),
+                                dailyRemaining = 34,
+                                topupRemaining = 0
+                            ),
+                            loadState = MembershipLoadState.Loaded,
+                            paymentState = MembershipPaymentState(),
+                            onStartPayment = {},
+                            onRetryLoad = {}
+                        )
+                        GlobalStatusHint(
+                            visible = true,
+                            text = "支付已确认，权益处理异常，请在帮助与反馈联系我",
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(horizontal = 24.dp)
+                        )
+                    }
                 }
                 UiCopyPreviewKind.MembershipPaymentConfirm -> {
                     MembershipPaymentConfirmPreview()
