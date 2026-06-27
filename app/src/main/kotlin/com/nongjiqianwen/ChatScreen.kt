@@ -854,6 +854,7 @@ private const val USER_RETRY_STATUS_TEXT = "发送失败"
 private const val USER_RETRY_ACTION_TEXT = "重发"
 private const val USER_RETRYING_STATUS_TEXT = "正在重发..."
 private const val USER_RETRY_PREVIEW_TEXT = "发送失败 · 点击重发"
+private const val MESSAGE_STATUS_DOTS_CYCLE_MS = 960
 private val chatCacheGson = Gson()
 private val chatCacheWriteLock = Any()
 private val chatCacheListType = object : TypeToken<List<ChatMessage>>() {}.type
@@ -8051,6 +8052,7 @@ fun ChatScreen() {
                                         ASSISTANT_RETRY_ACTION_TEXT
                                     },
                                     alignEnd = false,
+                                    animatedTrailingDots = assistantRetrying,
                                     enabled = !assistantRetrying &&
                                         !isStreaming &&
                                         !sendUiSettling &&
@@ -8131,6 +8133,7 @@ fun ChatScreen() {
                                     },
                                     actionText = USER_RETRY_ACTION_TEXT.takeIf { !userRetrying },
                                     alignEnd = true,
+                                    animatedTrailingDots = userRetrying,
                                     enabled = !userRetrying &&
                                         !isStreaming &&
                                         !sendUiSettling &&
@@ -9396,9 +9399,9 @@ private fun UiCopyPreviewOverlay(
                 items = listOf(
                     UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
                     UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
-                    UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 点击重试进行中", UiCopyPreviewKind.AssistantRetrying),
+                    UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 点击重试进行中，省略号动态递进", UiCopyPreviewKind.AssistantRetrying),
                     UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
-                    UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户点击重发进行中", UiCopyPreviewKind.UserRetrying)
+                    UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户点击重发进行中，省略号动态递进", UiCopyPreviewKind.UserRetrying)
                 )
             ),
             UiCopyPreviewGroup(
@@ -10557,6 +10560,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         statusText = ASSISTANT_RETRYING_STATUS_TEXT,
                         actionText = null,
                         alignEnd = false,
+                        animatedTrailingDots = true,
                         enabled = false,
                         onActionClick = {}
                     )
@@ -10574,6 +10578,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         statusText = USER_RETRYING_STATUS_TEXT,
                         actionText = null,
                         alignEnd = true,
+                        animatedTrailingDots = true,
                         enabled = false,
                         onActionClick = {}
                     )
@@ -11430,6 +11435,7 @@ private fun MessageStatusFooter(
     actionText: String?,
     alignEnd: Boolean,
     onActionClick: () -> Unit,
+    animatedTrailingDots: Boolean = false,
     enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -11459,10 +11465,9 @@ private fun MessageStatusFooter(
                     .padding(horizontal = 14.dp, vertical = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = statusText,
-                    fontSize = 13.sp,
-                    color = Color.White
+                MessageStatusText(
+                    statusText = statusText,
+                    animatedTrailingDots = animatedTrailingDots
                 )
                 if (actionText != null) {
                     Text(
@@ -11478,6 +11483,53 @@ private fun MessageStatusFooter(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun MessageStatusText(
+    statusText: String,
+    animatedTrailingDots: Boolean
+) {
+    if (!animatedTrailingDots) {
+        Text(
+            text = statusText,
+            fontSize = 13.sp,
+            color = Color.White
+        )
+        return
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = statusText.removeSuffix("...").removeSuffix("…"),
+            fontSize = 13.sp,
+            color = Color.White
+        )
+        AnimatedMessageStatusTrailingDots()
+    }
+}
+
+@Composable
+private fun AnimatedMessageStatusTrailingDots() {
+    val transition = rememberInfiniteTransition(label = "messageStatusDots")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = MESSAGE_STATUS_DOTS_CYCLE_MS),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "messageStatusDotsPhase"
+    )
+    val activeDots = phase.toInt().coerceIn(0, 2) + 1
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        repeat(3) { index ->
+            Text(
+                text = ".",
+                fontSize = 13.sp,
+                color = Color.White.copy(alpha = if (index < activeDots) 1f else 0.26f)
+            )
         }
     }
 }

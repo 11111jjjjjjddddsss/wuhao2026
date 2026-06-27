@@ -546,8 +546,12 @@ if ($failures.Count -eq 0) {
         "Main chat must not show special image-send progress footers; only failure/retry footers should be user-visible."
     Require-NoMatch $failures $chatScreen '尾部补上传图片时' `
         "Debug UI copy preview must not describe retrying footers as image-send progress tails."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\(ASSISTANT_RETRYING_STATUS_TEXT,\s*"AI 点击重试进行中",\s*UiCopyPreviewKind\.AssistantRetrying\)(?s:.*?)UiCopyPreviewItem\(USER_RETRYING_STATUS_TEXT,\s*"用户点击重发进行中",\s*UiCopyPreviewKind\.UserRetrying\)' `
-        "Debug UI copy preview must label retrying footers as retry/resend in progress."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\(ASSISTANT_RETRYING_STATUS_TEXT,\s*"AI 点击重试进行中，省略号动态递进",\s*UiCopyPreviewKind\.AssistantRetrying\)(?s:.*?)UiCopyPreviewItem\(USER_RETRYING_STATUS_TEXT,\s*"用户点击重发进行中，省略号动态递进",\s*UiCopyPreviewKind\.UserRetrying\)' `
+        "Debug UI copy preview must label retrying footers as retry/resend in progress with animated dots."
+    Require-Match $failures $chatScreen 'MessageStatusFooter\((?s:.*?)statusText\s*=\s*if\s*\(assistantRetrying\)(?s:.*?)ASSISTANT_RETRYING_STATUS_TEXT(?s:.*?)animatedTrailingDots\s*=\s*assistantRetrying(?s:.*?)MessageStatusFooter\((?s:.*?)statusText\s*=\s*if\s*\(userRetrying\)(?s:.*?)USER_RETRYING_STATUS_TEXT(?s:.*?)animatedTrailingDots\s*=\s*userRetrying' `
+        "Retrying assistant/user footers must enable animated trailing dots in the real chat timeline."
+    Require-Match $failures $chatScreen 'AnimatedMessageStatusTrailingDots(?s:.*?)rememberInfiniteTransition\(label\s*=\s*"messageStatusDots"\)(?s:.*?)messageStatusDotsPhase' `
+        "Retrying footer ellipsis must remain animated instead of returning to static text."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("清数据首次发送",\s*"用户短文本 \+ waiting 小球",\s*UiCopyPreviewKind\.CleanStateFirstSend\)' `
         "Debug UI copy preview must keep ordinary first-send text waiting as the plain ball state."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("等待思考态",\s*"先小球，超过等待阈值后切高光扫动",\s*UiCopyPreviewKind\.ImageDiagnosisThinking\)(?s:.*?)UiCopyPreviewKind\.ImageDiagnosisThinking\s*->(?s:.*?)showThinkingLabel\s*=\s*true' `
