@@ -165,6 +165,24 @@ func TestBailianKeysSupportDedicatedSlotsAndDeduplicate(t *testing.T) {
 	}
 }
 
+func TestBailianKeysSupportPrimaryAndSecondaryGroups(t *testing.T) {
+	t.Setenv("DASHSCOPE_API_KEY", "legacy")
+	t.Setenv("DASHSCOPE_API_KEY_1", "old-primary")
+	t.Setenv("DASHSCOPE_API_KEY_2", "old-secondary")
+	t.Setenv("DASHSCOPE_API_KEYS", "ignored-legacy-list")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_1", "primary-a")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_2", "primary-b")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEYS", "primary-c; primary-a")
+	t.Setenv("DASHSCOPE_SECONDARY_API_KEY_1", "secondary-a")
+	t.Setenv("DASHSCOPE_SECONDARY_API_KEYS", "secondary-b; primary-b")
+
+	got := NewBailianClient().keys()
+	want := []string{"primary-a", "primary-b", "primary-c", "secondary-a", "secondary-b"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("keys mismatch:\n got %#v\nwant %#v", got, want)
+	}
+}
+
 func TestNewBailianClientConfiguresStreamingSafeTransport(t *testing.T) {
 	t.Setenv("DASHSCOPE_DIAL_TIMEOUT_SECONDS", "8")
 	t.Setenv("DASHSCOPE_TLS_HANDSHAKE_TIMEOUT_SECONDS", "9")
@@ -451,6 +469,106 @@ func TestOpenStreamAutoModeTurnsOnRoundRobinWhenTokenUsageIsHigh(t *testing.T) {
 		"Bearer primary-key",
 		"Bearer primary-key",
 		"Bearer secondary-key",
+	}
+	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
+		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)
+	}
+}
+
+func TestOpenStreamRoundRobinsPrimaryGroupBeforeSecondaryGroup(t *testing.T) {
+	authHeaders := []string{}
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if r.Header.Get("Authorization") == "Bearer secondary-a" {
+			t.Fatalf("secondary key should not be used while primary group is healthy")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "")
+	t.Setenv("DASHSCOPE_API_KEY_1", "")
+	t.Setenv("DASHSCOPE_API_KEY_2", "")
+	t.Setenv("DASHSCOPE_API_KEY_3", "")
+	t.Setenv("DASHSCOPE_API_KEYS", "")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_1", "primary-a")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_2", "primary-b")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_3", "primary-c")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_4", "primary-d")
+	t.Setenv("DASHSCOPE_SECONDARY_API_KEY_1", "secondary-a")
+	t.Setenv("DASHSCOPE_KEY_SELECTION_MODE", "fallback")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	client := NewBailianClient()
+	for i := 0; i < 5; i++ {
+		response, err := client.OpenStream(
+			context.Background(),
+			[]BailianMessage{{Role: "user", Content: "hello"}},
+		)
+		if err != nil {
+			t.Fatalf("open stream %d: %v", i+1, err)
+		}
+		_ = response.Body.Close()
+	}
+
+	wantAuthHeaders := []string{
+		"Bearer primary-a",
+		"Bearer primary-b",
+		"Bearer primary-c",
+		"Bearer primary-d",
+		"Bearer primary-a",
+	}
+	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
+		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)
+	}
+}
+
+func TestOpenStreamUsesSecondaryGroupOnlyAfterPrimaryGroupFails(t *testing.T) {
+	authHeaders := []string{}
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if strings.HasPrefix(r.Header.Get("Authorization"), "Bearer primary-") {
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"Throttling","message":"Requests rate limit exceeded"}`))
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer secondary-a" {
+			t.Fatalf("unexpected authorization: %s", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("DASHSCOPE_API_KEY", "")
+	t.Setenv("DASHSCOPE_API_KEY_1", "")
+	t.Setenv("DASHSCOPE_API_KEY_2", "")
+	t.Setenv("DASHSCOPE_API_KEY_3", "")
+	t.Setenv("DASHSCOPE_API_KEYS", "")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_1", "primary-a")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_2", "primary-b")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_3", "primary-c")
+	t.Setenv("DASHSCOPE_PRIMARY_API_KEY_4", "primary-d")
+	t.Setenv("DASHSCOPE_SECONDARY_API_KEY_1", "secondary-a")
+	t.Setenv("DASHSCOPE_KEY_SELECTION_MODE", "fallback")
+	t.Setenv("BAILIAN_BASE_URL", modelServer.URL)
+
+	response, err := NewBailianClient().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "hello"}},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	_ = response.Body.Close()
+
+	wantAuthHeaders := []string{
+		"Bearer primary-a",
+		"Bearer primary-b",
+		"Bearer primary-c",
+		"Bearer primary-d",
+		"Bearer secondary-a",
 	}
 	if !reflect.DeepEqual(authHeaders, wantAuthHeaders) {
 		t.Fatalf("authorization sequence mismatch:\n got %#v\nwant %#v", authHeaders, wantAuthHeaders)

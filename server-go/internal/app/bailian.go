@@ -304,12 +304,14 @@ func (c *BailianClient) keys() []string {
 }
 
 type bailianAPIKeyEntry struct {
-	Value string
+	Value   string
+	Group   int
+	Grouped bool
 }
 
 func (c *BailianClient) keyEntries() []bailianAPIKeyEntry {
 	result := []bailianAPIKeyEntry{}
-	addKey := func(value string) {
+	addKey := func(value string, group int, grouped bool) {
 		key := strings.TrimSpace(value)
 		if key == "" {
 			return
@@ -319,18 +321,47 @@ func (c *BailianClient) keyEntries() []bailianAPIKeyEntry {
 				return
 			}
 		}
-		result = append(result, bailianAPIKeyEntry{Value: key})
+		result = append(result, bailianAPIKeyEntry{Value: key, Group: group, Grouped: grouped})
+	}
+
+	if hasGroupedDashScopeKeyConfig() {
+		for i := 1; i <= 50; i++ {
+			addKey(os.Getenv(fmt.Sprintf("DASHSCOPE_PRIMARY_API_KEY_%d", i)), 0, true)
+		}
+		for _, key := range splitConfiguredKeys(os.Getenv("DASHSCOPE_PRIMARY_API_KEYS")) {
+			addKey(key, 0, true)
+		}
+		for i := 1; i <= 50; i++ {
+			addKey(os.Getenv(fmt.Sprintf("DASHSCOPE_SECONDARY_API_KEY_%d", i)), 1, true)
+		}
+		for _, key := range splitConfiguredKeys(os.Getenv("DASHSCOPE_SECONDARY_API_KEYS")) {
+			addKey(key, 1, true)
+		}
+		if len(result) > 0 {
+			return result
+		}
 	}
 
 	for i := 1; i <= 3; i++ {
 		name := fmt.Sprintf("DASHSCOPE_API_KEY_%d", i)
-		addKey(os.Getenv(name))
+		addKey(os.Getenv(name), 0, false)
 	}
-	addKey(os.Getenv("DASHSCOPE_API_KEY"))
+	addKey(os.Getenv("DASHSCOPE_API_KEY"), 0, false)
 	for _, key := range splitConfiguredKeys(os.Getenv("DASHSCOPE_API_KEYS")) {
-		addKey(key)
+		addKey(key, 0, false)
 	}
 	return result
+}
+
+func hasGroupedDashScopeKeyConfig() bool {
+	for i := 1; i <= 50; i++ {
+		if strings.TrimSpace(os.Getenv(fmt.Sprintf("DASHSCOPE_PRIMARY_API_KEY_%d", i))) != "" ||
+			strings.TrimSpace(os.Getenv(fmt.Sprintf("DASHSCOPE_SECONDARY_API_KEY_%d", i))) != "" {
+			return true
+		}
+	}
+	return strings.TrimSpace(os.Getenv("DASHSCOPE_PRIMARY_API_KEYS")) != "" ||
+		strings.TrimSpace(os.Getenv("DASHSCOPE_SECONDARY_API_KEYS")) != ""
 }
 
 func splitConfiguredKeys(value string) []string {
@@ -340,12 +371,60 @@ func splitConfiguredKeys(value string) []string {
 }
 
 func (c *BailianClient) pickNextKeyEntry(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
+	if hasGroupedBailianKeyEntries(keys) {
+		return c.pickNextGroupedKeyEntry(keys, attempted)
+	}
 	switch c.effectiveKeySelectionMode(len(keys)) {
 	case keySelectionModeRoundRobin:
 		return c.pickNextKeyEntryRoundRobin(keys, attempted)
 	default:
 		return c.pickNextKeyEntryFallback(keys, attempted)
 	}
+}
+
+func hasGroupedBailianKeyEntries(keys []bailianAPIKeyEntry) bool {
+	for _, key := range keys {
+		if key.Grouped {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *BailianClient) pickNextGroupedKeyEntry(keys []bailianAPIKeyEntry, attempted map[string]bool) (bailianAPIKeyEntry, bool) {
+	if len(keys) == 0 {
+		return bailianAPIKeyEntry{}, false
+	}
+	groups := []int{}
+	seenGroups := map[int]bool{}
+	for _, key := range keys {
+		if attempted[key.Value] || seenGroups[key.Group] {
+			continue
+		}
+		seenGroups[key.Group] = true
+		groups = append(groups, key.Group)
+	}
+	for _, group := range groups {
+		candidates := make([]bailianAPIKeyEntry, 0, len(keys))
+		for _, key := range keys {
+			if key.Group == group && !attempted[key.Value] {
+				candidates = append(candidates, key)
+			}
+		}
+		if len(candidates) == 0 {
+			continue
+		}
+		if len(attempted) == 0 {
+			if key, ok := c.pickNextKeyEntryRoundRobin(candidates, attempted); ok {
+				return key, true
+			}
+			continue
+		}
+		if key, ok := c.pickNextKeyEntryFallback(candidates, attempted); ok {
+			return key, true
+		}
+	}
+	return bailianAPIKeyEntry{}, false
 }
 
 func (c *BailianClient) effectiveKeySelectionMode(keyCount int) keySelectionMode {

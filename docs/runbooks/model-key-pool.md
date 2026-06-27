@@ -7,12 +7,31 @@
 - Android 客户端不保存、不注入、不直连模型 Key；所有模型调用都只从 `server-go` 后端发起。
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
-- 主对话 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 DashScope / 百炼 Key 池，按配置顺序做主备使用。生产当前使用 `DASHSCOPE_KEY_SELECTION_MODE=fallback`：主 Key 优先吃满，副 Key 只在主 Key 开流前失败时兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
+- 主对话 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 DashScope / 百炼 Key 池。当前生产口径支持“主账号 Key 组 + 副账号 Key 组”：主账号 4 把 Key 先在主组内轮询消耗，只有主组 Key 在开流前连续遇到限流 / 额度 / 鉴权类失败时，才切到副账号 Key 兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
 - 2026-06-27 起，第三方中转站 / `gpt-5.5` / OpenAI Responses 优先主聊天链路已退出生产和当前代码。`CHAT_PRIMARY_*` 不再是受支持的主聊天配置；readiness 会在发现 `CHAT_PRIMARY_ENABLED=true` 时失败，提醒清理环境变量并使用 Bailian / Qwen 主链。日志脱敏脚本可继续保留旧变量名，只用于覆盖历史日志或残留环境里的密钥形态。
 
 ## 环境变量
 
-推荐在后端运行环境变量里预留 2 到 3 个独立账号 Key；ECS 路线可放在服务器环境文件 / systemd EnvironmentFile 中，若后续重新启用 SAE 再放到 SAE 环境变量：
+推荐在后端运行环境变量里显式区分主组和副组；ECS 路线可放在服务器环境文件 / systemd EnvironmentFile 中，若后续重新启用 SAE 再放到 SAE 环境变量：
+
+```text
+DASHSCOPE_PRIMARY_API_KEY_1=<主账号Key 1>
+DASHSCOPE_PRIMARY_API_KEY_2=<主账号Key 2>
+DASHSCOPE_PRIMARY_API_KEY_3=<主账号Key 3>
+DASHSCOPE_PRIMARY_API_KEY_4=<主账号Key 4>
+DASHSCOPE_SECONDARY_API_KEY_1=<副账号Key 1>
+```
+
+也支持列表形式：
+
+```text
+DASHSCOPE_PRIMARY_API_KEYS=<逗号/分号/换行分隔的多个主账号Key>
+DASHSCOPE_SECONDARY_API_KEYS=<逗号/分号/换行分隔的多个副账号Key>
+```
+
+只要配置了 `DASHSCOPE_PRIMARY_*` 或 `DASHSCOPE_SECONDARY_*`，后端会优先使用这套分组配置，旧平铺变量只保留兼容，不再混入主副分组。
+
+旧平铺配置仍兼容：
 
 ```text
 DASHSCOPE_API_KEY_1=<主Key>
@@ -30,6 +49,15 @@ DASHSCOPE_API_KEYS=<逗号/分号/换行分隔的多个Key>
 读取顺序：
 
 ```text
+DASHSCOPE_PRIMARY_API_KEY_1...50
+DASHSCOPE_PRIMARY_API_KEYS
+DASHSCOPE_SECONDARY_API_KEY_1...50
+DASHSCOPE_SECONDARY_API_KEYS
+```
+
+如果没有配置分组变量，则回退旧读取顺序：
+
+```text
 DASHSCOPE_API_KEY_1
 DASHSCOPE_API_KEY_2
 DASHSCOPE_API_KEY_3
@@ -37,7 +65,7 @@ DASHSCOPE_API_KEY
 DASHSCOPE_API_KEYS
 ```
 
-后端会自动去重，重复 Key 不会重复进入主备池。推荐正式配置优先使用 `DASHSCOPE_API_KEY_1/2/3`；旧 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 只作为兼容入口。
+后端会自动去重，重复 Key 不会重复进入主备池。推荐正式配置优先使用 `DASHSCOPE_PRIMARY_* / DASHSCOPE_SECONDARY_*`；旧 `DASHSCOPE_API_KEY_1/2/3`、`DASHSCOPE_API_KEY` 和 `DASHSCOPE_API_KEYS` 只作为兼容入口。
 
 已退役主聊天中转站配置：
 
@@ -53,7 +81,8 @@ CHAT_PRIMARY_ENABLED=false
 
 ## 运行策略
 
-- 当前生产策略：`DASHSCOPE_KEY_SELECTION_MODE=fallback`。平稳期始终优先使用第一把可用 Key；`DASHSCOPE_API_KEY_1` 健康且未冷却时，不因为请求数或 token 用量阈值主动消耗 `DASHSCOPE_API_KEY_2`。
+- 当前生产策略：分组配置下，主账号 Key 组优先，主组健康时按请求在主组内轮询，副账号 Key 不参与；主组开流前全部触发限流 / 额度 / 鉴权类失败后，才进入副组兜底。这样能让主账号套餐优先扣费，同时避免某一把主 Key 的短暂异常卡住同次请求。
+- 旧平铺配置下，`DASHSCOPE_KEY_SELECTION_MODE=fallback` 仍表示平稳期始终优先使用第一把可用 Key；`DASHSCOPE_API_KEY_1` 健康且未冷却时，不因为请求数或 token 用量阈值主动消耗 `DASHSCOPE_API_KEY_2`。
 - 强制主备优先可显式设置 `DASHSCOPE_KEY_SELECTION_MODE=fallback`（当前生产口径），用于主账号有套餐、希望主 Key 尽量吃满、副 Key 只做失败兜底的场景。
 - 可选自动高峰分流：`auto` 模式会按两个信号临时进入请求级轮询分流：默认 10 秒内达到 200 次模型请求，或 10 秒内已观测模型用量达到 600000 token。窗口内健康 Key 会按轮询顺序选择，默认持续 120 秒，窗口结束后自动回到主 Key 优先。该模式后续只有在真实高峰长期打满主 Key、且用户接受副 Key 主动承担流量时再启用。
 - 可选自动故障分流：`auto` 模式下如果某把 Key 开流前已经触发限流 / 鉴权类 failover，后端也会自动进入一段轮询窗口，避免后续高峰继续压同一把 Key；当前 `fallback` 模式不主动开启这段轮询窗口，但同一次请求内的失败切副 Key 仍保留。
@@ -85,9 +114,7 @@ DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=120
 
 ## 配置建议
 
-- 前期可以先配两把 Key：`DASHSCOPE_API_KEY_1` 作为主 Key，`DASHSCOPE_API_KEY_2` 作为副 Key。
-- 当前生产口径是“主 Key 套餐优先，副 Key 失败兜底”：低中高流量都先走 `DASHSCOPE_API_KEY_1`；出现开流前限流 / 额度 / 鉴权类错误时立即尝试副 Key；不再因为短窗口请求数或 token 压力阈值提前轮询。等真实流量长期打满主 Key、且账单可接受副 Key 主动承担流量时，再评估切回 `auto` 或 `round_robin`。
-- 第三把 `DASHSCOPE_API_KEY_3` 先留空，后续真实并发上来后再补。
+- 当前生产建议：4 把主账号 Key 放在 `DASHSCOPE_PRIMARY_API_KEY_1...4`，副账号 Key 放在 `DASHSCOPE_SECONDARY_API_KEY_1`。主账号 4 把 Key 对应同一套餐账号，作为主扣费组；副账号只做开流前异常兜底。
 - 如果两把 Key 来自同一个阿里云主账号，它们只提供故障兜底、轮换和短暂冷却切换，不增加真实 RPM / TPM。
 - 朋友账号 Key 适合作为短期兜底，不建议作为长期生产主力：账单、密钥轮换、数据处理责任和账号权限都不在自己名下，后续迁移成本会变高。
 - 正式生产期尽量使用自己可控的多个主体 / 主账号，并把充值、告警、密钥轮换、日志排查都收回到自己的运维清单里。
