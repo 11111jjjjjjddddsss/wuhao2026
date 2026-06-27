@@ -446,6 +446,17 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun tightHyphenBulletRowsWithPipesDoNotBecomeLooseTables() {
+        val content = "症状 | 建议 | 备注\n" +
+            "-叶背 | 重点看虫卵 | 不要误判成表格\n" +
+            "-这是 | 当前最像方向 | 继续观察"
+        val stats = buildRendererStructureStats(content)
+
+        assertEquals(0, stats.tableCount)
+        assertTrue(classifyStreamingLine("-叶背 | 重点看虫卵 | 不要误判成表格") is StreamingLineModel.Bullet)
+    }
+
+    @Test
     fun singleColumnSeparatorDoesNotRenderAsTable() {
         val stats = buildRendererStructureStats(
             "|项目|\n" +
@@ -1293,6 +1304,32 @@ class ChatStreamingRendererTest {
         assertEquals("先清沟排水。", numbered.text)
         assertTrue(activePlus is StreamingLineModel.Bullet)
         assertTrue(activeNumbered is StreamingLineModel.Numbered)
+    }
+
+    @Test
+    fun tightHyphenBulletsRenderAsListsWithoutShowingRawMarker() {
+        val blockState = splitStreamingBlockState(
+            "-叶背常能看到很小的虫、卵、黑色粪点。\n" +
+                "-这是目前从图片看最像的方向。\n" +
+                "• 如果最近雨水多，重点看叶背白色霉层。"
+        )
+        val models = blockState.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(blockState.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(3, models.size)
+        assertTrue(models[0] is StreamingLineModel.Bullet)
+        assertEquals("叶背常能看到很小的虫、卵、黑色粪点。", (models[0] as StreamingLineModel.Bullet).text)
+        assertTrue(models[1] is StreamingLineModel.Bullet)
+        assertEquals("这是目前从图片看最像的方向。", (models[1] as StreamingLineModel.Bullet).text)
+        assertTrue(models[2] is StreamingLineModel.Bullet)
+        assertEquals("如果最近雨水多，重点看叶背白色霉层。", (models[2] as StreamingLineModel.Bullet).text)
+    }
+
+    @Test
+    fun tightHyphenBulletDoesNotConsumeHorizontalRulesOrNegativeValues() {
+        assertTrue(classifyStreamingLine("---") is StreamingLineModel.Blank)
+        assertTrue(classifyStreamingLine("-10℃以下要防寒。") is StreamingLineModel.Paragraph)
+        assertTrue(classifyActiveStreamingLine("-但这张图暂时没看到典型大片油渍状黄斑。") is StreamingLineModel.Bullet)
     }
 
     @Test

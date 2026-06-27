@@ -196,7 +196,6 @@ internal fun appendAssistantChunk(
 }
 
 private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
-private val rendererBulletRegex = Regex("^[-+*]\\s+.*$")
 private val rendererNumberedRegex = Regex("^\\d+[.)]\\s*[^\\d%.)）\\]】、].*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
 private val rendererHorizontalRuleRegex = Regex("""^([-*_])(?:\s*\1){2,}\s*$""")
@@ -377,8 +376,8 @@ private data class RendererLoosePipeTableCandidate(
 
 private fun isRendererLoosePipeTableLineBlocked(line: String): Boolean {
     val trimmed = line.trimStart()
-    return trimmed.startsWith(">") ||
-        trimmed.matches(Regex("""[-+*]\s+\|.+""")) ||
+    return parseRendererBulletText(trimmed) != null ||
+        trimmed.startsWith(">") ||
         trimmed.matches(Regex("""\d{1,9}[.)]\s+\|.+"""))
 }
 
@@ -437,9 +436,9 @@ private fun isRendererMarkdownTableBodyBlockBoundary(line: String): Boolean {
     if (hasRendererMarkdownTableRowEdge(line)) return false
     val trimmed = line.trimStart()
     return isRendererHorizontalRuleLine(trimmed) ||
+        parseRendererBulletText(trimmed) != null ||
         trimmed.startsWith(">") ||
         trimmed.matches(Regex("""#{1,6}\s+.+""")) ||
-        trimmed.matches(Regex("""[-+*]\s+.+""")) ||
         trimmed.matches(Regex("""\d{1,9}[.)]\s+.+"""))
 }
 
@@ -727,6 +726,35 @@ private fun normalizeRendererTaskListText(text: String): String {
     }
 }
 
+private fun parseRendererBulletText(trimmed: String): String? {
+    if (trimmed.isBlank()) return null
+    val marker = trimmed.first()
+    if (marker == '-' || marker == '+' || marker == '*') {
+        val remainder = trimmed.drop(1)
+        if (remainder.firstOrNull()?.isWhitespace() == true) {
+            return normalizeRendererTaskListText(remainder.trimStart())
+        }
+        if (marker == '-' && isRendererTightHyphenBulletRemainder(remainder)) {
+            return normalizeRendererTaskListText(remainder)
+        }
+        return null
+    }
+    if (marker in setOf('•', '●', '○', '◦', '▪')) {
+        val remainder = trimmed.drop(1).trimStart()
+        return remainder.takeIf { it.isNotBlank() }
+    }
+    return null
+}
+
+private fun isRendererTightHyphenBulletRemainder(remainder: String): Boolean {
+    if (remainder.isBlank()) return false
+    val first = remainder.first()
+    if (first.isWhitespace() || first.isDigit()) return false
+    if (first in "-+*_|.,，。:：;；!！?？)]】）%％℃°") return false
+    val firstCodePoint = remainder.rendererCodePointAtOrNull(0) ?: return false
+    return Character.isLetter(firstCodePoint)
+}
+
 internal data class QueuedStreamingChunk(
     val messageId: String,
     val revealBuffer: String
@@ -948,15 +976,18 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
             source = StreamingHeadingSource.ChineseSection
         )
     }
+    val bulletText = parseRendererBulletText(trimmed)
     return when {
         trimmed.matches(rendererHeadingRegex) -> {
             val marker = trimmed.takeWhile { it == '#' }
             StreamingLineModel.Heading(marker.length, trimmed.drop(marker.length).trimStart())
         }
-        trimmed.matches(rendererBulletRegex) -> StreamingLineModel.Bullet(
-            text = normalizeRendererTaskListText(trimmed.drop(1).trimStart()),
-            indentLevel = indentLevel
-        )
+        bulletText != null -> {
+            StreamingLineModel.Bullet(
+                text = bulletText,
+                indentLevel = indentLevel
+            )
+        }
         trimmed.matches(rendererNumberedRegex) && rendererNumberedMarkerEnd(trimmed) > 0 -> {
             val markerEnd = rendererNumberedMarkerEnd(trimmed)
             StreamingLineModel.Numbered(
@@ -1013,14 +1044,11 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
             return StreamingLineModel.Quote(remainder.trimStart())
         }
     }
-    if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("+ ")) {
-        val remainder = trimmed.drop(2)
-        if (remainder.trim().isNotEmpty()) {
-            return StreamingLineModel.Bullet(
-                text = normalizeRendererTaskListText(remainder.trimStart()),
-                indentLevel = indentLevel
-            )
-        }
+    parseRendererBulletText(trimmed)?.let { bulletText ->
+        return StreamingLineModel.Bullet(
+            text = bulletText,
+            indentLevel = indentLevel
+        )
     }
     val numberedPrefix = trimmed.takeWhile { it.isDigit() }
     val numberedMarker = trimmed.getOrNull(numberedPrefix.length)
@@ -1510,6 +1538,12 @@ private fun takeRendererMarkdownPrefixToken(buffer: String, startIndex: Int = 0)
         buffer.startsWith("* ", startIndex = startIndex) -> "* "
         buffer.startsWith("+ ", startIndex = startIndex) -> "+ "
         buffer.startsWith("> ", startIndex = startIndex) -> "> "
+        buffer[startIndex] == '-' &&
+            startIndex + 1 < buffer.length &&
+            isRendererTightHyphenBulletRemainder(buffer.substring(startIndex + 1)) -> {
+            val nextLength = buffer.rendererCodePointCharCountAt(startIndex + 1).coerceAtLeast(1)
+            buffer.substring(startIndex, (startIndex + 1 + nextLength).coerceAtMost(buffer.length))
+        }
         else -> {
             var cursor = startIndex
             while (cursor < buffer.length && buffer[cursor].isDigit()) {
@@ -1609,6 +1643,11 @@ private fun hasRendererStructuralMarkdownPrefix(text: String, startIndex: Int = 
             text.startsWith("* ", startIndex = cursor) ||
             text.startsWith("+ ", startIndex = cursor) ||
             text.startsWith("> ", startIndex = cursor) ||
+            (
+                text[cursor] == '-' &&
+                    cursor + 1 < text.length &&
+                    isRendererTightHyphenBulletRemainder(text.substring(cursor + 1))
+                ) ||
             run {
                 var digitCursor = cursor
                 while (digitCursor < text.length && text[digitCursor].isDigit()) {
@@ -1692,7 +1731,7 @@ private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
         parseRendererStandaloneBoldHeading(trimmed) != null ||
         parseRendererActiveStandaloneBoldHeading(trimmed) != null ||
         parseRendererChineseSectionHeading(trimmed) != null ||
-        trimmed.matches(rendererBulletRegex) ||
+        parseRendererBulletText(trimmed) != null ||
         trimmed.matches(rendererNumberedRegex) ||
         trimmed.matches(rendererQuoteRegex)
 }

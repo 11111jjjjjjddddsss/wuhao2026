@@ -1118,8 +1118,10 @@ if ($failures.Count -eq 0) {
         "Markdown table columns must expand to fill the visible frame when there are only a few columns, avoiding a fake blank right edge."
     Require-Match $failures $chatStreamingRenderer 'headerColumnCount\s*=\s*splitRendererMarkdownTableCells\(current\)\.size(?s:.*?)separatorColumnCount\s*=\s*splitRendererMarkdownTableCells\(lines\[index \+ 1\]\)\.size(?s:.*?)headerColumnCount\s*!=\s*separatorColumnCount(?s:.*?)expectedColumnCount\s*=\s*headerColumnCount(?s:.*?)bodyRowsWithoutEdgeMode(?s:.*?)looksLikeRendererMarkdownTableBodyRow\((?s:.*?)expectedColumnCount\s*=\s*expectedColumnCount' `
         "Markdown table body continuation must allow standard rows without outer pipes only when the column count still matches."
-    Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)trimmed\.matches\(Regex\("""\[-\+\*\]\\s\+\.\+"""\)\)' `
+    Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)parseRendererBulletText\(trimmed\)\s*!=\s*null' `
         "Markdown table body parsing must stop before obvious new block starts such as indented code, fences, quotes, headings, and lists."
+    Require-Match $failures $chatStreamingRendererTest 'tightHyphenBulletRowsWithPipesDoNotBecomeLooseTables' `
+        "Assistant renderer tests must prove tight GPT-style hyphen bullets with pipe characters do not become loose Markdown tables."
     Require-Match $failures $chatStreamingRenderer 'rawHeaders\.size\s*<\s*2\s*\|\|\s*rawHeaders\.size\s*!=\s*separatorColumnCount(?s:.*?)val\s+columnCount\s*=\s*rawHeaders\.size(?s:.*?)index\s*<\s*columnCount\s*-\s*1(?s:.*?)row\.drop\(index\)\.joinToString\(" \| "\)' `
         "Markdown table parsing must keep GFM-style header/separator column counts fixed and merge extra body cells into the last column instead of dropping text or inventing columns."
     Require-Match $failures $chatStreamingRenderer 'collectRendererLoosePipeTableRows(?s:.*?)looksLikeRendererMarkdownTableRow\(headerLine\)(?s:.*?)rowLines\.isEmpty\(\)(?s:.*?)enoughPipeShape(?s:.*?)encodeRendererMarkdownTableBlock\((?s:.*?)separatorLine\s*=\s*null' `

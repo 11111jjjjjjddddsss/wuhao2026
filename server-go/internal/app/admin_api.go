@@ -3310,7 +3310,7 @@ func mainChatMonitoringModelLabel() string {
 func mainChatMonitoringSearchStrategy() string {
 	if primaryChatConfigured() {
 		if primaryChatUsesResponses() {
-			return "中转站 Responses 自动联网最低档；6 秒无可见正文回落千问 turbo"
+			return "中转站 Responses 自动联网最低档；15 秒无可见正文回落千问 turbo"
 		}
 		return "中转站 Chat Completions 快问答；实时搜索问题直接走千问 turbo"
 	}
@@ -3334,7 +3334,7 @@ func mainChatMonitoringThinkingDisabled() bool {
 func mainChatMonitoringCostNote() string {
 	if primaryChatConfigured() {
 		if primaryChatUsesResponses() {
-			return "主聊天优先走" + primaryChatProviderLabel() + " Responses 流式模型，联网工具 auto、搜索上下文低档、思考低档，由模型判断是否联网；中转站开流失败、超时、非流式、非 2xx 或 6 秒无可见正文时回落千问主备 Key。Android 端仍不保存模型 Key。"
+			return "主聊天优先走" + primaryChatProviderLabel() + " Responses 流式模型，联网工具 auto、搜索上下文低档、思考超高档，由模型判断是否联网；中转站开流失败、超时、非流式、非 2xx 或 15 秒无可见正文时回落千问主备 Key。Android 端仍不保存模型 Key。"
 		}
 		return "主聊天普通问诊和图片问诊优先走" + primaryChatProviderLabel() + " Chat Completions 快问答；该接口实测可对话和识图，但不会自动联网，涉及最新、价格、行情、政策、天气等实时搜索问题由后端跳过中转站并直接走千问 turbo。Android 端仍不保存模型 Key。"
 	}

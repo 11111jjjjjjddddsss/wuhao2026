@@ -253,9 +253,6 @@ internal fun MembershipCenterBody(
         MembershipSyncRetryNotice(onRetryLoad = onRetryLoad)
     }
     val loadedEntitlement = entitlement.takeIf { displayLoadState == MembershipLoadState.Loaded }
-    paymentState.notice?.takeIf { it.isNotBlank() }?.let { notice ->
-        MembershipInlineNotice(text = notice)
-    }
     MembershipPlanSection(
         activeTier = entitlement.activeMembershipTier(displayLoadState),
         topupRemaining = loadedEntitlement?.topupRemaining ?: 0,
@@ -319,26 +316,6 @@ private fun MembershipSyncRetryNotice(onRetryLoad: () -> Unit) {
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun MembershipInlineNotice(text: String) {
-    Surface(
-        color = Color(0xFFF5F6F8),
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(0.8.dp, Color(0xFFE4E6EA)),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = text,
-            color = Color(0xFF4E5661),
-            fontSize = 13.sp,
-            lineHeight = 18.sp,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp)
-        )
     }
 }
 
@@ -799,7 +776,31 @@ internal fun MembershipTopupCardPreview(
 
 @Composable
 internal fun MembershipPaymentNoticePreview() {
-    MembershipInlineNotice(text = "支付结果确认中，请稍等")
+    val entitlement = SessionApi.EntitlementSnapshot(
+        tier = "pro",
+        tierExpireAt = System.currentTimeMillis() + 30L * 24L * 60L * 60L * 1000L,
+        dailyRemaining = 34,
+        topupRemaining = 0
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+        MembershipCenterBody(
+            entitlement = entitlement,
+            loadState = MembershipLoadState.Loaded,
+            paymentState = MembershipPaymentState(notice = "支付已取消"),
+            onStartPayment = {},
+            onRetryLoad = {}
+        )
+        MembershipCenterBody(
+            entitlement = entitlement,
+            loadState = MembershipLoadState.Loaded,
+            paymentState = MembershipPaymentState(
+                activeProduct = MembershipPaymentProduct.RenewPro,
+                notice = "正在创建支付订单"
+            ),
+            onStartPayment = {},
+            onRetryLoad = {}
+        )
+    }
 }
 
 @Composable

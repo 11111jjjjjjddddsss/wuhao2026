@@ -17,9 +17,9 @@ import (
 const (
 	defaultPrimaryChatModel                 = "gpt-5.5"
 	defaultPrimaryChatAPIMode               = "responses"
-	defaultPrimaryChatResponsesReasoning    = "low"
+	defaultPrimaryChatResponsesReasoning    = "xhigh"
 	defaultPrimaryChatResponsesSearchSize   = "low"
-	defaultPrimaryChatFirstVisibleTimeout   = 6 * time.Second
+	defaultPrimaryChatFirstVisibleTimeout   = 15 * time.Second
 	defaultPrimaryChatDialTimeout           = 6 * time.Second
 	defaultPrimaryChatTLSHandshakeTimeout   = 6 * time.Second
 	defaultPrimaryChatResponseHeaderTimeout = 6 * time.Second

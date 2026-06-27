@@ -9279,7 +9279,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：付费档位可买", "Plus / Pro 可购买，未用完次数长期保留，用完后可再买", UiCopyPreviewKind.MembershipTopupBuyable),
                     UiCopyPreviewItem("加油包：未用完", "未用完时不能重复购买，后端和本地都会拦住", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
-                    UiCopyPreviewItem("支付入口提示", "支付接入前后的提示条样式", UiCopyPreviewKind.MembershipPaymentNotice),
+                    UiCopyPreviewItem("支付状态不占位", "支付取消 / 创建订单不再插入横条", UiCopyPreviewKind.MembershipPaymentNotice),
                     UiCopyPreviewItem("确认付款：联调", "0.01 测试订单、订单尾号和竖排支付按钮", UiCopyPreviewKind.MembershipPaymentConfirm),
                     UiCopyPreviewItem("购买 Plus", "Plus 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPlus),
                     UiCopyPreviewItem("购买 Pro", "Pro 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPro),
@@ -9353,6 +9353,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
                     UiCopyPreviewItem("AI 长正文", "保留模型换行，标题分割，行内编号不硬拆", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
+                    UiCopyPreviewItem("AI GPT短横列表", "短横后无空格也按项目列表渲染", UiCopyPreviewKind.AssistantTightBulletSample),
                     UiCopyPreviewItem("AI 表格", "横向表格、表格上方复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
@@ -9594,6 +9595,17 @@ private const val UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE =
         "图片语法只显示说明，不加载外部图片：![叶片病斑](https://example.com/leaf.jpg)。\n" +
         "公式原样可读：${'$'}K=N+P${'$'}，${'$'}${'$'}亩数=长度*宽度/666.7${'$'}${'$'}。"
 
+private const val UI_COPY_PREVIEW_ASSISTANT_TIGHT_BULLET_SAMPLE =
+    "1. 红蜘蛛或螨类危害\n" +
+        "-叶背常能看到很小的虫、卵、黑色粪点，叶螨严重时有细丝网。\n" +
+        "-这是目前从图片看最像的方向。\n\n" +
+        "2. 霜霉病早期或轻发生\n" +
+        "• 如果最近雨水多、棚内湿度大，叶背有白色霉层，要重点考虑霜霉病。\n" +
+        "-但这张图暂时没看到典型大片油渍状黄斑，所以不能直接定为霜霉。\n\n" +
+        "3. 药害或肥害轻伤\n" +
+        "● 如果最近打过药，尤其高温时混配较多、浓度偏大，也可能出现细碎斑点。\n" +
+        "-10℃以下不是列表，是温度提醒，不应该被误判成项目列表。"
+
 private const val UI_COPY_PREVIEW_ASSISTANT_READABLE_PARAGRAPH_SAMPLE =
     "根据近期主要产区市场信息，给您整理几个参考方向。\n\n" +
         "1. 主产地收购价（参考）\n" +
@@ -9703,6 +9715,7 @@ private enum class UiCopyPreviewKind {
     AssistantMarkdownSample,
     AssistantReadableParagraphSample,
     AssistantMarkdownFallbackSample,
+    AssistantTightBulletSample,
     AssistantTableSample,
     UserLinkBubbleSample,
     ImageDiagnosisThinking,
@@ -10407,6 +10420,17 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.AssistantMarkdownFallbackSample -> {
                     ChatStreamingRenderer(
                         content = UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE,
+                        renderMode = StreamingRenderMode.Settled,
+                        showWaitingBall = false,
+                        selectionEnabled = true,
+                        showDisclaimer = true,
+                        onStreamingContentBoundsChanged = null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                UiCopyPreviewKind.AssistantTightBulletSample -> {
+                    ChatStreamingRenderer(
+                        content = UI_COPY_PREVIEW_ASSISTANT_TIGHT_BULLET_SAMPLE,
                         renderMode = StreamingRenderMode.Settled,
                         showWaitingBall = false,
                         selectionEnabled = true,

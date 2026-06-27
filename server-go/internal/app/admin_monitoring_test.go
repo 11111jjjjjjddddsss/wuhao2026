@@ -467,14 +467,14 @@ func TestAdminMonitoringModelUsagePolicyWithPrimaryChat(t *testing.T) {
 		t.Fatalf("missing main chat model usage policy: %#v", rows)
 	}
 	assertContainsAll(t, mainRow.Model, "中转联盟", "gpt-5.5", "兜底")
-	assertContainsAll(t, mainRow.SearchStrategy, "Responses", "自动联网最低档", "6 秒无可见正文回落千问 turbo")
+	assertContainsAll(t, mainRow.SearchStrategy, "Responses", "自动联网最低档", "15 秒无可见正文回落千问 turbo")
 	if mainRow.ForcedSearch {
 		t.Fatalf("primary chat row should not claim blanket forced search: %#v", mainRow)
 	}
 	if mainRow.ThinkingDisabled {
-		t.Fatalf("primary chat row should describe low reasoning, not disabled thinking, on responses path: %#v", mainRow)
+		t.Fatalf("primary chat row should describe active reasoning, not disabled thinking, on responses path: %#v", mainRow)
 	}
-	assertContainsAll(t, mainRow.CostNote, "Responses 流式模型", "搜索上下文低档", "思考低档", "6 秒无可见正文", "回落千问主备 Key")
+	assertContainsAll(t, mainRow.CostNote, "Responses 流式模型", "搜索上下文低档", "思考超高档", "15 秒无可见正文", "回落千问主备 Key")
 }
 
 func TestAdminMonitoringModelUsagePolicyWithPrimaryChatCompletionsCompatibility(t *testing.T) {
