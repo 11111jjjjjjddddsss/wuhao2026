@@ -13,6 +13,7 @@ param(
     [switch]$VerifyAppUpdateDownload,
     [int]$AppUpdatePreviousVersionCode = 0,
     [string]$AppUpdatePublicApiBaseUrl = "https://api.nongjiqiancha.cn",
+    [string]$ExpectedServerRevision = "",
     [switch]$AllowAttentionExitZero
 )
 
@@ -124,6 +125,17 @@ function Get-CapturedValue {
         }
     }
     return $value
+}
+
+function Get-CurrentServerGitShortRevision {
+    try {
+        $revision = (& git -C $repoRoot log -1 --format=%h -- server-go 2>$null).Trim()
+        if (-not [string]::IsNullOrWhiteSpace($revision)) {
+            return $revision
+        }
+    } catch {
+    }
+    return ""
 }
 
 function Invoke-GateStep {
@@ -495,13 +507,21 @@ if (-not $SkipAndroid -and -not $SkipBackend) {
 
 if (-not $SkipCloud) {
     Invoke-GateStep -Name "ecs readiness" -ScriptBlock {
-        Invoke-Native -FilePath "powershell.exe" -Arguments @(
+        $ecsReadinessArgs = @(
             "-NoProfile",
             "-ExecutionPolicy",
             "Bypass",
             "-File",
             "scripts/check-ecs-readiness.ps1"
         )
+        $expectedRevisionForReadiness = $ExpectedServerRevision.Trim()
+        if ([string]::IsNullOrWhiteSpace($expectedRevisionForReadiness) -and -not $SkipBackend) {
+            $expectedRevisionForReadiness = Get-CurrentServerGitShortRevision
+        }
+        if (-not [string]::IsNullOrWhiteSpace($expectedRevisionForReadiness)) {
+            $ecsReadinessArgs += @("-ExpectedRevision", $expectedRevisionForReadiness)
+        }
+        Invoke-Native -FilePath "powershell.exe" -Arguments $ecsReadinessArgs
     }
     Invoke-GateStep -Name "public blackbox" -ScriptBlock {
         $blackboxArgs = @(

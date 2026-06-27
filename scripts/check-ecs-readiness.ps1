@@ -2,6 +2,7 @@ param(
     [string]$RegionId = "cn-beijing",
     [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
     [string]$ExpectedRevision = "",
+    [int]$ExpectedChatPrimaryKeyPoolSize = 0,
     [ValidateSet("closed", "limited", "public")]
     [string]$ExpectedAlipayPaymentGate = "limited"
 )
@@ -425,7 +426,7 @@ for key in \
   LISTEN_ADDR LISTEN_HOST PORT \
   ALLOW_DEV_ORDER_ENDPOINTS \
   UPLOAD_STORAGE_BACKEND OSS_BUCKET OSS_ENDPOINT OSS_ACCESS_KEY_ID OSS_ACCESS_KEY_SECRET \
-  CHAT_PRIMARY_ENABLED CHAT_PRIMARY_PROVIDER_LABEL CHAT_PRIMARY_API_MODE CHAT_PRIMARY_BASE_URL CHAT_PRIMARY_CHAT_COMPLETIONS_URL CHAT_PRIMARY_RESPONSES_URL CHAT_PRIMARY_MODEL CHAT_PRIMARY_API_KEY CHAT_PRIMARY_REASONING_EFFORT CHAT_PRIMARY_RESPONSES_REASONING_EFFORT CHAT_PRIMARY_RESPONSES_SEARCH_CONTEXT_SIZE CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS CHAT_PRIMARY_FORCE_SEARCH CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS \
+  CHAT_PRIMARY_ENABLED CHAT_PRIMARY_PROVIDER_LABEL CHAT_PRIMARY_API_MODE CHAT_PRIMARY_BASE_URL CHAT_PRIMARY_CHAT_COMPLETIONS_URL CHAT_PRIMARY_RESPONSES_URL CHAT_PRIMARY_MODEL CHAT_PRIMARY_API_KEY CHAT_PRIMARY_API_KEYS CHAT_PRIMARY_API_KEY_1 CHAT_PRIMARY_API_KEY_2 CHAT_PRIMARY_API_KEY_3 CHAT_PRIMARY_REASONING_EFFORT CHAT_PRIMARY_RESPONSES_REASONING_EFFORT CHAT_PRIMARY_RESPONSES_SEARCH_CONTEXT_SIZE CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS CHAT_PRIMARY_FORCE_SEARCH CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS \
   DASHSCOPE_API_KEY DASHSCOPE_API_KEY_1 DASHSCOPE_API_KEY_2 DASHSCOPE_API_KEY_3 DASHSCOPE_API_KEYS DASHSCOPE_KEY_COOLDOWN_SECONDS \
   DASHSCOPE_KEY_SELECTION_MODE DASHSCOPE_AUTO_ROUND_ROBIN_MIN_REQUESTS DASHSCOPE_AUTO_ROUND_ROBIN_TOKEN_THRESHOLD DASHSCOPE_AUTO_ROUND_ROBIN_WINDOW_SECONDS DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS \
   APP_ANDROID_UPDATE_ENABLED APP_UPDATE_ALLOW_FORCE_UPDATE APP_ANDROID_LATEST_VERSION_CODE APP_ANDROID_APK_URL APP_ANDROID_APK_SHA256 APP_ANDROID_FILE_SIZE_BYTES \
@@ -490,6 +491,12 @@ if is_truthy "$chat_primary_enabled"; then
       exit 16
     fi
   done
+  chat_primary_key_pool_size=$(sed -nE 's/.*"chat_primary_key_pool_size":([0-9]+).*/\1/p' "$health_body" 2>/dev/null | head -n 1)
+  if [ -z "$chat_primary_key_pool_size" ] || [ "$chat_primary_key_pool_size" -le 0 ]; then
+    echo "healthz chat_primary_key_pool_size must be positive when CHAT_PRIMARY_ENABLED is true" >&2
+    exit 16
+  fi
+  echo "chat_primary_key_pool_size=$chat_primary_key_pool_size"
 fi
 
 app_android_update_enabled=$(env_value APP_ANDROID_UPDATE_ENABLED || true)
@@ -585,6 +592,17 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedRevision)) {
         throw "Readiness revision mismatch: expected=$ExpectedRevision actual=$actualRevision"
     }
     Write-Host "expected_revision_match=true"
+}
+if ($ExpectedChatPrimaryKeyPoolSize -gt 0) {
+    $actualPoolSizeText = [regex]::Match($final.Output, "(?m)^chat_primary_key_pool_size=([0-9]+)\s*$").Groups[1].Value
+    if ([string]::IsNullOrWhiteSpace($actualPoolSizeText)) {
+        throw "Readiness check did not report chat_primary_key_pool_size; expected $ExpectedChatPrimaryKeyPoolSize"
+    }
+    $actualPoolSize = [int]$actualPoolSizeText
+    if ($actualPoolSize -ne $ExpectedChatPrimaryKeyPoolSize) {
+        throw "Readiness chat primary key pool mismatch: expected=$ExpectedChatPrimaryKeyPoolSize actual=$actualPoolSize"
+    }
+    Write-Host "expected_chat_primary_key_pool_size_match=true"
 }
 $actualGate = [regex]::Match($final.Output, "(?m)^alipay_payment_gate=([^\s]+)\s*$").Groups[1].Value
 if ([string]::IsNullOrWhiteSpace($actualGate)) {
