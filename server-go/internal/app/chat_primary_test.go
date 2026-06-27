@@ -12,13 +12,13 @@ import (
 	"time"
 )
 
-func TestPrimaryChatClientChatModeUsesConfiguredModelSearchAndNoThinking(t *testing.T) {
+func TestPrimaryChatClientChatModeUsesMinimalOpenAICompatibleBodyByDefault(t *testing.T) {
 	var captured map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/chat/completions" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer primary-key" {
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-primary-test" {
 			t.Fatalf("authorization header mismatch: %q", got)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
@@ -32,10 +32,8 @@ func TestPrimaryChatClientChatModeUsesConfiguredModelSearchAndNoThinking(t *test
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
 	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
-	t.Setenv("CHAT_PRIMARY_FORCE_SEARCH", "true")
-	t.Setenv("CHAT_PRIMARY_REASONING_EFFORT", "none")
 
 	response, err := NewPrimaryChatClientFromEnv().OpenStream(
 		context.Background(),
@@ -53,20 +51,75 @@ func TestPrimaryChatClientChatModeUsesConfiguredModelSearchAndNoThinking(t *test
 	if got := captured["stream"]; got != true {
 		t.Fatalf("stream mismatch: %#v", got)
 	}
-	if got, ok := captured["temperature"].(float64); !ok || got != unifiedModelTemperature {
-		t.Fatalf("temperature mismatch: %#v", captured["temperature"])
+	if got := captured["messages"]; got == nil {
+		t.Fatalf("missing messages: %#v", captured)
+	}
+	if _, ok := captured["temperature"]; ok {
+		t.Fatalf("primary chat should leave temperature to provider default: %#v", captured["temperature"])
 	}
 	if _, ok := captured["top_p"]; ok {
 		t.Fatalf("primary chat should leave top_p to provider default: %#v", captured["top_p"])
 	}
+	if _, ok := captured["enable_thinking"]; ok {
+		t.Fatalf("primary chat should leave thinking to provider default unless explicitly configured: %#v", captured["enable_thinking"])
+	}
+	if _, ok := captured["reasoning_effort"]; ok {
+		t.Fatalf("primary chat should leave reasoning effort to provider default unless explicitly configured: %#v", captured["reasoning_effort"])
+	}
+	if _, ok := captured["thinking_budget"]; ok {
+		t.Fatalf("thinking_budget should be omitted when primary thinking is disabled: %#v", captured["thinking_budget"])
+	}
+	if _, ok := captured["enable_search"]; ok {
+		t.Fatalf("primary chat should not send custom search params by default: %#v", captured["enable_search"])
+	}
+	if _, ok := captured["search_options"]; ok {
+		t.Fatalf("primary chat should not send search_options by default: %#v", captured["search_options"])
+	}
+	if _, ok := captured["stream_options"]; ok {
+		t.Fatalf("primary chat should not request usage chunks by default: %#v", captured["stream_options"])
+	}
+}
+
+func TestPrimaryChatClientChatModeCanOptIntoSearchAndNoThinking(t *testing.T) {
+	var captured map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer server.Close()
+
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
+	t.Setenv("CHAT_PRIMARY_CHAT_ENABLE_SEARCH", "true")
+	t.Setenv("CHAT_PRIMARY_CHAT_DISABLE_THINKING", "true")
+	t.Setenv("CHAT_PRIMARY_CHAT_INCLUDE_USAGE", "true")
+	t.Setenv("CHAT_PRIMARY_FORCE_SEARCH", "true")
+	t.Setenv("CHAT_PRIMARY_REASONING_EFFORT", "none")
+
+	response, err := NewPrimaryChatClientFromEnv().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "hello"}},
+		BailianStreamOptions{},
+	)
+	if err != nil {
+		t.Fatalf("open primary stream: %v", err)
+	}
+	defer response.Body.Close()
+
 	if got := captured["enable_thinking"]; got != false {
 		t.Fatalf("enable_thinking mismatch: %#v", got)
 	}
 	if got := captured["reasoning_effort"]; got != "none" {
 		t.Fatalf("reasoning_effort mismatch: %#v", got)
 	}
-	if _, ok := captured["thinking_budget"]; ok {
-		t.Fatalf("thinking_budget should be omitted when primary thinking is disabled: %#v", captured["thinking_budget"])
+	streamOptions, ok := captured["stream_options"].(map[string]any)
+	if !ok || streamOptions["include_usage"] != true {
+		t.Fatalf("stream_options mismatch: %#v", captured["stream_options"])
 	}
 	if got := captured["enable_search"]; got != true {
 		t.Fatalf("enable_search mismatch: %#v", got)
@@ -94,7 +147,8 @@ func TestPrimaryChatClientDoesNotForceSearchForImageMessages(t *testing.T) {
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
 	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
+	t.Setenv("CHAT_PRIMARY_CHAT_ENABLE_SEARCH", "true")
 	t.Setenv("CHAT_PRIMARY_FORCE_SEARCH", "true")
 
 	response, err := NewPrimaryChatClientFromEnv().OpenStream(
@@ -131,7 +185,7 @@ func TestPrimaryChatClientResponsesModeUsesAutoWebSearchAndLowReasoning(t *testi
 		if r.URL.Path != "/v1/responses" {
 			t.Fatalf("unexpected path: %s", r.URL.Path)
 		}
-		if got := r.Header.Get("Authorization"); got != "Bearer primary-key" {
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-primary-test" {
 			t.Fatalf("authorization header mismatch: %q", got)
 		}
 		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
@@ -144,8 +198,9 @@ func TestPrimaryChatClientResponsesModeUsesAutoWebSearchAndLowReasoning(t *testi
 	defer server.Close()
 
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "responses")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
 	t.Setenv("CHAT_PRIMARY_REASONING_EFFORT", "none")
 
@@ -199,7 +254,7 @@ func TestPrimaryChatClientResponsesModeUsesAutoWebSearchAndLowReasoning(t *testi
 		t.Fatalf("responses reasoning effort should ignore chat-mode env and default low, got %#v", got)
 	}
 	instructions, _ := captured["instructions"].(string)
-	if !strings.Contains(instructions, "系统锚点") || !strings.Contains(instructions, "可按问题需要自行决定是否使用联网搜索") {
+	if !strings.Contains(instructions, "系统锚点") || !strings.Contains(instructions, "仅当本轮问题涉及最新信息") {
 		t.Fatalf("instructions missing expected text: %q", instructions)
 	}
 	input, ok := captured["input"].([]any)
@@ -228,8 +283,9 @@ func TestPrimaryChatResponsesModeConvertsImageURLContent(t *testing.T) {
 	defer server.Close()
 
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "responses")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 
 	response, err := NewPrimaryChatClientFromEnv().OpenStream(
 		context.Background(),
@@ -261,9 +317,100 @@ func TestPrimaryChatResponsesModeConvertsImageURLContent(t *testing.T) {
 	}
 }
 
+func TestPrimaryChatClientRoundRobinsConfiguredKeyPool(t *testing.T) {
+	authHeaders := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {}\n\n"))
+	}))
+	defer server.Close()
+
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "responses")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
+	t.Setenv("CHAT_PRIMARY_API_KEY", "")
+	t.Setenv("CHAT_PRIMARY_API_KEYS", "sk-primary-a;sk-primary-b;sk-primary-c")
+
+	client := NewPrimaryChatClientFromEnv()
+	for i := 0; i < 3; i++ {
+		response, err := client.OpenStream(
+			context.Background(),
+			[]BailianMessage{{Role: "user", Content: "hello"}},
+			BailianStreamOptions{},
+		)
+		if err != nil {
+			t.Fatalf("open primary stream %d: %v", i, err)
+		}
+		_ = response.Body.Close()
+	}
+
+	want := []string{"Bearer sk-primary-a", "Bearer sk-primary-b", "Bearer sk-primary-c"}
+	if strings.Join(authHeaders, "|") != strings.Join(want, "|") {
+		t.Fatalf("authorization rotation = %#v, want %#v", authHeaders, want)
+	}
+}
+
+func TestPrimaryChatClientRetriesRetryableStatusWithNextKey(t *testing.T) {
+	authHeaders := []string{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if len(authHeaders) == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"temporary"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {}\n\n"))
+	}))
+	defer server.Close()
+
+	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "responses")
+	t.Setenv("CHAT_PRIMARY_BASE_URL", server.URL)
+	t.Setenv("CHAT_PRIMARY_API_KEY", "")
+	t.Setenv("CHAT_PRIMARY_API_KEYS", "sk-primary-a;sk-primary-b")
+	t.Setenv("CHAT_PRIMARY_KEY_MAX_ATTEMPTS", "2")
+
+	response, err := NewPrimaryChatClientFromEnv().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "hello"}},
+		BailianStreamOptions{},
+	)
+	if err != nil {
+		t.Fatalf("open primary stream: %v", err)
+	}
+	_ = response.Body.Close()
+
+	want := []string{"Bearer sk-primary-a", "Bearer sk-primary-b"}
+	if strings.Join(authHeaders, "|") != strings.Join(want, "|") {
+		t.Fatalf("authorization retry rotation = %#v, want %#v", authHeaders, want)
+	}
+}
+
+func TestPrimaryChatKeyEntriesAcceptLabeledValuesAndDeduplicate(t *testing.T) {
+	t.Setenv("CHAT_PRIMARY_API_KEY", "")
+	t.Setenv("CHAT_PRIMARY_API_KEYS", "吴浩-a sk-primary-a;label=sk-primary-b;label:sk-primary-c;sk-primary-b")
+
+	entries := primaryChatKeyEntries()
+	if len(entries) != 3 {
+		t.Fatalf("key pool size = %d, want 3", len(entries))
+	}
+	want := []string{"sk-primary-a", "sk-primary-b", "sk-primary-c"}
+	got := []string{}
+	for _, entry := range entries {
+		got = append(got, entry.Value)
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("keys = %#v, want %#v", got, want)
+	}
+}
+
 func TestPrimaryChatRejectsUnsafeEndpointURL(t *testing.T) {
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", "http://evil.example")
 	if primaryChatConfigured() {
 		t.Fatalf("primary chat should reject non-local http endpoint")
@@ -291,7 +438,7 @@ func TestPrimaryChatProviderLabelFallsBackForUnsafeValues(t *testing.T) {
 		t.Fatalf("url provider label should fall back, got %q", got)
 	}
 
-	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "sk-abcdefghijklmnopqrstuvwxyz")
+	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "sk-secret-looking-label")
 	if got := primaryChatProviderLabel(); got != "中转站" {
 		t.Fatalf("secret-looking provider label should fall back, got %q", got)
 	}
@@ -350,7 +497,7 @@ func TestOpenValidatedChatStreamPrefersPrimaryWhenHealthy(t *testing.T) {
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
 	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", primaryServer.URL)
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("DASHSCOPE_API_KEY", "dashscope-key")
 	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
 
@@ -393,7 +540,7 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenPrimaryFailsBeforeStream(t
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
 	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", primaryServer.URL)
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("DASHSCOPE_API_KEY", "dashscope-key")
 	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
 
@@ -440,7 +587,7 @@ func TestOpenValidatedChatStreamSkipsPrimaryForForcedSearch(t *testing.T) {
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
 	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", primaryServer.URL)
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("DASHSCOPE_API_KEY", "dashscope-key")
 	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
 

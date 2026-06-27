@@ -1093,7 +1093,10 @@ func chatUpstreamSearchLogConfig(provider string) (bool, string, bool) {
 	case "primary_responses":
 		return true, "responses_auto_low", true
 	case "primary":
-		return true, "primary_chat_completions", true
+		if parseBoolEnv(os.Getenv("CHAT_PRIMARY_CHAT_ENABLE_SEARCH")) {
+			return true, "primary_chat_completions", true
+		}
+		return false, "primary_chat_completions", false
 	default:
 		return true, "turbo", true
 	}

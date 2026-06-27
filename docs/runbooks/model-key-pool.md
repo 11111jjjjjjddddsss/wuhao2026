@@ -8,7 +8,7 @@
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
 - 原千问主对话回落链路 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 DashScope / 百炼 Key 池，按配置顺序做主备使用。生产当前使用 `DASHSCOPE_KEY_SELECTION_MODE=fallback`：主 Key 优先吃满，副 Key 只在主 Key 开流前失败时兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
-- 主对话另有可选的“优先中转站”链路：`CHAT_PRIMARY_ENABLED=true` 时，后端会先调用中转站 OpenAI Responses 流式接口；开流前失败、超时、非 2xx、非 SSE，或已开流但 6 秒内没有用户可见正文时，立即回落原 DashScope / 百炼主备 Key 池。一旦已经向用户吐出可见正文，不在同一条回复中途切换。
+- 主对话另有可选的“优先中转站”链路：`CHAT_PRIMARY_ENABLED=true` 时，后端会先调用中转站 OpenAI Responses 流式接口；开流前失败、超时、非 2xx、非 SSE，或已开流但 6 秒内没有用户可见正文时，立即回落原 DashScope / 百炼主备 Key 池。一旦已经向用户吐出可见正文，不在同一条回复中途切换。中转站链路支持独立 Key 池，适合把同一中转站下多把令牌按请求轮询，避免单把令牌硬扛。
 
 ## 环境变量
 
@@ -47,6 +47,7 @@ CHAT_PRIMARY_API_MODE=responses
 CHAT_PRIMARY_BASE_URL=<中转站基础地址>
 CHAT_PRIMARY_RESPONSES_URL=<可选，完整 /responses 地址>
 CHAT_PRIMARY_API_KEY=<中转站Key>
+CHAT_PRIMARY_API_KEYS=<可选，逗号/分号/换行分隔的多个中转站Key>
 CHAT_PRIMARY_PROVIDER_LABEL=中转站
 CHAT_PRIMARY_MODEL=gpt-5.5
 CHAT_PRIMARY_RESPONSES_REASONING_EFFORT=low
@@ -56,6 +57,8 @@ CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS=60
+CHAT_PRIMARY_KEY_MAX_ATTEMPTS=2
+CHAT_PRIMARY_KEY_COOLDOWN_SECONDS=30
 ```
 
 说明：
@@ -63,10 +66,11 @@ CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS=60
 - `CHAT_PRIMARY_API_MODE` 默认是 `responses`；仅应急回滚旧兼容链路时才设为 `chat`。
 - Responses 模式下，`CHAT_PRIMARY_RESPONSES_URL` 为空时，后端会把 `CHAT_PRIMARY_BASE_URL` 拼成 OpenAI 兼容 `/v1/responses`。
 - Responses 模式下，中转站请求会发送 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=low` 和流式返回；不发送 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或 `thinking_budget`，输出长度继续靠主聊天提示词控制。
-- Responses 模式只追加一条中性联网工具规则：模型可自行判断是否联网，涉及今天、最新、当前、实时、价格、行情、政策、天气、购买渠道等实时信息时再联网，普通农技知识和图片可见信息直接回答；不追加“简洁回答”、字数限制或质量测试提示。
+- Responses 模式只追加一条中性联网工具规则：仅当本轮问题涉及最新信息、价格行情、政策公告、购买渠道、天气、灾害预警或其他时效性判断时，以最快速度联网搜索；拿到足够信息后立刻回答，不解释搜索过程。普通农技知识、图片可见信息和非时效性问题直接回答；不追加“简洁回答”、字数限制或质量测试提示。
 - `CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS` 按“用户可见正文首字”计算，不把搜索事件、空格、换行或内部事件当首字；超过该时间仍无可见正文时回落原千问链路。若回落时原请求本来是明确实时 / 价格 / 行情意图，千问仍按原 `ForceSearch` 口径走 `turbo` 搜索。
 - `CHAT_PRIMARY_PROVIDER_LABEL` 只用于后台监控展示备注，不参与请求、不暴露 Key。
-- 中转站密钥只能放服务器环境变量 / 本机私密配置，不写入仓库、runbook、聊天记录、日志或后台页面。
+- 中转站密钥只能放服务器环境变量 / 本机私密配置，不写入仓库、runbook、聊天记录、日志或后台页面。后端读取顺序为 `CHAT_PRIMARY_API_KEY_1...50`、`CHAT_PRIMARY_API_KEY`、`CHAT_PRIMARY_API_KEYS`，会自动去重；`CHAT_PRIMARY_API_KEYS` 可用逗号、分号或换行分隔，带备注的 `备注 sk-...`、`备注=sk-...`、`备注:sk-...` 也会只取真实 Key。
+- 中转站 Key 池按请求轮询选择；开流前遇到连接错误、`401 / 403 / 429` 或 `5xx` 时会短暂冷却当前 Key 并尝试下一把，默认单次最多尝试 2 把，可用 `CHAT_PRIMARY_KEY_MAX_ATTEMPTS` 调整，避免无效密钥反复打上游。
 - 旧 Chat Completions 兼容模式只作应急回滚：需要显式设置 `CHAT_PRIMARY_API_MODE=chat`，必要时再配置 `CHAT_PRIMARY_CHAT_COMPLETIONS_URL=<完整 /chat/completions 地址>`；该模式不是当前生产推荐配置。
 
 ## 运行策略
@@ -118,4 +122,4 @@ DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=120
 4. 如果主聊天慢，先看日志里的 `provider`：`primary_responses` 表示走中转站 Responses，`primary` 表示旧 Chat Completions 兼容链路，`bailian` 表示已回落千问。`/healthz` 的 `chat_primary=ok` 只代表中转站配置完整，`chat_primary_api_mode / chat_primary_search_context_size / chat_primary_reasoning_effort / chat_primary_first_visible_timeout_seconds` 只说明当前参数口径，不代表每条实际生成质量、联网质量或首字速度都达标。
 5. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情当前固定使用 `qwen3.5-plus + OpenAI compatible chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`。`agent / agent_max` 会带来更多检索和 token 成本，今日农情默认不用。日志会尽量记录 `model_input_tokens / model_output_tokens / model_total_tokens / model_reasoning_tokens / model_search_count`，优先用这些字段判断成本、思考是否关闭和搜索是否触发；兼容 Chat 链路通常没有结构化搜索来源列表，`source_count=0` 不一定表示没联网。2026-06-08 的 `qwen3.5-plus + Responses web_search` 只是旧排障阶段结论，不再是当前生产主线。
 6. 如果在评估记忆文档摘要模型成本，不要只看 `qwen-plus` 资源包单价。按用户提供的两档包价计算：`12000千 token / 11.66元` 折合约 `0.972元 / 百万 token`，`110000千 token / 99.4元` 折合约 `0.904元 / 百万 token`；而 `qwen-plus` 按量输入约 `0.8元 / 百万`、输出约 `2元 / 百万`，后一档资源包也要输出 token 占比超过约 `8.6%` 才比 plus 按量更划算。记忆文档摘要通常是输入长、输出短，资源包本身不是省钱保证；当前先按质量优先固定 `qwen-plus`。
-7. 如果要临时回滚到单 Key，只保留 `DASHSCOPE_API_KEY` 或只保留 `DASHSCOPE_API_KEY_1`，删除其它 Key 槽位后重启后端。若要回滚中转站主链，只设置 `CHAT_PRIMARY_ENABLED=false` 或删除 `CHAT_PRIMARY_API_KEY` 后重启后端，不需要改 Android。
+7. 如果要临时回滚到单 Key，只保留 `DASHSCOPE_API_KEY` 或只保留 `DASHSCOPE_API_KEY_1`，删除其它 Key 槽位后重启后端。若要回滚中转站主链，优先设置 `CHAT_PRIMARY_ENABLED=false`；也可以清空 `CHAT_PRIMARY_API_KEY`、`CHAT_PRIMARY_API_KEY_1...50` 和 `CHAT_PRIMARY_API_KEYS` 后重启后端，不需要改 Android。

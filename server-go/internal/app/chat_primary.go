@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,15 +24,22 @@ const (
 	defaultPrimaryChatTLSHandshakeTimeout   = 6 * time.Second
 	defaultPrimaryChatResponseHeaderTimeout = 6 * time.Second
 	defaultPrimaryChatIdleConnTimeout       = 60 * time.Second
+	defaultPrimaryChatKeyCooldown           = 30 * time.Second
+	defaultPrimaryChatKeyMaxAttempts        = 2
 )
 
 type PrimaryChatClient struct {
-	httpClient *http.Client
+	httpClient      *http.Client
+	cooldownMu      sync.Mutex
+	keyCooldown     map[string]time.Time
+	selectionMu     sync.Mutex
+	keySelectionIdx int
 }
 
 func NewPrimaryChatClientFromEnv() *PrimaryChatClient {
 	return &PrimaryChatClient{
-		httpClient: newPrimaryChatHTTPClient(),
+		httpClient:  newPrimaryChatHTTPClient(),
+		keyCooldown: map[string]time.Time{},
 	}
 }
 
@@ -47,8 +55,8 @@ func newPrimaryChatHTTPClient() *http.Client {
 			ResponseHeaderTimeout: envDurationWithDefault("CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS", defaultPrimaryChatResponseHeaderTimeout),
 			IdleConnTimeout:       envDurationWithDefault("CHAT_PRIMARY_IDLE_CONN_TIMEOUT_SECONDS", defaultPrimaryChatIdleConnTimeout),
 			ExpectContinueTimeout: 1 * time.Second,
-			MaxIdleConns:          50,
-			MaxIdleConnsPerHost:   8,
+			MaxIdleConns:          120,
+			MaxIdleConnsPerHost:   40,
 		},
 	}
 }
@@ -58,7 +66,7 @@ func (c *PrimaryChatClient) Enabled() bool {
 }
 
 func (c *PrimaryChatClient) HasKeyConfigured() bool {
-	return strings.TrimSpace(os.Getenv("CHAT_PRIMARY_API_KEY")) != ""
+	return len(primaryChatKeyEntries()) > 0
 }
 
 func (c *PrimaryChatClient) OpenStream(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
@@ -73,18 +81,23 @@ func (c *PrimaryChatClient) OpenStream(ctx context.Context, messages []BailianMe
 
 func (c *PrimaryChatClient) openChatCompletionsStream(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
 	body := map[string]any{
-		"model":           primaryChatModelName(),
-		"stream":          true,
-		"temperature":     unifiedModelTemperature,
-		"enable_thinking": false,
-		"stream_options": map[string]any{
-			"include_usage": true,
-		},
-		"enable_search": true,
-		"search_options": map[string]any{
-			"forced_search": primaryChatForceSearch(options.ForceSearch, messages),
-		},
+		"model":    primaryChatModelName(),
+		"stream":   true,
 		"messages": messages,
+	}
+	if parseBoolEnv(os.Getenv("CHAT_PRIMARY_CHAT_INCLUDE_USAGE")) {
+		body["stream_options"] = map[string]any{
+			"include_usage": true,
+		}
+	}
+	if parseBoolEnv(os.Getenv("CHAT_PRIMARY_CHAT_DISABLE_THINKING")) {
+		body["enable_thinking"] = false
+	}
+	if parseBoolEnv(os.Getenv("CHAT_PRIMARY_CHAT_ENABLE_SEARCH")) {
+		body["enable_search"] = true
+		body["search_options"] = map[string]any{
+			"forced_search": primaryChatForceSearch(options.ForceSearch, messages),
+		}
 	}
 	if effort := primaryChatReasoningEffort(); effort != "" {
 		body["reasoning_effort"] = effort
@@ -93,15 +106,7 @@ func (c *PrimaryChatClient) openChatCompletionsStream(ctx context.Context, messa
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, primaryChatCompletionsURL(), bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(os.Getenv("CHAT_PRIMARY_API_KEY")))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
-	req.Header.Set("Cache-Control", "no-cache")
-	return c.httpClient.Do(req)
+	return c.doPrimaryChatPayloadRequest(ctx, primaryChatCompletionsURL(), payload)
 }
 
 func (c *PrimaryChatClient) openResponsesStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
@@ -126,11 +131,60 @@ func (c *PrimaryChatClient) openResponsesStream(ctx context.Context, messages []
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, primaryChatResponsesURL(), bytes.NewReader(payload))
+	return c.doPrimaryChatPayloadRequest(ctx, primaryChatResponsesURL(), payload)
+}
+
+func (c *PrimaryChatClient) doPrimaryChatPayloadRequest(ctx context.Context, endpoint string, payload []byte) (*http.Response, error) {
+	keys := primaryChatKeyEntries()
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("CHAT_PRIMARY_API_KEY(S) is missing")
+	}
+	maxAttempts := envIntWithDefault("CHAT_PRIMARY_KEY_MAX_ATTEMPTS", defaultPrimaryChatKeyMaxAttempts)
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	if maxAttempts > len(keys) {
+		maxAttempts = len(keys)
+	}
+	attempted := map[string]bool{}
+	var lastErr error
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		key, ok := c.pickNextKeyEntry(keys, attempted)
+		if !ok {
+			break
+		}
+		attempted[key.Value] = true
+		resp, err := c.sendPrimaryChatPayload(ctx, endpoint, payload, key.Value)
+		if err != nil {
+			c.coolDownKey(key.Value)
+			lastErr = err
+			if ctx.Err() != nil {
+				return nil, err
+			}
+			continue
+		}
+		if isPrimaryChatKeyCooldownStatus(resp.StatusCode) {
+			c.coolDownKey(key.Value)
+		}
+		if isPrimaryChatRetryableStatus(resp.StatusCode) && attempt+1 < maxAttempts && ctx.Err() == nil {
+			_, _ = readLimitedResponseBody(resp.Body, bailianBodyPreviewLimit)
+			_ = resp.Body.Close()
+			continue
+		}
+		return resp, nil
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("CHAT_PRIMARY_API_KEY(S) is missing")
+}
+
+func (c *PrimaryChatClient) sendPrimaryChatPayload(ctx context.Context, endpoint string, payload []byte, apiKey string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(os.Getenv("CHAT_PRIMARY_API_KEY")))
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
@@ -142,7 +196,7 @@ func primaryChatEnabled() bool {
 }
 
 func primaryChatConfigured() bool {
-	if !primaryChatEnabled() || strings.TrimSpace(os.Getenv("CHAT_PRIMARY_API_KEY")) == "" {
+	if !primaryChatEnabled() || len(primaryChatKeyEntries()) == 0 {
 		return false
 	}
 	if primaryChatUsesResponses() {
@@ -159,6 +213,145 @@ func primaryChatHealthStatus(client *PrimaryChatClient) string {
 		return "missing_config"
 	}
 	return "ok"
+}
+
+type primaryChatAPIKeyEntry struct {
+	Value string
+}
+
+func primaryChatKeyEntries() []primaryChatAPIKeyEntry {
+	result := []primaryChatAPIKeyEntry{}
+	addKey := func(value string) {
+		key := normalizePrimaryChatAPIKey(value)
+		if key == "" {
+			return
+		}
+		for _, current := range result {
+			if current.Value == key {
+				return
+			}
+		}
+		result = append(result, primaryChatAPIKeyEntry{Value: key})
+	}
+
+	for i := 1; i <= 50; i++ {
+		addKey(os.Getenv(fmt.Sprintf("CHAT_PRIMARY_API_KEY_%d", i)))
+	}
+	addKey(os.Getenv("CHAT_PRIMARY_API_KEY"))
+	for _, key := range splitConfiguredKeys(os.Getenv("CHAT_PRIMARY_API_KEYS")) {
+		addKey(key)
+	}
+	return result
+}
+
+func normalizePrimaryChatAPIKey(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return ""
+	}
+	for _, field := range strings.Fields(trimmed) {
+		field = strings.TrimSpace(field)
+		if strings.HasPrefix(field, "sk-") {
+			return field
+		}
+	}
+	if idx := strings.Index(trimmed, "="); idx >= 0 {
+		right := strings.TrimSpace(trimmed[idx+1:])
+		if strings.HasPrefix(right, "sk-") {
+			return right
+		}
+	}
+	if idx := strings.LastIndex(trimmed, ":"); idx >= 0 {
+		right := strings.TrimSpace(trimmed[idx+1:])
+		if strings.HasPrefix(right, "sk-") {
+			return right
+		}
+	}
+	if strings.HasPrefix(trimmed, "sk-") {
+		return trimmed
+	}
+	return ""
+}
+
+func primaryChatKeyPoolSize() int {
+	return len(primaryChatKeyEntries())
+}
+
+func (c *PrimaryChatClient) pickNextKeyEntry(keys []primaryChatAPIKeyEntry, attempted map[string]bool) (primaryChatAPIKeyEntry, bool) {
+	if len(keys) == 0 {
+		return primaryChatAPIKeyEntry{}, false
+	}
+	now := time.Now()
+	start := c.nextSelectionOffset(len(keys))
+	var fallback *primaryChatAPIKeyEntry
+	for offset := 0; offset < len(keys); offset++ {
+		idx := (start + offset) % len(keys)
+		key := keys[idx]
+		if attempted[key.Value] {
+			continue
+		}
+		if fallback == nil {
+			candidate := key
+			fallback = &candidate
+		}
+		if !c.isKeyCoolingDown(key.Value, now) {
+			return key, true
+		}
+	}
+	if fallback != nil {
+		return *fallback, true
+	}
+	return primaryChatAPIKeyEntry{}, false
+}
+
+func (c *PrimaryChatClient) nextSelectionOffset(modulo int) int {
+	if modulo <= 0 {
+		return 0
+	}
+	c.selectionMu.Lock()
+	defer c.selectionMu.Unlock()
+	start := c.keySelectionIdx
+	c.keySelectionIdx = (c.keySelectionIdx + 1) % modulo
+	return start
+}
+
+func (c *PrimaryChatClient) isKeyCoolingDown(key string, now time.Time) bool {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	until, ok := c.keyCooldown[key]
+	if !ok {
+		return false
+	}
+	if !now.Before(until) {
+		delete(c.keyCooldown, key)
+		return false
+	}
+	return true
+}
+
+func (c *PrimaryChatClient) coolDownKey(key string) {
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	duration := envDurationWithDefault("CHAT_PRIMARY_KEY_COOLDOWN_SECONDS", defaultPrimaryChatKeyCooldown)
+	if duration <= 0 {
+		delete(c.keyCooldown, key)
+		return
+	}
+	c.keyCooldown[key] = time.Now().Add(duration)
+}
+
+func isPrimaryChatRetryableStatus(status int) bool {
+	return status == http.StatusUnauthorized ||
+		status == http.StatusForbidden ||
+		status == http.StatusTooManyRequests ||
+		status == http.StatusInternalServerError ||
+		status == http.StatusBadGateway ||
+		status == http.StatusServiceUnavailable ||
+		status == http.StatusGatewayTimeout
+}
+
+func isPrimaryChatKeyCooldownStatus(status int) bool {
+	return isPrimaryChatRetryableStatus(status)
 }
 
 func primaryChatModelName() string {
@@ -441,5 +634,5 @@ func primaryChatImageURLValue(item map[string]any) string {
 }
 
 func primaryChatResponsesToolInstruction() string {
-	return "联网搜索使用规则：可按问题需要自行决定是否使用联网搜索；涉及今天、最新、当前、实时、价格、行情、政策、天气、购买渠道等实时信息时再联网，普通农技知识和图片可见信息直接回答。"
+	return "联网搜索使用规则：仅当本轮问题涉及最新信息、价格行情、政策公告、购买渠道、天气、灾害预警或其他时效性判断时，以最快速度联网搜索；拿到足够信息后立刻回答，不解释搜索过程。普通农技知识、图片可见信息和非时效性问题直接回答。"
 }

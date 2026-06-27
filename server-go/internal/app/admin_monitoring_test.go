@@ -455,8 +455,9 @@ func TestAdminMonitoringModelUsagePolicyContract(t *testing.T) {
 
 func TestAdminMonitoringModelUsagePolicyWithPrimaryChat(t *testing.T) {
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
+	t.Setenv("CHAT_PRIMARY_API_MODE", "responses")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", "https://primary.example")
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "中转联盟")
 	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
 
@@ -480,7 +481,7 @@ func TestAdminMonitoringModelUsagePolicyWithPrimaryChatCompletionsCompatibility(
 	t.Setenv("CHAT_PRIMARY_ENABLED", "true")
 	t.Setenv("CHAT_PRIMARY_API_MODE", "chat")
 	t.Setenv("CHAT_PRIMARY_BASE_URL", "https://primary.example")
-	t.Setenv("CHAT_PRIMARY_API_KEY", "primary-key")
+	t.Setenv("CHAT_PRIMARY_API_KEY", "sk-primary-test")
 	t.Setenv("CHAT_PRIMARY_PROVIDER_LABEL", "中转联盟")
 	t.Setenv("CHAT_PRIMARY_MODEL", "gpt-5.5")
 
@@ -489,9 +490,15 @@ func TestAdminMonitoringModelUsagePolicyWithPrimaryChatCompletionsCompatibility(
 	if mainRow == nil {
 		t.Fatalf("missing main chat model usage policy: %#v", rows)
 	}
-	assertContainsAll(t, mainRow.SearchStrategy, "Chat Completions", "旧兼容链路", "回落千问 turbo")
-	if !strings.Contains(mainRow.CostNote, "旧兼容模式") || strings.Contains(mainRow.CostNote, "Responses 流式模型") {
-		t.Fatalf("chat compatibility row should not masquerade as responses: %#v", mainRow)
+	assertContainsAll(t, mainRow.SearchStrategy, "Chat Completions", "快问答", "实时搜索", "千问 turbo")
+	if mainRow.ThinkingDisabled {
+		t.Fatalf("chat quick path should not claim provider thinking is forcibly disabled: %#v", mainRow)
+	}
+	if !strings.Contains(mainRow.CostNote, "普通问诊和图片问诊") ||
+		!strings.Contains(mainRow.CostNote, "不会自动联网") ||
+		!strings.Contains(mainRow.CostNote, "直接走千问 turbo") ||
+		strings.Contains(mainRow.CostNote, "Responses 流式模型") {
+		t.Fatalf("chat quick path row should not masquerade as responses: %#v", mainRow)
 	}
 }
 
