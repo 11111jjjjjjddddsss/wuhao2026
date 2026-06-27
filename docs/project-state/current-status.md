@@ -10,6 +10,7 @@
 
 ## 当前代码真相
 
+- 2026-06-27 Android 主聊天 Markdown 加粗视觉已统一：行内 `**加粗**` 在流式态和历史 / 完成态都渲染为深黑 `#111111` + `SemiBold`，解决普通正文里加粗字有时不够黑、和 GPT 类客户端观感不一致的问题。加粗链接仍保持蓝色下划线，表格单元格仍禁用加粗视觉；复制底稿、模型原文、分割线、列表、表格结构、今日农情和后端提示词均不改。
 - 2026-06-27 Android 会员中心支付状态再次收口：`paymentState.notice` 不再插入会员中心正文横条，避免“支付已取消 / 创建订单 / 失败提示”出现消失时把会员中心页面顶上顶下；取消、失败、服务不可用、订单关闭、权益处理异常、加油包不可重复购买等短提示统一转到现有手机中部 `GlobalStatusHint` 浮层。设置页会员中心和主界面右上会员中心继续共用同一套 `MembershipCenterBody`、支付确认页和权益生效弹层。加油包规则明确为“购买只允许 Plus / Pro 且未用完不能重复买；已购买剩余次数长期保留，会员到期后仍可继续消耗；用完后需重新满足购买门槛再买”。Plus 升 Pro 确认页文案同步为“支付成功后立即生效”。debug-only 预览面板已更新“支付状态浮层”样例。本轮只改 Android UI / 文案，不改后端支付金额、回调、权益发放、主聊天模型链路、锚点、输出约束、官网正式包或检查更新。
 - 2026-06-27 按用户真机连续断链、首字后卡死、长耗时和识图质量不稳定反馈，主聊天 `gpt-5.5` 第三方中转站 / Responses 优先链路已退出。生产后端已部署到 `25145e5c`，ECS 环境已清理 `CHAT_PRIMARY_*`，公网 `/healthz` 不再返回 `chat_primary` 字段；当前主聊天回到原千问 `qwen3.5-plus` 主备 Key 池。代码已删除 `PrimaryChatClient`、Responses 转换器、`chat_primary` health/admin 口径和主聊天中转回落路径，readiness 若发现 `CHAT_PRIMARY_ENABLED=true` 会失败提醒移除。后端仍统一负责上下文组装、账号、额度、归档、记忆和日志，Android 不保存、不注入、不直连任何模型 Key。
 - 2026-06-27 本次删除中转主链后，生产 readiness 已通过 `revision=25145e5c / bailian=ok / alipay=ok / alipay_payment_gate=limited / ok=true`，公网黑盒 `warnings=0 / errors=0 / status=ready`；后台静态页也已重新部署，监控页模型口径显示千问主链，不再展示中转站优先链路。

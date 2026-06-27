@@ -211,6 +211,8 @@ private const val GPT_THINKING_LABEL_DELAY_MS = 2600L
 private const val GPT_THINKING_TRANSITION_MS = 180
 private const val GPT_THINKING_SHIMMER_MS = 1600
 private const val GPT_THINKING_SHIMMER_BAND_FRACTION = 0.68f
+private val RENDERER_BOLD_TEXT_COLOR = Color(0xFF111111)
+private val RENDERER_BOLD_TEXT_WEIGHT = FontWeight.SemiBold
 
 private val rendererSettledInlineMarkdownCache =
     object : LinkedHashMap<String, AnnotatedString>(RENDERER_INLINE_MARKDOWN_CACHE_LIMIT, 0.75f, true) {
@@ -2433,7 +2435,8 @@ internal fun buildRendererInlineAnnotatedString(
 
         fun currentTextStyle(): SpanStyle {
             return SpanStyle(
-                fontWeight = if (bold && emphasisEnabled) FontWeight.Medium else null,
+                color = if (bold && emphasisEnabled) RENDERER_BOLD_TEXT_COLOR else Color.Unspecified,
+                fontWeight = if (bold && emphasisEnabled) RENDERER_BOLD_TEXT_WEIGHT else null,
                 fontStyle = if (italic) FontStyle.Italic else null,
                 fontFamily = if (code) FontFamily.Monospace else null,
                 background = if (code) Color(0xFFF2F3F5) else Color.Unspecified,

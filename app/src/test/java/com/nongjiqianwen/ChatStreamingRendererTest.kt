@@ -1,5 +1,6 @@
 package com.nongjiqianwen
 
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.font.FontFamily
@@ -25,7 +26,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("建议控水", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("控水") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -56,7 +57,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("建议控水后观察", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("控水") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -67,7 +68,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("stippling 症状：叶片出现密集针点。", rendered.text)
-        assertTrue(rendered.hasSpanFor("stippling 症状") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("stippling 症状") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -79,7 +80,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("高。开袋即用。", rendered.text)
-        assertFalse(rendered.hasSpanFor("高") { it.fontWeight == FontWeight.Medium })
+        assertFalse(rendered.hasSpanFor("高") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -90,7 +91,7 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("建议控水后观察", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("控水") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -177,6 +178,23 @@ class ChatStreamingRendererTest {
         assertTrue(rendered.hasSpanFor("https://www.natesc.org.cn/") { it.textDecoration == TextDecoration.Underline })
         assertTrue(rendered.hasUrlFor("官网", "https://www.moa.gov.cn"))
         assertTrue(rendered.hasUrlFor("https://www.natesc.org.cn/", "https://www.natesc.org.cn/"))
+    }
+
+    @Test
+    fun boldLinkKeepsLinkColorAndUnderline() {
+        val rendered = buildRendererInlineAnnotatedString(
+            text = "看 **[官网](www.moa.gov.cn)**。",
+            mode = RendererInlineMode.Settled
+        )
+
+        assertEquals("看 官网。", rendered.text)
+        assertTrue(rendered.hasSpanFor("官网") { it.fontWeight == FontWeight.SemiBold })
+        assertTrue(
+            rendered.hasSpanFor("官网") {
+                it.color == Color(0xFF2563EB) && it.textDecoration == TextDecoration.Underline
+            }
+        )
+        assertTrue(rendered.hasUrlFor("官网", "https://www.moa.gov.cn"))
     }
 
     @Test
@@ -1229,7 +1247,7 @@ class ChatStreamingRendererTest {
             mode = RendererInlineMode.Streaming
         )
         assertEquals("控水", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("控水") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -1242,7 +1260,7 @@ class ChatStreamingRendererTest {
             mode = RendererInlineMode.Settled
         )
         assertEquals("农业场景： 面对高温多湿，先让农户看见真实对比。", rendered.text)
-        assertTrue(rendered.hasSpanFor("农业场景：") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("农业场景：") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -1390,7 +1408,7 @@ class ChatStreamingRendererTest {
 
         assertEquals(RendererInlineMode.Streaming, mode)
         assertEquals("建议控水", rendered.text)
-        assertTrue(rendered.hasSpanFor("控水") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("控水") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -2098,7 +2116,7 @@ class ChatStreamingRendererTest {
         assertEquals("**控", advanced.content)
         assertEquals("", advanced.revealBuffer)
         assertEquals("控", rendered.text)
-        assertTrue(rendered.hasSpanFor("控") { it.fontWeight == FontWeight.Medium })
+        assertTrue(rendered.hasSpanFor("控") { it.isRendererBoldTextStyle() })
     }
 
     @Test
@@ -2389,6 +2407,9 @@ private fun AnnotatedString.hasSpanFor(
         range.start <= start && range.end >= end && predicate(range.item)
     }
 }
+
+private fun androidx.compose.ui.text.SpanStyle.isRendererBoldTextStyle(): Boolean =
+    fontWeight == FontWeight.SemiBold && color == Color(0xFF111111)
 
 private fun AnnotatedString.hasUrlFor(
     needle: String,

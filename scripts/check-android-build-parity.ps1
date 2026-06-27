@@ -1066,8 +1066,8 @@ if ($failures.Count -eq 0) {
         "Assistant renderer tests must prove nested standalone bold subheadings do not create dividers while inline bold text stays untouched."
     Require-Match $failures $chatStreamingRenderer 'internal\s+fun\s+classifyActiveStreamingLine(?s:(?!internal\s+fun\s+shouldShowStreamingSectionDivider).)*parseRendererChineseSectionHeading' `
         "Active streaming Chinese section heading text should render immediately when it is clearly structural."
-    Require-Match $failures $chatStreamingRenderer 'fun\s+currentTextStyle\(\)(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*&&\s*emphasisEnabled\s*\)\s*FontWeight\.Medium\s+else\s+null' `
-        "Assistant inline Markdown bold text should stay visually lighter than section headings and be suppressible inside table cells."
+    Require-Match $failures $chatStreamingRenderer 'RENDERER_BOLD_TEXT_COLOR\s*=\s*Color\(0xFF111111\)(?s:.*?)RENDERER_BOLD_TEXT_WEIGHT\s*=\s*FontWeight\.SemiBold(?s:.*?)fun\s+currentTextStyle\(\)(?s:.*?)color\s*=\s*if\s*\(\s*bold\s*&&\s*emphasisEnabled\s*\)\s*RENDERER_BOLD_TEXT_COLOR\s+else\s+Color\.Unspecified(?s:.*?)fontWeight\s*=\s*if\s*\(\s*bold\s*&&\s*emphasisEnabled\s*\)\s*RENDERER_BOLD_TEXT_WEIGHT\s+else\s+null' `
+        "Assistant inline Markdown bold text must render with consistent deep black semibold styling while remaining suppressible inside table cells."
     Require-Match $failures $chatStreamingRendererTest 'emphasisDisabledHidesBoldMarkersWithoutBoldWeight' `
         "Assistant renderer tests must prove table-cell emphasis can hide Markdown bold markers without applying bold weight."
     Require-Match $failures $chatStreamingRendererTest 'activeChineseSectionHeadingRendersImmediatelyWhenClearlyStructural' `
