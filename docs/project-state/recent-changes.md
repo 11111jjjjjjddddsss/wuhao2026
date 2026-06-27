@@ -5,6 +5,7 @@
 
 ## 2026-06-27
 
+- Android 主聊天首屏工作线掉位继续按用户真机截图收口：首次发送 / 清空历史后的短内容在 top flow 且真实内容尚未安全越过工作线时，轻微拖动不再触发 `UserBrowsing` 或提前释放 `WorklineOwned`，避免图片消息本来在顶端、手一扒拉就掉到工作线附近。内容真正长过工作线后仍回到原来的用户浏览和底部锚定逻辑；本轮不改模型、支付、提示词、渲染、归档或滚动主结构。
 - 按用户真机连续断链、首字后卡死和识图质量不稳定反馈，GPT5.5 / 中转联盟主聊天 Responses 链路退出生产。生产后端已部署到 `25145e5c`，ECS 环境已清理 `CHAT_PRIMARY_*`，公网 `/healthz` 不再返回 `chat_primary` 字段；代码层删除 `PrimaryChatClient`、Responses SSE 转换、`chat_primary` health/admin 口径和 readiness 中转站门槛，主聊天重新只走原 `qwen3.5-plus` 主备 Key 池。后台静态页已同步部署，模型口径显示千问主链；日志脱敏保留旧变量名以覆盖历史残留；不重打正式包、不改官网检查更新。
 - 修正项目记忆门禁发现的今日农情文档口径漂移：根规则和预发布 runbook 已统一写成今日农情视觉项后连续 2 轮携带 `today_agri_context_day`，第三轮起不带；历史 `recent-changes` 旧条目仍只作为历史过程，不代表当前真相。该修正不改代码、不改提示词、不重发测试包。
 - Android 主聊天按用户真机反馈补一刀首屏掉位修复：`hasInitialDocumentFlowReachedWorkline()` 不再把 `chatListState.canScrollForward` 当作“内容已经到工作线”的替代信号，只在真实文档内容底部达到工作线后，才让首次发送 / 清数据首屏从 top flow 交给正常底部锚定。这样能压住模型等待较久、流式高度变化或回复完成后，列表误判可滚而提前 bottom arrangement，导致顶部大空白、内容掉到下方的问题。本轮不改模型、支付、会员文案、表格 / 标题渲染、主对话锚点或输出约束；仍需新测试包真机复测长等待图片问诊、普通短问答和手动回底。

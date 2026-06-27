@@ -3127,6 +3127,9 @@ fun ChatScreen() {
             documentContentBottomPx >= worklineBottomPx + initialWorklineBottomSwitchOverflowPx
     }
 
+    fun shouldProtectInitialWorklineTopFlowFromBrowsing(): Boolean =
+        isInitialWorklineTopFlow() && !hasInitialDocumentFlowSafelyPassedWorkline()
+
     fun shouldUseInitialTopFlowForSend(): Boolean {
         if (shouldStartInitialWorklineTopFlow()) return true
         if (!isInitialWorklineTopFlow()) return false
@@ -6110,13 +6113,20 @@ fun ChatScreen() {
     }
 
     fun userIsActivelyBrowsingInitialWorkline(): Boolean {
+        if (shouldProtectInitialWorklineTopFlowFromBrowsing()) {
+            return scrollMode == ScrollMode.UserBrowsing && chatListState.canScrollBackward
+        }
         return chatListUserDragging ||
             recyclerScrollInProgress ||
             (scrollMode == ScrollMode.UserBrowsing && chatListState.canScrollBackward)
     }
 
     fun userBlocksInitialWorklineAutoSwitch(): Boolean =
-        userIsActivelyBrowsingInitialWorkline() || scrollRuntime.userInteracting.value
+        if (shouldProtectInitialWorklineTopFlowFromBrowsing()) {
+            false
+        } else {
+            userIsActivelyBrowsingInitialWorkline() || scrollRuntime.userInteracting.value
+        }
 
     var todayAgriAutoAnchorHadCard by remember(uiRuntimeResetKey) { mutableStateOf(hasTodayAgriCard) }
     var todayAgriAutoAnchorEligibleBeforeInsert by remember(uiRuntimeResetKey) { mutableStateOf(false) }
@@ -6244,8 +6254,11 @@ fun ChatScreen() {
             }
     }
 
-    LaunchedEffect(chatListUserDragging) {
-        if (chatListUserDragging) {
+    LaunchedEffect(
+        chatListUserDragging,
+        shouldProtectInitialWorklineTopFlowFromBrowsing()
+    ) {
+        if (chatListUserDragging && !shouldProtectInitialWorklineTopFlowFromBrowsing()) {
             initialBottomSnapDone = true
             postInitialSnapCorrectionDone = true
         }
@@ -6256,11 +6269,14 @@ fun ChatScreen() {
         chatListUserDragging,
         programmaticScroll,
         isStreaming,
-        hasStreamingItem
+        hasStreamingItem,
+        shouldProtectInitialWorklineTopFlowFromBrowsing()
     ) {
+        val effectiveUserDragging =
+            chatListUserDragging && !shouldProtectInitialWorklineTopFlowFromBrowsing()
         handleChatListScrollStateChanged(
             scrollInProgress = recyclerScrollInProgress,
-            userDragging = chatListUserDragging,
+            userDragging = effectiveUserDragging,
             programmaticScroll = programmaticScroll,
             isStreaming = isStreaming,
             hasStreamingItem = hasStreamingItem,
@@ -7005,6 +7021,7 @@ fun ChatScreen() {
         }
     }
     fun shouldTrackChatListBrowsingFromPointer(): Boolean {
+        if (shouldProtectInitialWorklineTopFlowFromBrowsing()) return false
         return isStreaming || hasStreamingItem || imageSendInProgress || isInitialWorklineTopFlow()
     }
     fun markChatListUserBrowsingFromPointer() {
