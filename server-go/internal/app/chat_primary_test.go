@@ -250,8 +250,8 @@ func TestPrimaryChatClientResponsesModeUsesAutoWebSearchAndLowReasoning(t *testi
 	if !ok {
 		t.Fatalf("missing reasoning: %#v", captured["reasoning"])
 	}
-	if got := reasoning["effort"]; got != "xhigh" {
-		t.Fatalf("responses reasoning effort should ignore chat-mode env and default xhigh, got %#v", got)
+	if got := reasoning["effort"]; got != "high" {
+		t.Fatalf("responses reasoning effort should ignore chat-mode env and default high, got %#v", got)
 	}
 	instructions, _ := captured["instructions"].(string)
 	if !strings.Contains(instructions, "系统锚点") || !strings.Contains(instructions, "仅当本轮问题涉及最新信息") {

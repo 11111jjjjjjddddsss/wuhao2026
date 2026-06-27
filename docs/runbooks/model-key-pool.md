@@ -8,7 +8,7 @@
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
 - 原千问主对话回落链路 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 DashScope / 百炼 Key 池，按配置顺序做主备使用。生产当前使用 `DASHSCOPE_KEY_SELECTION_MODE=fallback`：主 Key 优先吃满，副 Key 只在主 Key 开流前失败时兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
-- 主对话另有可选的“优先中转站”链路：`CHAT_PRIMARY_ENABLED=true` 时，后端会先调用中转站 OpenAI Responses 流式接口；开流前失败、超时、非 2xx、非 SSE，或已开流但 15 秒内没有用户可见正文时，立即回落原 DashScope / 百炼主备 Key 池。一旦已经向用户吐出可见正文，不在同一条回复中途切换。中转站链路支持独立 Key 池，适合把同一中转站下多把令牌按请求轮询，避免单把令牌硬扛。
+- 主对话另有可选的“优先中转站”链路：`CHAT_PRIMARY_ENABLED=true` 时，后端会先调用中转站 OpenAI Responses 流式接口；开流前失败、超时、非 2xx、非 SSE，或已开流但 12 秒内没有用户可见正文时，立即回落原 DashScope / 百炼主备 Key 池。一旦已经向用户吐出可见正文，不在同一条回复中途切换。中转站链路支持独立 Key 池，适合把同一中转站下多把令牌按请求轮询，避免单把令牌硬扛。
 
 ## 环境变量
 
@@ -50,9 +50,9 @@ CHAT_PRIMARY_API_KEY=<中转站Key>
 CHAT_PRIMARY_API_KEYS=<可选，逗号/分号/换行分隔的多个中转站Key>
 CHAT_PRIMARY_PROVIDER_LABEL=中转站
 CHAT_PRIMARY_MODEL=gpt-5.5
-CHAT_PRIMARY_RESPONSES_REASONING_EFFORT=xhigh
+CHAT_PRIMARY_RESPONSES_REASONING_EFFORT=high
 CHAT_PRIMARY_RESPONSES_SEARCH_CONTEXT_SIZE=low
-CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS=15
+CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS=12
 CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS=6
@@ -65,9 +65,9 @@ CHAT_PRIMARY_KEY_COOLDOWN_SECONDS=30
 
 - `CHAT_PRIMARY_API_MODE` 默认是 `responses`；仅应急回滚旧兼容链路时才设为 `chat`。
 - Responses 模式下，`CHAT_PRIMARY_RESPONSES_URL` 为空时，后端会把 `CHAT_PRIMARY_BASE_URL` 拼成 OpenAI 兼容 `/v1/responses`。
-- Responses 模式下，中转站请求会发送 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=xhigh` 和流式返回；不发送 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或 `thinking_budget`，输出长度继续靠主聊天提示词控制。当前把搜索上下文保持低档，但把思考调到超高档，优先观察图片病虫害和复杂农技判断质量。
+- Responses 模式下，中转站请求会发送 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=high` 和流式返回；不发送 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或 `thinking_budget`，输出长度继续靠主聊天提示词控制。当前把搜索上下文保持低档，思考档位保持高档，兼顾图片病虫害判断质量和首字速度。
 - Responses 模式只追加一条中性联网工具规则：仅当本轮问题涉及最新信息、价格行情、政策公告、购买渠道、天气、灾害预警或其他时效性判断时，以最快速度联网搜索；拿到足够信息后立刻回答，不解释搜索过程。普通农技知识、图片可见信息和非时效性问题直接回答；不追加“简洁回答”、字数限制或质量测试提示。
-- `CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS` 按“用户可见正文首字”计算，不把搜索事件、空格、换行或内部事件当首字；当前生产统一给超高思维主链 15 秒首字窗口，超过该时间仍无可见正文时回落原千问链路。若回落时原请求本来是明确实时 / 价格 / 行情意图，千问仍按原 `ForceSearch` 口径走 `turbo` 搜索。
+- `CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS` 按“用户可见正文首字”计算，不把搜索事件、空格、换行或内部事件当首字；当前生产统一给高思维主链 12 秒首字窗口，超过该时间仍无可见正文时回落原千问链路。若回落时原请求本来是明确实时 / 价格 / 行情意图，千问仍按原 `ForceSearch` 口径走 `turbo` 搜索。
 - `CHAT_PRIMARY_PROVIDER_LABEL` 只用于后台监控展示备注，不参与请求、不暴露 Key。
 - 中转站密钥只能放服务器环境变量 / 本机私密配置，不写入仓库、runbook、聊天记录、日志或后台页面。后端读取顺序为 `CHAT_PRIMARY_API_KEY_1...50`、`CHAT_PRIMARY_API_KEY`、`CHAT_PRIMARY_API_KEYS`，会自动去重；`CHAT_PRIMARY_API_KEYS` 可用逗号、分号或换行分隔，带备注的 `备注 sk-...`、`备注=sk-...`、`备注:sk-...` 也会只取真实 Key。
 - 中转站 Key 池按请求轮询选择；开流前遇到连接错误、`401 / 403 / 429` 或 `5xx` 时会短暂冷却当前 Key 并尝试下一把，默认单次最多尝试 2 把，可用 `CHAT_PRIMARY_KEY_MAX_ATTEMPTS` 调整，避免无效密钥反复打上游。
@@ -83,7 +83,7 @@ CHAT_PRIMARY_KEY_COOLDOWN_SECONDS=30
 - 如果某把 Key 在模型请求打开阶段返回 `401 / 403 / 429`，或返回带限流 / quota 语义的 `400`，后端会在响应交给业务层前换下一把 Key 再试。
 - 触发上述限流 / 鉴权类失败的 Key 会进入短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；后续请求会优先跳过冷却中的 Key。
 - 主对话只在 SSE 流真正开始前换 Key；一旦上游已经返回成功 SSE，后端不会在同一条回复生成过程中切换 Key，避免半条回复和重复成本。
-- 主对话优先中转站会在开流前错误和 15 秒无可见正文两类场景回落；如果已经向用户吐出可见正文，本轮不会中途换到千问，避免半条回答和重复扣费。需要临时回滚时，优先关闭 `CHAT_PRIMARY_ENABLED`。
+- 主对话优先中转站会在开流前错误和 12 秒无可见正文两类场景回落；如果已经向用户吐出可见正文，本轮不会中途换到千问，避免半条回答和重复扣费。需要临时回滚时，优先关闭 `CHAT_PRIMARY_ENABLED`。
 - 如果所有 Key 都限流或不可用，最后一次上游错误会正常返回给业务层，Android 仍按现有失败提示处理。
 
 ## 联网搜索限流
@@ -91,7 +91,7 @@ CHAT_PRIMARY_KEY_COOLDOWN_SECONDS=30
 - 阿里云官方文档说明：联网搜索限流是 15 RPS，按阿里云主账号维度计算，所有 API Key 的联网搜索请求总和计入，不区分模型。
 - 超过联网搜索限流时，API 不会报错，但搜索链路不会触发；主聊天会自然退成未联网回答，不需要后端额外打一轮“不联网重试”。
 - 这个 15 RPS 是联网搜索链路限制，不等同于模型 RPM / TPM。模型请求仍受对应模型的 RPM / TPM 约束，Key 池 auto 模式只负责请求级分流和开流前错误 failover。
-- 原千问主聊天回落链路默认 `forced_search=false`，所以模型判断无需联网、或联网搜索触发限流时，都可能不触发搜索；当后端识别到价格、行情、购买渠道、查资料等明确联网意图时，会保留 `ForceSearch=true`，若中转站 15 秒无可见正文或开流失败回落千问，千问会按原口径走 `turbo` 搜索。今日农情是强制联网生成，仍需单独观察生成任务成功率。
+- 原千问主聊天回落链路默认 `forced_search=false`，所以模型判断无需联网、或联网搜索触发限流时，都可能不触发搜索；当后端识别到价格、行情、购买渠道、查资料等明确联网意图时，会保留 `ForceSearch=true`，若中转站 12 秒无可见正文或开流失败回落千问，千问会按原口径走 `turbo` 搜索。今日农情是强制联网生成，仍需单独观察生成任务成功率。
 
 新增配置：
 
