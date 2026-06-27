@@ -50,14 +50,13 @@
 
 通过阿里云 CLI / Cloud Assistant 执行命令，不需要在聊天或仓库里暴露服务器密码。
 
-查看当前 active upstream 和服务状态；当前脚本默认要求生产支付门禁仍为 `limited`，如果未来正式 public 放量，必须显式传 `-ExpectedAlipayPaymentGate public`，并确保生产环境已移除 0.01 测试金额变量：
+查看当前 active upstream 和服务状态；2026-06-28 起生产支付门禁为 `public`，正式巡检必须显式传 `-ExpectedAlipayPaymentGate public`，并确保生产环境不再保留 0.01 测试金额和 limited 白名单变量。若未来回滚到内部联调态，才按 `limited` 门禁单独说明：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1 -ExpectedAlipayPaymentGate public
 ```
 
-正式收费发布前总门禁还要显式打开 public 支付验收，不允许只跑默认 limited 检查：
+正式收费相关发布总门禁还要显式打开 public 支付验收，不允许只跑默认检查：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-launch-readiness.ps1 -ReleaseGate -PaymentFormalAccepted

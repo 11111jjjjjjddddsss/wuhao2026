@@ -1,35 +1,35 @@
 # 支付与会员订单 Runbook
 
-最后更新：2026-06-27
+最后更新：2026-06-28
 
 ## 目的
 
 记录农技千查支付、会员订单、权益发放、回调验签、对账和退款边界，避免把开发期接口或未验收代码误当正式收费系统。
 
-当前状态：支付宝 APP 支付代码已接入仓库，Android 已接支付宝 SDK，后端已接服务端创建支付宝 APP 支付订单、异步通知验签、`payment_orders` / `payment_notifications`、幂等发放会员 / 加油包权益、后台订单核查和按已付款异常订单人工补发权益。2026-06-25 起，后端订单创建额外受生产支付门禁控制：默认关闭；内测联调必须同时配置测试包构建类型和账号白名单才允许创建支付宝订单，单独只配其中一个仍保持关闭；正式放量必须另开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。2026-06-25 至 2026-06-26 已用 `limited` 门禁和指定账号白名单跑通过 0.01 元内部 debug 测试单；这只能证明内测主链可用，不是正式收费开放。2026-06-27 起，Android 用户可见确认付款页已收回正式商品文案，不再展示“联调测试”或“测试金额”；debug-only 预览样例回到正式金额。真实确认页金额仍以后端创建的订单为准：`limited` 内测门禁下白名单 debug 测试包仍可能显示 0.01 元，public 正式收费后才显示正式实付金额。正式包收费前，生产环境必须移除 `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS`，显式打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`，并用 public 门禁检查脚本确认线上不是 limited 测试态。Android 购买链路已改为先创建订单，再展示“确认付款”页，用户确认订单尾号、金额、支付方式和一次性购买说明后才打开支付宝；当前首版不接自动续费，微信支付只保留未开通占位。生产正式收费仍不得直接放量，必须继续完成对账、退款、异常补偿和正式运营验收后，再按正式发版和运营口径打开。
+当前状态：支付宝 APP 支付已进入正式 public 门禁。Android 已接支付宝 SDK，后端已接服务端创建支付宝 APP 支付订单、异步通知验签、`payment_orders` / `payment_notifications`、幂等发放会员 / 加油包权益、后台订单核查、主动查单、退款登记、对账摘要和按已付款异常订单人工补发权益。2026-06-28 起，生产环境已移除 `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS`、`ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES`、`ALIPAY_PAYMENT_ALLOWED_USER_IDS`，显式开启 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`；公网 `/healthz` 返回 `alipay=ok / alipay_payment_gate=public`。Android 购买链路是先创建订单，再展示“确认付款”页，用户确认订单尾号、金额、支付方式和一次性购买说明后才打开支付宝；正式包显示真实商品金额，Plus / Pro 为 30 天一次性购买且不自动续费，加油包未用完次数长期保留，微信支付仍为未开通占位。正式收费开放前的门禁检查项已用于本次切换，0.01 元联调流程只保留为历史 / 回归流程，不能再当作当前生产收费口径。
 
 ## 当前代码真相
 
 - Android 会员中心的 Plus、Pro 和加油包按钮已改为真实支付入口：先请求后端 `POST /api/payments/alipay/orders` 创建订单，再展示确认付款页；用户点“确认并打开支付宝”后，Android 才把后端返回的 `order_string` 交给支付宝 SDK `PayTask.payV2` 调起支付。
-- Android 创建支付宝订单时会带 `client_build_type` 和 `client_version_code`；后端用它配合账号白名单控制“内部测试包可测、正式包继续不可用”。旧正式包不带构建类型时不会通过测试门禁；测试期只配 `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES=debug` 或只配账号白名单也不会放行。`limited` 模式额外硬限制只接受 `client_build_type=debug`，即使误把 `release` 写进构建类型白名单，正式包也不能创建订单；正式收费只能显式打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。
+- Android 创建支付宝订单时会带 `client_build_type` 和 `client_version_code`，便于后台查账、问题定位和历史 limited 测试单识别。生产 public 模式下，正式包可创建真实支付订单；若回退到 limited 内测模式，仍必须同时命中测试包构建类型和账号白名单，且 `limited` 模式只接受 `client_build_type=debug`。
 - Android 不保存、不生成、不读取支付宝应用私钥、支付宝公钥、商户密钥或任何支付渠道密钥；客户端同步结果只用于提示和轮询订单状态，不直接发放权益。
 - Android 确认付款页会展示订单、金额、订单尾号、支付方式和“一次购买30天，不自动续费；未到期会顺延”或“加油包长期保留”说明；支付宝为当前可选方式，微信支付只展示“暂未开通”占位。支付方式、微信占位、确认和取消按钮按竖排胶囊展示，避免窄屏横向挤压；确认页支持取消、遮罩取消和返回键取消；取消不会打开支付宝，也不会发权益。
 - Android 会把 `9000` 视为同步成功、`8000 / 6004 / 6006` 视为处理中、`6002` 视为网络异常并继续轮询后端订单；只有后端订单达到 `paid + grant_status=success` 才提示权益已生效。支付宝 SDK 返回的 `memo` 不上传原文，只记录是否存在备注，避免第三方自由文本进入 App 日志。
 - 后端新增正式支付订单表 `payment_orders` 和通知表 `payment_notifications`。支付宝通知会验签并校验 `app_id / seller_id / out_trade_no / trade_no / total_amount / trade_status`，成功处理后才返回支付宝要求的 `success`。
-- 0.01 元联调订单支付成功后会按商品类型发放完整测试权益，因此只允许白名单账号 + debug 测试包使用。测试订单不删除，`payment_orders` 会记录 `is_test_order / original_amount_cents / client_build_type / client_version_code`；后台汇总不把测试订单计入正式支付金额，便于后续和支付宝账单、回调日志、权益流水对账。
-- 2026-06-26 只读核查显示最近 `renew_pro` 0.01 测试订单已有 4 笔 `debug / versionCode=11 / is_test_order=true / paid / grant_status=success`，原价仍记录为 `29.90`。当前阶段不需要为了继续联调反复支付 `19.9 / 29.9` 正式价；0.01 测试足以验证 APP 支付调起、后端订单状态、权益发放和测试订单元数据。正式 public 模式开放前再按运营验收需要决定是否做一笔真实金额单，且应配合对账 / 退款 SOP，不在 limited 内测阶段硬烧正式金额。
+- 0.01 元联调订单是历史 limited 测试能力：支付成功后会按商品类型发放完整测试权益，因此只允许白名单账号 + debug 测试包使用。测试订单不删除，`payment_orders` 会记录 `is_test_order / original_amount_cents / client_build_type / client_version_code`；后台汇总不把测试订单计入正式支付金额，便于后续和支付宝账单、回调日志、权益流水对账。当前生产 public 门禁不再使用 0.01 测试金额。
+- 2026-06-26 只读核查显示最近 `renew_pro` 0.01 测试订单已有 4 笔 `debug / versionCode=11 / is_test_order=true / paid / grant_status=success`，原价仍记录为 `29.90`；2026-06-28 起正式 public 模式已打开，后续真实购买按正式金额计入支付订单和后台统计。
 - 后端生成支付宝 APP 支付订单时使用 RSA2 签名，`order_string` 包含 `format=json`，`biz_content` 明确带 `seller_id` 和 `product_code=QUICK_MSECURITY_PAY`；APP 支付订单串签名不包含 `sign` 本身，但保留 `sign_type=RSA2` 参与签名；支付宝异步通知验签仍按通知验签规则排除 `sign` 和 `sign_type`。后端发权益使用 `pay_<out_trade_no>` 作为幂等订单号，复用现有会员 / 加油包账本；重复通知不会重复发权益。`grant_status=processing` 未完成时不返回成功，保留支付宝重试机会；晚到的 `TRADE_CLOSED` 不应覆盖已支付订单。
 - 后端创建新支付宝订单前，会把同账号同类旧未支付 `pending` 订单本地标记为 `closed / LOCAL_REPLACED`，再创建新单；这解决用户退出支付宝或未完成付款后再次购买被旧订单占坑的问题。旧订单不物理删除，保留用于后台查账、售后和晚到回调处理；若旧单后来真实付款成功，验签回调仍可把订单更新为 `paid` 并走幂等发权益。
 - Plus / Pro 会员仍按 30 天周期处理；未到期同档续费按当前到期时间顺延，不覆盖掉剩余天数。支付 Plus 升 Pro 下单时，后端按 Plus 剩余有效天数折成金额抵扣：抵扣上限为一个 Plus 周期 19.9 元，实付最低为 10.00 元；0.01 联调只覆盖实际支付金额，订单仍记录正式折后原价。补偿次数已退出当前业务：支付、礼品卡和账号迁移都不再新增、不展示、不消费 `upgrade_credits`；旧表只作为历史遗留数据容器保留，后续如需清理必须单独走运维动作。加油包同一时刻只允许 1 个有剩余的 active 包，未用完时不能再创建加油包支付订单，用完后可再买。每日额度是自然日额度，不跨天结转。当前扣次顺序是每日额度 -> 加油包。
 - 后端开发期直改接口 `/api/tier/renew_plus`、`/api/tier/renew_pro`、`/api/tier/upgrade_plus_to_pro`、`/api/topup/buy` 仍保留给本地 / 内测调试，默认返回 `PAYMENT_NOT_CONFIGURED`；生产环境必须继续保持 `dev_order_endpoints=false`，不能把开发期接口当正式收费入口。
 - 管理后台订单页已接订单核查、窄口径人工补发、主动查单、受控退款登记、本地关闭超时待支付订单和对账摘要：可查看支付宝订单、渠道交易号尾号、订单状态、金额、权益发放状态、退款状态、最后查单结果和会员变更记录；`owner / finance_ops` 可对已 `paid` 但 `grant_status` 不是 `success` 的支付订单执行“补发权益”，必须填写原因并二次确认。补发复用服务端同一套 `pay_<out_trade_no>` 幂等发权益逻辑，不允许凭空给账号加会员或次数；未付款订单、已成功发放订单、开发期订单和普通只读角色不能补发。退款入口只允许财务角色处理已付款支付订单；正式已发权益订单会被后端拦截，必须先人工核查权益处置，再决定是否通过支付宝后台或后续专门流程退款；内部 0.01 测试订单可用于退款验收，即使权益已发放也允许退款，但只记录“测试退款、权益不自动扣回”。本地关闭超时待支付订单只关闭本地 `pending` 记录，不等于支付宝关单；对账摘要只作后台辅助，正式对账仍以支付宝账单和人工核对为准。
-- 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android SDK / manifest / 调起支付 / 未知结果轮询、后端支付宝订单 / 通知 / 验签 / seller_id / 幂等重试、查单 / 退款 / 对账 / 关闭超时单路由、数据库迁移、后台订单运营页、App / 官网隐私和第三方共享清单。脚本默认不打生产假回调；只有显式加 `-RunPublicNotifyProbe` 才会执行会写入通知表的公网通知探针。脚本只输出配置是否缺失，不打印任何密钥值；当前输出 `payment_readiness_status=attention` 表示代码已对齐但正式收费开放前仍要做 public 门禁、真实回调、对账、退款和人工验收。
+- 只读支付门禁脚本：[check-payment-readiness.ps1](D:/wuhao/scripts/check-payment-readiness.ps1)。它会检查 Android SDK / manifest / 调起支付 / 未知结果轮询、后端支付宝订单 / 通知 / 验签 / seller_id / 幂等重试、查单 / 退款 / 对账 / 关闭超时单路由、数据库迁移、后台订单运营页、App / 官网隐私和第三方共享清单。脚本默认不打生产假回调；只有显式加 `-RunPublicNotifyProbe` 才会执行会写入通知表的公网通知探针。脚本只输出配置是否缺失，不打印任何密钥值；正式 public 收费验收需使用 `-StrictPublicHealth -AllowPublicPayment -FormalChargingAccepted`，并结合 ECS readiness 和公网黑盒判断。
 
-## 正式收费切换前检查
+## 正式收费切换检查
 
-目标：把内部 0.01 联调态收回到正式收费态，防止正式包继续走测试金额或白名单门禁。
+目标：把内部 0.01 联调态收回到正式收费态，防止正式包继续走测试金额或白名单门禁。2026-06-28 已按本节完成 public 切换；后续如回滚到 limited 或重新上线支付，仍按本节复核。
 
-正式切换前必须同时满足：
+正式切换必须同时满足：
 
 1. 生产 ECS 已移除 `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS`，不再保留 0.01 测试金额。
 2. 生产 ECS 显式配置 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`，并确认 `ALIPAY_PAYMENT_ALLOWED_BUILD_TYPES` / `ALIPAY_PAYMENT_ALLOWED_USER_IDS` 不再作为正式收费准入条件。
@@ -45,9 +45,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-r
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-launch-readiness.ps1 -ReleaseGate -PaymentFormalAccepted
 ```
 
-这三个命令都通过，才允许把支付宝购买写成“正式收费已开放”。只通过默认 readiness 仍只能说明免费主链和 limited 内测链路健康。
+这三个命令都通过，才允许把支付宝购买写成“正式收费已开放”。只通过默认 readiness 仍只能说明代码和免费主链健康，不能替代 public 门禁与真实支付运营验收。
 
 ## 历史 / 回归：0.01 元内测联调流程
+
+当前生产已切到 public 正式收费，本节只在明确回退到 limited 内测门禁时使用，不能作为当前生产收费口径。
 
 目标：只让指定账号的内部 debug 测试包跑通真实支付宝 0.01 元支付，不开放正式收费，不让正式包或非白名单账号创建订单。
 
@@ -73,10 +75,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-launc
 - 0.01 测试单不能删除，后台应标记为测试订单并排除正式收入统计。
 - 每次联调都要记录测试包对象 / commit / 账号白名单 / 商品类型 / 支付宝支付结果 / 后端订单状态 / 权益是否到账 / 是否触发回调 / 是否需要人工补权益。
 - App 自动日志应能串起完整链路：`payment.button_tapped`、`payment.button_blocked`、`payment.start`、`payment.order_create_started`、`payment.order_create_success`、`payment.order_create_ignored`、`payment.order_create_cancelled`、`payment.order_create_failed`、`payment.confirmation_shown`、`payment.confirmation_confirmed`、`payment.confirmation_cancelled`、`payment.alipay_launch_started`、`payment.alipay_sync_result`、`payment.order_poll_started`、`payment.order_poll_tick`、`payment.order_poll_timeout`、`payment.order_status_failed`、`payment.grant_success`、`payment.grant_needs_ops`。日志只保留商品类型、当前会员档、构建类型、版本号、订单尾号、状态、安全错误码和 `memo_present` 这类布尔信息，不能记录完整订单号、`order_string`、渠道交易号、密钥、公钥、手机号、支付宝 `memo` 原文或支付参数全文。
-- 若“点不动”，先确认点的是 Plus/Pro 购买按钮，而不是 Free 状态下的加油包或已有加油包余额时的“用完再买”；再确认会员中心权益已加载、测试包确实是 debug、测试账号在白名单内、生产门禁为 `limited`。
+- 若回退 limited 后“点不动”，先确认点的是 Plus/Pro 购买按钮，而不是 Free 状态下的加油包或已有加油包余额时的“用完再买”；再确认会员中心权益已加载、测试包确实是 debug、测试账号在白名单内、生产门禁为 `limited`。
 - 若能点但提示“支付暂时不可用 / 下单失败”，优先看 `check-payment-readiness.ps1`、`/healthz` 的 `alipay` 和 `alipay_payment_gate`、App 日志 `payment.order_create_failed`、后端支付日志。
 - 若后端创建订单成功、Android 已调用支付宝，但支付宝客户端弹“商家订单参数异常，请重新发起付款”，通常表示订单参数在支付宝客户端校验阶段未通过，尚未进入真实付款页，也不会扣款。该现象不能简单等同于“支付宝产品没开通”：应用已上线和 APP 支付产品可见只证明粗开通状态，仍要继续核对本次订单使用的 `app_id`、`seller_id`、应用私钥与控制台应用公钥是否配对、支付宝公钥 / 证书模式是否一致、APP 支付产品权限是否属于同一应用，以及后端实际环境变量是否和控制台截图一致。尤其要确认开放平台“接口加签方式”是普通公钥还是公钥证书：当前后端按普通公钥模式生成 RSA2 订单串；如果控制台是证书模式，必须改回普通公钥模式或补齐证书模式签名 / 验签支持。本轮已把 APP 支付订单串修正为保留 `sign_type=RSA2` 参与签名，若新测试包仍复现，应使用支付宝开放平台接口诊断按该笔 `out_trade_no` 查询具体原因；聊天、文档和日志只记录订单尾号，不贴完整订单号、完整订单串、签名或密钥。
-- 测试完成后必须移除 `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS`，正式收费前不得打开 `ALIPAY_PAYMENT_PUBLIC_ENABLED=true`。
+- 测试完成后必须移除 `ALIPAY_PAYMENT_TEST_AMOUNT_CENTS`；回到正式 public 模式前必须重新跑本 runbook 的正式收费切换检查。
 
 ## 已支付但权益未到账处理口径
 
