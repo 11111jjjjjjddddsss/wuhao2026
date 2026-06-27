@@ -943,7 +943,7 @@ class ChatStreamingRendererTest {
         assertTrue(fourthIndex > thirdIndex)
         assertTrue(fifthIndex > fourthIndex)
         assertTrue(models[1] is StreamingLineModel.Numbered)
-        assertTrue(isRendererCompactNumberedSection(models[1] as StreamingLineModel.Numbered))
+        assertFalse(isRendererCompactNumberedSection(models[1] as StreamingLineModel.Numbered))
         assertTrue(shouldShowStreamingSectionDivider(models, secondIndex))
         assertTrue(shouldShowStreamingSectionDivider(models, thirdIndex))
         assertTrue(shouldShowStreamingSectionDivider(models, fourthIndex))
@@ -1190,7 +1190,7 @@ class ChatStreamingRendererTest {
     }
 
     @Test
-    fun boldNumberedSectionsWithInlineBodyStillCreateDividers() {
+    fun boldNumberedLabelsWithInlineBodyStayPlainNumberedItems() {
         val state = splitStreamingBlockState(
             "**影响价格的关键因素**\n" +
                 "**1. 含量与形态**：七水硫酸镁含镁约 9.8%，无水硫酸镁含镁约 20%。\n" +
@@ -1204,8 +1204,11 @@ class ChatStreamingRendererTest {
         assertTrue(models[1] is StreamingLineModel.Numbered)
         assertTrue(models[2] is StreamingLineModel.Numbered)
         assertTrue(models[3] is StreamingLineModel.Numbered)
-        assertTrue(shouldShowStreamingSectionDivider(models, 1))
-        assertTrue(shouldShowStreamingSectionDivider(models, 2))
+        assertFalse(isRendererCompactNumberedSection(models[1] as StreamingLineModel.Numbered))
+        assertFalse(isRendererCompactNumberedSection(models[2] as StreamingLineModel.Numbered))
+        assertFalse(isRendererCompactNumberedSection(models[3] as StreamingLineModel.Numbered))
+        assertFalse(shouldShowStreamingSectionDivider(models, 1))
+        assertFalse(shouldShowStreamingSectionDivider(models, 2))
         assertFalse(shouldShowStreamingSectionDivider(models, 3))
     }
 
@@ -1702,6 +1705,22 @@ class ChatStreamingRendererTest {
 
         require(model is StreamingLineModel.Numbered)
         assertFalse(isRendererCompactNumberedSection(model))
+    }
+
+    @Test
+    fun numberedBoldLabelWithBodyDoesNotUseCompactSectionStyle() {
+        val model = classifyStreamingLine("1. **小范围试喷：** 选几株病叶较多的植株，按资料推荐剂量的下限试喷。")
+
+        require(model is StreamingLineModel.Numbered)
+        assertFalse(isRendererCompactNumberedSection(model))
+
+        val rendered = buildRendererInlineAnnotatedString(
+            text = model.text,
+            mode = RendererInlineMode.Settled
+        )
+        assertEquals("小范围试喷： 选几株病叶较多的植株，按资料推荐剂量的下限试喷。", rendered.text)
+        assertTrue(rendered.hasSpanFor("小范围试喷：") { it.isRendererBoldTextStyle() })
+        assertFalse(rendered.hasSpanFor("选几株病叶较多的植株") { it.isRendererBoldTextStyle() })
     }
 
     @Test

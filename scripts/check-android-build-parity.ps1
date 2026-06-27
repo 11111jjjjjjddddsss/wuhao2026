@@ -1030,8 +1030,10 @@ if ($failures.Count -eq 0) {
         "Assistant renderer tests must prove compact numbered section dividers survive a blank line before the heading."
     Require-Match $failures $chatStreamingRendererTest 'numberedSectionsAfterStandaloneBoldHeadingCreateVisibleDividers' `
         "Assistant renderer tests must prove numbered sections after a standalone bold group title create visible divider lines."
-    Require-Match $failures $chatStreamingRendererTest 'boldNumberedSectionsWithInlineBodyStillCreateDividers' `
-        "Assistant renderer tests must prove bold numbered sections with inline body text still create divider lines."
+    Require-Match $failures $chatStreamingRendererTest 'boldNumberedLabelsWithInlineBodyStayPlainNumberedItems' `
+        "Assistant renderer tests must prove bold numbered labels with inline body text stay plain numbered items instead of compact section headings."
+    Require-Match $failures $chatStreamingRendererTest 'numberedBoldLabelWithBodyDoesNotUseCompactSectionStyle' `
+        "Assistant renderer tests must prove numbered bold labels with trailing body text do not use compact section typography."
     Require-Match $failures $chatStreamingRendererTest 'commonModelHeadingVariantsCreateDividersAfterBlankLine' `
         "Assistant renderer tests must prove common future model heading variants keep section dividers after blank spacer lines."
     Require-Match $failures $chatStreamingRendererTest 'readableParagraphSplitAndBlankHeadingDividerWorkTogether' `

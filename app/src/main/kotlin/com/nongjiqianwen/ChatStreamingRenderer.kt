@@ -1215,7 +1215,9 @@ internal fun shouldUseRendererCompactNumberedSection(
 
 private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     val trimmed = text.trim()
-    rendererStandaloneBoldTitlePrefix(trimmed)?.let { return true }
+    rendererStandaloneBoldTitlePrefixSuffix(trimmed)?.let { (_, suffix) ->
+        return isRendererCompactBoldTitleSuffix(suffix)
+    }
     val firstLine = trimmed.lineSequence().firstOrNull()?.trim().orEmpty()
     if (firstLine.isNotEmpty() && firstLine != trimmed) {
         return isRendererCompactNumberedSectionText(firstLine)
@@ -1232,13 +1234,21 @@ private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     return commaLikeCount == 1 && plain.length <= 12
 }
 
-private fun rendererStandaloneBoldTitlePrefix(text: String): String? {
+private fun rendererStandaloneBoldTitlePrefixSuffix(text: String): Pair<String, String>? {
     if (!text.startsWith("**")) return null
     val closing = text.indexOf("**", startIndex = 2)
     if (closing <= 2) return null
     val title = text.substring(2, closing).trim()
     if (!isRendererStandaloneBoldHeadingTitle(title)) return null
-    return title
+    val suffix = text.drop(closing + 2).trim()
+    return title to suffix
+}
+
+private fun isRendererCompactBoldTitleSuffix(suffix: String): Boolean {
+    if (suffix.isEmpty() || suffix in setOf(":", "：")) return true
+    if (suffix.length > 32) return false
+    if (suffix.any { it in "。！？!?；;" }) return false
+    return suffix.startsWith("（") && suffix.endsWith("）")
 }
 
 private fun parseRendererStandaloneBoldHeading(line: String): String? {
