@@ -49,10 +49,10 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"有多个要点、步骤、提醒或对比内容时",
 		"对比内容",
 		"优先使用编号列表或项目列表",
-		"禁止英文",
+		"禁止英文输出",
 		"默认只用中文",
-		"除非是专业名词、商品名、登记标签或用户原文需要保留",
-		"否则不要夹带英文",
+		"只有专业名词、商品名、登记标签或用户原文需要原样保留时",
+		"才允许出现英文",
 	} {
 		if !strings.Contains(chatOutputConstraint, want) {
 			t.Fatalf("output constraint missing %q: %q", want, chatOutputConstraint)
@@ -87,6 +87,8 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"不要中英混写",
 		"普通英文词和英文短语要改成中文说法",
 		"确需保留的专业名词、商品名、登记标签或用户原文除外",
+		"除非是专业名词、商品名、登记标签或用户原文需要保留",
+		"否则不要夹带英文",
 		"不得直接夹在中文句子里",
 		"农药/肥料成分、品种名、病原拉丁学名",
 		"才使用英文，并尽量先给中文解释",
