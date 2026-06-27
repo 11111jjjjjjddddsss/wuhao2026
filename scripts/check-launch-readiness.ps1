@@ -14,6 +14,10 @@ param(
     [int]$AppUpdatePreviousVersionCode = 0,
     [string]$AppUpdatePublicApiBaseUrl = "https://api.nongjiqiancha.cn",
     [string]$ExpectedServerRevision = "",
+    [ValidateSet("closed", "limited", "public")]
+    [string]$ExpectedAlipayPaymentGate = "limited",
+    [switch]$AllowPublicPayment,
+    [switch]$PaymentFormalAccepted,
     [switch]$AllowAttentionExitZero
 )
 
@@ -31,6 +35,22 @@ if ($ReleaseGate) {
     }
     $IncludeBuilds = $true
     $RequireAdminSmoke = $true
+}
+if ($PaymentFormalAccepted) {
+    $AllowPublicPayment = $true
+    $ExpectedAlipayPaymentGate = "public"
+}
+if ($PaymentFormalAccepted -and ($SkipAndroid -or $SkipBackend -or $SkipCloud)) {
+    throw "-PaymentFormalAccepted cannot be combined with -SkipAndroid, -SkipBackend, or -SkipCloud; formal charging must verify Android parity, payment readiness, and ECS public gate together."
+}
+if (($ExpectedAlipayPaymentGate -eq "public" -or $AllowPublicPayment) -and -not $PaymentFormalAccepted) {
+    throw "Public payment validation must use -PaymentFormalAccepted so payment readiness, ECS readiness, and launch gating stay tied together."
+}
+if ($PaymentFormalAccepted -and $AllowAttentionExitZero) {
+    throw "-PaymentFormalAccepted cannot be combined with -AllowAttentionExitZero; formal charging must fail closed on attention items."
+}
+if ($AllowPublicPayment -and $ExpectedAlipayPaymentGate -ne "public") {
+    throw "-AllowPublicPayment requires -ExpectedAlipayPaymentGate public, or use -PaymentFormalAccepted."
 }
 if ($AppUpdateReleaseGate) {
     if ($AllowAttentionExitZero) {
@@ -256,6 +276,12 @@ function Invoke-PaymentReadinessGateStep {
         )
         if ($SkipPublicHealth) {
             $paymentArgs += "-SkipPublicHealth"
+        }
+        if ($AllowPublicPayment) {
+            $paymentArgs += "-AllowPublicPayment"
+        }
+        if ($PaymentFormalAccepted) {
+            $paymentArgs += "-FormalChargingAccepted"
         }
         $lines = Invoke-NativeCaptured -FilePath "powershell.exe" -Arguments $paymentArgs
         $timer.Stop()
@@ -521,6 +547,7 @@ if (-not $SkipCloud) {
         if (-not [string]::IsNullOrWhiteSpace($expectedRevisionForReadiness)) {
             $ecsReadinessArgs += @("-ExpectedRevision", $expectedRevisionForReadiness)
         }
+        $ecsReadinessArgs += @("-ExpectedAlipayPaymentGate", $ExpectedAlipayPaymentGate)
         Invoke-Native -FilePath "powershell.exe" -Arguments $ecsReadinessArgs
     }
     Invoke-GateStep -Name "public blackbox" -ScriptBlock {

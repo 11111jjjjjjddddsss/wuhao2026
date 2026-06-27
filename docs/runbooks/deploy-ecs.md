@@ -1,6 +1,6 @@
 # ECS 发版 Runbook
 
-最后更新：2026-06-20
+最后更新：2026-06-27
 
 ## 目的
 
@@ -54,6 +54,13 @@
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-ecs-readiness.ps1 -ExpectedAlipayPaymentGate public
+```
+
+正式收费发布前总门禁还要显式打开 public 支付验收，不允许只跑默认 limited 检查：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File D:\wuhao\scripts\check-launch-readiness.ps1 -ReleaseGate -PaymentFormalAccepted
 ```
 
 服务器内常用命令：

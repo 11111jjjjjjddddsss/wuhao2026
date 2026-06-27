@@ -9289,11 +9289,10 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("加油包：未用完", "未用完时不能重复购买，后端和本地都会拦住", UiCopyPreviewKind.MembershipTopupActive),
                     UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付状态浮层", "支付失败 / 权益异常统一走中部浮层，不挤会员中心", UiCopyPreviewKind.MembershipPaymentNotice),
-                    UiCopyPreviewItem("确认付款：联调", "0.01 测试订单、订单尾号和竖排支付按钮", UiCopyPreviewKind.MembershipPaymentConfirm),
+                    UiCopyPreviewItem("确认付款", "正式订单、订单尾号和竖排支付按钮", UiCopyPreviewKind.MembershipPaymentConfirm),
                     UiCopyPreviewItem("购买 Plus", "Plus 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPlus),
                     UiCopyPreviewItem("购买 Pro", "Pro 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPro),
                     UiCopyPreviewItem("升级 Pro", "Plus 剩余天数抵扣后的确认页", UiCopyPreviewKind.MembershipPaymentConfirmUpgradePro),
-                    UiCopyPreviewItem("升级联调", "0.01 测试金额下隐藏折扣明细", UiCopyPreviewKind.MembershipPaymentConfirmUpgradeProTest),
                     UiCopyPreviewItem("购买加油包", "80 次加油包正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmTopup),
                     UiCopyPreviewItem("确认付款大字体", "1.6x 字体下可滚动查看确认和取消", UiCopyPreviewKind.MembershipPaymentConfirmLargeFont),
                     UiCopyPreviewItem("权益生效提示", "支付完成后展示后端确认的权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
@@ -9675,7 +9674,6 @@ private enum class UiCopyPreviewKind {
     MembershipPaymentConfirmPlus,
     MembershipPaymentConfirmPro,
     MembershipPaymentConfirmUpgradePro,
-    MembershipPaymentConfirmUpgradeProTest,
     MembershipPaymentConfirmTopup,
     MembershipPaymentConfirmLargeFont,
     MembershipPurchaseSuccess,
@@ -10180,17 +10178,6 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                         subject = "农技千查升级 Pro 会员30天",
                         amountCents = 1995,
                         outTradeSuffix = "UPRO1995",
-                        originalAmountCents = 1995,
-                        listAmountCents = 2990,
-                        discountAmountCents = 995
-                    )
-                }
-                UiCopyPreviewKind.MembershipPaymentConfirmUpgradeProTest -> {
-                    MembershipPaymentConfirmPreview(
-                        product = MembershipPaymentProduct.UpgradePlusToPro,
-                        subject = "农技千查升级 Pro 会员30天（联调测试）",
-                        amountCents = 1,
-                        outTradeSuffix = "UPRO0001",
                         originalAmountCents = 1995,
                         listAmountCents = 2990,
                         discountAmountCents = 995

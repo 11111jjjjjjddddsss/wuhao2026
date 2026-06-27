@@ -6,7 +6,8 @@
     [switch]$StrictPublicHealth,
     [switch]$RunPublicNotifyProbe,
     [switch]$AllowPublicPayment,
-    [switch]$AllowTestAmount
+    [switch]$AllowTestAmount,
+    [switch]$FormalChargingAccepted
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,7 +86,7 @@ function Write-PrereqGroupStatus {
 }
 
 Write-Host "== payment readiness =="
-Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth strict_public_health=$StrictPublicHealth run_public_notify_probe=$RunPublicNotifyProbe allow_public_payment=$AllowPublicPayment allow_test_amount=$AllowTestAmount"
+Write-Host "repo=$RepoRoot base_url=$BaseUrl skip_public_health=$SkipPublicHealth strict_public_health=$StrictPublicHealth run_public_notify_probe=$RunPublicNotifyProbe allow_public_payment=$AllowPublicPayment allow_test_amount=$AllowTestAmount formal_charging_accepted=$FormalChargingAccepted"
 
 $appBuildPath = Join-Path $RepoRoot "app/build.gradle.kts"
 $manifestPath = Join-Path $RepoRoot "app/src/main/AndroidManifest.xml"
@@ -137,6 +138,7 @@ $projectPaymentDocs = @(
     $paymentsRunbook
 ) -join "`n"
 $thirdPartyPage = Read-SourceFile $thirdPartyPagePath
+$observedPublicPaymentGate = ""
 
 Require-Match -Name "android_alipay_sdk_dependency" -Content $appBuild -Pattern "alipaysdk-android"
 Require-Match -Name "android_alipay_package_visibility" -Content $manifest -Pattern "com\.eg\.android\.AlipayGphone"
@@ -251,6 +253,7 @@ if (-not $SkipPublicHealth) {
             Add-ErrorItem "public healthz missing alipay_payment_gate; deploy backend payment gate before payment test"
         } else {
             $publicGate = [string]$response.alipay_payment_gate
+            $observedPublicPaymentGate = $publicGate
             Write-Host "public_healthz_alipay_payment_gate=$publicGate"
             if (@("closed", "limited", "public") -notcontains $publicGate) {
                 Add-ErrorItem "public healthz alipay_payment_gate has unexpected value: $publicGate"
@@ -333,6 +336,25 @@ if (Test-AnyEnvironmentVariable -Names @("ALIPAY_PAYMENT_PUBLIC_ENABLED") -and -
 if (Test-AnyEnvironmentVariable -Names @("ALIPAY_PAYMENT_TEST_AMOUNT_CENTS") -and -not $AllowTestAmount) {
     Add-WarningItem "local ALIPAY_PAYMENT_TEST_AMOUNT_CENTS is set; remove it after 0.01 payment test"
 }
+if ($AllowPublicPayment -and -not $FormalChargingAccepted) {
+    Add-ErrorItem "-AllowPublicPayment requires -FormalChargingAccepted so public charging cannot be treated as an attention-only check"
+}
+if ($FormalChargingAccepted) {
+    if (-not $AllowPublicPayment) {
+        Add-ErrorItem "-FormalChargingAccepted requires -AllowPublicPayment so opening paid orders is always explicit"
+    }
+    if ($SkipPublicHealth) {
+        Add-ErrorItem "-FormalChargingAccepted requires public healthz probing"
+    }
+    if ($observedPublicPaymentGate -ne "public") {
+        Add-ErrorItem "-FormalChargingAccepted requires public alipay_payment_gate, got '$observedPublicPaymentGate'"
+    }
+}
+if ($FormalChargingAccepted -and $warnings.Count -gt 0) {
+    foreach ($warning in $warnings) {
+        Add-ErrorItem "formal charging warning must be resolved: $warning"
+    }
+}
 Write-Host "payment_readiness_note=Code and documents are aligned for Alipay APP Pay operations, but production charging still requires live env config, callback validation, reconciliation, refund SOP, and manual acceptance."
 
 if ($warnings.Count -gt 0) {
@@ -349,5 +371,9 @@ if ($errors.Count -gt 0) {
     exit 1
 }
 
-Write-Host "payment_readiness_status=attention"
+if ($FormalChargingAccepted) {
+    Write-Host "payment_readiness_status=ready"
+} else {
+    Write-Host "payment_readiness_status=attention"
+}
 exit 0

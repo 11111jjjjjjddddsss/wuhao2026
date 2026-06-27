@@ -699,7 +699,7 @@ if ($failures.Count -eq 0) {
         "Membership center close button must keep a larger touch target and visible close glyph."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单尾号"(?s:.*?)value\s*=\s*item\.outTradeSuffix' `
         "Payment confirmation must show only the safe order suffix for user support, not the full order number."
-    Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单"(?s:.*?)value\s*=\s*membershipPaymentConfirmTitle\(item\.product,\s*item\.subject\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start(?s:.*?)label\s*=\s*"说明"(?s:.*?)value\s*=\s*membershipPaymentProductNote\(item\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start' `
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentConfirmOverlay(?s:.*?)label\s*=\s*"订单"(?s:.*?)value\s*=\s*membershipPaymentConfirmTitle\(item\.product\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start(?s:.*?)label\s*=\s*"说明"(?s:.*?)value\s*=\s*membershipPaymentProductNote\(item\)(?s:.*?)valueTextAlign\s*=\s*TextAlign\.Start' `
         "Payment confirmation must use short product names and keep multi-line notes left-aligned."
     Require-Match $failures $sessionApi 'original_amount_cents(?s:.*?)originalAmountCents(?s:.*?)list_amount_cents(?s:.*?)listAmountCents(?s:.*?)discount_amount_cents(?s:.*?)discountAmountCents' `
         "Alipay order response must keep original/list/discount amount fields for Plus-to-Pro discount display."
@@ -717,16 +717,16 @@ if ($failures.Count -eq 0) {
         "Payment method capsules must keep readable typography on real phones."
     Require-Match $failures $membershipCenterSheet 'private\s+fun\s+MembershipPaymentConfirmButton(?s:.*?)val\s+isCancel\s*=\s*text\s*==\s*"取消"(?s:.*?)heightIn\(min\s*=\s*50\.dp\)(?s:.*?)fontSize\s*=\s*if\s*\(isCancel\)\s*17\.sp\s*else\s*16\.sp' `
         "Payment confirmation buttons must keep 50dp tap targets, with the cancel button using the larger user-approved text."
-    Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.RenewPlus\s*->\s*"Plus 会员 30天"(?s:.*?)MembershipPaymentProduct\.RenewPro\s*->\s*"Pro 会员 30天"(?s:.*?)MembershipPaymentProduct\.BuyTopup\s*->\s*"加油包 80次"(?s:.*?)membershipPaymentConfirmTitle\((?s:.*?)subject\.contains\("联调测试"\)' `
-        "Payment confirmation titles must stay concise while preserving the internal test suffix when present."
+    Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.RenewPlus\s*->\s*"Plus 会员 30天"(?s:.*?)MembershipPaymentProduct\.RenewPro\s*->\s*"Pro 会员 30天"(?s:.*?)MembershipPaymentProduct\.BuyTopup\s*->\s*"加油包 80次"(?s:.*?)membershipPaymentConfirmTitle\(product:\s*MembershipPaymentProduct\):\s*String(?s:.*?)return\s+membershipPaymentProductTitle\(product\)' `
+        "Payment confirmation titles must stay concise and must not expose internal test suffixes in the real payment sheet."
     Require-Match $failures $membershipCenterSheet 'val\s+plusEnabled\s*=\s*activeTier\s*==\s*"free"\s*\|\|\s*activeTier\s*==\s*"plus"(?s:.*?)activeTier\s*==\s*"pro"\s*->\s*"当前为 Pro"(?s:.*?)actionEnabled\s*=\s*plusEnabled\s*&&\s*paymentState\.activeProduct\s*==\s*null' `
         "Membership plans must keep Plus disabled for Pro users."
     Require-Match $failures $membershipCenterSheet 'MembershipPaymentProduct\.BuyTopup\s*->\s*"额外80次问诊次数，长期保留"(?s:.*?)MembershipPaymentProduct\.UpgradePlusToPro\s*->(?s:.*?)Plus剩余有效天数(?s:.*?)抵扣(?s:.*?)else\s*->\s*"一次购买30天，不自动续费；未到期会顺延"' `
         "Payment confirmation notes must explain topup retention, Plus-to-Pro remaining-day discount, and membership renewal extension."
     Require-Match $failures $membershipCenterSheet 'shouldShowPaymentDiscount\(\)(?s:.*?)listAmount\s*-\s*discountAmount\s*==\s*originalAmount(?s:.*?)amountCents\s*==\s*originalAmount' `
         "Plus-to-Pro discount rows must only show when backend discount math matches the displayed payment amount."
-    Require-Match $failures $chatScreen 'MembershipPaymentConfirmUpgradeProTest(?s:.*?)subject\s*=\s*"农技千查升级 Pro 会员30天（联调测试）"(?s:.*?)amountCents\s*=\s*1(?s:.*?)originalAmountCents\s*=\s*1995(?s:.*?)listAmountCents\s*=\s*2990(?s:.*?)discountAmountCents\s*=\s*995' `
-        "Debug preview must cover Plus-to-Pro 0.01 test orders without showing a misleading formal discount total."
+    Require-NoMatch $failures ($chatScreen + $membershipCenterSheet) '0\.01|联调测试|测试金额|联调金额' `
+        "Android release-facing payment UI and debug preview copy must be closed back to formal pricing before a formal package."
     Require-NoMatch $failures $membershipCenterSheet 'Plus剩余.*折成补偿次数|Plus\s*剩余.*补偿次数|Plus\s*剩余权益补为次数' `
         "Payment upgrade copy must not revert to the old Plus-to-Pro compensation wording."
     Require-Match $failures $membershipCenterSheet 'MembershipPurchaseSuccessOverlay(?s:.*?)zIndex\(132f\)(?s:.*?)fillMaxSize\(\)(?s:.*?)background\(Color\.Black\.copy\(alpha\s*=\s*0\.46f\)\)(?s:.*?)widthIn\(max\s*=\s*360\.dp\)(?s:.*?)fontSize\s*=\s*22\.sp(?s:.*?)width\(232\.dp\)(?s:.*?)heightIn\(min\s*=\s*52\.dp\)' `

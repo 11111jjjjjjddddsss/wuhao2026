@@ -461,7 +461,7 @@ internal fun MembershipPaymentConfirmOverlay(
                         Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
                             MembershipPaymentInfoRow(
                                 label = "订单",
-                                value = membershipPaymentConfirmTitle(item.product, item.subject),
+                                value = membershipPaymentConfirmTitle(item.product),
                                 valueTextAlign = TextAlign.Start
                             )
                             if (item.shouldShowPaymentDiscount()) {
@@ -806,8 +806,8 @@ internal fun MembershipPaymentNoticePreview() {
 @Composable
 internal fun MembershipPaymentConfirmPreview(
     product: MembershipPaymentProduct = MembershipPaymentProduct.RenewPro,
-    subject: String = "农技千查 Pro 会员30天（联调测试）",
-    amountCents: Int = 1,
+    subject: String = "农技千查 Pro 会员30天",
+    amountCents: Int = 2990,
     originalAmountCents: Int? = null,
     listAmountCents: Int? = null,
     discountAmountCents: Int? = null,
@@ -1330,12 +1330,8 @@ private fun membershipPaymentProductTitle(product: MembershipPaymentProduct): St
         MembershipPaymentProduct.BuyTopup -> "加油包 80次"
     }
 
-private fun membershipPaymentConfirmTitle(
-    product: MembershipPaymentProduct,
-    subject: String
-): String {
-    val testSuffix = if (subject.contains("联调测试")) "（联调测试）" else ""
-    return membershipPaymentProductTitle(product) + testSuffix
+private fun membershipPaymentConfirmTitle(product: MembershipPaymentProduct): String {
+    return membershipPaymentProductTitle(product)
 }
 
 private fun MembershipPaymentConfirmation.shouldShowPaymentDiscount(): Boolean {
@@ -1352,11 +1348,7 @@ private fun MembershipPaymentConfirmation.shouldShowPaymentDiscount(): Boolean {
 private fun membershipPaymentProductNote(item: MembershipPaymentConfirmation): String =
     when (item.product) {
         MembershipPaymentProduct.BuyTopup -> "额外80次问诊次数，长期保留"
-        MembershipPaymentProduct.UpgradePlusToPro -> if (item.subject.contains("联调测试")) {
-            "Plus剩余有效天数按正式价抵扣；联调金额按测试配置处理"
-        } else {
-            "Plus剩余有效天数已在本次金额中抵扣，支付成功后立即生效"
-        }
+        MembershipPaymentProduct.UpgradePlusToPro -> "Plus剩余有效天数已在本次金额中抵扣，支付成功后立即生效"
         else -> "一次购买30天，不自动续费；未到期会顺延"
     }
 
