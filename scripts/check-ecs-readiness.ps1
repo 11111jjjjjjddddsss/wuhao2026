@@ -485,7 +485,7 @@ if is_truthy "$chat_primary_enabled"; then
     '"chat_primary_api_mode":"responses"' \
     '"chat_primary_search_context_size":"low"' \
     '"chat_primary_reasoning_effort":"high"' \
-    '"chat_primary_first_visible_timeout_seconds":10'; do
+    '"chat_primary_first_visible_timeout_seconds":15'; do
     if ! grep -q "$expected" "$health_body" 2>/dev/null; then
       echo "healthz missing expected chat primary marker: $expected" >&2
       exit 16
