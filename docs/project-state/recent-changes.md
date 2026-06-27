@@ -5,6 +5,7 @@
 
 ## 2026-06-27
 
+- Android 主聊天按用户真机反馈补一刀首屏掉位修复：`hasInitialDocumentFlowReachedWorkline()` 不再把 `chatListState.canScrollForward` 当作“内容已经到工作线”的替代信号，只在真实文档内容底部达到工作线后，才让首次发送 / 清数据首屏从 top flow 交给正常底部锚定。这样能压住模型等待较久、流式高度变化或回复完成后，列表误判可滚而提前 bottom arrangement，导致顶部大空白、内容掉到下方的问题。本轮不改模型、支付、会员文案、表格 / 标题渲染、主对话锚点或输出约束；仍需新测试包真机复测长等待图片问诊、普通短问答和手动回底。
 - 生产后端已实际对齐到 `029cc804` 和 `gpt-5.5 / high / 12 秒无可见正文回落 / low 联网 / 40 Key 池`：部署后又通过 Cloud Assistant 只修改 ECS `/etc/nongjiqiancha/server.env` 中两个非密钥配置项，把旧的 `xhigh / 15 秒` 覆盖掉，并重启 active slot；`check-ecs-readiness.ps1 -ExpectedRevision 029cc804 -ExpectedChatPrimaryKeyPoolSize 40 -ExpectedAlipayPaymentGate limited` 和公网黑盒均通过。12 秒仍只看用户可见正文首字，不是整段完成耗时；中途已开始吐字后不在同一条回复内切千问。
 - 基于提交 `029cc80495f2` 生成内部 debug 测试包 `test-apks/debug/20260627/nongjiqiancha-debug-internal-20260627-142722-029cc80495f2.apk`，大小 `21,287,624` 字节，SHA-256 为 `7ad8b5222b3219f40b471f3911528ce92aad076fd0c114f31fb1f8ebd9b8d26d`，包名 / 签名匹配 / debug 属性 / OSS `test-apks/` 3 天生命周期 / 200 与 206 下载探针均通过，并清理上一只 `20260627-133735-2de072909284` 测试包。该包用于验证 Plus / Pro 套餐卡文案恢复、GPT 短横列表渲染、会员中心支付状态不占位、debug-only 预览面板、生产后端 `gpt-5.5 / high / 12 秒回落` 和支付宝 limited 内测门禁；本轮只发内部测试包，不发布正式 APK、不改官网正式下载或检查更新。
 - 按用户反馈恢复会员中心 Plus / Pro 套餐卡三条卖点文案：Plus 回到“每天25次问诊 / 图文问题随时问 / 记忆与上下文更强”，Pro 回到“每天40次问诊 / 复杂问题推理更强 / 适合多作物、多地块复盘”。“一次购买30天，不自动续费”和 Plus 升 Pro 抵扣说明仍保留在确认付款页 / 规则说明等更适合解释订单的地方，套餐卡本身只放权益卖点；不改会员周期、价格、支付、抵扣、加油包或后端权益逻辑。

@@ -3114,11 +3114,9 @@ fun ChatScreen() {
     fun hasInitialDocumentFlowReachedWorkline(): Boolean {
         val documentContentBottomPx = currentInitialDocumentFlowBottomPx()
         val worklineBottomPx = currentUnifiedBottomTargetPx()
-        val measuredReach =
-            documentContentBottomPx > 0 &&
-                worklineBottomPx > 0 &&
-                documentContentBottomPx >= worklineBottomPx
-        return measuredReach || chatListState.canScrollForward
+        return documentContentBottomPx > 0 &&
+            worklineBottomPx > 0 &&
+            documentContentBottomPx >= worklineBottomPx
     }
 
     fun hasInitialDocumentFlowSafelyPassedWorkline(): Boolean {
