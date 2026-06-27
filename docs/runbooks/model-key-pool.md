@@ -50,9 +50,9 @@ CHAT_PRIMARY_API_KEY=<中转站Key>
 CHAT_PRIMARY_API_KEYS=<可选，逗号/分号/换行分隔的多个中转站Key>
 CHAT_PRIMARY_PROVIDER_LABEL=中转站
 CHAT_PRIMARY_MODEL=gpt-5.5
-CHAT_PRIMARY_RESPONSES_REASONING_EFFORT=low
+CHAT_PRIMARY_RESPONSES_REASONING_EFFORT=high
 CHAT_PRIMARY_RESPONSES_SEARCH_CONTEXT_SIZE=low
-CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS=6
+CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS=10
 CHAT_PRIMARY_DIAL_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_TLS_HANDSHAKE_TIMEOUT_SECONDS=6
 CHAT_PRIMARY_RESPONSE_HEADER_TIMEOUT_SECONDS=6
@@ -65,7 +65,7 @@ CHAT_PRIMARY_KEY_COOLDOWN_SECONDS=30
 
 - `CHAT_PRIMARY_API_MODE` 默认是 `responses`；仅应急回滚旧兼容链路时才设为 `chat`。
 - Responses 模式下，`CHAT_PRIMARY_RESPONSES_URL` 为空时，后端会把 `CHAT_PRIMARY_BASE_URL` 拼成 OpenAI 兼容 `/v1/responses`。
-- Responses 模式下，中转站请求会发送 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=low` 和流式返回；不发送 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或 `thinking_budget`，输出长度继续靠主聊天提示词控制。
+- Responses 模式下，中转站请求会发送 `tools=[web_search]`、`tool_choice=auto`、`search_context_size=low`、`reasoning.effort=high` 和流式返回；不发送 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或 `thinking_budget`，输出长度继续靠主聊天提示词控制。当前把搜索上下文保持低档，但把思考调高，优先改善图片病虫害和复杂农技判断质量。
 - Responses 模式只追加一条中性联网工具规则：仅当本轮问题涉及最新信息、价格行情、政策公告、购买渠道、天气、灾害预警或其他时效性判断时，以最快速度联网搜索；拿到足够信息后立刻回答，不解释搜索过程。普通农技知识、图片可见信息和非时效性问题直接回答；不追加“简洁回答”、字数限制或质量测试提示。
 - `CHAT_PRIMARY_FIRST_VISIBLE_TIMEOUT_SECONDS` 按“用户可见正文首字”计算，不把搜索事件、空格、换行或内部事件当首字；超过该时间仍无可见正文时回落原千问链路。若回落时原请求本来是明确实时 / 价格 / 行情意图，千问仍按原 `ForceSearch` 口径走 `turbo` 搜索。
 - `CHAT_PRIMARY_PROVIDER_LABEL` 只用于后台监控展示备注，不参与请求、不暴露 Key。
