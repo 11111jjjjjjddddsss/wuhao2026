@@ -9362,6 +9362,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("AI 长正文", "保留模型换行，标题分割，行内编号不硬拆", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
                     UiCopyPreviewItem("AI 短横列表", "短横后无空格也按项目列表渲染", UiCopyPreviewKind.AssistantTightBulletSample),
+                    UiCopyPreviewItem("AI 编号标题/标签", "大标题、小标题和编号加粗标签不混用", UiCopyPreviewKind.AssistantNumberedLabelSample),
                     UiCopyPreviewItem("AI 表格", "横向表格、表格上方复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )
@@ -9614,6 +9615,17 @@ private const val UI_COPY_PREVIEW_ASSISTANT_TIGHT_BULLET_SAMPLE =
         "● 如果最近打过药，尤其高温时混配较多、浓度偏大，也可能出现细碎斑点。\n" +
         "-10℃以下不是列表，是温度提醒，不应该被误判成项目列表。"
 
+private const val UI_COPY_PREVIEW_ASSISTANT_NUMBERED_LABEL_SAMPLE =
+    "二、耐氯作物（可正常施用含氯化肥）\n" +
+        "水稻、高粱、谷子、麻类、菠菜等。这类作物对氯离子耐受性较强。\n\n" +
+        "三、使用建议\n" +
+        "以下内容属于具体操作建议，不应该被放大成标题。\n\n" +
+        "1. **小范围试喷：** 选几株病叶较多的植株，按资料推荐剂量的下限试喷，观察 2-3 天无药害后再大面积使用。\n\n" +
+        "2. **对比观察：** 若喷施细菌药后 3-5 天病斑仍扩展，需考虑是否混发真菌性病害，届时再调整方案。\n\n" +
+        "3. **关于用药清单：** 若您需要，我可以按安全原则整理一份分阶段的用药参考，但具体购买和使用请以当地农资店指导和产品标签为准。\n\n" +
+        "四、风险提醒\n" +
+        "诊断病害需多方验证，尤其是细菌性病害容易与早期真菌病害混淆。"
+
 private const val UI_COPY_PREVIEW_ASSISTANT_READABLE_PARAGRAPH_SAMPLE =
     "根据近期主要产区市场信息，给您整理几个参考方向。\n\n" +
         "1. 主产地收购价（参考）\n" +
@@ -9723,6 +9735,7 @@ private enum class UiCopyPreviewKind {
     AssistantReadableParagraphSample,
     AssistantMarkdownFallbackSample,
     AssistantTightBulletSample,
+    AssistantNumberedLabelSample,
     AssistantTableSample,
     UserLinkBubbleSample,
     ImageDiagnosisThinking,
@@ -10451,6 +10464,17 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.AssistantTightBulletSample -> {
                     ChatStreamingRenderer(
                         content = UI_COPY_PREVIEW_ASSISTANT_TIGHT_BULLET_SAMPLE,
+                        renderMode = StreamingRenderMode.Settled,
+                        showWaitingBall = false,
+                        selectionEnabled = true,
+                        showDisclaimer = true,
+                        onStreamingContentBoundsChanged = null,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                UiCopyPreviewKind.AssistantNumberedLabelSample -> {
+                    ChatStreamingRenderer(
+                        content = UI_COPY_PREVIEW_ASSISTANT_NUMBERED_LABEL_SAMPLE,
                         renderMode = StreamingRenderMode.Settled,
                         showWaitingBall = false,
                         selectionEnabled = true,

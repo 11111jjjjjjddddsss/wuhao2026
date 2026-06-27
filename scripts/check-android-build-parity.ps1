@@ -771,6 +771,8 @@ if ($failures.Count -eq 0) {
         "Assistant Markdown display must hide decorative emoji while preserving task-list checkbox fallback text."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"小点列表、横杠和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
         "Debug preview panel must include the latest Markdown fallback sample for visible bullet lists, hidden horizontal-rule controls, and emoji cleanup."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 编号标题/标签",\s*"大标题、小标题和编号加粗标签不混用",\s*UiCopyPreviewKind\.AssistantNumberedLabelSample\)(?s:.*?)UI_COPY_PREVIEW_ASSISTANT_NUMBERED_LABEL_SAMPLE(?s:.*?)"1\. \*\*小范围试喷：\*\*' `
+        "Debug preview panel must expose the numbered-heading versus numbered-bold-label sample that guards recent renderer regressions."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
         "Today agri insertion must not regain a dedicated LaunchedEffect that forces or scrolls the list to bottom."
     Require-Match $failures $chatScreen 'TODAY_AGRI_CONTEXT_FOLLOWUP_LIMIT\s*=\s*2' `
