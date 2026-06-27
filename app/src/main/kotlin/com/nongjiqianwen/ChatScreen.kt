@@ -9207,195 +9207,46 @@ private fun UiCopyPreviewOverlay(
     val copyGroups = remember {
         listOf(
             UiCopyPreviewGroup(
-                title = "顶部与空态",
+                title = "基础回归",
                 items = listOf(
-                    UiCopyPreviewItem(APP_TITLE_TEXT, "顶部标题", UiCopyPreviewKind.AppTitle),
-                    UiCopyPreviewItem(
-                        WELCOME_EMPTY_STATE_TEXT.replace("\n", " / "),
-                        "空会话欢迎态",
-                        UiCopyPreviewKind.Welcome
-                    )
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "登录与协议",
-                items = listOf(
-                    UiCopyPreviewItem("首次登录页", "无独立同意页，登录页对号承接隐私同意", UiCopyPreviewKind.LoginInitial),
-                    UiCopyPreviewItem("未勾选拦截", "不请求平台、不进入登录校验", UiCopyPreviewKind.LoginAgreementBlocked),
                     UiCopyPreviewItem("短信登录", "手机号 + 6位验证码 + 协议勾选", UiCopyPreviewKind.LoginSmsFallback),
-                    UiCopyPreviewItem("换手机号后发送", "倒计时只锁刚发成功的手机号，换号可立即发送", UiCopyPreviewKind.LoginPhoneChanged),
-                    UiCopyPreviewItem("登录协议弹窗", "服务协议 / 隐私政策在登录页内打开", UiCopyPreviewKind.LoginLegalDialog)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "清数据回归",
-                items = listOf(
-                    UiCopyPreviewItem("清数据首次启动", "空本地状态下的欢迎态和输入框", UiCopyPreviewKind.CleanStateFirstLaunch),
                     UiCopyPreviewItem("清数据首次发送", "用户短文本 + waiting 小球", UiCopyPreviewKind.CleanStateFirstSend),
-                    UiCopyPreviewItem("清数据检查点", "不恢复旧聊天 / 旧高度 / 旧滚动位置", UiCopyPreviewKind.CleanStateChecklist)
+                    UiCopyPreviewItem("等待思考态", "先小球，超过等待阈值后切高光扫动", UiCopyPreviewKind.ImageDiagnosisThinking),
+                    UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 点击重试进行中", UiCopyPreviewKind.AssistantRetrying),
+                    UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户点击重发进行中", UiCopyPreviewKind.UserRetrying)
                 )
             ),
             UiCopyPreviewGroup(
-                title = "适配与回退",
+                title = "会员支付",
                 items = listOf(
-                    UiCopyPreviewItem("远端快照失败兜底", "只保留 pending / 失败态，不回灌普通本地历史", UiCopyPreviewKind.RemoteSnapshotFallback),
-                    UiCopyPreviewItem("远端归档暂不可用", "不让不完整 snapshot 覆盖本地时间线", UiCopyPreviewKind.RemoteArchiveUnavailableFallback),
-                    UiCopyPreviewItem("删除历史 hydrate 拦截", "旧请求晚回来不覆盖 clean-state", UiCopyPreviewKind.ClearHistoryHydrateGuard),
-                    UiCopyPreviewItem("图片预览安全区", "页码和关闭按钮避开横向 cutout", UiCopyPreviewKind.ImagePreviewTopChrome),
-                    UiCopyPreviewItem("会员面板短屏安全区", "顶部 safe drawing 限制最大高度", UiCopyPreviewKind.MembershipSheetSafeArea)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "输入区",
-                items = listOf(
-                    UiCopyPreviewItem(
-                        COMPOSER_DEFAULT_PLACEHOLDER_TEXT,
-                        "输入框无图 placeholder",
-                        UiCopyPreviewKind.ComposerPlaceholder
-                    ),
-                    UiCopyPreviewItem(
-                        COMPOSER_IMAGE_PLACEHOLDER_TEXT,
-                        "输入框已有图片 placeholder",
-                        UiCopyPreviewKind.ComposerImagePlaceholder
-                    )
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "会员中心",
-                items = listOf(
-                    UiCopyPreviewItem("会员中心（账号ID）", "标题后展示账号短 ID", UiCopyPreviewKind.MembershipHeader),
-                    UiCopyPreviewItem("会员首次同步", "无旧权益时才显示读取中", UiCopyPreviewKind.MembershipLoadingSummary),
-                    UiCopyPreviewItem("Free 基础额度", "标题同色加粗，信息同色普通", UiCopyPreviewKind.MembershipFreeSummary),
-                    UiCopyPreviewItem(
-                        "Free 额外次数",
-                        "到期后仍可显示加油包",
-                        UiCopyPreviewKind.MembershipFreeExtraSummary
-                    ),
-                    UiCopyPreviewItem(
-                        "礼品卡开通",
-                        "显示礼品卡渠道和当前档位每日次数",
-                        UiCopyPreviewKind.MembershipPlusExtraSummary
-                    ),
                     UiCopyPreviewItem("Pro 到期日", "Plus 置灰不可购买，Pro 可继续续费", UiCopyPreviewKind.MembershipProSummary),
-                    UiCopyPreviewItem("会员同步失败", "保留旧权益并给重试入口", UiCopyPreviewKind.MembershipFailedSummary),
-                    UiCopyPreviewItem("套餐区：待同步", "无权益数据时才置灰", UiCopyPreviewKind.MembershipPlanUnknown),
-                    UiCopyPreviewItem("套餐区：Free", "Plus / Pro 调起支付宝前先由后端创建订单", UiCopyPreviewKind.MembershipPlanFree),
-                    UiCopyPreviewItem("套餐区：Plus", "Plus 显示当前套餐，Pro 走升级订单", UiCopyPreviewKind.MembershipPlanPlus),
                     UiCopyPreviewItem("套餐区：Pro", "Plus 显示当前为 Pro 且置灰，Pro 可续费", UiCopyPreviewKind.MembershipPlanPro),
-                    UiCopyPreviewItem("套餐区：窄屏挤压", "280dp 下标题、胶囊和价格不互撞", UiCopyPreviewKind.MembershipPlanNarrow),
-                    UiCopyPreviewItem("加油包：Free不可订购", "Plus / Pro 可订购置灰状态", UiCopyPreviewKind.MembershipTopupUnavailable),
-                    UiCopyPreviewItem("加油包：Free剩余", "按钮显示“剩余次数可用”", UiCopyPreviewKind.MembershipTopupFreeActive),
-                    UiCopyPreviewItem("加油包：付费档位可买", "Plus / Pro 可购买，未用完次数长期保留，用完后可再买", UiCopyPreviewKind.MembershipTopupBuyable),
-                    UiCopyPreviewItem("加油包：未用完", "未用完时不能重复购买，后端和本地都会拦住", UiCopyPreviewKind.MembershipTopupActive),
-                    UiCopyPreviewItem("加油包：窄屏挤压", "280dp 下名称和价格不互撞", UiCopyPreviewKind.MembershipTopupNarrow),
                     UiCopyPreviewItem("支付状态浮层", "支付失败 / 权益异常统一走中部浮层，不挤会员中心", UiCopyPreviewKind.MembershipPaymentNotice),
                     UiCopyPreviewItem("确认付款", "正式订单、订单尾号和竖排支付按钮", UiCopyPreviewKind.MembershipPaymentConfirm),
-                    UiCopyPreviewItem("购买 Plus", "Plus 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPlus),
-                    UiCopyPreviewItem("购买 Pro", "Pro 会员 30 天正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmPro),
                     UiCopyPreviewItem("升级 Pro", "Plus 剩余天数抵扣后的确认页", UiCopyPreviewKind.MembershipPaymentConfirmUpgradePro),
-                    UiCopyPreviewItem("购买加油包", "80 次加油包正式价格确认页", UiCopyPreviewKind.MembershipPaymentConfirmTopup),
                     UiCopyPreviewItem("确认付款大字体", "1.6x 字体下可滚动查看确认和取消", UiCopyPreviewKind.MembershipPaymentConfirmLargeFont),
                     UiCopyPreviewItem("权益生效提示", "支付完成后展示后端确认的权益生效提示", UiCopyPreviewKind.MembershipPurchaseSuccess),
-                    UiCopyPreviewItem("规则说明", "升级抵扣 / 扣次顺序 / 加油包", UiCopyPreviewKind.MembershipRules)
+                    UiCopyPreviewItem("设置支付成功", "设置页会员中心也显示同一权益生效弹层", UiCopyPreviewKind.HamburgerMembershipPurchaseSuccess)
                 )
             ),
             UiCopyPreviewGroup(
-                title = "汉堡菜单",
+                title = "设置与农情",
                 items = listOf(
-                    UiCopyPreviewItem("设置入口", "白卡片设置页，会员、账号、帮助和隐私与协议入口", UiCopyPreviewKind.HamburgerMenu),
-                    UiCopyPreviewItem("设置外层", "返回键、标题和设置首页整体位置", UiCopyPreviewKind.HamburgerMenuShell),
-                    UiCopyPreviewItem("设置内会员中心", "右进左出整页壳，账号短 ID 和礼品卡渠道跟随最新口径", UiCopyPreviewKind.HamburgerMembershipPage),
-                    UiCopyPreviewItem("设置支付成功", "设置页会员中心也显示同一权益生效弹层", UiCopyPreviewKind.HamburgerMembershipPurchaseSuccess),
-                    UiCopyPreviewItem("账号管理", "手机号 / 清理临时缓存 / 历史 / 退出 / 申请注销", UiCopyPreviewKind.HamburgerAccountPage),
-                    UiCopyPreviewItem("退出登录确认", "退出当前设备，不删除资产", UiCopyPreviewKind.HamburgerLogoutConfirm),
-                    UiCopyPreviewItem("删除历史对话确认", "提示会清除对话记忆，资产不受影响", UiCopyPreviewKind.HamburgerDeleteHistoryConfirm),
-                    UiCopyPreviewItem("注销申请确认", "提交申请并退出登录", UiCopyPreviewKind.HamburgerAccountDeletionConfirm),
-                    UiCopyPreviewItem("帮助与反馈", "站内消息、历史对话和未读红点", UiCopyPreviewKind.HamburgerSupportPage),
                     UiCopyPreviewItem("检查更新", "物料完整且版本更高才提示更新", UiCopyPreviewKind.HamburgerAppUpdateDialog),
-                    UiCopyPreviewItem("更新下载中", "立即更新后的按钮和说明", UiCopyPreviewKind.HamburgerAppUpdateDownloading),
-                    UiCopyPreviewItem("更新失败原因", "校验、地址、大小、网络和缓存失败文案", UiCopyPreviewKind.AppUpdateFailureReasons),
-                    UiCopyPreviewItem("更新权限提示", "授权后返回本页继续更新", UiCopyPreviewKind.AppUpdateInstallPermissionHint),
                     UiCopyPreviewItem("更新权限大字体", "1.6x 字体下真实更新弹窗", UiCopyPreviewKind.AppUpdatePermissionLargeFont),
                     UiCopyPreviewItem("账号管理大字体", "1.6x 字体下账号和危险操作", UiCopyPreviewKind.HamburgerAccountLargeFont),
-                    UiCopyPreviewItem("礼品卡", "居中两行输入和兑换按钮", UiCopyPreviewKind.HamburgerGiftCardPage),
-                    UiCopyPreviewItem("礼品卡失败提示", "失败原因停留在兑换页内", UiCopyPreviewKind.HamburgerGiftCardFailure),
-                    UiCopyPreviewItem("隐私与协议目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
-                    UiCopyPreviewItem("服务协议", "本地内置服务协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
-                    UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
-                    UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),
-                    UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
-                    UiCopyPreviewItem("应用权限", "定位、后台待发送任务和安装更新权限口径", UiCopyPreviewKind.HamburgerPermissionListPage),
-                    UiCopyPreviewItem("风险提示", "农业 AI 建议边界", UiCopyPreviewKind.HamburgerRiskNoticePage),
-                    UiCopyPreviewItem("礼品卡成功样式", "兑换成功立即发放权益", UiCopyPreviewKind.HamburgerGiftCardSuccess),
                     UiCopyPreviewItem("礼品卡生效规则", "生成即可兑换，不做预约生效", UiCopyPreviewKind.HamburgerGiftCardImmediateRule),
-                    UiCopyPreviewItem("礼品卡重复兑换", "同一账号重复提交时提示权益已生效", UiCopyPreviewKind.HamburgerGiftCardReplay)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "帮助与反馈",
-                items = listOf(
-                    UiCopyPreviewItem("对话与链接", "旧消息先展示，后台合并新消息", UiCopyPreviewKind.HamburgerSupportPage),
-                    UiCopyPreviewItem("空消息", "无历史反馈时的空态", UiCopyPreviewKind.HamburgerSupportEmpty),
-                    UiCopyPreviewItem("首次同步中", "无缓存时才显示加载态", UiCopyPreviewKind.HamburgerSupportLoading),
-                    UiCopyPreviewItem("首次同步失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerSupportFailed),
-                    UiCopyPreviewItem("图片输入", "图片预览条、输入框抬高和发送中态", UiCopyPreviewKind.HamburgerSupportImageInput),
-                    UiCopyPreviewItem("长文本输入", "多行输入不收缩，最多显示 6 行", UiCopyPreviewKind.HamburgerSupportLongInput)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "今日农情",
-                items = listOf(
-                    UiCopyPreviewItem("今日农情", "主聊天普通文本项，标题加粗、正文可复制", UiCopyPreviewKind.TodayAgriCard),
-                    UiCopyPreviewItem("今日农情长摘要", "摘要按主聊天同款句尾分段", UiCopyPreviewKind.TodayAgriLongSummaryCard),
                     UiCopyPreviewItem("今日农情窄屏", "280dp 下标题、正文和来源不互挤", UiCopyPreviewKind.TodayAgriNarrow),
-                    UiCopyPreviewItem("农情时间线组合", "历史提示、AI 回复、农情和后续用户消息同列表", UiCopyPreviewKind.TodayAgriTimelineComposite),
-                    UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方两轮临时参考", UiCopyPreviewKind.TodayAgriContextRule),
-                    UiCopyPreviewItem("农情晚到不打断", "用户发送 / 生成中暂存，不强插不拉底", UiCopyPreviewKind.TodayAgriPendingNoInterrupt),
-                    UiCopyPreviewItem("农情历史页", "日期收进卡片内，旧简报先展示后刷新", UiCopyPreviewKind.HamburgerTodayAgriHistoryPage),
-                    UiCopyPreviewItem("农情首次失败", "无缓存时显示失败和重试", UiCopyPreviewKind.HamburgerTodayAgriHistoryFailed)
+                    UiCopyPreviewItem("农情上下文规则", "远端确认后显示，后方两轮临时参考", UiCopyPreviewKind.TodayAgriContextRule)
                 )
             ),
             UiCopyPreviewGroup(
                 title = "文本渲染",
                 items = listOf(
-                    UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
-                    UiCopyPreviewItem("AI 长正文", "保留模型换行，标题分割，行内编号不硬拆", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
                     UiCopyPreviewItem("AI 短横列表", "短横后无空格也按项目列表渲染", UiCopyPreviewKind.AssistantTightBulletSample),
                     UiCopyPreviewItem("AI 编号标题/标签", "大标题、小标题和编号加粗标签不混用", UiCopyPreviewKind.AssistantNumberedLabelSample),
-                    UiCopyPreviewItem("AI 表格", "横向表格、表格上方复制图标", UiCopyPreviewKind.AssistantTableSample),
-                    UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "附件面板",
-                items = listOf(
-                    UiCopyPreviewItem(
-                        "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT",
-                        "+ 面板未满状态：紧凑入口和拍摄建议",
-                        UiCopyPreviewKind.AttachmentSheet
-                    ),
-                    UiCopyPreviewItem("帮助与反馈图片面板", "复用附件结构但不显示农业拍摄提示", UiCopyPreviewKind.SupportAttachmentSheet),
-                    UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "已满附件面板", UiCopyPreviewKind.ImageCountSheet)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "图片与预览",
-                items = listOf(
-                    UiCopyPreviewItem("1", "输入框缩略图角标", UiCopyPreviewKind.ComposerImageBadge),
-                    UiCopyPreviewItem("1/4", "图片全屏预览页码", UiCopyPreviewKind.ImagePageIndicator),
-                    UiCopyPreviewItem("等待思考态", "先小球，超过等待阈值后切高光扫动", UiCopyPreviewKind.ImageDiagnosisThinking),
-                    UiCopyPreviewItem(IMAGE_EXPIRED_THUMB_TEXT, "远端历史图过期后的占位", UiCopyPreviewKind.ImageExpiredPlaceholder)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "消息尾部",
-                items = listOf(
-                    UiCopyPreviewItem(AI_DISCLAIMER_TEXT, "AI 回复尾部免责声明", UiCopyPreviewKind.Disclaimer),
-                    UiCopyPreviewItem(ASSISTANT_RETRY_PREVIEW_TEXT, "AI 回复中断后尾部", UiCopyPreviewKind.AssistantRetry),
-                    UiCopyPreviewItem(ASSISTANT_RETRYING_STATUS_TEXT, "AI 点击重试进行中", UiCopyPreviewKind.AssistantRetrying),
-                    UiCopyPreviewItem(USER_RETRY_PREVIEW_TEXT, "用户消息发送失败后尾部", UiCopyPreviewKind.UserRetry),
-                    UiCopyPreviewItem(USER_RETRYING_STATUS_TEXT, "用户点击重发进行中", UiCopyPreviewKind.UserRetrying)
+                    UiCopyPreviewItem("AI 表格", "横向表格、表格上方复制图标", UiCopyPreviewKind.AssistantTableSample)
                 )
             ),
             UiCopyPreviewGroup(
@@ -9405,36 +9256,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("更新未完成提示", "系统安装取消后可继续安装", UiCopyPreviewKind.AppUpdateInstallNotCompletedHint),
                     UiCopyPreviewItem("已复制", "正文 / 表格复制成功中部短提示", UiCopyPreviewKind.CopySuccessHint),
                     UiCopyPreviewItem("链接打开失败，请复制后打开", "AI / 反馈链接失败中部短提示", UiCopyPreviewKind.LinkOpenFailedHint),
-                    UiCopyPreviewItem(QUOTA_EXHAUSTED_HINT_TEXT, "日额度耗尽中部短提示", UiCopyPreviewKind.Quota),
-                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网 / 门户 Wi-Fi；可联网先放行", UiCopyPreviewKind.Network),
-                    UiCopyPreviewItem(RATE_LIMIT_HINT_TEXT, "限流 / 服务忙浮层", UiCopyPreviewKind.RateLimit),
-                    UiCopyPreviewItem(SERVICE_UNAVAILABLE_HINT_TEXT, "服务临时不可用浮层", UiCopyPreviewKind.ServiceUnavailable),
-                    UiCopyPreviewItem(ACTIVE_STREAM_HINT_TEXT, "上一条仍在处理浮层", UiCopyPreviewKind.ActiveStream),
-                    UiCopyPreviewItem(INTERRUPTED_NETWORK_HINT_TEXT, "streaming 网络中断浮层", UiCopyPreviewKind.Interrupted),
-                    UiCopyPreviewItem(INTERRUPTED_FALLBACK_HINT_TEXT, "其他中断浮层", UiCopyPreviewKind.InterruptedFallback),
-                    UiCopyPreviewItem(INPUT_TOO_LONG_HINT_TEXT, "输入超过 6000 字浮层", UiCopyPreviewKind.InputTooLong),
-                    UiCopyPreviewItem(COMPOSER_IMAGE_COUNT_HINT, "图片数量中部短提示", UiCopyPreviewKind.ImageCountHint),
-                    UiCopyPreviewItem(ImageUploader.DECODE_FAIL_MESSAGE, "图片读取失败中部短提示", UiCopyPreviewKind.ImageReadFailure),
-                    UiCopyPreviewItem("登录已失效，请重新登录后再上传图片", "图片上传登录失效中部短提示", UiCopyPreviewKind.ImageUploadAuthExpired),
-                    UiCopyPreviewItem("图片上传失败，请稍后重试", "图片上传失败中部短提示", UiCopyPreviewKind.ImageUploadFailed),
-                    UiCopyPreviewItem(CAMERA_OPEN_FAILED_HINT_TEXT, "相机打开失败中部短提示", UiCopyPreviewKind.CameraOpenFailed),
-                    UiCopyPreviewItem(SUPPORT_SEND_FAILED_HINT, "帮助与反馈发送失败中部短提示", UiCopyPreviewKind.SupportSendFailed)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "选择菜单",
-                items = listOf(
-                    UiCopyPreviewItem("复制 / 全文复制", "消息选择菜单", UiCopyPreviewKind.MessageMenu),
-                    UiCopyPreviewItem("复制 / 粘贴 / 剪切 / 全选", "输入框完整选择菜单", UiCopyPreviewKind.InputMenu),
-                    UiCopyPreviewItem("复制", "输入框仅复制菜单", UiCopyPreviewKind.InputMenuCopyOnly),
-                    UiCopyPreviewItem("粘贴 / 全选", "输入框无选区菜单", UiCopyPreviewKind.InputMenuPasteSelect)
-                )
-            ),
-            UiCopyPreviewGroup(
-                title = "预览面板",
-                items = listOf(
-                    UiCopyPreviewItem("UI文案样式预览", "debug 面板标题和说明", UiCopyPreviewKind.DebugPanel),
-                    UiCopyPreviewItem("右上关闭 / 展开 / 查看", "debug 面板关闭和条目控件", UiCopyPreviewKind.DebugPanelControls)
+                    UiCopyPreviewItem(NETWORK_UNAVAILABLE_HINT_TEXT, "无网 / 门户 Wi-Fi；可联网先放行", UiCopyPreviewKind.Network)
                 )
             )
         )
