@@ -39,11 +39,12 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
 		"【输出约束】",
-		"禁止表格，不要用 Markdown 表格、竖线或横线画表；关键点少量加粗，排版适合手机阅读。",
+		"禁止表格，不要用 Markdown 表格、竖线或横线画表；关键点少量加粗，排版适合手机阅读（必须结构化排版）。",
 		"Markdown 表格",
 		"竖线或横线画表",
 		"关键点少量加粗",
 		"排版适合手机阅读",
+		"必须结构化排版",
 		"禁止表格",
 		"多用自然换行",
 		"有多个要点、步骤、提醒或对比内容时",
