@@ -2,7 +2,6 @@ param(
     [string]$RegionId = "cn-beijing",
     [string]$InstanceId = "i-2ze5nrem0jrchln4f0eh",
     [string]$ExpectedRevision = "",
-    [int]$ExpectedChatPrimaryKeyPoolSize = 0,
     [ValidateSet("closed", "limited", "public")]
     [string]$ExpectedAlipayPaymentGate = "limited"
 )
@@ -467,36 +466,9 @@ if is_truthy "$auth_fusion_compat_enabled"; then
 fi
 
 chat_primary_enabled=$(env_value CHAT_PRIMARY_ENABLED || true)
-if is_truthy "$chat_primary_enabled" && ! grep -q '"chat_primary":"ok"' "$health_body" 2>/dev/null; then
-  echo 'CHAT_PRIMARY_ENABLED is true but healthz chat_primary is not ok' >&2
-  exit 16
-fi
 if is_truthy "$chat_primary_enabled"; then
-  chat_primary_api_mode=$(env_value CHAT_PRIMARY_API_MODE || true)
-  if [ -z "$chat_primary_api_mode" ]; then
-    chat_primary_api_mode='responses'
-  fi
-  chat_primary_api_mode=$(printf '%s' "$chat_primary_api_mode" | tr '[:upper:]' '[:lower:]' | xargs)
-  if [ "$chat_primary_api_mode" != "responses" ]; then
-    echo 'CHAT_PRIMARY_ENABLED production readiness expects CHAT_PRIMARY_API_MODE=responses' >&2
-    exit 16
-  fi
-  for expected in \
-    '"chat_primary_api_mode":"responses"' \
-    '"chat_primary_search_context_size":"low"' \
-    '"chat_primary_reasoning_effort":"high"' \
-    '"chat_primary_first_visible_timeout_seconds":12'; do
-    if ! grep -q "$expected" "$health_body" 2>/dev/null; then
-      echo "healthz missing expected chat primary marker: $expected" >&2
-      exit 16
-    fi
-  done
-  chat_primary_key_pool_size=$(sed -nE 's/.*"chat_primary_key_pool_size":([0-9]+).*/\1/p' "$health_body" 2>/dev/null | head -n 1)
-  if [ -z "$chat_primary_key_pool_size" ] || [ "$chat_primary_key_pool_size" -le 0 ]; then
-    echo "healthz chat_primary_key_pool_size must be positive when CHAT_PRIMARY_ENABLED is true" >&2
-    exit 16
-  fi
-  echo "chat_primary_key_pool_size=$chat_primary_key_pool_size"
+  echo 'CHAT_PRIMARY_ENABLED has been retired from the production main chat path; remove it and use the Bailian/Qwen main chain' >&2
+  exit 16
 fi
 
 app_android_update_enabled=$(env_value APP_ANDROID_UPDATE_ENABLED || true)
@@ -592,17 +564,6 @@ if (-not [string]::IsNullOrWhiteSpace($ExpectedRevision)) {
         throw "Readiness revision mismatch: expected=$ExpectedRevision actual=$actualRevision"
     }
     Write-Host "expected_revision_match=true"
-}
-if ($ExpectedChatPrimaryKeyPoolSize -gt 0) {
-    $actualPoolSizeText = [regex]::Match($final.Output, "(?m)^chat_primary_key_pool_size=([0-9]+)\s*$").Groups[1].Value
-    if ([string]::IsNullOrWhiteSpace($actualPoolSizeText)) {
-        throw "Readiness check did not report chat_primary_key_pool_size; expected $ExpectedChatPrimaryKeyPoolSize"
-    }
-    $actualPoolSize = [int]$actualPoolSizeText
-    if ($actualPoolSize -ne $ExpectedChatPrimaryKeyPoolSize) {
-        throw "Readiness chat primary key pool mismatch: expected=$ExpectedChatPrimaryKeyPoolSize actual=$actualPoolSize"
-    }
-    Write-Host "expected_chat_primary_key_pool_size_match=true"
 }
 $actualGate = [regex]::Match($final.Output, "(?m)^alipay_payment_gate=([^\s]+)\s*$").Groups[1].Value
 if ([string]::IsNullOrWhiteSpace($actualGate)) {

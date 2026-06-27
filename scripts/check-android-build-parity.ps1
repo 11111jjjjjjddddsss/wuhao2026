@@ -914,7 +914,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatScreen 'REMOTE_STREAM_MIN_BALL_MS\s*=\s*1800L' `
         "Remote streaming waiting ball must remain visible without holding the first text too long."
     Require-Match $failures $chatScreen 'GPT_BALL_PULSE_MS\s*=\s*700' `
-        "GPT-style waiting ball pulse rhythm must stay readable at the current pace."
+        "Assistant waiting ball pulse rhythm must stay readable at the current pace."
     Require-Match $failures $chatScreen 'assistantDisclaimerTextStyle(?s:.*?)fontWeight\s*=\s*FontWeight\.Normal' `
         "Assistant disclaimer must stay normal-weight gray text, not bold."
     Require-Match $failures $chatScreen 'val\s+userBubbleColor\s*=\s*Color\(0xFF050505\)' `
@@ -1105,7 +1105,7 @@ if ($failures.Count -eq 0) {
     Require-NoMatch $failures $chatStreamingRenderer 'padding\(end\s*=\s*copyInsetWidth\)' `
         "Markdown table must not reserve a fake blank right column for the copy button."
     Require-Match $failures $chatStreamingRenderer 'RendererCopyTableIconButton(?s:.*?)size\(38\.dp\)(?s:.*?)clip\(RoundedCornerShape\(10\.dp\)\)(?s:.*?)clickable\(onClick\s*=\s*onClick\)(?s:.*?)Canvas\(modifier\s*=\s*Modifier\.size\(25\.dp\)\)(?s:.*?)Color\(0xFF111111\)(?s:.*?)coverColor\s*=\s*Color\(0xFFFAFBFC\)(?s:.*?)squareSize\s*=\s*size\.width\s*\*\s*0\.48f(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*coverColor(?s:.*?)drawRoundRect\((?s:.*?)color\s*=\s*iconColor' `
-        "Markdown table copy action must stay as a compact GPT-style covered overlapping-square icon, not transparent overlapping rounded rectangles or a circled text button."
+        "Markdown table copy action must stay as a compact assistant-style covered overlapping-square icon, not transparent overlapping rounded rectangles or a circled text button."
     Require-NoMatch $failures $chatStreamingRenderer 'rendererMarkdownTableHeaderSummary' `
         "Markdown table UI must not show a redundant raw column summary above rows."
     Require-Match $failures $chatStreamingRenderer 'RendererMarkdownTableHorizontalRowImpl(?s:.*?)RendererStreamingActiveTextImpl\((?s:.*?)emphasisEnabled\s*=\s*false' `
@@ -1121,7 +1121,7 @@ if ($failures.Count -eq 0) {
     Require-Match $failures $chatStreamingRenderer 'isRendererMarkdownTableBodyBlockBoundary(?s:.*?)rendererMarkdownCodeFenceMarker(?s:.*?)parseRendererBulletText\(trimmed\)\s*!=\s*null' `
         "Markdown table body parsing must stop before obvious new block starts such as indented code, fences, quotes, headings, and lists."
     Require-Match $failures $chatStreamingRendererTest 'tightHyphenBulletRowsWithPipesDoNotBecomeLooseTables' `
-        "Assistant renderer tests must prove tight GPT-style hyphen bullets with pipe characters do not become loose Markdown tables."
+        "Assistant renderer tests must prove tight hyphen bullets with pipe characters do not become loose Markdown tables."
     Require-Match $failures $chatStreamingRenderer 'rawHeaders\.size\s*<\s*2\s*\|\|\s*rawHeaders\.size\s*!=\s*separatorColumnCount(?s:.*?)val\s+columnCount\s*=\s*rawHeaders\.size(?s:.*?)index\s*<\s*columnCount\s*-\s*1(?s:.*?)row\.drop\(index\)\.joinToString\(" \| "\)' `
         "Markdown table parsing must keep GFM-style header/separator column counts fixed and merge extra body cells into the last column instead of dropping text or inventing columns."
     Require-Match $failures $chatStreamingRenderer 'collectRendererLoosePipeTableRows(?s:.*?)looksLikeRendererMarkdownTableRow\(headerLine\)(?s:.*?)rowLines\.isEmpty\(\)(?s:.*?)enoughPipeShape(?s:.*?)encodeRendererMarkdownTableBlock\((?s:.*?)separatorLine\s*=\s*null' `

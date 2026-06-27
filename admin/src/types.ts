@@ -287,7 +287,6 @@ export interface AdminUserRegionOverview {
 export interface AdminHealthStatus {
   api: string;
   bailian: string;
-  chat_primary?: string;
   dypns: string;
   dypns_fusion: string;
   dypns_sms: string;

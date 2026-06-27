@@ -9351,7 +9351,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("AI Markdown", "标题、列表、编号、引用、粗体、代码和链接", UiCopyPreviewKind.AssistantMarkdownSample),
                     UiCopyPreviewItem("AI 长正文", "保留模型换行，标题分割，行内编号不硬拆", UiCopyPreviewKind.AssistantReadableParagraphSample),
                     UiCopyPreviewItem("AI Markdown 兜底", "小点列表、横杠和 emoji 清洗", UiCopyPreviewKind.AssistantMarkdownFallbackSample),
-                    UiCopyPreviewItem("AI GPT短横列表", "短横后无空格也按项目列表渲染", UiCopyPreviewKind.AssistantTightBulletSample),
+                    UiCopyPreviewItem("AI 短横列表", "短横后无空格也按项目列表渲染", UiCopyPreviewKind.AssistantTightBulletSample),
                     UiCopyPreviewItem("AI 表格", "横向表格、表格上方复制图标", UiCopyPreviewKind.AssistantTableSample),
                     UiCopyPreviewItem("用户链接气泡", "用户输入的网址可点击并可复制", UiCopyPreviewKind.UserLinkBubbleSample)
                 )

@@ -534,9 +534,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	readResults, stopReadLoop := startReadLoop(upstream.Body)
 	defer func() { stopReadLoop() }()
 	firstVisibleTimeout := resolveChatStreamFirstVisibleTimeout()
-	if isPrimaryResponsesProvider(upstreamProvider) {
-		firstVisibleTimeout = resolvePrimaryChatFirstVisibleTimeout(resolveChatStreamMaxDuration())
-	}
 	firstVisibleTimer := time.NewTimer(firstVisibleTimeout)
 	defer firstVisibleTimer.Stop()
 	idleTimeout := resolveChatStreamIdleTimeout()
@@ -550,76 +547,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		defer idleTimer.Stop()
 	}
 	streamTimeoutKind := ""
-	currentSSEEvent := ""
-	primaryResponsesSearchCount := 0
 	firstVisibleMs := int64(-1)
 	upstreamFirstVisibleMs := int64(-1)
-	primaryResponsesFallbackReason := ""
-	lastFallbackOpenMs := int64(-1)
-	fallbackPrimaryResponsesToBailian := func(reason string) bool {
-		if !isPrimaryResponsesProvider(upstreamProvider) || strings.TrimSpace(assistantText.String()) != "" {
-			return false
-		}
-		if primaryResponsesFallbackReason == "" {
-			primaryResponsesFallbackReason = reason
-		}
-		s.logger.Warn(
-			"primary responses stream fallback to bailian",
-			"userId", auth.UserID,
-			"clientMsgId", clientMsgID,
-			"request_id", upstreamRequestID,
-			"reason", reason,
-			"forced_search", forceSearch,
-		)
-		_ = upstream.Body.Close()
-		stopReadLoop()
-		fallbackOpenStartedAt := time.Now()
-		fallbackResponse, fallbackErr := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages, thinkingOptions)
-		fallbackOpenedAt := time.Now()
-		lastFallbackOpenMs = fallbackOpenedAt.Sub(fallbackOpenStartedAt).Milliseconds()
-		if fallbackErr != nil {
-			s.logger.Error(
-				"primary responses stream fallback failed",
-				"userId", auth.UserID,
-				"clientMsgId", clientMsgID,
-				"error", fallbackErr,
-				"reason", reason,
-				"forced_search", forceSearch,
-			)
-			return false
-		}
-		upstream = fallbackResponse
-		upstreamProvider = "bailian"
-		upstreamRequestID = firstNonEmpty(upstream.Header.Get("x-request-id"), upstream.Header.Get("request-id"))
-		upstreamOpenedAt = fallbackOpenedAt
-		upstreamOpenMs = lastFallbackOpenMs
-		requestToUpstreamOpenMs = fallbackOpenedAt.Sub(requestReceivedAt).Milliseconds()
-		upstreamEnableSearch, upstreamSearchStrategy, upstreamSingleCallSearch = chatUpstreamSearchLogConfig(upstreamProvider)
-		currentSSEEvent = ""
-		hasSources.Store(false)
-		hasCitations.Store(false)
-		modelUsage = bailianModelUsage{}
-		primaryResponsesSearchCount = 0
-		readResults, stopReadLoop = startReadLoop(upstream.Body)
-		firstVisibleTimeout = resolveChatStreamFirstVisibleTimeout()
-		if !firstVisibleTimer.Stop() {
-			select {
-			case <-firstVisibleTimer.C:
-			default:
-			}
-		}
-		firstVisibleTimer.Reset(firstVisibleTimeout)
-		s.logger.Info(
-			"primary responses fallback selected bailian",
-			"userId", auth.UserID,
-			"clientMsgId", clientMsgID,
-			"request_id", upstreamRequestID,
-			"reason", reason,
-			"fallback_open_ms", lastFallbackOpenMs,
-			"forced_search", forceSearch,
-		)
-		return true
-	}
 	for {
 		var line string
 		var readErr error
@@ -628,9 +557,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			line = result.line
 			readErr = result.err
 		case <-firstVisibleTimer.C:
-			if fallbackPrimaryResponsesToBailian("first_visible_timeout") {
-				continue
-			}
 			streamTimeoutKind = "first_visible"
 			cancelUpstream()
 			_ = upstream.Body.Close()
@@ -682,19 +608,14 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		if line != "" {
 			trimmedLine := strings.TrimRight(line, "\r\n")
 			if trimmedLine == "" {
-				currentSSEEvent = ""
 				continue
 			}
 			if strings.HasPrefix(trimmedLine, "event:") {
-				currentSSEEvent = strings.TrimSpace(strings.TrimPrefix(trimmedLine, "event:"))
 				continue
 			}
 			if !strings.HasPrefix(trimmedLine, ":") && strings.HasPrefix(trimmedLine, "data:") {
 				data := strings.TrimLeft(strings.TrimPrefix(trimmedLine, "data:"), " ")
 				if data == "[DONE]" {
-					if fallbackPrimaryResponsesToBailian("done_before_visible_text") {
-						continue
-					}
 					doneReceived.Store(true)
 					break
 				}
@@ -702,14 +623,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				clientData := ""
 				shouldForward := false
 				upstreamDone := false
-				upstreamFailed := false
-				if isPrimaryResponsesProvider(upstreamProvider) {
-					clientData, shouldForward, upstreamDone, upstreamFailed = convertPrimaryResponsesStreamDataForClient(currentSSEEvent, data, &assistantText, &hasCitations, &hasSources, &modelUsage, &primaryResponsesSearchCount)
-				} else {
-					updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources, &modelUsage)
-					clientData, shouldForward = filterBailianStreamDataForClient(data)
-				}
-				currentSSEEvent = ""
+				updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources, &modelUsage)
+				clientData, shouldForward = filterBailianStreamDataForClient(data)
 				if !hadVisibleAssistantText && strings.TrimSpace(assistantText.String()) != "" {
 					if firstVisibleMs < 0 {
 						firstVisibleMs = time.Since(requestReceivedAt).Milliseconds()
@@ -725,32 +640,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						idleTimer.Reset(idleTimeout)
 						idleTimerC = idleTimer.C
 					}
-				}
-				if isPrimaryResponsesProvider(upstreamProvider) && upstreamFailed {
-					if fallbackPrimaryResponsesToBailian("failed_before_visible_text") {
-						continue
-					}
-					streamTimeoutKind = "upstream_failed"
-					if !clientDisconnected.Load() {
-						writeMu.Lock()
-						s.writeSSEData(w, map[string]any{"error": "UPSTREAM_STREAM_FAILED", "client_msg_id": clientMsgID})
-						writeMu.Unlock()
-					}
-					s.logger.Error(
-						"primary responses stream failed after visible text",
-						"userId", auth.UserID,
-						"clientMsgId", clientMsgID,
-						"request_id", upstreamRequestID,
-						"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
-					)
-					break
-				}
-				if isPrimaryResponsesProvider(upstreamProvider) && upstreamDone && strings.TrimSpace(assistantText.String()) == "" {
-					if fallbackPrimaryResponsesToBailian("completed_without_visible_text") {
-						continue
-					}
-					clientData = ""
-					shouldForward = false
 				}
 				if !clientDisconnected.Load() {
 					if !shouldForward {
@@ -778,9 +667,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if readErr != nil {
-			if streamTimeoutKind == "" && fallbackPrimaryResponsesToBailian("stream_ended_before_visible_text") {
-				continue
-			}
 			if streamTimeoutKind != "" {
 				break
 			}
@@ -933,8 +819,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"first_visible_ms", firstVisibleMs,
 		"upstream_first_visible_ms", upstreamFirstVisibleMs,
 		"total_ms", time.Since(requestReceivedAt).Milliseconds(),
-		"primary_responses_fallback_reason", primaryResponsesFallbackReason,
-		"fallback_open_ms", lastFallbackOpenMs,
 		"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
 	}
 	if upstreamProvider == "bailian" {
@@ -1059,17 +943,6 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 }
 
 func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, string, error) {
-	if s.primaryChat != nil && s.primaryChat.Enabled() && primaryChatShouldHandle(options) {
-		response, err := s.openValidatedPrimaryChatStream(ctx, messages, options)
-		if err == nil {
-			provider := primaryChatProviderKind()
-			s.logger.Info("primary chat upstream selected", "provider", provider, "model", primaryChatModelName(), "api_mode", primaryChatAPIMode(), "forced_search", primaryChatForceSearch(options.ForceSearch, messages))
-			return response, provider, nil
-		}
-		s.logger.Warn("primary chat upstream failed before stream; falling back to bailian", "provider", "primary", "model", primaryChatModelName(), "error", err)
-	} else if s.primaryChat != nil && s.primaryChat.Enabled() && options.ForceSearch {
-		s.logger.Info("primary chat upstream skipped for forced search request", "provider", "bailian", "model", mainChatModel)
-	}
 	response, err := s.openValidatedBailianStreamWithRetry(ctx, messages, options)
 	if err != nil {
 		return nil, "bailian", err
@@ -1077,35 +950,8 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, messag
 	return response, "bailian", nil
 }
 
-func primaryChatProviderKind() string {
-	if primaryChatUsesResponses() {
-		return "primary_responses"
-	}
-	return "primary"
-}
-
-func isPrimaryResponsesProvider(provider string) bool {
-	return provider == "primary_responses"
-}
-
 func chatUpstreamSearchLogConfig(provider string) (bool, string, bool) {
-	switch provider {
-	case "primary_responses":
-		return true, "responses_auto_low", true
-	case "primary":
-		if parseBoolEnv(os.Getenv("CHAT_PRIMARY_CHAT_ENABLE_SEARCH")) {
-			return true, "primary_chat_completions", true
-		}
-		return false, "primary_chat_completions", false
-	default:
-		return true, "turbo", true
-	}
-}
-
-func (s *Server) openValidatedPrimaryChatStream(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
-	return s.openValidatedStreamWithRetry(ctx, "primary", 1, func(openCtx context.Context) (*http.Response, error) {
-		return s.primaryChat.OpenStream(openCtx, messages, options)
-	})
+	return true, "turbo", true
 }
 
 func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
@@ -1881,118 +1727,6 @@ func updateAssistantAccumulator(data string, assistantText *strings.Builder, has
 			assistantText.WriteString(messagePiece)
 		}
 	}
-}
-
-func convertPrimaryResponsesStreamDataForClient(event string, data string, assistantText *strings.Builder, hasCitations *atomic.Bool, hasSources *atomic.Bool, modelUsage *bailianModelUsage, searchCount *int) (string, bool, bool, bool) {
-	payload := map[string]any{}
-	if err := json.Unmarshal([]byte(data), &payload); err != nil {
-		return "", false, false, false
-	}
-	if payloadType := asString(payload["type"]); payloadType != "" {
-		event = payloadType
-	}
-	switch event {
-	case "response.output_text.delta":
-		delta := asString(payload["delta"])
-		if delta == "" {
-			return "", false, false, false
-		}
-		assistantText.WriteString(delta)
-		if strings.TrimSpace(delta) == "" {
-			return "", false, false, false
-		}
-		clientPayload := map[string]any{
-			"choices": []map[string]any{
-				{
-					"delta": map[string]any{
-						"content": delta,
-					},
-					"finish_reason": nil,
-					"index":         0,
-				},
-			},
-		}
-		raw, err := json.Marshal(clientPayload)
-		if err != nil {
-			return "", false, false, false
-		}
-		return string(raw), true, false, false
-	case "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed":
-		if searchCount != nil && *searchCount == 0 {
-			*searchCount = 1
-		}
-		if hasSources != nil {
-			hasSources.Store(true)
-		}
-		return "", false, false, false
-	case "response.failed", "response.incomplete", "response.error", "error":
-		return "", false, false, true
-	case "response.completed":
-		usage := parsePrimaryResponsesUsage(payload)
-		if searchCount != nil && *searchCount > 0 {
-			usage.Plugins.Search.Count = *searchCount
-		}
-		if usage.hasAny() && modelUsage != nil {
-			*modelUsage = usage
-		}
-		finishPayload := map[string]any{
-			"choices": []map[string]any{
-				{
-					"delta":         map[string]any{},
-					"finish_reason": "stop",
-					"index":         0,
-				},
-			},
-		}
-		if usage.hasAny() {
-			finishPayload["usage"] = usage
-		}
-		raw, err := json.Marshal(finishPayload)
-		if err != nil {
-			return "", false, true, false
-		}
-		return string(raw), true, true, false
-	default:
-		return "", false, false, false
-	}
-}
-
-func parsePrimaryResponsesUsage(payload map[string]any) bailianModelUsage {
-	response, _ := payload["response"].(map[string]any)
-	rawUsage := payload["usage"]
-	if rawUsage == nil && response != nil {
-		rawUsage = response["usage"]
-	}
-	if rawUsage == nil {
-		return bailianModelUsage{}
-	}
-	raw, err := json.Marshal(rawUsage)
-	if err != nil {
-		return bailianModelUsage{}
-	}
-	var source struct {
-		InputTokens         int `json:"input_tokens"`
-		OutputTokens        int `json:"output_tokens"`
-		TotalTokens         int `json:"total_tokens"`
-		ReasoningTokens     int `json:"reasoning_tokens"`
-		OutputTokensDetails struct {
-			ReasoningTokens int `json:"reasoning_tokens"`
-		} `json:"output_tokens_details"`
-	}
-	if err := json.Unmarshal(raw, &source); err != nil {
-		return bailianModelUsage{}
-	}
-	usage := bailianModelUsage{
-		InputTokens:     source.InputTokens,
-		OutputTokens:    source.OutputTokens,
-		TotalTokens:     source.TotalTokens,
-		ReasoningTokens: source.ReasoningTokens,
-	}
-	usage.OutputTokensDetails.ReasoningTokens = source.OutputTokensDetails.ReasoningTokens
-	if usage.ReasoningTokens == 0 {
-		usage.ReasoningTokens = usage.OutputTokensDetails.ReasoningTokens
-	}
-	return usage
 }
 
 func parseBailianUsagePayload(raw any) (bailianModelUsage, bool) {

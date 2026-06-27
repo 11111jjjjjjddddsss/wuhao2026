@@ -12,7 +12,6 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -108,7 +107,7 @@ func TestOpenValidatedStreamWithRetryDoesNotKeepNon200BodyPreview(t *testing.T) 
 	server := &Server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	responseBody := `{"message":"bad image https://api.nongjiqiancha.cn/uploads/support/private-name.jpg","token":"secret-token","prompt":"用户原文"}`
 
-	_, err := server.openValidatedStreamWithRetry(context.Background(), "primary_responses", 1, func(context.Context) (*http.Response, error) {
+	_, err := server.openValidatedStreamWithRetry(context.Background(), "bailian", 1, func(context.Context) (*http.Response, error) {
 		return &http.Response{
 			StatusCode: http.StatusBadGateway,
 			Header:     make(http.Header),
@@ -1007,178 +1006,6 @@ func TestBuildVisionUserContentAllowsImageOnly(t *testing.T) {
 	}
 	if got := content[1]["type"]; got != "image_url" {
 		t.Fatalf("expected image block after internal text hint, got %#v", got)
-	}
-}
-
-func TestConvertPrimaryResponsesStreamDataForClient(t *testing.T) {
-	var assistant strings.Builder
-	var hasCitations atomic.Bool
-	var hasSources atomic.Bool
-	var usage bailianModelUsage
-	searchCount := 0
-
-	clientData, shouldForward, done, failed := convertPrimaryResponsesStreamDataForClient(
-		"response.output_text.delta",
-		`{"delta":"你好"}`,
-		&assistant,
-		&hasCitations,
-		&hasSources,
-		&usage,
-		&searchCount,
-	)
-	if !shouldForward || done || failed {
-		t.Fatalf("delta forward=%v done=%v failed=%v, want true/false/false", shouldForward, done, failed)
-	}
-	payload := map[string]any{}
-	if err := json.Unmarshal([]byte(clientData), &payload); err != nil {
-		t.Fatalf("decode client data: %v", err)
-	}
-	choices := payload["choices"].([]any)
-	first := choices[0].(map[string]any)
-	delta := first["delta"].(map[string]any)
-	if got := delta["content"]; got != "你好" {
-		t.Fatalf("converted content = %#v", got)
-	}
-	if got := assistant.String(); got != "你好" {
-		t.Fatalf("assistant text = %q", got)
-	}
-
-	clientData, shouldForward, done, failed = convertPrimaryResponsesStreamDataForClient(
-		"response.web_search_call.completed",
-		`{"type":"response.web_search_call.completed"}`,
-		&assistant,
-		&hasCitations,
-		&hasSources,
-		&usage,
-		&searchCount,
-	)
-	if clientData != "" || shouldForward || done || failed {
-		t.Fatalf("web search event data=%q forward=%v done=%v failed=%v, want empty/false/false/false", clientData, shouldForward, done, failed)
-	}
-	if !hasSources.Load() || searchCount != 1 {
-		t.Fatalf("web search markers sources=%v searchCount=%d", hasSources.Load(), searchCount)
-	}
-
-	clientData, shouldForward, done, failed = convertPrimaryResponsesStreamDataForClient(
-		"response.completed",
-		`{"response":{"usage":{"input_tokens":11,"output_tokens":7,"total_tokens":18,"output_tokens_details":{"reasoning_tokens":2}}}}`,
-		&assistant,
-		&hasCitations,
-		&hasSources,
-		&usage,
-		&searchCount,
-	)
-	if !shouldForward || !done || failed {
-		t.Fatalf("completed forward=%v done=%v failed=%v, want true/true/false", shouldForward, done, failed)
-	}
-	if usage.InputTokens != 11 || usage.OutputTokens != 7 || usage.TotalTokens != 18 || usage.ReasoningTokens != 2 || usage.searchCount() != 1 {
-		t.Fatalf("usage mismatch: %#v", usage)
-	}
-}
-
-func TestConvertPrimaryResponsesStreamDataUsesPayloadTypeFallback(t *testing.T) {
-	var assistant strings.Builder
-	var hasCitations atomic.Bool
-	var hasSources atomic.Bool
-	var usage bailianModelUsage
-	searchCount := 0
-
-	clientData, shouldForward, done, failed := convertPrimaryResponsesStreamDataForClient(
-		"",
-		`{"type":"response.output_text.delta","delta":"正文"}`,
-		&assistant,
-		&hasCitations,
-		&hasSources,
-		&usage,
-		&searchCount,
-	)
-	if !shouldForward || done || failed || clientData == "" {
-		t.Fatalf("type fallback forward=%v done=%v failed=%v data=%q", shouldForward, done, failed, clientData)
-	}
-	if got := assistant.String(); got != "正文" {
-		t.Fatalf("assistant text = %q", got)
-	}
-}
-
-func TestConvertPrimaryResponsesStreamDataDoesNotForwardWhitespaceDelta(t *testing.T) {
-	var assistant strings.Builder
-	var hasCitations atomic.Bool
-	var hasSources atomic.Bool
-	var usage bailianModelUsage
-	searchCount := 0
-
-	clientData, shouldForward, done, failed := convertPrimaryResponsesStreamDataForClient(
-		"response.output_text.delta",
-		`{"type":"response.output_text.delta","delta":"\n  "}`,
-		&assistant,
-		&hasCitations,
-		&hasSources,
-		&usage,
-		&searchCount,
-	)
-	if clientData != "" || shouldForward || done || failed {
-		t.Fatalf("whitespace delta data=%q forward=%v done=%v failed=%v, want empty/false/false/false", clientData, shouldForward, done, failed)
-	}
-	if got := assistant.String(); got != "\n  " {
-		t.Fatalf("assistant should retain whitespace for later text continuity, got %q", got)
-	}
-}
-
-func TestConvertPrimaryResponsesStreamDataPrefersPayloadTypeOverStaleEvent(t *testing.T) {
-	var assistant strings.Builder
-	var hasCitations atomic.Bool
-	var hasSources atomic.Bool
-	var usage bailianModelUsage
-	searchCount := 0
-
-	clientData, shouldForward, done, failed := convertPrimaryResponsesStreamDataForClient(
-		"response.web_search_call.completed",
-		`{"type":"response.output_text.delta","delta":"正文"}`,
-		&assistant,
-		&hasCitations,
-		&hasSources,
-		&usage,
-		&searchCount,
-	)
-	if !shouldForward || done || failed || clientData == "" {
-		t.Fatalf("stale event override forward=%v done=%v failed=%v data=%q", shouldForward, done, failed, clientData)
-	}
-	if got := assistant.String(); got != "正文" {
-		t.Fatalf("assistant text = %q", got)
-	}
-}
-
-func TestConvertPrimaryResponsesStreamDataTreatsFailureEventsAsFailed(t *testing.T) {
-	failureEvents := []string{
-		"response.failed",
-		"response.incomplete",
-		"response.error",
-		"error",
-	}
-	for _, event := range failureEvents {
-		t.Run(event, func(t *testing.T) {
-			var assistant strings.Builder
-			var hasCitations atomic.Bool
-			var hasSources atomic.Bool
-			var usage bailianModelUsage
-			searchCount := 0
-
-			clientData, shouldForward, done, failed := convertPrimaryResponsesStreamDataForClient(
-				"",
-				`{"type":"`+event+`","error":{"message":"upstream failed"}}`,
-				&assistant,
-				&hasCitations,
-				&hasSources,
-				&usage,
-				&searchCount,
-			)
-			if clientData != "" || shouldForward || done || !failed {
-				t.Fatalf("failure event data=%q forward=%v done=%v failed=%v, want empty/false/false/true", clientData, shouldForward, done, failed)
-			}
-			if assistant.String() != "" {
-				t.Fatalf("failure event should not append assistant text, got %q", assistant.String())
-			}
-		})
 	}
 }
 

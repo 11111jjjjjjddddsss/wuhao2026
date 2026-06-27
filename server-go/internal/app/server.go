@@ -32,7 +32,6 @@ type Server struct {
 	store                 *Store
 	prompts               *PromptLoader
 	bailian               *BailianClient
-	primaryChat           *PrimaryChatClient
 	summary               *SummaryService
 	dailyAgri             *DailyAgriCardService
 	dypns                 *DypnsClient
@@ -132,7 +131,6 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		return nil, err
 	}
 	bailian := NewBailianClient()
-	primaryChat := NewPrimaryChatClientFromEnv()
 	dypns, err := NewDypnsClientFromEnv()
 	if err != nil {
 		return nil, err
@@ -159,7 +157,6 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		store:                 store,
 		prompts:               prompts,
 		bailian:               bailian,
-		primaryChat:           primaryChat,
 		summary:               NewSummaryService(store, prompts, bailian, logger, redisClient),
 		dailyAgri:             NewDailyAgriCardService(store, bailian, logger, shanghai),
 		dypns:                 dypns,
@@ -306,7 +303,6 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	payload := map[string]any{
 		"ok":                  true,
 		"bailian":             ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
-		"chat_primary":        primaryChatHealthStatus(s.primaryChat),
 		"dypns":               ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		"dypns_fusion":        ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
 		"dypns_sms":           smsStatus,
@@ -318,17 +314,6 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		"auth_strict":         IsAuthStrict(),
 		"dev_order_endpoints": devOrderEndpointsEnabled(),
 		"revision":            deploymentRevision(),
-	}
-	if primaryChatConfigured() {
-		payload["chat_primary_api_mode"] = primaryChatAPIMode()
-		payload["chat_primary_key_pool_size"] = primaryChatKeyPoolSize()
-		if primaryChatUsesResponses() {
-			payload["chat_primary_search_context_size"] = primaryChatResponsesSearchContextSize()
-			payload["chat_primary_reasoning_effort"] = primaryChatResponsesReasoningEffort()
-			payload["chat_primary_first_visible_timeout_seconds"] = int(resolvePrimaryChatFirstVisibleTimeout(resolveChatStreamMaxDuration()).Seconds())
-		} else {
-			payload["chat_primary_chat_enable_search"] = parseBoolEnv(os.Getenv("CHAT_PRIMARY_CHAT_ENABLE_SEARCH"))
-		}
 	}
 	s.writeJSON(w, http.StatusOK, payload)
 }
