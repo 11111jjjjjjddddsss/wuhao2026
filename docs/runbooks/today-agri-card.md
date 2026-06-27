@@ -22,7 +22,7 @@
 
 ## 环境变量
 
-- `DASHSCOPE_API_KEY_1/2/3`、旧 `DASHSCOPE_API_KEY` 或 `DASHSCOPE_API_KEYS`：百炼模型主备 Key 池；多账号配置和限流口径见 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)
+- `DASHSCOPE_PRIMARY_API_KEY_1...4`、`DASHSCOPE_SECONDARY_API_KEY_1`，或旧兼容 `DASHSCOPE_API_KEY_*` / `DASHSCOPE_API_KEY` / `DASHSCOPE_API_KEYS`：百炼模型 Key 池；主组 / 副组配置、轮询和限流口径见 [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)
 - `BAILIAN_BASE_URL`：可选，今日农情和主聊天默认使用 `https://dashscope.aliyuncs.com/compatible-mode/v1`
 - `DAILY_AGRI_JOB_SECRET`：内部生成接口密钥，必须配置；不要写入仓库
 - 今日农情模型固定为 `qwen3.5-plus`；当前不支持通过环境变量切换模型
