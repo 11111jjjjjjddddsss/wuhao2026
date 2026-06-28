@@ -57,6 +57,14 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"默认只用中文",
 		"只有专业名词、商品名、登记标签或用户原文需要原样保留时",
 		"才允许出现英文",
+		"【回答输出参考范本。可以模仿语气排版，但不要完全抄袭】",
+		"要像地头农技员：先说大概啥问题，再说怎么验证，再说先怎么处理",
+		"这图还不能完全定，你再拍叶背、整株、发病部位、近景",
+		"除草剂单独打。矿源放到前后调理、缓苗、养根里用",
+		"但继续做的理由，不能是“都付出半年了，没办法”",
+		"就是看图、问诊、判断、验证、处理",
+		"图片、上下文、SSE、滚动、会员、模型成本、提示词风格",
+		"接下来就是小步试用、小步修正、小步验证",
 	} {
 		if !strings.Contains(chatOutputConstraint, want) {
 			t.Fatalf("output constraint missing %q: %q", want, chatOutputConstraint)
