@@ -77,6 +77,9 @@ fun TodayAgriNewsText(
                         )
                     }
                     items.forEachIndexed { index, item ->
+                        if (index > 0) {
+                            TodayAgriNewsDivider()
+                        }
                         TodayAgriNewsItem(
                             index = index,
                             title = item.title.orEmpty().trim(),
@@ -134,6 +137,15 @@ fun SessionApi.TodayAgriCard.toTodayAgriPlainText(): String {
             }
         }
     }
+}
+
+@Composable
+private fun TodayAgriNewsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.fillMaxWidth(),
+        thickness = 1.dp,
+        color = Color(0xFFE7E9ED)
+    )
 }
 
 @Composable
