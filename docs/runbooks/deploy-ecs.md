@@ -94,10 +94,10 @@ Android 构建固定使用 `UPLOAD_BASE_URL=https://api.nongjiqiancha.cn`，Andr
 
 当前没有把 GitHub 凭据放到 ECS。仓库在 ECS 上不能直接 `git clone` 私有仓库，因此采用脚本 [deploy-ecs-server.ps1](D:/wuhao/scripts/deploy-ecs-server.ps1) 在本机打包并通过 Cloud Assistant 发布：
 
-1. 本地先跑迁移风险守卫，再打包 `server-go` 源码、assets、migrations、go.mod、go.sum
+1. 本地先跑迁移风险守卫，再打包 `server-go` 源码、assets、migrations、go.mod、go.sum；干净工作区使用 `git archive HEAD:server-go` 打包，避免 Windows `tar.exe` 绝对输出路径漏文件，只有显式 `-AllowDirtyWorktree` 的本地调试包才走工作区 tar
 2. 用 ECS Cloud Assistant `SendFile` 分片下发到 `/tmp/nongji-deploy-chunks-<commit>`
 3. ECS 本机按 `server-go/go.mod` 的 Go toolchain 声明编译到 `/opt/nongjiqiancha/server/nongji-server`；当前要求 `toolchain go1.26.4`
-4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum；发布脚本也会检查 `server-go` 新增顶层运行时代码目录是否被打包，避免未来新增 `pkg/` 等目录后线上漏文件
+4. 备份旧二进制，替换新二进制，复制 assets / migrations / go.mod / go.sum；发布脚本也会检查 `server-go` 新增顶层运行时代码目录是否被打包，且会在本地归档、远端解包和安装临时目录三处硬校验 `assets/system_anchor.txt`、`assets/summary_extraction_prompt.txt` 等关键资源，避免缺主对话锚点或摘要提示词的新 slot 被启动
 5. 读取 Nginx 当前上游端口，选择另一个端口作为新 slot
 6. 启动 `nongji-server-3000.service` 或 `nongji-server-3001.service` 中的非当前 slot，并先检查该端口本机 `/healthz`
 7. 通过 `nginx -t` 后把 API Nginx 上游和后台 `/admin-api/` 上游一起切到新 slot，reload Nginx，再由脚本检查本机 HTTPS healthz、生产 health 标记和后台未登录鉴权接口

@@ -262,6 +262,29 @@ function Assert-ServerDeployPackageCoverage {
 
 Assert-ServerDeployPackageCoverage
 
+function Assert-ServerDeployArchiveContent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ArchivePath
+    )
+    $entries = @(& tar.exe -tzf $ArchivePath)
+    if ($LASTEXITCODE -ne 0) {
+        throw "tar list failed for deploy package"
+    }
+    $requiredEntries = @(
+        "assets/system_anchor.txt",
+        "assets/summary_extraction_prompt.txt",
+        "migrations/001_init.sql",
+        "cmd/server/main.go",
+        "internal/app/server.go"
+    )
+    foreach ($entry in $requiredEntries) {
+        if ($entry -notin $entries) {
+            throw "server deploy package is missing required entry: $entry"
+        }
+    }
+}
+
 $tmpDir = Join-Path $repoRoot "tmp"
 New-Item -ItemType Directory -Force -Path $tmpDir | Out-Null
 $archive = Join-Path $tmpDir "server-go-src-$Commit.tgz"
@@ -271,13 +294,23 @@ if (Test-Path -LiteralPath $archive) {
 
 Push-Location $serverDir
 try {
-    & tar.exe -czf $archive go.mod go.sum assets migrations cmd internal
-    if ($LASTEXITCODE -ne 0) {
-        throw "tar failed"
+    if ($AllowDirtyWorktree) {
+        $archiveForTar = Join-Path ".." (Join-Path "tmp" (Split-Path -Leaf $archive))
+        & tar.exe -czf $archiveForTar go.mod go.sum assets migrations cmd internal
+        if ($LASTEXITCODE -ne 0) {
+            throw "tar failed"
+        }
+    } else {
+        & git -C $repoRoot archive --format=tar.gz --output=$archive "${Commit}:server-go" go.mod go.sum assets migrations cmd internal
+        if ($LASTEXITCODE -ne 0) {
+            throw "git archive failed"
+        }
     }
 } finally {
     Pop-Location
 }
+
+Assert-ServerDeployArchiveContent -ArchivePath $archive
 
 $sha256 = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
 $shaPrefix = $sha256.Substring(0, 12)
@@ -451,6 +484,8 @@ preinstall_migrations_backup=''
 preinstall_gomod_backup=''
 preinstall_gosum_backup=''
 preinstall_revision_backup=''
+next_assets_dir=''
+next_migrations_dir=''
 nginx_backup=''
 admin_nginx_backup=''
 
@@ -490,6 +525,12 @@ restore_pre_switch_install() {
   if [ -n "`$preinstall_revision_backup" ] && [ -f "`$preinstall_revision_backup" ]; then
     cp -a "`$preinstall_revision_backup" "`$install_dir/REVISION" || true
   fi
+  if [ -n "`$next_assets_dir" ]; then
+    rm -rf "`$next_assets_dir" 2>/dev/null || true
+  fi
+  if [ -n "`$next_migrations_dir" ]; then
+    rm -rf "`$next_migrations_dir" 2>/dev/null || true
+  fi
   chown -R nongji:nongji "`$install_dir/nongji-server" "`$install_dir/assets" "`$install_dir/migrations" "`$install_dir/go.mod" "`$install_dir/go.sum" "`$install_dir/REVISION" 2>/dev/null || true
   systemctl stop "`$inactive_service" 2>/dev/null || true
 }
@@ -510,6 +551,8 @@ echo unpack
 rm -rf "`$stage"
 mkdir -p "`$stage"
 tar -xzf "`$archive" -C "`$stage"
+test -s "`$stage/assets/system_anchor.txt" || { echo 'deploy package missing assets/system_anchor.txt' >&2; exit 14; }
+test -s "`$stage/assets/summary_extraction_prompt.txt" || { echo 'deploy package missing assets/summary_extraction_prompt.txt' >&2; exit 14; }
 cd "`$stage"
 export GOPROXY="`${GOPROXY:-https://goproxy.cn,direct}"
 export GOSUMDB="`${GOSUMDB:-sum.golang.google.cn}"
@@ -547,10 +590,17 @@ if [ -f "`$install_dir/REVISION" ]; then
   preinstall_revision_backup="`$install_dir/REVISION.bak-`$install_backup_suffix"
   cp -a "`$install_dir/REVISION" "`$preinstall_revision_backup"
 fi
+next_assets_dir="`$install_dir/assets.next-`$install_backup_suffix"
+next_migrations_dir="`$install_dir/migrations.next-`$install_backup_suffix"
+rm -rf "`$next_assets_dir" "`$next_migrations_dir"
+cp -a "`$stage/assets" "`$next_assets_dir"
+cp -a "`$stage/migrations" "`$next_migrations_dir"
+test -s "`$next_assets_dir/system_anchor.txt" || { echo 'install assets missing system_anchor.txt' >&2; exit 14; }
+test -s "`$next_assets_dir/summary_extraction_prompt.txt" || { echo 'install assets missing summary_extraction_prompt.txt' >&2; exit 14; }
 mv "`$install_dir/nongji-server.new" "`$install_dir/nongji-server"
 rm -rf "`$install_dir/assets" "`$install_dir/migrations"
-cp -a "`$stage/assets" "`$install_dir/assets"
-cp -a "`$stage/migrations" "`$install_dir/migrations"
+mv "`$next_assets_dir" "`$install_dir/assets"
+mv "`$next_migrations_dir" "`$install_dir/migrations"
 cp "`$stage/go.mod" "`$install_dir/go.mod"
 cp "`$stage/go.sum" "`$install_dir/go.sum"
 printf '%s\n' "`$commit" > "`$install_dir/REVISION"
