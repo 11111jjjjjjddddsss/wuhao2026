@@ -305,7 +305,6 @@ require_nginx_pattern "$rate_conf" "nginx_conn_zone" 'limit_conn_zone[[:space:]]
 require_nginx_pattern "$nginx_site" "nginx_client_max_body_2m" 'client_max_body_size[[:space:]]+2m;'
 require_nginx_pattern "$nginx_site" "nginx_chat_limit_req" 'limit_req[[:space:]]+zone=nongji_chat[[:space:]]+burst=80[[:space:]]+nodelay;'
 require_nginx_pattern "$nginx_site" "nginx_upload_limit_req" 'limit_req[[:space:]]+zone=nongji_upload[[:space:]]+burst=8[[:space:]]+nodelay;'
-require_nginx_pattern "$nginx_site" "nginx_upload_limit_conn" 'limit_conn[[:space:]]+nongji_conn[[:space:]]+4;'
 require_nginx_pattern "$nginx_site" "nginx_uploads_location" 'location[[:space:]]+\/uploads\/[[:space:]]*\{'
 require_nginx_pattern "$nginx_site" "nginx_api_limit_req" 'limit_req[[:space:]]+zone=nongji_api[[:space:]]+burst=80[[:space:]]+nodelay;'
 require_nginx_pattern "$nginx_site" "nginx_api_limit_conn" 'limit_conn[[:space:]]+nongji_conn[[:space:]]+20;'
@@ -318,7 +317,20 @@ if [ "$chat_limit_conn_count" -ne 0 ]; then
   echo 'chat stream location must not use limit_conn in current shared-network friendly policy' >&2
   exit 19
 fi
+upload_block=$(awk '/^[[:space:]]*location[[:space:]]+\/upload[[:space:]]*\{/{flag=1} flag{print} flag && /^[[:space:]]*\}/{exit}' "$nginx_site" 2>/dev/null || true)
+upload_limit_conn_count=$(printf '%s\n' "$upload_block" | grep -Ec 'limit_conn[[:space:]]+' || true)
+echo "nginx_upload_limit_conn_count=$upload_limit_conn_count"
+if [ "$upload_limit_conn_count" -ne 0 ]; then
+  echo 'upload submit location must not use limit_conn; normal multi-image uploads can open several short requests' >&2
+  exit 19
+fi
 uploads_block=$(awk '/^[[:space:]]*location[[:space:]]+\/uploads\/[[:space:]]*\{/{flag=1} flag{print} flag && /^[[:space:]]*\}/{exit}' "$nginx_site" 2>/dev/null || true)
+uploads_limit_req_count=$(printf '%s\n' "$uploads_block" | grep -Ec 'limit_req[[:space:]]+' || true)
+echo "nginx_uploads_limit_req_count=$uploads_limit_req_count"
+if [ "$uploads_limit_req_count" -ne 0 ]; then
+  echo 'uploads image proxy must not use limit_req; model image fetches can share provider egress IPs and retry images in bursts' >&2
+  exit 19
+fi
 uploads_limit_conn_count=$(printf '%s\n' "$uploads_block" | grep -Ec 'limit_conn[[:space:]]+' || true)
 echo "nginx_uploads_limit_conn_count=$uploads_limit_conn_count"
 if [ "$uploads_limit_conn_count" -ne 0 ]; then

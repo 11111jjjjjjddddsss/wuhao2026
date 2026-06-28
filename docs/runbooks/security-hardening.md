@@ -9,7 +9,7 @@
 - 安全组只开放公网 `80 / 443` 和 ICMP；公网 SSH `22` 已撤掉，服务器本机 `ssh` 服务也已停用并 disabled
 - 阿里云云安全中心免费版已生效，ECS 安全中心 agent 在线，当前显示免费版、客户端 online、风险计数 0
 - 阿里云 DDoS 原生防护基础版默认免费开启，按官方口径提供基础 DDoS 防护能力，但不能抵御无限攻击流量
-- Nginx 已有 API 级 IP 限流、非聊天入口连接数保护、Host 未命中返回 444、HTTPS、安全响应头；主聊天流不再设置 `limit_conn`，避免同一公网 IP 多人聊天被误伤；`api.nongjiqiancha.cn` 的 HTTP 80 只保留 ACME challenge，其余请求 301 跳 HTTPS
+- Nginx 已有 API 级 IP 限流、普通 API 连接数保护、Host 未命中返回 444、HTTPS、安全响应头；主聊天流、上传提交 `/upload` 和图片读取 `/uploads/` 不再设置 `limit_conn`，避免同一公网 IP 多人聊天或正常多图问诊被误伤；`api.nongjiqiancha.cn` 的 HTTP 80 只保留 ACME challenge，其余请求 301 跳 HTTPS
 - Go 后端已有严格鉴权、请求体大小限制、用户 / IP / Redis 短期限流、SSE 时长兜底、模型出站超时边界
 - ECS 已启用 fail2ban，当前 jail 为 `sshd`
 - RDS / Redis 只放通 ECS 私网 IP，OSS Bucket 私有读写，Android 不持有 OSS 或模型密钥
@@ -43,7 +43,7 @@
 
 服务器 / 应用侧免费防护：
 
-- Nginx `limit_req` 和非聊天入口连接数保护：挡普通脚本刷接口、上传和异常请求；主聊天流已移除 `limit_conn`，避免同一公网 IP 多人聊天被误伤
+- Nginx `limit_req` 和普通 API 连接数保护：挡普通脚本刷接口和异常请求；主聊天流、上传提交 `/upload` 和图片读取 `/uploads/` 已移除 `limit_conn`，避免同一公网 IP 多人聊天或正常多图问诊被误伤
 - Nginx 安全响应头：隐藏版本号、`nosniff`、`frame-ancestors / X-Frame-Options`、HSTS、Referrer Policy
 - Go 接口限流和 body 限制：即使绕过 Nginx 也有第二层保护
 - fail2ban：识别 SSH 暴力尝试；公网 SSH 已关后主要作为兜底观察
