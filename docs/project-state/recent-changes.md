@@ -5,7 +5,8 @@
 
 ## 2026-06-29
 
-- 发布 Android 正式包 `1.0.15(16)`：基于提交 `16dedafd` 构建固定 release 签名 APK `nongjiqiancha-1.0.15-v16-16dedafd.apk`，大小 `14,426,056` 字节，SHA-256 `5272a78d6a6dc31689e59af33f9095b1a1ccb85443f8182333c6fb8e62605276`，下载地址 `https://download.nongjiqiancha.cn/android/releases/16/nongjiqiancha-1.0.15-v16-16dedafd.apk`。该正式包只改今日农情视觉分隔：三条农情正文之间补两道浅灰分割线，复用原本分割线样式，避免三条内容挤在一起；今日农情后端提示词、自动化写稿口径、数据结构、主聊天滚动主链、图片上传、权限白名单和生产后端均不变，线上后端仍为 `76abe9f7`。
+- 主聊天每轮独立 `【输出约束】` 后的回答风格参考范本标题已按用户口令强化，并部署到生产后端 `06a52af7`：标题从 `【回答输出参考范本。可以模仿语气排版，但不要完全抄袭】` 改为 `【回答输出参考范本。必须模仿语气排版】`，范文正文仍沿用“对，就这么走。”开头的真实试用推进样文。该改动只影响后端组装给主聊天模型的提示词文本，不碰主对话锚点、今日农情提示词、记忆文档提示词、Android 正式包、官网、检查更新、内容过滤、关键词拦截、表格硬拦截、字数硬卡或 `max_tokens`。验证通过：`go test ./...`、`go build ./...`、`git diff --check`、ECS 远端测试 / 编译 / 双端口发布、`check-ecs-readiness.ps1 -ExpectedRevision 06a52af7 -ExpectedAlipayPaymentGate public` 和公网黑盒。
+- 发布 Android 正式包 `1.0.15(16)`：基于提交 `16dedafd` 构建固定 release 签名 APK `nongjiqiancha-1.0.15-v16-16dedafd.apk`，大小 `14,426,056` 字节，SHA-256 `5272a78d6a6dc31689e59af33f9095b1a1ccb85443f8182333c6fb8e62605276`，下载地址 `https://download.nongjiqiancha.cn/android/releases/16/nongjiqiancha-1.0.15-v16-16dedafd.apk`。该正式包只改今日农情视觉分隔：三条农情正文之间补两道浅灰分割线，复用原本分割线样式，避免三条内容挤在一起；今日农情后端提示词、自动化写稿口径、数据结构、主聊天滚动主链、图片上传和权限白名单均不变。
 - 官网正式下载和 App 检查更新同步到 `1.0.15(16)`：后台检查更新启用普通更新，`force_update=false`，旧正式包 `1.0.14(15)` 会直接收到 `1.0.15(16)`，当前包不会提示自己更新。已通过 Android `:app:compileDebugKotlin`、`:app:testDebugUnitTest`、build parity、release 构建、release artifact 校验、下载域名检查、APK 公网大小 / SHA 回验、官网部署脚本、官网前端脚本下载地址探针、`check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload -PreviousVersionCode 15 -ProbePreviousVersionUpdate`、`check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 16 -PreviousAndroidVersionCode 15`、`check-ecs-readiness.ps1 -ExpectedAlipayPaymentGate public` 和带 owner 凭据的上线总门禁主体检查。完整上线总门禁仍有可解释残留：后台监控近 24 小时失败动作包含本轮只读巡检账号写配置被正确拒绝的审计噪声，费用 / 短信套餐 / App 公安备案 / AccessKey 轮换 / 最终真机回归 / SLS 首封邮件仍需人工确认。
 
 ## 2026-06-28
