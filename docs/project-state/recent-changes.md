@@ -3,6 +3,11 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”、旧会诊对象选择或旧模型链路 / 旧中转站 / 旧 Chat Completions 表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-29
+
+- 发布 Android 正式包 `1.0.15(16)`：基于提交 `16dedafd` 构建固定 release 签名 APK `nongjiqiancha-1.0.15-v16-16dedafd.apk`，大小 `14,426,056` 字节，SHA-256 `5272a78d6a6dc31689e59af33f9095b1a1ccb85443f8182333c6fb8e62605276`，下载地址 `https://download.nongjiqiancha.cn/android/releases/16/nongjiqiancha-1.0.15-v16-16dedafd.apk`。该正式包只改今日农情视觉分隔：三条农情正文之间补两道浅灰分割线，复用原本分割线样式，避免三条内容挤在一起；今日农情后端提示词、自动化写稿口径、数据结构、主聊天滚动主链、图片上传、权限白名单和生产后端均不变，线上后端仍为 `76abe9f7`。
+- 官网正式下载和 App 检查更新同步到 `1.0.15(16)`：后台检查更新启用普通更新，`force_update=false`，旧正式包 `1.0.14(15)` 会直接收到 `1.0.15(16)`，当前包不会提示自己更新。已通过 Android `:app:compileDebugKotlin`、`:app:testDebugUnitTest`、build parity、release 构建、release artifact 校验、下载域名检查、APK 公网大小 / SHA 回验、官网部署脚本、官网前端脚本下载地址探针、`check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload -PreviousVersionCode 15 -ProbePreviousVersionUpdate`、`check-public-blackbox.ps1 -ExpectedAndroidUpdateVersionCode 16 -PreviousAndroidVersionCode 15`、`check-ecs-readiness.ps1 -ExpectedAlipayPaymentGate public` 和带 owner 凭据的上线总门禁主体检查。完整上线总门禁仍有可解释残留：后台监控近 24 小时失败动作包含本轮只读巡检账号写配置被正确拒绝的审计噪声，费用 / 短信套餐 / App 公安备案 / AccessKey 轮换 / 最终真机回归 / SLS 首封邮件仍需人工确认。
+
 ## 2026-06-28
 
 - 今日农情后端提示词按用户明确口令升到 `2026-06-28-v79` 并部署生产后端 `76abe9f7`：只改生成源头排版，`summary` 允许使用 JSON 转义换行 `\n` 拆成 2-3 个短段，避免 Android 主聊天里今日农情显示成一整块长段；Android 端不改，继续复用现有 `TodayAgriCardUi.kt` 对自然换行的分段渲染。后续用户补充确认“后端自动生成差不多就行，主要还是通过 Codex 自动化人工生成”，因此后端口径保持轻量，不细卡每段字数，主要让自动化人工发布按短段摘要执行。该改动保留 v78 的种植侧选题、近 7 天避重、生产经营参考和来源谨慎口径，不新增内容过滤、关键词拦截、摘要字数硬卡、发布卡点、`max_tokens` 截断或 Android 正式包。后端单测新增 JSON 转义换行解析保留用例；本机 Codex 全局自动化 `今日农情人工发布` 也同步为短段摘要口径。验证通过：`go test ./...`、`go build ./...`、`check-server-migration-risk.ps1`、ECS 远端测试 / 编译 / 双端口发布、`check-ecs-readiness.ps1 -ExpectedRevision 76abe9f7 -ExpectedAlipayPaymentGate public`、公网黑盒和今日农情探针 `Runs=1`；探针返回 `prompt_version=2026-06-28-v79 / ok_count=1/1 / displayable_items=3`，本轮摘要长度约 64-68 字，后续继续观察实际卡片的短段排版和信息厚度。已经 ready / manual_locked 的旧日卡片不会因提示词升级自动重写。
