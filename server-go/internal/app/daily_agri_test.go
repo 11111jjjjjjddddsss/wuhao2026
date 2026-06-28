@@ -71,12 +71,11 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"信息量要够",
 		"summary 字段可以使用 JSON 转义换行 \\n",
 		"把摘要拆成 2-3 个短段",
-		"每段 1 句",
-		"手机上一眼能扫完",
+		"别写成一整块长段",
 		"摘要要像正常新闻短讯",
 		"不写空话套话",
 		"来源不确定的数字宁可省略",
-		"不要写成一整块长段、一句话压缩稿、薄通知、套话、推荐理由或“根据搜索结果”等元表达",
+		"不要写成一句话压缩稿、薄通知、套话、推荐理由或“根据搜索结果”等元表达",
 		"数字、价格、面积、比例、补贴金额和进度按来源原意写",
 		"不自行换算、夸大或改口径",
 		"source_name 写机构、媒体或站点短名",
@@ -90,7 +89,7 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"是否新、真、具体",
 		"是否都是种植侧",
 		"是否避开养殖水产、广告软文、传言、旧闻和编造数字",
-		"summary 是否分成 2-3 个短段而不是一整块长段",
+		"summary 是否不是一整块长段",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q: %s", want, prompt)
