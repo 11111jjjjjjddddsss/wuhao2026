@@ -1,6 +1,6 @@
 # Android 下载分发 Runbook
 
-最后更新：2026-06-23
+最后更新：2026-06-28
 
 本 runbook 记录 Android APK 的低成本下载方案。它只解决“安装包从哪里下载、如何校验、如何控制成本”，不等于正式发布口令。
 
@@ -34,7 +34,7 @@ https://nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com/...
 
 ## 当前状态
 
-截至 2026-06-23，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包和正式包的低成本下载主链：
+截至 2026-06-28，`download.nongjiqiancha.cn + OSS` 已跑通，作为内部测试包和正式包的低成本下载主链：
 
 - DNS：`download.nongjiqiancha.cn` CNAME 到 `nongjiqiancha-prod.oss-cn-beijing.aliyuncs.com`。
 - OSS：Bucket 仍保持 private 主口径；为支持正式检查更新和官网下载长期裸 URL，Bucket 级 Block Public Access 已关闭，并配置 Bucket Policy 仅允许匿名 `oss:GetObject` 访问 `android/releases/*`。不要把策略扩大到 `uploads/*`、`support/*`、`test-apks/*` 或整个 Bucket。内部测试包仍通过签名 URL 下载，不走公开读。
@@ -98,14 +98,14 @@ ECS 上 `certbot.timer` 会自动续期免费证书，但 OSS 自定义域名证
 
 当前正在下发的正式包记录：
 
-- `versionName=1.0.12`
-- `versionCode=13`
-- APK URL：`https://download.nongjiqiancha.cn/android/releases/13/nongjiqiancha-1.0.12-v13-a0aaaa6e.apk`
-- SHA-256：`c4092eef8590a1cbd5e73eb1e150b5348ac8302fec1dcf0c5b9f297e07487f13`
+- `versionName=1.0.13`
+- `versionCode=14`
+- APK URL：`https://download.nongjiqiancha.cn/android/releases/14/nongjiqiancha-1.0.13-v14-6f2c0ca6.apk`
+- SHA-256：`8781abe718da17ce70eae0fefcf96033c8717795b52e14bc3595e89f63f3fca6`
 - 文件大小：`14,426,056` 字节
-- 发布提交：`a0aaaa6e`
+- 发布提交：`6f2c0ca6`
 
-上一版 `1.0.11(12)`、`1.0.10(11)`、`1.0.9(10)`、`1.0.8(9)`、`1.0.7(8)`、`1.0.6(7)`、`1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/12/`、`android/releases/11/`、`android/releases/10/`、`android/releases/9/`、`android/releases/8/`、`android/releases/7/`、`android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=13` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
+上一版 `1.0.12(13)`、`1.0.11(12)`、`1.0.10(11)`、`1.0.9(10)`、`1.0.8(9)`、`1.0.7(8)`、`1.0.6(7)`、`1.0.5(6)`、`1.0.4(5)`、`1.0.3(4)`、`1.0.2(3)` 和首个正式包 `1.0.1(2)` 仍作为历史正式包保留在 OSS `android/releases/13/`、`android/releases/12/`、`android/releases/11/`、`android/releases/10/`、`android/releases/9/`、`android/releases/8/`、`android/releases/7/`、`android/releases/6/`、`android/releases/5/`、`android/releases/4/`、`android/releases/3/`、`android/releases/2/` 和后台发布历史中，用于审计、排障和必要时对照；已经安装 `versionCode=14` 的用户不能用低版本覆盖，只能继续发更高 `versionCode` 修复包。
 
 注意：正式包不能长期写死 72 小时测试签名 URL。正式发版时要使用长期稳定的正式 release 裸地址，或由后端检查更新接口另行实现并验收“按需生成可用下载链接”的完整方案；当前后台检查更新、官网、后端、Android 和 release-match 脚本都会拒绝带 userinfo、query string 或 fragment 的 APK URL，并继续校验 HTTPS、SHA-256、文件大小、包名、签名和 `versionCode`。
 
