@@ -5,6 +5,8 @@
 
 ## 2026-06-28
 
+- Android 待发布代码继续按真机反馈收口主聊天两处显示问题：用户黑色聊天气泡内文字选择手柄改为白色水滴，只影响用户气泡，AI 回复、今日农情和输入框仍保持原黑色选择手柄；今日农情主卡片在首次展示时锁住本地可见锚点，远端历史恢复晚到时仍可恢复卡片，但若保存锚点已不在当前窗口且没有历史折叠提示，会稳定落在第一条可见完整 AI 回复后，不再随着后续继续聊天跑到最新回复下面。同步新增 `ChatTimelineItemsTest` 护栏；本轮不改今日农情后端提示词、主聊天滚动主链、模型原文、归档、复制底稿、支付、官网正式包或检查更新。
+- 主聊天每轮独立“【输出约束】”按用户最新口令继续调整，第一段从“排版适合手机阅读（必须结构化排版）。”改为“排版适合手机阅读。必须碎片化排版。像行家聊天，别像客服。冷静客观，禁止客套话。”；其余“禁止表格 / 不要用 Markdown 表格、竖线或横线画表 / 多用自然换行 / 编号列表或项目列表 / 禁止英文输出”口径保持不变。该改动只影响后端组装给主聊天模型的额外 system 约束，不改主对话锚点、今日农情提示词、记忆文档提示词、内容过滤、关键词拦截、表格硬拦截、字数硬卡或 `max_tokens`。
 - 后端入口热修图片问诊 502：线上日志显示用户重发图文问诊时，DashScope / aiohttp 模型回拉 `/uploads/*.jpg` 曾被 Nginx 图片读取入口打成 429，随后 `/api/chat/stream` 返回 502；随后又发现一次正常 `POST /upload` 被上传连接数 4 误伤。已热修生产 Nginx：上传提交 `/upload` 仍保留 `20r/m` 上传速率兜底，但去掉 `limit_conn`；图片读取 `/uploads/` 同时去掉 `limit_req` 和 `limit_conn`，避免正常 4 图问诊、模型供应商共享出口 IP、同轮多图和模型重试拉图被误伤。Go 后端仍保留单张 JPEG `<=1MiB` 和账号+IP `120/10min` 上传限流；readiness 增加 `/upload` 不得出现 `limit_conn`、`/uploads/` 不得出现 `limit_req` / `limit_conn` 的硬检查，流量 runbook 和当前状态同步更新。
 - 发布 Android 正式包 `1.0.11(12)`：基于提交 `7858a079` 构建固定 release 签名 APK `nongjiqiancha-1.0.11-v12-7858a079.apk`，大小 `14,426,056` 字节，SHA-256 `42ac4cce8e2c548079334ba0668f14d15e47395fd9516a783d7cd5818434c03f`，下载地址 `https://download.nongjiqiancha.cn/android/releases/12/nongjiqiancha-1.0.11-v12-7858a079.apk`。已通过 Android release artifact、build parity、APK 公网大小 / SHA 回验；该正式包包含支付 public 前的会员中心 / 支付确认页、帮助与反馈空态、主聊天渲染和法律页收口，正式用户无法打开 debug-only 预览面板。
 - 官网正式下载和 App 检查更新同步到 `1.0.11(12)`：后台检查更新启用普通更新，`force_update=false`，旧正式包 `1.0.10(11)` 会直接收到 `1.0.11(12)`，当前包不会提示自己更新。官网部署脚本已按法律页 `20260628` marker 重新部署并验证；`check-app-update-release-match.ps1 -RequireEnabled -VerifyDownload -PreviousVersionCode 11 -ProbePreviousVersionUpdate` 和公网黑盒均通过。

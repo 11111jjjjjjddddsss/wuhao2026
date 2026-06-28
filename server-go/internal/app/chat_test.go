@@ -39,12 +39,15 @@ func TestSessionRoundAppendRetryPolicy(t *testing.T) {
 func TestChatOutputConstraintText(t *testing.T) {
 	for _, want := range []string{
 		"【输出约束】",
-		"禁止表格，不要用 Markdown 表格、竖线或横线画表；关键点少量加粗，排版适合手机阅读（必须结构化排版）。",
+		"禁止表格，不要用 Markdown 表格、竖线或横线画表；关键点少量加粗，排版适合手机阅读。必须碎片化排版。像行家聊天，别像客服。冷静客观，禁止客套话。",
 		"Markdown 表格",
 		"竖线或横线画表",
 		"关键点少量加粗",
 		"排版适合手机阅读",
-		"必须结构化排版",
+		"必须碎片化排版",
+		"像行家聊天，别像客服",
+		"冷静客观",
+		"禁止客套话",
 		"禁止表格",
 		"多用自然换行",
 		"有多个要点、步骤、提醒或对比内容时",
@@ -96,6 +99,7 @@ func TestChatOutputConstraintText(t *testing.T) {
 		"排版尽量简洁",
 		"多用短段落和适当空行",
 		"不要使用多级列表和项目符号列表",
+		"必须结构化排版",
 	} {
 		if strings.Contains(chatOutputConstraint, blocked) {
 			t.Fatalf("output constraint should not include template phrase %q: %q", blocked, chatOutputConstraint)

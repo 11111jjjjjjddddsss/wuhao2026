@@ -338,6 +338,43 @@ class ChatTimelineItemsTest {
     }
 
     @Test
+    fun todayAgriCardWithMissingAnchorStaysNearFirstVisibleAssistantWhenNoHistoryNotice() {
+        val firstUser = userMessage("u1")
+        val firstAssistant = assistantMessage("a1")
+        val secondUser = userMessage("u2")
+        val secondAssistant = assistantMessage("a2")
+
+        val items = buildChatTimelineItems(
+            messages = listOf(firstUser, firstAssistant, secondUser, secondAssistant),
+            todayAgriCard = todayAgriCard(),
+            todayAgriAfterMessageId = "trimmed-old-message",
+            hiddenRoundCount = 0
+        )
+
+        assertEquals(
+            listOf(
+                ChatTimelineItem.Message(firstUser),
+                ChatTimelineItem.Message(firstAssistant),
+                ChatTimelineItem.TodayAgriCard(todayAgriCard()),
+                ChatTimelineItem.Message(secondUser),
+                ChatTimelineItem.Message(secondAssistant)
+            ),
+            items
+        )
+
+        val thirdUser = userMessage("u3")
+        val thirdAssistant = assistantMessage("a3")
+        val updatedItems = buildChatTimelineItems(
+            messages = listOf(firstUser, firstAssistant, secondUser, secondAssistant, thirdUser, thirdAssistant),
+            todayAgriCard = todayAgriCard(),
+            todayAgriAfterMessageId = "trimmed-old-message",
+            hiddenRoundCount = 0
+        )
+
+        assertEquals(2, updatedItems.indexOf(ChatTimelineItem.TodayAgriCard(todayAgriCard())))
+    }
+
+    @Test
     fun todayAgriMissingAnchorFallbackDoesNotRestartContextWindow() {
         val items = buildChatTimelineItems(
             messages = listOf(

@@ -382,10 +382,14 @@ internal fun buildChatTimelineItems(
         ?.let { id -> setOf(id, assistantMessageIdForSourceUser(id)) }
         .orEmpty()
     var todayAgriCardInserted = false
+    var firstAssistantAnswerInsertIndex = -1
     var latestAssistantAnswerInsertIndex = -1
     messages.forEach { message ->
         items += ChatTimelineItem.Message(message)
         if (message.isCompletedAssistantAnswer(failedAssistantMessageIds)) {
+            if (firstAssistantAnswerInsertIndex < 0) {
+                firstAssistantAnswerInsertIndex = items.size
+            }
             latestAssistantAnswerInsertIndex = items.size
         }
         if (
@@ -404,6 +408,10 @@ internal fun buildChatTimelineItems(
                 .takeIf { it >= 0 }
                 ?.plus(1)
                 ?: 0
+        } else if (requestedAfterMessageId != null) {
+            firstAssistantAnswerInsertIndex.takeIf { it >= 0 }
+                ?: latestAssistantAnswerInsertIndex.takeIf { it >= 0 }
+                ?: items.size
         } else {
             latestAssistantAnswerInsertIndex.takeIf { it >= 0 } ?: items.size
         }
@@ -823,6 +831,7 @@ private val JUMP_BUTTON_BOTTOM_SAFETY_ZONE = 56.dp
 private val MESSAGE_SELECTION_HANDLE_MASK_GUARD = 20.dp
 private val TOP_CHROME_MASK_EXTRA = 8.dp
 private val CHAT_SELECTION_HANDLE_COLOR = Color(0xFF111111)
+private val USER_BUBBLE_SELECTION_HANDLE_COLOR = Color.White
 private val CHAT_SELECTION_BACKGROUND_COLOR = Color(0xFF858B94).copy(alpha = 0.52f)
 private val STATIC_SELECTION_CACHE_WINDOW = 6000.dp
 private val STARTUP_INPUT_CHROME_ROW_HEIGHT_ESTIMATE = 64.dp
@@ -2622,9 +2631,19 @@ fun ChatScreen() {
             chatListItems.any { it is ChatTimelineItem.TodayAgriCard }
         }
     }
-    LaunchedEffect(hasTodayAgriCard, shouldRenderTodayAgriCardInTimeline, currentTodayAgriCardDay) {
+    LaunchedEffect(
+        hasTodayAgriCard,
+        shouldRenderTodayAgriCardInTimeline,
+        currentTodayAgriCardDay,
+        todayAgriAfterMessageIdForRender,
+        todayAgriLocalAnchorMessageId
+    ) {
         if (hasTodayAgriCard && shouldRenderTodayAgriCardInTimeline) {
             todayAgriInsertedThisRuntime = true
+            val renderAnchorMessageId = todayAgriAfterMessageIdForRender
+            if (todayAgriLocalAnchorMessageId.isNullOrBlank() && !renderAnchorMessageId.isNullOrBlank()) {
+                todayAgriLocalAnchorMessageId = renderAnchorMessageId
+            }
         }
     }
     LaunchedEffect(
@@ -3908,6 +3927,12 @@ fun ChatScreen() {
     val messageSelectionColors = remember {
         TextSelectionColors(
             handleColor = CHAT_SELECTION_HANDLE_COLOR,
+            backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
+        )
+    }
+    val userBubbleSelectionColors = remember {
+        TextSelectionColors(
+            handleColor = USER_BUBBLE_SELECTION_HANDLE_COLOR,
             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
         )
     }
@@ -8097,7 +8122,7 @@ fun ChatScreen() {
                             if (msg.content.isNotBlank()) {
                                 SelectableRenderedUserMessageBubble(
                                     content = msg.content,
-                                    textSelectionColors = messageSelectionColors,
+                                    textSelectionColors = userBubbleSelectionColors,
                                     textToolbar = messageTextToolbar,
                                     selectionResetKey = messageSelectionResetEpoch,
                                     userBubbleMaxWidth = userBubbleMaxWidth,
@@ -10405,7 +10430,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                             SelectableRenderedUserMessageBubble(
                                 content = "这个和我棚里的辣椒有关系吗",
                                 textSelectionColors = TextSelectionColors(
-                                    handleColor = CHAT_SELECTION_HANDLE_COLOR,
+                                    handleColor = USER_BUBBLE_SELECTION_HANDLE_COLOR,
                                     backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
                                 ),
                                 textToolbar = LocalTextToolbar.current,
@@ -10516,7 +10541,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                     SelectableRenderedUserMessageBubble(
                         content = "看看这个链接 www.moa.gov.cn，还有 https://www.natesc.org.cn/ 可以点吗",
                         textSelectionColors = TextSelectionColors(
-                            handleColor = CHAT_SELECTION_HANDLE_COLOR,
+                            handleColor = USER_BUBBLE_SELECTION_HANDLE_COLOR,
                             backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
                         ),
                         textToolbar = LocalTextToolbar.current,
@@ -11088,7 +11113,7 @@ private fun UiCopyPreviewCleanStateFirstSend() {
         SelectableRenderedUserMessageBubble(
             content = "刚清数据后，第一次发送一条短问题",
             textSelectionColors = TextSelectionColors(
-                handleColor = CHAT_SELECTION_HANDLE_COLOR,
+                handleColor = USER_BUBBLE_SELECTION_HANDLE_COLOR,
                 backgroundColor = CHAT_SELECTION_BACKGROUND_COLOR
             ),
             textToolbar = LocalTextToolbar.current,
