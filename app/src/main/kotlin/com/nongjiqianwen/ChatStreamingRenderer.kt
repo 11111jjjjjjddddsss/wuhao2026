@@ -199,6 +199,8 @@ private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
 private val rendererNumberedRegex = Regex("^\\d+[.)]\\s*[^\\d%.)）\\]】、].*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
 private val rendererHorizontalRuleRegex = Regex("""^([-*_])(?:\s*\1){2,}\s*$""")
+private val rendererEmptyQuoteControlRegex = Regex("""^(?:>\s*)+$""")
+private val rendererStandaloneMarkdownMarkerRegex = Regex("""^(?:#{1,6}|[-+*•●○◦▪]|[*_~`|]{1,6}|={3,})$""")
 private val rendererChineseSectionHeadingRegex = Regex("^([一二三四五六七八九十]{1,3})([、.．])\\s*(.+)$")
 private val rendererMarkdownImageRegex = Regex("!\\[([^\\]]*)]\\(([^)]+)\\)")
 private val rendererMarkdownLinkRegex = Regex("\\[([^\\]]+)]\\(([^)]+)\\)")
@@ -691,13 +693,21 @@ internal enum class StreamingHeadingSource {
 private fun isRendererHorizontalRuleLine(line: String): Boolean =
     line.trim().matches(rendererHorizontalRuleRegex)
 
+private fun isRendererStandaloneMarkdownControlLine(line: String): Boolean {
+    val trimmed = line.trim()
+    if (trimmed.isEmpty()) return false
+    return isRendererHorizontalRuleLine(trimmed) ||
+        trimmed.matches(rendererEmptyQuoteControlRegex) ||
+        trimmed.matches(rendererStandaloneMarkdownMarkerRegex)
+}
+
 internal fun stripRendererStandaloneHorizontalRules(text: String): String {
     if (text.isEmpty()) return text
     val normalized = text.replace("\r\n", "\n")
-    if (!normalized.lineSequence().any(::isRendererHorizontalRuleLine)) return text
+    if (!normalized.lineSequence().any(::isRendererStandaloneMarkdownControlLine)) return text
     return normalized
         .split('\n')
-        .filterNot(::isRendererHorizontalRuleLine)
+        .filterNot(::isRendererStandaloneMarkdownControlLine)
         .joinToString("\n")
 }
 
@@ -862,12 +872,14 @@ internal fun splitStreamingBlockState(
     content: String,
     treatTrailingLineAsComplete: Boolean = false
 ): StreamingBlockState {
-    val displayContent = stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(content))
-    val logicalLines = splitRendererStreamingLogicalLines(
+    val displayContent = stripRendererStandaloneHorizontalRules(
         normalizeRendererMarkdownTables(
-            content = displayContent,
+            content = stripRendererDecorativeEmoji(content),
             treatTrailingLineAsComplete = treatTrailingLineAsComplete
         )
+    )
+    val logicalLines = splitRendererStreamingLogicalLines(
+        displayContent
     )
     val completedBlocks = mutableListOf<String>()
     val paragraph = StringBuilder()
@@ -944,7 +956,7 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
-    if (isRendererHorizontalRuleLine(trimmed)) {
+    if (isRendererStandaloneMarkdownControlLine(trimmed)) {
         return StreamingLineModel.Blank
     }
     parseRendererBoldArabicNumberedLine(trimmed, indentLevel)?.let { model ->
@@ -1010,7 +1022,7 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
     decodeRendererMarkdownTableBlock(trimmed)?.let { table ->
         return StreamingLineModel.Table(table)
     }
-    if (isRendererHorizontalRuleLine(trimmed)) {
+    if (isRendererStandaloneMarkdownControlLine(trimmed)) {
         return StreamingLineModel.Blank
     }
     parseRendererBoldArabicNumberedLine(trimmed, indentLevel)?.let { model ->
@@ -1737,7 +1749,7 @@ private fun splitRendererStreamingLogicalLines(content: String): StreamingLogica
 
 private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
     return decodeRendererMarkdownTableBlock(trimmed) != null ||
-        isRendererHorizontalRuleLine(trimmed) ||
+        isRendererStandaloneMarkdownControlLine(trimmed) ||
         isRendererBoldNumberedLine(trimmed) ||
         trimmed.matches(rendererHeadingRegex) ||
         parseRendererStandaloneBoldHeading(trimmed) != null ||
@@ -1907,7 +1919,7 @@ private fun RendererAssistantMessageContentImpl(
     modifier: Modifier = Modifier
 ) {
     val displayContent = remember(content) {
-        stripRendererStandaloneHorizontalRules(stripRendererDecorativeEmoji(content))
+        stripRendererDecorativeEmoji(content)
     }
     val shouldRenderDisclaimer = remember(displayContent, showDisclaimer) {
         showDisclaimer && shouldShowAiDisclaimerRefined(displayContent)

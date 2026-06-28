@@ -1776,6 +1776,52 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun standaloneMarkdownControlLinesAreRemovedWithoutTouchingInlineSymbols() {
+        val content =
+            "先看叶片。\n\n" +
+                ">\n" +
+                ">>\n" +
+                "#\n" +
+                "-\n" +
+                "+\n" +
+                "*\n" +
+                "**\n" +
+                "__\n" +
+                "~~\n" +
+                "```\n" +
+                "~~~\n" +
+                "|\n" +
+                "||\n\n" +
+                "再看根系，pH<5.5 或浓度>0.5% 都要单独判断，N-P-K 和 ±10% 不能被清。"
+        val copy = buildRendererPlainCopyText(content)
+        val state = splitStreamingBlockState(content, treatTrailingLineAsComplete = true)
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertEquals(2, models.size)
+        assertTrue(models.all { it is StreamingLineModel.Paragraph })
+        assertFalse(copy.contains("\n>"))
+        assertFalse(copy.contains("```"))
+        assertFalse(copy.contains("||"))
+        assertTrue(copy.contains("pH<5.5"))
+        assertTrue(copy.contains("浓度>0.5%"))
+        assertTrue(copy.contains("N-P-K"))
+        assertTrue(copy.contains("±10%"))
+        assertEquals("", buildRendererPlainCopyText(">\n>>\n#\n-\n+\n*\n**\n__\n~~\n```\n~~~\n|\n||"))
+    }
+
+    @Test
+    fun activeStandaloneMarkdownControlLinesDoNotFlashAsText() {
+        assertTrue(classifyActiveStreamingLine(">") is StreamingLineModel.Blank)
+        assertTrue(classifyActiveStreamingLine(">>") is StreamingLineModel.Blank)
+        assertTrue(classifyActiveStreamingLine("#") is StreamingLineModel.Blank)
+        assertTrue(classifyActiveStreamingLine("-") is StreamingLineModel.Blank)
+        assertTrue(classifyActiveStreamingLine("**") is StreamingLineModel.Blank)
+        assertTrue(classifyActiveStreamingLine("```") is StreamingLineModel.Blank)
+        assertTrue(classifyActiveStreamingLine("||") is StreamingLineModel.Blank)
+    }
+
+    @Test
     fun streamingReadableLongParagraphKeepsModelParagraphWhileTailStreams() {
         val content =
             "叶片发黄可能和缺镁有关，尤其是老叶叶脉间发黄更明显时更要考虑这个方向。" +

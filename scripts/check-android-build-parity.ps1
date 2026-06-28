@@ -769,12 +769,12 @@ if ($failures.Count -eq 0) {
         "Assistant markdown numbered lists must keep compact nested indentation for structured numbered content."
     Require-Match $failures $chatStreamingRenderer 'rendererMarkdownImageRegex(?s:.*?)normalizeRendererTaskListText(?s:.*?)hasRendererUnclosedStrikeDelimiter(?s:.*?)TextDecoration\.LineThrough(?s:.*?)isRendererStrikeDelimiter' `
         "Assistant Markdown fallback rendering must keep image syntax visible as text, task-list markers readable, and strikethrough styled without dropping content."
-    Require-Match $failures $chatStreamingRenderer 'rendererHorizontalRuleRegex(?s:.*?)stripRendererStandaloneHorizontalRules(?s:.*?)filterNot\(::isRendererHorizontalRuleLine\)(?s:.*?)buildRendererPlainCopyText' `
-        "Assistant Markdown standalone horizontal-rule controls must be removed instead of exposing raw --- text or adding another divider."
+    Require-Match $failures $chatStreamingRenderer 'rendererHorizontalRuleRegex(?s:.*?)rendererEmptyQuoteControlRegex(?s:.*?)rendererStandaloneMarkdownMarkerRegex(?s:.*?)isRendererStandaloneMarkdownControlLine(?s:.*?)filterNot\(::isRendererStandaloneMarkdownControlLine\)(?s:.*?)buildRendererPlainCopyText' `
+        "Assistant Markdown standalone control lines such as ---, >, #, empty bullets, empty fences, and pipe-only rows must be removed instead of exposing raw symbols."
     Require-Match $failures $chatStreamingRenderer 'isRendererPreservedTaskCheckboxCodePoint(?s:.*?)isRendererDecorativeEmojiCodePoint(?s:.*?)0x1F000\.\.0x1FAFF(?s:.*?)0x2600\.\.0x27BF(?s:.*?)stripRendererDecorativeEmoji' `
         "Assistant Markdown display must hide decorative emoji while preserving task-list checkbox fallback text."
-    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"小点列表、横杠和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)' `
-        "Debug preview panel must include the latest Markdown fallback sample for visible bullet lists, hidden horizontal-rule controls, and emoji cleanup."
+    Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI Markdown 兜底",\s*"小点列表、空符号和 emoji 清洗",\s*UiCopyPreviewKind\.AssistantMarkdownFallbackSample\)(?s:.*?)UI_COPY_PREVIEW_ASSISTANT_MARKDOWN_FALLBACK_SAMPLE(?s:.*?)">\s*\\n"(?s:.*?)"\|\|\s*\\n"(?s:.*?)"`{3}\\n"' `
+        "Debug preview panel must include the latest Markdown fallback sample for visible bullet lists, hidden standalone control symbols, and emoji cleanup."
     Require-Match $failures $chatScreen 'UiCopyPreviewItem\("AI 编号标题/标签",\s*"大标题、小标题和编号加粗标签不混用",\s*UiCopyPreviewKind\.AssistantNumberedLabelSample\)(?s:.*?)UI_COPY_PREVIEW_ASSISTANT_NUMBERED_LABEL_SAMPLE(?s:.*?)"1\. \*\*小范围试喷：\*\*' `
         "Debug preview panel must expose the numbered-heading versus numbered-bold-label sample that guards recent renderer regressions."
     Require-NoMatch $failures $chatScreen '(?is)LaunchedEffect\s*\([^)]*shouldShowTodayAgriCard[^)]*\)\s*\{(?:(?!\n\s*LaunchedEffect\s*\().){0,2500}(requestProgrammaticForwardListBottomAnchor\s*\(\s*force\s*=\s*true|requestForwardListBottomAnchor\s*\(\s*force\s*=\s*true|scrollToBottom\s*\()' `
