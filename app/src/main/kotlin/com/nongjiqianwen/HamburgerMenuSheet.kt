@@ -2881,6 +2881,11 @@ private fun HamburgerSupportFeedbackPage(
     ) { uris ->
         addSupportImageUris(uris)
     }
+    val imageFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        addSupportImageUris(uris)
+    }
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -2939,6 +2944,16 @@ private fun HamburgerSupportFeedbackPage(
                 }
             }
         }
+    }
+
+    fun launchSupportImageFilePicker() {
+        val remainingSlots = 4 - selectedImages.size
+        if (remainingSlots <= 0) {
+            onPendingAction("最多4张图片")
+            return
+        }
+        attachmentMenuVisible = false
+        imageFilePickerLauncher.launch(arrayOf("image/*"))
     }
 
     fun launchSupportPhotoPicker() {
@@ -3252,7 +3267,8 @@ private fun HamburgerSupportFeedbackPage(
             modifier = Modifier.fillMaxSize(),
             onDismiss = { attachmentMenuVisible = false },
             onCameraClick = ::launchSupportCamera,
-            onPhotoClick = ::launchSupportPhotoPicker
+            onPhotoClick = ::launchSupportPhotoPicker,
+            onFileClick = ::launchSupportImageFilePicker
         )
     }
 }

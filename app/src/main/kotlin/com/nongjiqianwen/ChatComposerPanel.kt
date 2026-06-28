@@ -122,6 +122,7 @@ internal const val COMPOSER_DEFAULT_PLACEHOLDER_TEXT = "描述种植问题"
 internal const val COMPOSER_IMAGE_PLACEHOLDER_TEXT = "描述作物、部位或症状会更准"
 internal const val COMPOSER_ATTACHMENT_CAMERA_TEXT = "相机"
 internal const val COMPOSER_ATTACHMENT_PHOTO_TEXT = "照片"
+internal const val COMPOSER_ATTACHMENT_FILE_TEXT = "文件"
 internal const val COMPOSER_ATTACHMENT_LIMIT_TEXT = "单次最多4张图片"
 internal const val COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT = "建议拍清病斑、异常部位、叶背或果实"
 private val ComposerAttachmentActionIconSize = 30.dp
@@ -635,7 +636,8 @@ internal fun ComposerAttachmentBottomSheet(
     modifier: Modifier = Modifier,
     onDismiss: () -> Unit,
     onCameraClick: () -> Unit,
-    onPhotoClick: () -> Unit
+    onPhotoClick: () -> Unit,
+    onFileClick: () -> Unit
 ) {
     Box(
         modifier = modifier
@@ -713,6 +715,16 @@ internal fun ComposerAttachmentBottomSheet(
                             onClick = onPhotoClick
                         ) {
                             ComposerPhotoIcon(
+                                tint = Color(0xFF111111),
+                                modifier = Modifier.size(ComposerAttachmentActionIconSize)
+                            )
+                        }
+                        ComposerAttachmentBottomSheetTile(
+                            title = COMPOSER_ATTACHMENT_FILE_TEXT,
+                            modifier = Modifier.weight(1f),
+                            onClick = onFileClick
+                        ) {
+                            ComposerFileIcon(
                                 tint = Color(0xFF111111),
                                 modifier = Modifier.size(ComposerAttachmentActionIconSize)
                             )
@@ -1088,6 +1100,72 @@ private fun ComposerPhotoIcon(
             color = tint,
             start = Offset(size.width * 0.68f, size.height * 0.56f),
             end = Offset(size.width * 0.78f, size.height * 0.72f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun ComposerFileIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val stroke = size.minDimension * 0.085f
+        val corner = size.minDimension * 0.08f
+        val left = size.width * 0.18f
+        val top = size.height * 0.12f
+        val right = size.width * 0.82f
+        val bottom = size.height * 0.9f
+        val foldX = size.width * 0.62f
+        val foldY = size.height * 0.32f
+        val filePath = Path().apply {
+            moveTo(left + corner, top)
+            lineTo(foldX, top)
+            lineTo(right, foldY)
+            lineTo(right, bottom - corner)
+            quadraticTo(right, bottom, right - corner, bottom)
+            lineTo(left + corner, bottom)
+            quadraticTo(left, bottom, left, bottom - corner)
+            lineTo(left, top + corner)
+            quadraticTo(left, top, left + corner, top)
+            close()
+        }
+        drawPath(
+            path = filePath,
+            color = tint,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = stroke,
+                cap = StrokeCap.Round,
+                join = StrokeJoin.Round
+            )
+        )
+        drawLine(
+            color = tint,
+            start = Offset(foldX, top),
+            end = Offset(foldX, foldY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(foldX, foldY),
+            end = Offset(right, foldY),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.32f, size.height * 0.52f),
+            end = Offset(size.width * 0.68f, size.height * 0.52f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = Offset(size.width * 0.32f, size.height * 0.68f),
+            end = Offset(size.width * 0.62f, size.height * 0.68f),
             strokeWidth = stroke,
             cap = StrokeCap.Round
         )

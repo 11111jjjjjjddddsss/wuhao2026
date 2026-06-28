@@ -959,6 +959,10 @@ if ($failures.Count -eq 0) {
         "Composer send button must expose a hidden button label without adding visible text."
     Require-Match $failures $chatComposerPanel 'ComposerInlineAddButton(?s:.*?)contentDescription\s*=\s*"添加图片"(?s:.*?)role\s*=\s*Role\.Button' `
         "Composer add button must expose a hidden attachment label without adding visible text."
+    Require-Match $failures $chatComposerPanel 'COMPOSER_ATTACHMENT_FILE_TEXT\s*=\s*"文件"(?s:.*?)ComposerFileIcon' `
+        "Attachment sheet must keep a file fallback entry for freshly saved images that are not yet visible in the system photo picker."
+    Require-Match $failures ($chatScreen + "`n" + $hamburgerMenuSheet) 'ActivityResultContracts\.OpenMultipleDocuments\(\)(?s:.*?)launch\(arrayOf\("image/\*"\)\)' `
+        "Main chat and support feedback must keep the image file picker fallback without requesting broad gallery permissions."
     Require-Match $failures $chatComposerPanel 'ComposerImagePreviewThumb(?s:.*?)align\(Alignment\.TopEnd\)(?s:.*?)size\(36\.dp\)(?s:.*?)clickable(?s:.*?)onRemoveImage\(image\)(?s:.*?)size\(20\.dp\)(?s:.*?)ComposerCloseIcon' `
         "Selected image delete affordance must keep a larger touch target while preserving the compact visual close circle."
     Require-Match $failures $chatScreen 'IconButton\((?s:.*?)contentDescription\s*=\s*"会员中心"(?s:.*?)MembershipCenterLeafIcon' `

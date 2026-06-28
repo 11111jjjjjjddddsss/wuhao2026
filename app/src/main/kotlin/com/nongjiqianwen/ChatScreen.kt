@@ -4771,6 +4771,11 @@ fun ChatScreen() {
     ) { uris ->
         addComposerImageUris(uris)
     }
+    val imageFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris ->
+        addComposerImageUris(uris)
+    }
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -4878,6 +4883,16 @@ fun ChatScreen() {
             }
             showComposerStatusHint(CAMERA_OPEN_FAILED_HINT_TEXT)
         }
+    }
+
+    fun launchComposerImageFilePicker() {
+        val remainingSlots = COMPOSER_MAX_IMAGE_COUNT - selectedComposerImages.size
+        if (remainingSlots <= 0) {
+            showComposerStatusHint(COMPOSER_IMAGE_COUNT_HINT)
+            return
+        }
+        attachmentMenuVisible = false
+        imageFilePickerLauncher.launch(arrayOf("image/*"))
     }
 
     fun launchComposerPhotoPicker() {
@@ -8656,6 +8671,13 @@ fun ChatScreen() {
                         }
                         performButtonHaptic()
                         launchComposerPhotoPicker()
+                    },
+                    onFileClick = fileClick@{
+                        if (imageSendInProgress) {
+                            return@fileClick
+                        }
+                        performButtonHaptic()
+                        launchComposerImageFilePicker()
                     }
                 )
 
@@ -9402,7 +9424,7 @@ private fun UiCopyPreviewOverlay(
                 title = "附件面板",
                 items = listOf(
                     UiCopyPreviewItem(
-                        "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT",
+                        "$COMPOSER_ATTACHMENT_CAMERA_TEXT / $COMPOSER_ATTACHMENT_PHOTO_TEXT / $COMPOSER_ATTACHMENT_FILE_TEXT",
                         "+ 面板未满状态：紧凑入口和拍摄建议",
                         UiCopyPreviewKind.AttachmentSheet
                     ),
@@ -11244,7 +11266,8 @@ private fun UiCopyPreviewAttachmentSheet(
             modifier = Modifier.fillMaxSize(),
             onDismiss = {},
             onCameraClick = {},
-            onPhotoClick = {}
+            onPhotoClick = {},
+            onFileClick = {}
         )
     }
 }
