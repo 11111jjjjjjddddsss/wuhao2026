@@ -69,10 +69,14 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"一般别低于 80 个中文字符",
 		"写 2-3 句完整短讯",
 		"信息量要够",
+		"summary 字段可以使用 JSON 转义换行 \\n",
+		"把摘要拆成 2-3 个短段",
+		"每段 1 句",
+		"手机上一眼能扫完",
 		"摘要要像正常新闻短讯",
 		"不写空话套话",
 		"来源不确定的数字宁可省略",
-		"不要写成一句话压缩稿、薄通知、套话、推荐理由或“根据搜索结果”等元表达",
+		"不要写成一整块长段、一句话压缩稿、薄通知、套话、推荐理由或“根据搜索结果”等元表达",
 		"数字、价格、面积、比例、补贴金额和进度按来源原意写",
 		"不自行换算、夸大或改口径",
 		"source_name 写机构、媒体或站点短名",
@@ -86,6 +90,7 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"是否新、真、具体",
 		"是否都是种植侧",
 		"是否避开养殖水产、广告软文、传言、旧闻和编造数字",
+		"summary 是否分成 2-3 个短段而不是一整块长段",
 	} {
 		if !strings.Contains(prompt, want) {
 			t.Fatalf("prompt missing %q: %s", want, prompt)
@@ -95,6 +100,7 @@ func TestBuildDailyAgriMessagesControlsQualityByPrompt(t *testing.T) {
 		"https://example.com/article",
 		"https://原文链接",
 		"https://www.gov.cn/agri/old-1",
+		"JSON 字符串值不得包含 Markdown、HTML、换行",
 	} {
 		if strings.Contains(prompt, forbidden) {
 			t.Fatalf("prompt contains forbidden text %q: %s", forbidden, prompt)
@@ -154,6 +160,28 @@ func TestParseDailyAgriCardAcceptsStructuredItemsAndIgnoresModelURLs(t *testing.
 	}
 	if report.Total != 3 || report.Displayable != 3 {
 		t.Fatalf("parse report mismatch: %#v", report)
+	}
+}
+
+func TestParseDailyAgriCardPreservesSummaryLineBreaks(t *testing.T) {
+	content := `{
+	  "card_name": "今日农情",
+	  "items": [
+	    {"title":"玉米苗情管理提醒","summary":"东北部分产区进入玉米苗期管理阶段。\n建议查看缺苗断垄和墒情。"},
+	    {"title":"水稻移栽天气提示","summary":"南方部分稻区迎来移栽窗口。\n低温阴雨地区需关注返青和排水。"},
+	    {"title":"苹果产区降雨关注","summary":"西北苹果产区需关注降雨和病害风险。\n及时巡园查看叶片果面。"}
+	  ]
+	}`
+
+	card, report, err := parseDailyAgriCard(content, nil, "20260513", nil)
+	if err != nil {
+		t.Fatalf("parse card with summary line breaks: %v", err)
+	}
+	if len(card.Items) != 3 || report.Displayable != 3 {
+		t.Fatalf("expected all items displayable, card=%#v report=%#v", card, report)
+	}
+	if !strings.Contains(card.Items[0].Summary, "\n") {
+		t.Fatalf("expected summary line break to be preserved: %#v", card.Items[0].Summary)
 	}
 }
 
