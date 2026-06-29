@@ -89,6 +89,7 @@ GPT_RELAY_API_KEYS=<逗号/分号/换行分隔的多个 relay key>
 # 或：GPT_RELAY_API_KEY_1...50
 GPT_RELAY_MODEL=gpt-5.5
 GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS=15
+GPT_RELAY_KEY_MAX_ATTEMPTS=5
 ```
 
 说明：
@@ -96,7 +97,8 @@ GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS=15
 - `GPT_RELAY_*` 是独立的新候选链路，不等于旧 `CHAT_PRIMARY_*` 复活。
 - 默认 `GPT_RELAY_ENABLED=false` 或缺关键配置时完全不触达 GPT，中转站故障不会影响当前 Bailian / Qwen 主链。
 - 真实 Key、真实 URL、供应商名、账号分组和后台订单信息只允许放在服务器私密环境或本机私密配置，不进仓库、不进日志、不进后台页面、不在聊天中复述。
-- GPT relay 请求固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto` 和“一次联网、够用就答”的联网规则；当前代码不会读取环境变量把它改成 `high / auto / large`，避免误开高成本路径。
+- GPT relay 请求固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto` 和“用户明确要求查 / 实时信息才联网，只查询一次、快速回答”的联网规则；当前代码不会读取环境变量把它改成 `high / auto / large`，避免误开高成本路径。
+- 多 Key 会轮询；默认单轮最多尝试 5 把，某把开流前失败会立刻换下一把，失败 Key 只进入短冷却，不会让用户等 30 秒。
 - GPT relay 不带千问专用 `【输出约束】` / 回答参考范本；它只带主对话锚点、时间地点、记忆、上下文、本轮文字和图片。
 - 关闭或回滚只需要移除 `GPT_RELAY_*` 配置，或设置 `GPT_RELAY_ENABLED=false` 后重启服务；不需要 Android 发版。
 
