@@ -27,7 +27,7 @@ const (
 	defaultGPTRelayKeyCooldown               = 30 * time.Second
 	defaultGPTRelayKeyMaxAttempts            = 10
 	defaultGPTRelayMaxConfiguredKeySlot      = 50
-	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。"
+	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。\n\n带图或高风险问题，必须深度思考。"
 )
 
 type GPTRelayClient struct {
@@ -511,5 +511,5 @@ func gptRelayImageURLValue(item map[string]any) string {
 }
 
 func gptRelayNetworkingInstruction() string {
-	return "【联网规则】\n模型可自行判断是否联网。\n\n用户明确要求查一下、搜一下、联网查、看最新信息时，要联网。\n\n涉及今天 / 最新 / 当前 / 实时 / 价格 / 行情 / 政策 / 天气 / 农资登记 / 用药标签 / 禁限用变化 / 购买渠道等实时信息时，再联网。\n\n疑难、复杂、高风险问题，如果需要公开权威信息校准，也可以联网。\n\n普通农技知识和图片可见症状，先直接判断。\n关键田间信息缺失时，先追问，不要用联网代替追问。\n\n" + defaultGPTRelayMaxSearchCallsInstruction
+	return "【GPT专用规则】\n模型可自行判断是否联网。\n\n用户明确要求查一下、搜一下、联网查、看最新信息时，要联网。\n\n涉及今天 / 最新 / 当前 / 实时 / 价格 / 行情 / 政策 / 天气 / 农资登记 / 用药标签 / 禁限用变化 / 购买渠道等实时信息时，再联网。\n\n疑难、复杂、高风险问题，如果需要公开权威信息校准，也可以联网。\n\n普通农技知识和图片可见症状，先直接判断。\n关键田间信息缺失时，先追问，不要用联网代替追问。\n\n" + defaultGPTRelayMaxSearchCallsInstruction
 }
