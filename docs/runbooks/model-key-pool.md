@@ -101,11 +101,11 @@ GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS=4
 - `GPT_RELAY_*` 是独立的新候选链路，不等于旧 `CHAT_PRIMARY_*` 复活。
 - 默认 `GPT_RELAY_ENABLED=false` 或缺关键配置时完全不触达 GPT，中转站故障不会影响当前 Bailian / Qwen 主链。
 - 真实 Key、真实 URL、供应商名、账号分组和后台订单信息只允许放在服务器私密环境或本机私密配置，不进仓库、不进日志、不进后台页面、不在聊天中复述。
-- GPT relay 的思考档位默认 `reasoning.effort=medium`，只允许通过 `GPT_RELAY_REASONING_EFFORT=high` 临时切到 `high` 做生产观察；其它值会回落到 `medium`。联网仍固定 `web_search.search_context_size=low`、`tool_choice=auto` 和“用户明确要求查 / 实时信息才联网，必须只搜索一次、快速回答”的联网规则，当前代码不会把搜索上下文改成 `large`，避免误开高成本路径。
+- GPT relay 的生产思考档位为 `reasoning.effort=medium`；`high` 曾短暂验证，但图片问诊首字明显变慢、容易触发 15 秒回落，暂不作为生产口径。联网仍固定 `web_search.search_context_size=low`、`tool_choice=auto` 和“用户明确要求查 / 实时信息才联网，必须只搜索一次、快速回答”的联网规则，当前代码不会把搜索上下文改成 `large`，避免误开高成本路径。
 - 多 Key 会轮询；默认单轮最多尝试 10 把，某把开流前失败会立刻换下一把，失败 Key 只进入短冷却，不会让用户等 30 秒。GPT relay 外层不再套通用开流重试，避免一轮 10 把失败后又整体重来。
 - GPT relay 首字预算默认 15 秒，并从后端收到用户请求开始计算，不是从中转站返回 SSE 后才开始算；这 15 秒包含 key 切换、连接、TLS 和响应头等待。开流前连接 / TLS / 响应头默认各 4 秒，预算耗尽就回退 Bailian / Qwen。
 - 首字判定只看用户可见正文；`response.created`、搜索事件、心跳和空白 delta 都不算成功。已吐出可见正文后不在同一条回复中途切模型，避免半段 GPT 半段千问。
-- GPT relay 不带千问专用 `【输出约束】` / 回答参考范本；它只带主对话锚点、时间地点、记忆、上下文、本轮文字和图片。
+- GPT relay 和千问一样带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、上下文、本轮文字和图片；GPT 额外只多一段 `【联网规则】`。
 - 关闭或回滚只需要移除 `GPT_RELAY_*` 配置，或设置 `GPT_RELAY_ENABLED=false` 后重启服务；不需要 Android 发版。
 
 ## 运行策略

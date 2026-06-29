@@ -461,7 +461,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	)
 	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
-	gptRelayPromptMessages, _, _ := s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext, false)
+	gptRelayPromptMessages, _, _ := s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext, true)
 	promptChars := countBailianMessageContentRunes(promptMessages)
 	promptHasImages := promptIncludesImageContext(snapshot, aWindowRounds, images)
 	thinkingOptions := resolveChatThinkingOptionsForImageContext(promptHasImages)

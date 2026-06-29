@@ -297,7 +297,7 @@ func TestGPTRelayNetworkingInstructionIncludesExplicitSearchRequest(t *testing.T
 	}
 }
 
-func TestGPTRelayPromptVariantOmitsChatOutputConstraint(t *testing.T) {
+func TestGPTRelayPromptVariantIncludesChatOutputConstraintAndNetworkingRule(t *testing.T) {
 	server := &Server{systemAnchor: "anchor"}
 	snapshot := &SessionSnapshot{
 		MemoryDocument: "memory",
@@ -312,19 +312,36 @@ func TestGPTRelayPromptVariantOmitsChatOutputConstraint(t *testing.T) {
 		nil,
 		"context",
 		"",
-		false,
+		true,
 	)
 	if usedCount != 1 || !hasMemory {
 		t.Fatalf("prompt metadata mismatch used=%d hasMemory=%v", usedCount, hasMemory)
 	}
+	foundOutputConstraint := false
 	for _, message := range messages {
 		if message.Role == "system" && message.Content == chatOutputConstraint {
-			t.Fatalf("gpt relay prompt must not include chat output constraint")
+			foundOutputConstraint = true
 		}
+	}
+	if !foundOutputConstraint {
+		t.Fatalf("gpt relay prompt must include chat output constraint")
 	}
 	last := messages[len(messages)-1]
 	if last.Role != "user" || last.Content != "current" {
 		t.Fatalf("expected current user message at tail, got %#v", last)
+	}
+	instructions, input := buildGPTRelayResponsesPrompt(messages)
+	if !strings.Contains(instructions, "anchor") {
+		t.Fatalf("gpt relay instructions missing anchor:\n%s", instructions)
+	}
+	if !strings.Contains(instructions, "【输出约束】") {
+		t.Fatalf("gpt relay instructions missing output constraint:\n%s", instructions)
+	}
+	if !strings.Contains(instructions, "【联网规则】") {
+		t.Fatalf("gpt relay instructions missing networking rule:\n%s", instructions)
+	}
+	if len(input) == 0 {
+		t.Fatalf("gpt relay input should keep non-system messages")
 	}
 }
 

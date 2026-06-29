@@ -2,7 +2,7 @@
 
 本文记录第三方 GPT 中转站的本地评测口径，以及后端可选 `GPT_RELAY_*` 候选链路的当前边界，方便后续复测联网、图片、响应速度、成本和灰度开关。
 
-当前生产主聊天默认仍是百炼 / 千问主链。本文不代表可以恢复旧 `CHAT_PRIMARY_*`，也不允许把模型 Key、真实中转 URL、账号分组、后台截图里的密钥或订单信息写进仓库。
+当前生产主聊天已启用 `GPT_RELAY_*` 作为可插拔候选，首字前失败或超时回退百炼 / 千问。本文不代表可以恢复旧 `CHAT_PRIMARY_*`，也不允许把模型 Key、真实中转 URL、账号分组、后台截图里的密钥或订单信息写进仓库。
 
 ## 边界
 
@@ -13,15 +13,15 @@
 
 ## 当前代码接入口
 
-后端已经有默认关闭的 `GPT_RELAY_*` 候选链路：
+后端已经有可开关的 `GPT_RELAY_*` 候选链路：
 
-- 默认关闭；`GPT_RELAY_ENABLED` 未设为 `true` 时完全不触达 GPT。
+- `GPT_RELAY_ENABLED=false` 或未配置完整 Key / endpoint 时不触达 GPT，可快速回到千问主链。
 - 不复用旧 `CHAT_PRIMARY_*`；旧变量仍应保持退役，readiness 继续拒绝 `CHAT_PRIMARY_ENABLED=true`。
 - 只走 Responses 流式接口；不走普通 Chat Completions 联网。
 - 支持多个 Key 轮询和短冷却；开流前失败可换 Key，所有 GPT 尝试失败后回退 Bailian / Qwen。
 - 15 秒内没有用户可见正文时回退 Bailian / Qwen；已吐出可见正文后不在同一条回复中途切模型。
-- GPT 请求只带主对话锚点、时间地点、记忆、历史上下文、本轮文字和图片；不带千问专用 `【输出约束】` / 回答参考范本。
-- 当前固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto`，并追加“一次联网、够用就答”的联网规则。
+- GPT 请求带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、历史上下文、本轮文字和图片；GPT 比千问只额外多一段联网规则。
+- 当前生产固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto`，并追加“一次联网、够用就答”的联网规则。`high` 曾临时验证，但图片问诊首字明显变慢，暂不作为生产口径。
 - 不设置 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或图片 `detail`。
 - `/healthz` 和后台只暴露 `gpt_relay=disabled / ok / missing_config` 等非敏感状态，不暴露真实 URL、Key 数量、供应商名或账号分组。
 
