@@ -496,7 +496,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	upstreamCtx, cancelUpstream := context.WithTimeout(context.Background(), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
 	upstreamOpenStartedAt := time.Now()
-	upstream, upstreamProvider, err := s.openValidatedChatStreamWithFallback(upstreamCtx, promptMessages, gptRelayPromptMessages, thinkingOptions)
+	upstream, upstreamProvider, upstreamProviderCancel, err := s.openValidatedChatStreamWithFallback(upstreamCtx, requestReceivedAt, promptMessages, gptRelayPromptMessages, thinkingOptions)
 	upstreamOpenedAt := time.Now()
 	upstreamOpenMs := upstreamOpenedAt.Sub(upstreamOpenStartedAt).Milliseconds()
 	requestToUpstreamOpenMs := upstreamOpenedAt.Sub(requestReceivedAt).Milliseconds()
@@ -518,6 +518,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		)
 		return
 	}
+	defer upstreamProviderCancel()
 	defer upstream.Body.Close()
 
 	s.writeSSEHeaders(w)
@@ -615,7 +616,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	readResults, stopReadLoop := startReadLoop(upstream.Body)
 	defer func() { stopReadLoop() }()
-	firstVisibleTimeout := resolveChatStreamFirstVisibleTimeoutForProvider(upstreamProvider)
+	firstVisibleTimeout := resolveChatStreamFirstVisibleTimeoutForProviderAfter(upstreamProvider, upstreamOpenedAt.Sub(requestReceivedAt))
 	firstVisibleTimer := time.NewTimer(firstVisibleTimeout)
 	defer firstVisibleTimer.Stop()
 	idleTimeout := resolveChatStreamIdleTimeout()
@@ -651,6 +652,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			"forced_search", forceSearch,
 		)
 		_ = upstream.Body.Close()
+		upstreamProviderCancel()
 		stopReadLoop()
 		fallbackOpenStartedAt := time.Now()
 		fallbackResponse, fallbackErr := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages, thinkingOptions)
@@ -668,6 +670,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			return false
 		}
 		upstream = fallbackResponse
+		upstreamProviderCancel = func() {}
 		upstreamProvider = "bailian"
 		upstreamRequestID = firstNonEmpty(upstream.Header.Get("x-request-id"), upstream.Header.Get("request-id"))
 		upstreamOpenedAt = fallbackOpenedAt
@@ -680,7 +683,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		hasCitations.Store(false)
 		modelUsage = bailianModelUsage{}
 		readResults, stopReadLoop = startReadLoop(upstream.Body)
-		firstVisibleTimeout = resolveChatStreamFirstVisibleTimeoutForProvider(upstreamProvider)
+		firstVisibleTimeout = resolveChatStreamFirstVisibleTimeoutForProviderAfter(upstreamProvider, 0)
 		if !firstVisibleTimer.Stop() {
 			select {
 			case <-firstVisibleTimer.C:
@@ -1163,19 +1166,39 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 	}
 }
 
-func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, bailianMessages []BailianMessage, gptRelayMessages []BailianMessage, options BailianStreamOptions) (*http.Response, string, error) {
+func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, requestReceivedAt time.Time, bailianMessages []BailianMessage, gptRelayMessages []BailianMessage, options BailianStreamOptions) (*http.Response, string, context.CancelFunc, error) {
+	noopCancel := func() {}
 	if s.gptRelay != nil && s.gptRelay.Enabled() {
-		response, err := s.openValidatedGPTRelayStream(ctx, gptRelayMessages)
-		if err == nil {
-			return response, gptRelayProvider, nil
+		remaining := resolveGPTRelayFirstVisibleTimeout(resolveChatStreamMaxDuration())
+		if !requestReceivedAt.IsZero() {
+			remaining -= time.Since(requestReceivedAt)
 		}
-		s.logger.Warn("gpt relay open failed before visible text; fallback to bailian", "error", sanitizeDashScopeErrorMessage(err.Error()))
+		if remaining > 0 {
+			gptCtx, cancelGPT := context.WithCancel(ctx)
+			budgetTimer := time.AfterFunc(remaining, cancelGPT)
+			response, err := s.openValidatedGPTRelayStream(gptCtx, gptRelayMessages)
+			timerStopped := budgetTimer.Stop()
+			if err == nil {
+				if !timerStopped || gptCtx.Err() != nil {
+					_ = response.Body.Close()
+					cancelGPT()
+					s.logger.Warn("gpt relay open exceeded first visible budget; fallback to bailian")
+				} else {
+					return response, gptRelayProvider, cancelGPT, nil
+				}
+			} else {
+				cancelGPT()
+				s.logger.Warn("gpt relay open failed before visible text; fallback to bailian", "error", sanitizeDashScopeErrorMessage(err.Error()))
+			}
+		} else {
+			s.logger.Warn("gpt relay skipped because first visible budget exhausted; fallback to bailian")
+		}
 	}
 	response, err := s.openValidatedBailianStreamWithRetry(ctx, bailianMessages, options)
 	if err != nil {
-		return nil, "bailian", err
+		return nil, "bailian", noopCancel, err
 	}
-	return response, "bailian", nil
+	return response, "bailian", noopCancel, nil
 }
 
 func chatUpstreamSearchLogConfig(provider string) (bool, string, bool) {
@@ -1190,7 +1213,7 @@ func isGPTRelayProvider(provider string) bool {
 }
 
 func (s *Server) openValidatedGPTRelayStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
-	return s.openValidatedStreamWithRetry(ctx, gptRelayProvider, upstreamMaxAttempts, func(openCtx context.Context) (*http.Response, error) {
+	return s.openValidatedStreamWithRetry(ctx, gptRelayProvider, 1, func(openCtx context.Context) (*http.Response, error) {
 		return s.gptRelay.OpenStream(openCtx, messages)
 	})
 }
@@ -1329,6 +1352,18 @@ func resolveChatStreamFirstVisibleTimeoutForProvider(provider string) time.Durat
 		return resolveGPTRelayFirstVisibleTimeout(resolveChatStreamMaxDuration())
 	}
 	return resolveChatStreamFirstVisibleTimeout()
+}
+
+func resolveChatStreamFirstVisibleTimeoutForProviderAfter(provider string, elapsed time.Duration) time.Duration {
+	duration := resolveChatStreamFirstVisibleTimeoutForProvider(provider)
+	if !isGPTRelayProvider(provider) {
+		return duration
+	}
+	remaining := duration - elapsed
+	if remaining <= 0 {
+		return time.Millisecond
+	}
+	return remaining
 }
 
 func resolveChatStreamIdleTimeout() time.Duration {

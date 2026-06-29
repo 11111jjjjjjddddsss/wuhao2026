@@ -152,7 +152,9 @@ func TestGPTRelayReasoningAllowsMediumOrHighAndSearchStaysLow(t *testing.T) {
 }
 
 func TestOpenValidatedChatStreamFallsBackToBailianWhenGPTRelayOpenFails(t *testing.T) {
+	gptHits := int32(0)
 	gptServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&gptHits, 1)
 		http.Error(w, "bad relay", http.StatusBadGateway)
 	}))
 	defer gptServer.Close()
@@ -176,8 +178,9 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenGPTRelayOpenFails(t *testi
 		bailian:  NewBailianClient(),
 		gptRelay: NewGPTRelayClientFromEnv(),
 	}
-	response, provider, err := server.openValidatedChatStreamWithFallback(
+	response, provider, cancelProvider, err := server.openValidatedChatStreamWithFallback(
 		context.Background(),
+		time.Now(),
 		[]BailianMessage{{Role: "user", Content: "bailian"}},
 		[]BailianMessage{{Role: "user", Content: "gpt"}},
 		BailianStreamOptions{},
@@ -188,6 +191,10 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenGPTRelayOpenFails(t *testi
 	defer response.Body.Close()
 	if provider != "bailian" {
 		t.Fatalf("provider = %q, want bailian", provider)
+	}
+	cancelProvider()
+	if got := atomic.LoadInt32(&gptHits); got != 1 {
+		t.Fatalf("gpt relay should not have an outer retry, hits=%d", got)
 	}
 }
 
@@ -215,8 +222,9 @@ func TestOpenValidatedChatStreamDoesNotCallGPTRelayWhenDisabled(t *testing.T) {
 		bailian:  NewBailianClient(),
 		gptRelay: NewGPTRelayClientFromEnv(),
 	}
-	response, provider, err := server.openValidatedChatStreamWithFallback(
+	response, provider, cancelProvider, err := server.openValidatedChatStreamWithFallback(
 		context.Background(),
+		time.Now(),
 		[]BailianMessage{{Role: "user", Content: "bailian"}},
 		[]BailianMessage{{Role: "user", Content: "gpt"}},
 		BailianStreamOptions{},
@@ -228,6 +236,7 @@ func TestOpenValidatedChatStreamDoesNotCallGPTRelayWhenDisabled(t *testing.T) {
 	if provider != "bailian" {
 		t.Fatalf("provider = %q, want bailian", provider)
 	}
+	cancelProvider()
 	if got := atomic.LoadInt32(&gptHits); got != 0 {
 		t.Fatalf("disabled gpt relay should not be called, hits=%d", got)
 	}
@@ -244,6 +253,20 @@ func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "10")
 	if got := resolveChatStreamFirstVisibleTimeoutForProvider(gptRelayProvider); got != 5*time.Second {
 		t.Fatalf("gpt relay first visible timeout should clamp to max duration, got %s", got)
+	}
+}
+
+func TestGPTRelayFirstVisibleTimeoutCountsFromRequestReceived(t *testing.T) {
+	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "15")
+
+	remaining := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 13*time.Second)
+	if remaining < 1900*time.Millisecond || remaining > 2100*time.Millisecond {
+		t.Fatalf("remaining first visible timeout = %s, want about 2s", remaining)
+	}
+
+	if got := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 16*time.Second); got != time.Millisecond {
+		t.Fatalf("exhausted first visible timeout = %s, want 1ms", got)
 	}
 }
 

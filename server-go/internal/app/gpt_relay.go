@@ -20,12 +20,12 @@ const (
 	defaultGPTRelayReasoningEffort           = "medium"
 	defaultGPTRelaySearchContextSize         = "low"
 	defaultGPTRelayFirstVisibleTimeout       = 15 * time.Second
-	defaultGPTRelayDialTimeout               = 6 * time.Second
-	defaultGPTRelayTLSHandshakeTimeout       = 6 * time.Second
-	defaultGPTRelayResponseHeaderTimeout     = 6 * time.Second
+	defaultGPTRelayDialTimeout               = 4 * time.Second
+	defaultGPTRelayTLSHandshakeTimeout       = 4 * time.Second
+	defaultGPTRelayResponseHeaderTimeout     = 4 * time.Second
 	defaultGPTRelayIdleConnTimeout           = 60 * time.Second
 	defaultGPTRelayKeyCooldown               = 30 * time.Second
-	defaultGPTRelayKeyMaxAttempts            = 5
+	defaultGPTRelayKeyMaxAttempts            = 10
 	defaultGPTRelayMaxConfiguredKeySlot      = 50
 	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。"
 )

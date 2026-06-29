@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”、旧会诊对象选择或旧模型链路 / 旧中转站 / 旧 Chat Completions 表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-06-30
+
+- GPT 中转候选链路按“首字前抢速度，首字后保完整”继续压缩等待：默认单轮 Key 尝试数从 5 调到 10，匹配当前 10 把私密 Key 轮询；开流前连接、TLS 握手和响应头等待默认从 6 秒收紧到 4 秒；GPT relay 外层不再套通用开流重试，避免 10 把 Key 失败后整轮再重来。15 秒可见正文预算改为从后端收到用户请求开始算，包含 key 切换和开流时间；预算耗尽、开流前失败或首字前异常会回退 Bailian / Qwen。首字只认用户可见正文，`response.created`、搜索事件、心跳和空白 delta 都不算成功；已吐出可见正文后不在同一条回复中途切模型。本轮只改后端 GPT relay 候选链路和项目文档，不改 Android、主对话锚点、千问输出约束、记忆摘要模型或今日农情提示词。
+
 ## 2026-06-29
 
 - GPT 中转候选链路继续收口并准备切高思考观察：生产已启用 `GPT_RELAY_*` 主聊天候选，10 把私密 Key 轻量连通探针均返回 HTTP 200 和 Responses 流式事件；单条带图问诊日志显示可记录输入 / 输出 / 总 token、首字耗时、总耗时、搜索次数和 `model_reasoning_tokens`。代码新增 `GPT_RELAY_REASONING_EFFORT=high` env 开关，默认仍是 medium，其它非法值回退 medium；日志新增 `gpt_relay_reasoning_effort`、`gpt_relay_search_context_size`，并让 GPT relay 即使回传 `reasoning_tokens=0` 也记录 `model_reasoning_tokens`，便于后续观察 high 是否真的增加思考量。联网仍保持 `auto + low + 必须只搜索一次、快速回答`，不额外设置温度、`top_p`、输出 token 截断或图片 detail；记忆摘要仍走 `qwen-plus`，Android 不发包。
