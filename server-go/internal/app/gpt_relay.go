@@ -27,7 +27,7 @@ const (
 	defaultGPTRelayKeyCooldown               = 30 * time.Second
 	defaultGPTRelayKeyMaxAttempts            = 5
 	defaultGPTRelayMaxConfiguredKeySlot      = 50
-	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，只查询一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。"
+	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。"
 )
 
 type GPTRelayClient struct {
