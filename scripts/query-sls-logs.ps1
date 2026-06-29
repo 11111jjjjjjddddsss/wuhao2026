@@ -53,7 +53,7 @@ function Invoke-JsonCommand {
             -replace '(?i)(SignatureNonce=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(Content=)[^&\s]+', '${1}REDACTED' `
             -replace '(?<!\d)1[3-9]\d{9}(?!\d)', 'PHONE_REDACTED' `
-            -replace '(?i)((?:MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEYS?|DASHSCOPE_API_KEY_[0-9]+|DASHSCOPE_PRIMARY_API_KEYS?|DASHSCOPE_PRIMARY_API_KEY_[0-9]+|DASHSCOPE_SECONDARY_API_KEYS?|DASHSCOPE_SECONDARY_API_KEY_[0-9]+|CHAT_PRIMARY_API_KEY(?:S|_[0-9]+)?|GPT_RELAY_[A-Z0-9_]+|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+            -replace '(?i)((?:MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEYS?|DASHSCOPE_API_KEY_[0-9]+|DASHSCOPE_PRIMARY_API_KEYS?|DASHSCOPE_PRIMARY_API_KEY_[0-9]+|DASHSCOPE_SECONDARY_API_KEYS?|DASHSCOPE_SECONDARY_API_KEY_[0-9]+|CHAT_PRIMARY_API_KEY(?:S|_[0-9]+)?|GPT_RELAY_[A-Z0-9_]+|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)[=:][\s]*)[^ "&]+', '${1}REDACTED' `
             -replace '(?i)("(?:AccessKeyId|AccessKeySecret|SecurityToken|Signature|SignatureNonce|Content|MYSQL_URL|MYSQL_DSN|REDIS_PASSWORD|DYPNS_ACCESS_KEY_ID|DYPNS_ACCESS_KEY_SECRET|ALIYUN_DYPNS_ACCESS_KEY_ID|ALIYUN_DYPNS_ACCESS_KEY_SECRET|SMS_ACCESS_KEY_ID|SMS_ACCESS_KEY_SECRET|DASHSCOPE_API_KEY|DASHSCOPE_API_KEYS|DASHSCOPE_API_KEY_[0-9]+|DASHSCOPE_PRIMARY_API_KEY|DASHSCOPE_PRIMARY_API_KEYS|DASHSCOPE_PRIMARY_API_KEY_[0-9]+|DASHSCOPE_SECONDARY_API_KEY|DASHSCOPE_SECONDARY_API_KEYS|DASHSCOPE_SECONDARY_API_KEY_[0-9]+|CHAT_PRIMARY_API_KEY|CHAT_PRIMARY_API_KEYS|CHAT_PRIMARY_API_KEY_[0-9]+|GPT_RELAY_[A-Z0-9_]+|OSS_ACCESS_KEY_ID|OSS_ACCESS_KEY_SECRET|APP_SECRET|SUPPORT_ADMIN_SECRET|DAILY_AGRI_JOB_SECRET)"\s*:\s*")[^"]+', '${1}REDACTED'
         $safeCommand = if ($CommandArgs.Length -ge 3) {
             "$($CommandArgs[0]) $($CommandArgs[1]) $($CommandArgs[2])"
@@ -89,10 +89,10 @@ function Write-RedactedJson {
         -replace '(?i)(DYPNS_ACCESS_KEY_(?:ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(ALIYUN_DYPNS_ACCESS_KEY_(?:ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(SMS_ACCESS_KEY_(?:ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
-        -replace '(?i)(DASHSCOPE_API_KEY(_[0-9]+)?[=:][\s]*)[^, "&]+', '${1}REDACTED' `
-        -replace '(?i)(DASHSCOPE_(?:PRIMARY_|SECONDARY_)?API_KEY(?:_[0-9]+|S)?[=:][\s]*)[^, "&]+', '${1}REDACTED' `
-        -replace '(?i)(CHAT_PRIMARY_API_KEY(S|_[0-9]+)?[=:][\s]*)[^, "&]+', '${1}REDACTED' `
-        -replace '(?i)(GPT_RELAY_[A-Z0-9_]+[=:][\s]*)[^, "&]+', '${1}REDACTED' `
+        -replace '(?i)(DASHSCOPE_API_KEY(_[0-9]+)?[=:][\s]*)[^ "&]+', '${1}REDACTED' `
+        -replace '(?i)(DASHSCOPE_(?:PRIMARY_|SECONDARY_)?API_KEY(?:_[0-9]+|S)?[=:][\s]*)[^ "&]+', '${1}REDACTED' `
+        -replace '(?i)(CHAT_PRIMARY_API_KEY(S|_[0-9]+)?[=:][\s]*)[^ "&]+', '${1}REDACTED' `
+        -replace '(?i)(GPT_RELAY_[A-Z0-9_]+[=:][\s]*)[^ "&]+', '${1}REDACTED' `
         -replace '(?i)(OSS_ACCESS_KEY_(ID|SECRET)[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(APP_SECRET[=:][\s]*)[^, "&]+', '${1}REDACTED' `
         -replace '(?i)(SUPPORT_ADMIN_SECRET[=:][\s]*)[^, "&]+', '${1}REDACTED' `

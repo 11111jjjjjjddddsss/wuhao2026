@@ -3301,10 +3301,16 @@ func buildAdminMonitoringModelUsagePolicy() []AdminMonitoringModelUsageRow {
 }
 
 func mainChatMonitoringModelLabel() string {
+	if gptRelayConfigured() {
+		return "GPT relay候选 + " + mainChatModel + "回退"
+	}
 	return mainChatModel
 }
 
 func mainChatMonitoringSearchStrategy() string {
+	if gptRelayConfigured() {
+		return "GPT relay: auto/low；回退链: " + mainChatSearchStrategy
+	}
 	return mainChatSearchStrategy
 }
 
@@ -3317,6 +3323,9 @@ func mainChatMonitoringThinkingDisabled() bool {
 }
 
 func mainChatMonitoringCostNote() string {
+	if gptRelayConfigured() {
+		return "后端先尝试可选 GPT relay，开流失败或 15 秒无可见正文会回退千问；不会在 Android 端保存模型 Key。"
+	}
 	return "纯文字默认非思考；带图问诊默认启用小预算思考。可联网但不强制搜索；不会在 Android 端保存模型 Key。"
 }
 

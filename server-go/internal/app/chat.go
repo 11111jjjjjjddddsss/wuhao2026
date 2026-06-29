@@ -1991,26 +1991,41 @@ func convertGPTRelayResponsesStreamDataForClient(event string, data string, assi
 		if delta == "" {
 			return "", false, false, false
 		}
+		hadVisibleText := strings.TrimSpace(assistantText.String()) != ""
 		assistantText.WriteString(delta)
-		if strings.TrimSpace(delta) == "" {
+		if strings.TrimSpace(delta) == "" && !hadVisibleText {
 			return "", false, false, false
 		}
-		clientPayload := map[string]any{
-			"choices": []map[string]any{
-				{
-					"delta": map[string]any{
-						"content": delta,
-					},
-					"finish_reason": nil,
-					"index":         0,
-				},
-			},
-		}
-		raw, err := json.Marshal(clientPayload)
-		if err != nil {
+		clientData, ok := gptRelayChatDeltaPayload(delta)
+		if !ok {
 			return "", false, false, false
 		}
-		return string(raw), true, false, false
+		return clientData, true, false, false
+	case "response.output_text.done":
+		finalText := asString(payload["text"])
+		if finalText == "" {
+			return "", false, false, false
+		}
+		existing := assistantText.String()
+		delta := ""
+		switch {
+		case existing == "":
+			delta = finalText
+		case strings.HasPrefix(finalText, existing) && len(finalText) > len(existing):
+			delta = finalText[len(existing):]
+		default:
+			return "", false, false, false
+		}
+		hadVisibleText := strings.TrimSpace(existing) != ""
+		assistantText.WriteString(delta)
+		if strings.TrimSpace(delta) == "" && !hadVisibleText {
+			return "", false, false, false
+		}
+		clientData, ok := gptRelayChatDeltaPayload(delta)
+		if !ok {
+			return "", false, false, false
+		}
+		return clientData, true, false, false
 	case "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed":
 		if searchCount != nil && *searchCount == 0 {
 			*searchCount = 1
@@ -2049,6 +2064,25 @@ func convertGPTRelayResponsesStreamDataForClient(event string, data string, assi
 	default:
 		return "", false, false, false
 	}
+}
+
+func gptRelayChatDeltaPayload(delta string) (string, bool) {
+	clientPayload := map[string]any{
+		"choices": []map[string]any{
+			{
+				"delta": map[string]any{
+					"content": delta,
+				},
+				"finish_reason": nil,
+				"index":         0,
+			},
+		},
+	}
+	raw, err := json.Marshal(clientPayload)
+	if err != nil {
+		return "", false
+	}
+	return string(raw), true
 }
 
 func parseGPTRelayResponsesUsage(payload map[string]any) bailianModelUsage {

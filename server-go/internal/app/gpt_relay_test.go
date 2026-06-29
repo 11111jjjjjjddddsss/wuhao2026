@@ -310,6 +310,38 @@ func TestGPTRelayResponsesConversion(t *testing.T) {
 		t.Fatalf("delta conversion mismatch data=%q assistant=%q", clientData, assistant.String())
 	}
 
+	clientData, shouldForward, done, failed = convertGPTRelayResponsesStreamDataForClient(
+		"response.output_text.delta",
+		`{"type":"response.output_text.delta","delta":"\n\n"}`,
+		&assistant,
+		&hasCitations,
+		&hasSources,
+		&usage,
+		&searchCount,
+	)
+	if !shouldForward || done || failed {
+		t.Fatalf("whitespace delta after visible text should forward, forward=%v done=%v failed=%v", shouldForward, done, failed)
+	}
+	if assistant.String() != "能行。\n\n" || !strings.Contains(clientData, `\n\n`) {
+		t.Fatalf("whitespace delta conversion mismatch data=%q assistant=%q", clientData, assistant.String())
+	}
+
+	clientData, shouldForward, done, failed = convertGPTRelayResponsesStreamDataForClient(
+		"response.output_text.done",
+		`{"type":"response.output_text.done","text":"能行。\n\n再查叶背。"}`,
+		&assistant,
+		&hasCitations,
+		&hasSources,
+		&usage,
+		&searchCount,
+	)
+	if !shouldForward || done || failed {
+		t.Fatalf("output_text.done suffix should forward, forward=%v done=%v failed=%v", shouldForward, done, failed)
+	}
+	if assistant.String() != "能行。\n\n再查叶背。" || !strings.Contains(clientData, "再查叶背。") {
+		t.Fatalf("output_text.done conversion mismatch data=%q assistant=%q", clientData, assistant.String())
+	}
+
 	_, _, _, _ = convertGPTRelayResponsesStreamDataForClient(
 		"response.web_search_call.completed",
 		`{"type":"response.web_search_call.completed"}`,
