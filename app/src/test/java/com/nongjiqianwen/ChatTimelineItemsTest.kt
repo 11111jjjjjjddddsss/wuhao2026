@@ -1159,7 +1159,7 @@ class ChatTimelineItemsTest {
     }
 
     @Test
-    fun pendingImageRecoveryTracksPendingOrTerminalFailureButNotSettledAssistant() {
+    fun pendingRecoveryTracksTextAndImageMessagesButNotSettledAssistant() {
         val pendingImageUser = ChatMessage(
             id = "u1",
             role = ChatRole.USER,
@@ -1217,7 +1217,7 @@ class ChatTimelineItemsTest {
                 hasSettledAssistant = true
             )
         )
-        assertFalse(
+        assertTrue(
             shouldTrackPendingImageAssistantRecovery(
                 message = userMessage("u2"),
                 pendingExists = true,

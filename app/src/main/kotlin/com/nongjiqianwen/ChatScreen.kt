@@ -678,7 +678,7 @@ internal fun shouldTrackPendingImageAssistantRecovery(
     hasSettledAssistant: Boolean
 ): Boolean =
     message.id.isNotBlank() &&
-        message.hasUserImageAttachment() &&
+        message.role == ChatRole.USER &&
         !hasSettledAssistant &&
         (pendingExists || terminalFailureExists || remoteCompletionExists)
 
@@ -792,7 +792,7 @@ internal const val STREAM_TYPEWRITER_IDLE_POLL_MS = 18L
 private const val STREAM_TYPEWRITER_FINISH_DRAIN_POLL_MS = 40L
 internal const val STREAM_REVEAL_FRAME_BUDGET_MS = 40L
 internal const val STREAM_REVEAL_MAX_TOKENS_PER_BATCH = 1
-private const val REMOTE_STREAM_MIN_BALL_MS = 1800L
+private const val REMOTE_STREAM_MIN_BALL_MS = 900L
 // Positive scrollOffset pushes a top-to-bottom LazyColumn item upward; the
 // large value intentionally relies on LazyList's end clamp to land at bottom.
 private const val FORWARD_LIST_BOTTOM_SCROLL_OFFSET = Int.MAX_VALUE / 4
@@ -2470,6 +2470,8 @@ fun ChatScreen() {
     var imageSendJob by remember(uiRuntimeResetKey) { mutableStateOf<Job?>(null) }
     var imageSendGeneration by remember(uiRuntimeResetKey) { mutableIntStateOf(0) }
     var streamingBackgrounded by rememberSaveable(uiRuntimeResetKey) { mutableStateOf(false) }
+    var backgroundStreamHandoffUserMessageId by remember(uiRuntimeResetKey) { mutableStateOf<String?>(null) }
+    var backgroundStreamHandoffAtMs by remember(uiRuntimeResetKey) { mutableLongStateOf(0L) }
     val failedUserMessageStates = remember(uiRuntimeResetKey) {
         mutableStateMapOf<String, String>().apply {
             putAll(initialLocalSnapshot.failedUserMessageStates)
@@ -6406,6 +6408,8 @@ fun ChatScreen() {
         streamingMessageContent = ""
         streamingRevealBuffer = ""
         streamingBackgrounded = false
+        backgroundStreamHandoffUserMessageId = null
+        backgroundStreamHandoffAtMs = 0L
         streamRevealJob = null
         resetScrollRuntimeAfterStreamingStop(runtime = scrollRuntime)
         restoreBottomAnchorIfNeededAfterStreamingStop(shouldRestoreBottomAnchor)
@@ -6534,6 +6538,10 @@ fun ChatScreen() {
             if (reason == "quota") {
                 quotaExhaustedDayKey = currentQuotaDayKey()
             }
+            val interruptedWhileBackgrounded =
+                streamingBackgrounded ||
+                    reason == "canceled" ||
+                    backgroundStreamHandoffUserMessageId == sourceUserMessageId
             val finalId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId)
             val finalContent = normalizeAssistantText(streamingMessageContent)
             streamingRevealBuffer = ""
@@ -6564,13 +6572,13 @@ fun ChatScreen() {
                 retryingAssistantMessageIds[finalId] = true
                 persistTick++
                 val recoveryMaxAttempts =
-                    if (reason == "stream_in_progress" || reason == "replay") {
+                    if (interruptedWhileBackgrounded || reason == "stream_in_progress" || reason == "replay") {
                         REMOTE_BACKGROUND_STREAM_RECOVERY_MAX_ATTEMPTS
                     } else {
                         REMOTE_STREAM_RECOVERY_MAX_ATTEMPTS
                     }
                 val recoveryDelayMs =
-                    if (reason == "stream_in_progress" || reason == "replay") {
+                    if (interruptedWhileBackgrounded || reason == "stream_in_progress" || reason == "replay") {
                         REMOTE_BACKGROUND_STREAM_RECOVERY_DELAY_MS
                     } else {
                         REMOTE_STREAM_RECOVERY_DELAY_MS
@@ -6704,6 +6712,51 @@ fun ChatScreen() {
             return refreshed
         }
         return currentClientRegionForSend()
+    }
+
+    fun enqueueStreamBackup(
+        userMessageId: String,
+        text: String,
+        imageUris: List<String>,
+        imageUrls: List<String>,
+        sessionGeneration: Int?,
+        todayAgriContextDay: String?,
+        markActive: Boolean,
+        initialDelayMs: Long? = null
+    ) {
+        if (!hasRemoteHistorySource || userMessageId.isBlank()) return
+        val region = currentClientRegionForSend()
+        if (markActive) {
+            PendingChatSendRuntime.markActive(userMessageId)
+        } else {
+            PendingChatSendRuntime.markInactive(userMessageId)
+        }
+        val pending = PendingChatSend(
+            chatScopeId = chatScopeId,
+            userMessageId = userMessageId,
+            text = text,
+            imageUris = imageUris,
+            imageUrls = imageUrls,
+            sessionGeneration = sessionGeneration,
+            region = region?.region,
+            regionSource = region?.source,
+            regionReliability = region?.reliability,
+            todayAgriContextDay = todayAgriContextDay
+        )
+        if (initialDelayMs == null) {
+            PendingChatSendWorkScheduler.enqueue(
+                context = context,
+                pending = pending,
+                replaceExisting = true
+            )
+        } else {
+            PendingChatSendWorkScheduler.enqueue(
+                context = context,
+                pending = pending,
+                replaceExisting = true,
+                initialDelayMs = initialDelayMs
+            )
+        }
     }
 
     fun stageUserMessageForImageUpload(
@@ -6900,6 +6953,8 @@ fun ChatScreen() {
             )
         )
         streamingBackgrounded = false
+        backgroundStreamHandoffUserMessageId = null
+        backgroundStreamHandoffAtMs = 0L
         prepareScrollRuntimeForStreamingStart(
             runtime = scrollRuntime,
             preserveUserBrowsing = shouldPreserveUserBrowsingForStreamingStart()
@@ -6912,19 +6967,19 @@ fun ChatScreen() {
         }
         sendUiSettling = false
         persistTick++
+        if (hasRemoteHistorySource) {
+            enqueueStreamBackup(
+                userMessageId = userId,
+                text = text,
+                imageUris = previewImageUris,
+                imageUrls = uploadedImageUrls,
+                sessionGeneration = streamSessionGeneration,
+                todayAgriContextDay = resolvedTodayAgriContextDay,
+                markActive = true
+            )
+        }
         val hasPendingBackgroundSend = hasRemoteHistorySource &&
             PendingChatSendStore.has(context, chatScopeId, userId)
-        if (hasPendingBackgroundSend) {
-            PendingChatSendRuntime.markActive(userId)
-            if (uploadedImageUrls.isNotEmpty()) {
-                PendingChatSendStore.updateImageUrls(
-                    context = context,
-                    chatScopeId = chatScopeId,
-                    userMessageId = userId,
-                    imageUrls = uploadedImageUrls
-                )
-            }
-        }
         val sendStartSnapshot = persistableLocalChatWindowSnapshot()
         context.saveLocalChatWindowSync(chatScopeId, sendStartSnapshot)
         snackbarScope.launch {
@@ -7021,6 +7076,66 @@ fun ChatScreen() {
                 sendUiSettling = false
             }
         }
+    }
+
+    fun handoffActiveStreamToBackground(reason: String) {
+        if (!hasRemoteHistorySource || !isStreaming) return
+        val sourceUserMessageId = anchoredUserMessageId?.takeIf { it.isNotBlank() } ?: return
+        val nowMs = SystemClock.uptimeMillis()
+        if (
+            backgroundStreamHandoffUserMessageId == sourceUserMessageId &&
+            nowMs - backgroundStreamHandoffAtMs < 1_500L
+        ) {
+            return
+        }
+        val pending = PendingChatSendStore.get(context, chatScopeId, sourceUserMessageId)
+        val sourceMessage = messages.firstOrNull { message ->
+            message.id == sourceUserMessageId && message.role == ChatRole.USER
+        }
+        val textForBackup = sourceMessage?.content ?: pending?.text ?: return
+        val imageUrisForBackup =
+            sourceMessage?.imageUris.orEmpty().ifEmpty { pending?.imageUris.orEmpty() }
+        val imageUrlsForBackup =
+            sourceMessage?.imageUrls.orEmpty().ifEmpty { pending?.imageUrls.orEmpty() }
+        val todayAgriContextDayForBackup =
+            sourceMessage?.todayAgriContextDay ?: pending?.todayAgriContextDay
+        val sessionGenerationForBackup =
+            pending?.sessionGeneration ?: SessionApi.currentSessionGenerationOrNull()
+        context.saveLocalStreamingDraftSync(
+            chatScopeId = chatScopeId,
+            draft = LocalStreamingDraft(
+                messageId = streamingMessageId ?: assistantMessageIdForSourceUser(sourceUserMessageId),
+                content = streamingMessageContent,
+                revealBuffer = streamingRevealBuffer,
+                anchoredUserMessageId = sourceUserMessageId,
+                savedAtMs = nowMs
+            )
+        )
+        backgroundStreamHandoffUserMessageId = sourceUserMessageId
+        backgroundStreamHandoffAtMs = nowMs
+        enqueueStreamBackup(
+            userMessageId = sourceUserMessageId,
+            text = textForBackup,
+            imageUris = imageUrisForBackup,
+            imageUrls = imageUrlsForBackup,
+            sessionGeneration = sessionGenerationForBackup,
+            todayAgriContextDay = todayAgriContextDayForBackup,
+            markActive = false,
+            initialDelayMs = 0L
+        )
+        PendingChatSendStore.resetRemoteStarted(context, chatScopeId, sourceUserMessageId)
+        SessionApi.cancelCurrentStream()
+        SessionApi.reportClientLog(
+            level = "info",
+            event = "chat.stream_background_handoff",
+            message = "Chat stream handed off to background worker",
+            attrs = mapOf(
+                "reason" to reason,
+                "has_images" to (imageUrisForBackup.isNotEmpty() || imageUrlsForBackup.isNotEmpty()),
+                "partial_length" to streamingMessageContent.length,
+                "buffer_length" to streamingRevealBuffer.length
+            )
+        )
     }
 
     fun refreshChatListMetrics(listState: LazyListState) {
@@ -7285,6 +7400,9 @@ fun ChatScreen() {
                 suppressJumpButtonForLifecycleResume = false
                 if (isStreaming) {
                     streamingBackgrounded = true
+                    handoffActiveStreamToBackground(
+                        reason = event.name.lowercase()
+                    )
                 }
                 clearMessageSelection()
                 clearInputSelectionToolbar()

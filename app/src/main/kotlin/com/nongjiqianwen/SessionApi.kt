@@ -2464,7 +2464,11 @@ object SessionApi {
             return builder.build()
         }
 
-        fun runRequest(hasRetriedAuth: Boolean, networkRetry: Int): StreamCompletionResult {
+        fun runRequest(
+            hasRetriedAuth: Boolean,
+            networkRetry: Int,
+            activeStreamRetry: Int
+        ): StreamCompletionResult {
             val request = try {
                 buildRequest(authTokenSync())
             } catch (e: IllegalArgumentException) {
@@ -2490,7 +2494,11 @@ object SessionApi {
                 call.execute().use { res ->
                     if (res.code == 401) {
                         return if (!hasRetriedAuth) {
-                            runRequest(hasRetriedAuth = true, networkRetry = networkRetry)
+                            runRequest(
+                                hasRetriedAuth = true,
+                                networkRetry = networkRetry,
+                                activeStreamRetry = activeStreamRetry
+                            )
                         } else {
                             notifyAuthInvalid()
                             StreamCompletionResult(StreamCompletionStatus.Auth, "auth")
@@ -2499,7 +2507,11 @@ object SessionApi {
                     if (!res.isSuccessful) {
                         if (networkRetry < STREAM_NETWORK_RETRY_MAX && (res.code == 502 || res.code == 503 || res.code == 504)) {
                             Thread.sleep(350L * (networkRetry + 1))
-                            return runRequest(hasRetriedAuth = hasRetriedAuth, networkRetry = networkRetry + 1)
+                            return runRequest(
+                                hasRetriedAuth = hasRetriedAuth,
+                                networkRetry = networkRetry + 1,
+                                activeStreamRetry = activeStreamRetry
+                            )
                         }
                         val errorCode = runCatching {
                             gson.fromJson(res.body?.string().orEmpty(), JsonObject::class.java)
@@ -2509,6 +2521,17 @@ object SessionApi {
                         }.getOrNull()
                         if (res.code == 409 && errorCode == "STALE_SESSION_GENERATION") {
                             return StreamCompletionResult(StreamCompletionStatus.BadRequest, "stale_session")
+                        }
+                        if (res.code == 409 && activeStreamRetry < STREAM_ACTIVE_RETRY_MAX) {
+                            if (!shouldContinue()) {
+                                return StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "stopped")
+                            }
+                            Thread.sleep(STREAM_ACTIVE_RETRY_BASE_DELAY_MS * (activeStreamRetry + 1))
+                            return runRequest(
+                                hasRetriedAuth = hasRetriedAuth,
+                                networkRetry = networkRetry,
+                                activeStreamRetry = activeStreamRetry + 1
+                            )
                         }
                         val status = when {
                             res.code == 400 -> StreamCompletionStatus.BadRequest
@@ -2568,7 +2591,11 @@ object SessionApi {
                     StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "timeout")
                 } else if (networkRetry < STREAM_NETWORK_RETRY_MAX) {
                     Thread.sleep(350L * (networkRetry + 1))
-                    runRequest(hasRetriedAuth = hasRetriedAuth, networkRetry = networkRetry + 1)
+                    runRequest(
+                        hasRetriedAuth = hasRetriedAuth,
+                        networkRetry = networkRetry + 1,
+                        activeStreamRetry = activeStreamRetry
+                    )
                 } else {
                     Log.w(TAG, "streamChatToCompletion failed", e)
                     StreamCompletionResult(StreamCompletionStatus.RetryableFailure, "network")
@@ -2578,7 +2605,7 @@ object SessionApi {
             }
         }
 
-        val result = runRequest(hasRetriedAuth = false, networkRetry = 0)
+        val result = runRequest(hasRetriedAuth = false, networkRetry = 0, activeStreamRetry = 0)
         if (
             result.status !in setOf(StreamCompletionStatus.Complete, StreamCompletionStatus.Replay, StreamCompletionStatus.Quota) &&
             result.reason != "stopped"
