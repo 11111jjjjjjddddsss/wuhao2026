@@ -63,6 +63,8 @@ keys=<本机 DPAPI 加密后的 key 列表>
 
 图片仍走 Responses `input_image`，不要说作物名，让模型自己识别。
 
+对 `gpt-5.5`，优先用 `detail=original` 或省略 `detail` 让它走默认 `auto`。官方口径里 `gpt-5.5` 的 `auto` / 省略默认等价于 `original`；`high` 是高保真，但不一定是最高细节，可能低于 `original` 的原图保留能力。若中转站不支持 `original`，再回退 `high` 或省略该字段做对照。
+
 ```json
 {
   "model": "gpt-5.5",
@@ -81,7 +83,7 @@ keys=<本机 DPAPI 加密后的 key 列表>
         {
           "type": "input_image",
           "image_url": "data:image/jpeg;base64,<base64>",
-          "detail": "high"
+          "detail": "original"
         }
       ]
     }
@@ -91,7 +93,7 @@ keys=<本机 DPAPI 加密后的 key 列表>
 
 当前实测口径：
 
-- `detail=high` 可以作为评测统一设置，但本轮在两家中转上没有明显改善识图质量，token 统计也没有明显变化。
+- 2026-06-29 第一轮曾用 `detail=high` 统一测试，但两家中转上没有明显改善识图质量，token 统计也没有明显变化。后续复测应优先 `original` 或省略 `detail`，再和 `high` 对照，确认中转站到底是否透传 / 尊重该参数。
 - 图片任务的 `reasoning_tokens` 经常低于文字任务，streaming 使用统计还可能显示为 0；不要只看这一项判断模型有没有认真看图。
 - 多图、病害图、作物不明时，两家中转都不够稳，容易把真菌病斑、锈病小疱、白粉病等误判成螨害或泛化叶斑。当前不能替代千问主图片问诊。
 
