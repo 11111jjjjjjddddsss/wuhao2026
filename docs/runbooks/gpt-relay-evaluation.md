@@ -63,12 +63,13 @@ keys=<本机 DPAPI 加密后的 key 列表>
 
 图片仍走 Responses `input_image`，不要说作物名，让模型自己识别。
 
-对 `gpt-5.5`，优先用 `detail=auto` 或省略 `detail`，让它走默认自动细节。官方图像指南口径里，`gpt-5.5` 的 `auto` / 省略默认等价于原图细节；但 API reference 的 `input_image.detail` 枚举仍主要列 `low / high / auto`，所以中转站评测不要先硬传 `original`，避免被中转站参数白名单拒绝。`high` 只做兼容对照。
+对 `gpt-5.5`，优先省略 `detail` 走模型默认细节；再用 `detail=auto` 和 `detail=high` 做对照。官方图像指南口径里，`gpt-5.5` 的 `auto` / 省略默认接近原图细节；但 API reference 的 `input_image.detail` 枚举仍主要列 `low / high / auto`，所以中转站评测不要先硬传 `original`，避免被中转站参数白名单拒绝。`high` 不是“农技识图必准”开关。
 
 ```json
 {
   "model": "gpt-5.5",
   "stream": true,
+  "temperature": 0,
   "reasoning": {
     "effort": "medium"
   },
@@ -82,8 +83,7 @@ keys=<本机 DPAPI 加密后的 key 列表>
         },
         {
           "type": "input_image",
-          "image_url": "data:image/jpeg;base64,<base64>",
-          "detail": "auto"
+          "image_url": "data:image/jpeg;base64,<base64>"
         }
       ]
     }
@@ -93,9 +93,32 @@ keys=<本机 DPAPI 加密后的 key 列表>
 
 当前实测口径：
 
-- 2026-06-29 第一轮曾用 `detail=high` 统一测试，但两家中转上没有明显改善识图质量，token 统计也没有明显变化。后续复测应优先 `auto` 或省略 `detail`，再和 `high` 对照，确认中转站到底是否透传 / 尊重该参数。
+- 2026-06-29 第一轮曾用 `detail=high` 统一测试，但两家中转上没有明显改善识图质量，token 统计也没有明显变化。
+- 2026-06-29 追加测试显示：同一张图上，省略 `detail` 反而比 `auto / high` 更稳；`temperature=0` 能降低同图多次判断摇摆；给出作物信息或让用户补作物，明显比单纯调高清参数更有效。
+- 本地放大 / 锐化只对极小图的某些锈病样本有帮助，对白粉病等粉状 / 点状症状可能把霉层误变成虫卵、白粉虱或螨害颗粒，因此不能默认全局增强。
 - 图片任务的 `reasoning_tokens` 经常低于文字任务，streaming 使用统计还可能显示为 0；不要只看这一项判断模型有没有认真看图。
 - 多图、病害图、作物不明时，两家中转都不够稳，容易把真菌病斑、锈病小疱、白粉病等误判成螨害或泛化叶斑。当前不能替代千问主图片问诊。
+
+更稳的图片问诊提示词方向：
+
+```text
+只看图片，不要联网。判断这张图最像什么病虫害或生理问题。
+
+先识别可见证据，不要把所有密集白点/褐点都默认判成螨害。
+必须区分：粉状霉层、锈色粉疱、刺吸针点、普通坏死斑。
+
+给主判断、候选、关键验证点。
+证据不足就降置信。
+不要表格，控制在 300 字内。
+```
+
+如果用户能提供作物，提示词前面加一句：
+
+```text
+这是<作物>叶片。
+```
+
+这比硬调 `detail=high` 更能稳定农技判断。
 
 ## 联网搜索评测
 
