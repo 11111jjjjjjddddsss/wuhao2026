@@ -917,8 +917,8 @@ if ($failures.Count -eq 0) {
         "Streaming typewriter idle polling must keep the slightly faster 18ms rhythm."
     Require-Match $failures $chatScreen 'STREAM_REVEAL_FRAME_BUDGET_MS\s*=\s*40L' `
         "Streaming reveal frame budget must keep the normal faster drain."
-    Require-Match $failures $chatScreen 'REMOTE_STREAM_MIN_BALL_MS\s*=\s*1800L' `
-        "Remote streaming waiting ball must remain visible without holding the first text too long."
+    Require-Match $failures $chatScreen 'REMOTE_STREAM_MIN_BALL_MS\s*=\s*900L' `
+        "Remote streaming waiting ball must release quickly while still avoiding an instant text flash."
     Require-Match $failures $chatScreen 'GPT_BALL_PULSE_MS\s*=\s*700' `
         "Assistant waiting ball pulse rhythm must stay readable at the current pace."
     Require-Match $failures $chatScreen 'assistantDisclaimerTextStyle(?s:.*?)fontWeight\s*=\s*FontWeight\.Normal' `
