@@ -4355,7 +4355,7 @@ function modelPolicyProtocolText(row: AdminMonitoring["model_usage_policy"][numb
 
 function modelPolicyNoteText(row: AdminMonitoring["model_usage_policy"][number]): string {
   if (row.title.includes("主聊天")) {
-    return "主聊天走后端千问主备链路；可联网但不强制搜索；Android 不保存服务密钥。";
+    return "主聊天由后端统一调度生产问诊链路；Android 不保存服务密钥。";
   }
   if (row.title.includes("记忆")) return "不联网，后端异步维护用户记忆文档。";
   if (row.title.includes("今日农情")) return "自动生成时联网检索并带来源；人工发布锁定当天内容；用户侧不点击外链，不扣问诊次数。";
@@ -5389,6 +5389,7 @@ function capabilityLevel(status: string): "ok" | "warn" | "bad" | "info" {
 function healthFieldNeedsAttention(key: string, value: unknown): boolean {
   if (key === "dev_order_endpoints") return value === true;
   if (key === "auth_strict") return value !== true;
+  if (key === "gpt_relay") return String(value).toLowerCase() !== "ok" && String(value).toLowerCase() !== "disabled";
   if (key === "dypns" || key === "dypns_fusion" || key === "dypns_sms") return false;
   if (typeof value === "boolean") return false;
   const normalized = String(value).toLowerCase();
@@ -5406,6 +5407,7 @@ function healthHint(key: string, value: unknown): string {
   if (key === "auth_strict") return value ? "公网业务入口应保持严格鉴权" : "生产风险：严格鉴权未开启";
   if (key === "dev_order_endpoints") return value ? "生产风险：开发订单接口开启" : "开发订单接口关闭";
   if (key === "upload_storage") return "当前上传存储后端";
+  if (key === "gpt_relay") return "可选 GPT 中转链路；关闭时不影响千问主链";
   return "来自后台 overview health";
 }
 
@@ -5604,6 +5606,7 @@ function labelFor(key: string): string {
   const labels: Record<string, string> = {
     api: "API",
     bailian: "智能分析服务",
+    gpt_relay: "GPT可选链路",
     dypns: "旧DYPNS",
     dypns_fusion: "旧融合兼容",
     dypns_sms: "旧短信兼容",

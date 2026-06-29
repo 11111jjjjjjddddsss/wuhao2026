@@ -12,6 +12,7 @@
 
 ## 当前真相
 
+- 模型策略显示口径：主聊天默认仍是百炼 / 千问；旧 `CHAT_PRIMARY_*` 已退役且 readiness 继续拒绝。2026-06-29 起后台健康可显示可选 `GPT_RELAY_*` 状态，`disabled` 属于正常状态，不代表模型问诊故障；只有显式配置并开启后，它才作为主聊天开流前候选链路，失败或 15 秒无可见正文仍回退千问。
 - 管理后台前端目录：`admin`。本地开发：`cd admin && npm install && npm run dev -- --host 127.0.0.1 --port 5174`。生产构建：`npm run build`。
 - 生产部署脚本：[deploy-ecs-admin.ps1](D:/wuhao/scripts/deploy-ecs-admin.ps1)。脚本会构建 `admin/dist`、同步 `admin` A 记录、上传静态包、配置 Nginx、签发 / 复用 Let's Encrypt HTTPS 证书，并验证首页和未登录 API 状态；发布成功或失败退出时会清理本次 `/tmp` 上传 / 脚本临时文件，成功后只保留最近若干后台静态 release，避免 ECS 静态包长期堆积。
 - 生产入口：`https://admin.nongjiqiancha.cn/`。HTTP 80 只用于 ACME challenge 和 301 跳转；HTTPS 下 `/admin-api/` 和 `/uploads/support/` 由 Nginx 反代到当前 active Go slot，其中 `/uploads/support/` 只用于后台展示客服图片。

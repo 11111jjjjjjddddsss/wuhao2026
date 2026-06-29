@@ -8,7 +8,7 @@
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
 - 主对话 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 DashScope / 百炼 Key 池。当前生产口径支持“主账号 Key 组 + 副账号 Key 组”：主账号 4 把 Key 先在主组内轮询消耗，只有主组 Key 在开流前连续遇到限流 / 额度 / 鉴权类失败时，才切到副账号 Key 兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
-- 2026-06-27 起，第三方中转站 / `gpt-5.5` / OpenAI Responses 优先主聊天链路已退出生产和当前代码。`CHAT_PRIMARY_*` 不再是受支持的主聊天配置；readiness 会在发现 `CHAT_PRIMARY_ENABLED=true` 时失败，提醒清理环境变量并使用 Bailian / Qwen 主链。日志脱敏脚本可继续保留旧变量名，只用于覆盖历史日志或残留环境里的密钥形态。
+- 2026-06-27 起，旧第三方中转站 / `gpt-5.5` / OpenAI Responses 优先主聊天链路已退出生产。`CHAT_PRIMARY_*` 不再是受支持的主聊天配置；readiness 会在发现 `CHAT_PRIMARY_ENABLED=true` 时失败，提醒清理环境变量并使用 Bailian / Qwen 主链。2026-06-29 后端新增独立的可选 `GPT_RELAY_*` 候选链路，默认关闭、不复用旧变量名；只有显式配置并开启后才会在主聊天开流前尝试 Responses 中转，失败或 15 秒无可见正文会回退 Bailian / Qwen。日志脱敏脚本可继续保留旧变量名并新增 `GPT_RELAY_*`，只用于覆盖历史日志或残留环境里的密钥形态。
 
 ## 环境变量
 
@@ -77,7 +77,28 @@ CHAT_PRIMARY_ENABLED=false
 
 - `CHAT_PRIMARY_*` 只作为历史残留和脱敏对象保留说明，不再用于主聊天生产链路。
 - 如果服务器环境里仍有 `CHAT_PRIMARY_ENABLED=true`，请移除或设为 `false` 后重启后端；当前 readiness 会把它视为错误配置。
-- 不要再把中转站 Key、真实 URL、账号分组或生产环境变量写入业务仓库、聊天记录、日志或后台页面。若用户明确要求记录评测参数，只能写脱敏模板和测试结论，入口见 [gpt-relay-evaluation.md](D:/wuhao/docs/runbooks/gpt-relay-evaluation.md)，不得把它当作生产主链配置。
+- 不要再把中转站 Key、真实 URL、账号分组或生产环境变量写入业务仓库、聊天记录、日志或后台页面。若用户明确要求记录评测参数，只能写脱敏模板和测试结论，入口见 [gpt-relay-evaluation.md](D:/wuhao/docs/runbooks/gpt-relay-evaluation.md)。
+
+可选 GPT 中转候选链路配置：
+
+```text
+GPT_RELAY_ENABLED=false
+GPT_RELAY_BASE_URL=<OpenAI-compatible base url>
+# 或：GPT_RELAY_RESPONSES_URL=<Responses endpoint>
+GPT_RELAY_API_KEYS=<逗号/分号/换行分隔的多个 relay key>
+# 或：GPT_RELAY_API_KEY_1...50
+GPT_RELAY_MODEL=gpt-5.5
+GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS=15
+```
+
+说明：
+
+- `GPT_RELAY_*` 是独立的新候选链路，不等于旧 `CHAT_PRIMARY_*` 复活。
+- 默认 `GPT_RELAY_ENABLED=false` 或缺关键配置时完全不触达 GPT，中转站故障不会影响当前 Bailian / Qwen 主链。
+- 真实 Key、真实 URL、供应商名、账号分组和后台订单信息只允许放在服务器私密环境或本机私密配置，不进仓库、不进日志、不进后台页面、不在聊天中复述。
+- GPT relay 请求固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto` 和“一次联网、够用就答”的联网规则；当前代码不会读取环境变量把它改成 `high / auto / large`，避免误开高成本路径。
+- GPT relay 不带千问专用 `【输出约束】` / 回答参考范本；它只带主对话锚点、时间地点、记忆、上下文、本轮文字和图片。
+- 关闭或回滚只需要移除 `GPT_RELAY_*` 配置，或设置 `GPT_RELAY_ENABLED=false` 后重启服务；不需要 Android 发版。
 
 ## 运行策略
 
@@ -90,7 +111,7 @@ CHAT_PRIMARY_ENABLED=false
 - 如果某把 Key 在模型请求打开阶段返回 `401 / 403 / 429`，或返回带限流 / quota 语义的 `400`，后端会在响应交给业务层前换下一把 Key 再试。
 - 触发上述限流 / 鉴权类失败的 Key 会进入短暂冷却，默认 1 秒，可用 `DASHSCOPE_KEY_COOLDOWN_SECONDS` 调整；后续请求会优先跳过冷却中的 Key。
 - 主对话只在 SSE 流真正开始前换 Key；一旦上游已经返回成功 SSE，后端不会在同一条回复生成过程中切换 Key，避免半条回复和重复成本。
-- `CHAT_PRIMARY_*` 已退出主聊天运行路径；如果需要排查历史中转站问题，只看历史日志和 recent-changes，不要在生产重新打开该配置。
+- `CHAT_PRIMARY_*` 已退出主聊天运行路径；如果需要排查历史中转站问题，只看历史日志和 recent-changes，不要在生产重新打开该配置。需要灰度第三方 GPT 时只允许走默认关闭的 `GPT_RELAY_*`，并保留 Bailian / Qwen 快速回退。
 - 如果所有 Key 都限流或不可用，最后一次上游错误会正常返回给业务层，Android 仍按现有失败提示处理。
 
 ## 联网搜索限流

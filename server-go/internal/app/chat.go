@@ -461,6 +461,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	)
 	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
 	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
+	gptRelayPromptMessages, _, _ := s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext, false)
 	promptChars := countBailianMessageContentRunes(promptMessages)
 	promptHasImages := promptIncludesImageContext(snapshot, aWindowRounds, images)
 	thinkingOptions := resolveChatThinkingOptionsForImageContext(promptHasImages)
@@ -495,7 +496,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	upstreamCtx, cancelUpstream := context.WithTimeout(context.Background(), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
 	upstreamOpenStartedAt := time.Now()
-	upstream, upstreamProvider, err := s.openValidatedChatStreamWithFallback(upstreamCtx, promptMessages, thinkingOptions)
+	upstream, upstreamProvider, err := s.openValidatedChatStreamWithFallback(upstreamCtx, promptMessages, gptRelayPromptMessages, thinkingOptions)
 	upstreamOpenedAt := time.Now()
 	upstreamOpenMs := upstreamOpenedAt.Sub(upstreamOpenStartedAt).Milliseconds()
 	requestToUpstreamOpenMs := upstreamOpenedAt.Sub(requestReceivedAt).Milliseconds()
@@ -614,7 +615,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	}
 	readResults, stopReadLoop := startReadLoop(upstream.Body)
 	defer func() { stopReadLoop() }()
-	firstVisibleTimeout := resolveChatStreamFirstVisibleTimeout()
+	firstVisibleTimeout := resolveChatStreamFirstVisibleTimeoutForProvider(upstreamProvider)
 	firstVisibleTimer := time.NewTimer(firstVisibleTimeout)
 	defer firstVisibleTimer.Stop()
 	idleTimeout := resolveChatStreamIdleTimeout()
@@ -628,8 +629,76 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		defer idleTimer.Stop()
 	}
 	streamTimeoutKind := ""
+	currentSSEEvent := ""
+	gptRelaySearchCount := 0
+	gptRelayFallbackReason := ""
+	lastFallbackOpenMs := int64(-1)
 	firstVisibleMs := int64(-1)
 	upstreamFirstVisibleMs := int64(-1)
+	fallbackGPTRelayToBailian := func(reason string) bool {
+		if !isGPTRelayProvider(upstreamProvider) || strings.TrimSpace(assistantText.String()) != "" {
+			return false
+		}
+		if gptRelayFallbackReason == "" {
+			gptRelayFallbackReason = reason
+		}
+		s.logger.Warn(
+			"gpt relay stream fallback to bailian",
+			"userId", auth.UserID,
+			"clientMsgId", clientMsgID,
+			"request_id", upstreamRequestID,
+			"reason", reason,
+			"forced_search", forceSearch,
+		)
+		_ = upstream.Body.Close()
+		stopReadLoop()
+		fallbackOpenStartedAt := time.Now()
+		fallbackResponse, fallbackErr := s.openValidatedBailianStreamWithRetry(upstreamCtx, promptMessages, thinkingOptions)
+		fallbackOpenedAt := time.Now()
+		lastFallbackOpenMs = fallbackOpenedAt.Sub(fallbackOpenStartedAt).Milliseconds()
+		if fallbackErr != nil {
+			s.logger.Error(
+				"gpt relay stream fallback failed",
+				"userId", auth.UserID,
+				"clientMsgId", clientMsgID,
+				"error", fallbackErr,
+				"reason", reason,
+				"forced_search", forceSearch,
+			)
+			return false
+		}
+		upstream = fallbackResponse
+		upstreamProvider = "bailian"
+		upstreamRequestID = firstNonEmpty(upstream.Header.Get("x-request-id"), upstream.Header.Get("request-id"))
+		upstreamOpenedAt = fallbackOpenedAt
+		upstreamOpenMs = lastFallbackOpenMs
+		requestToUpstreamOpenMs = fallbackOpenedAt.Sub(requestReceivedAt).Milliseconds()
+		upstreamEnableSearch, upstreamSearchStrategy, upstreamSingleCallSearch = chatUpstreamSearchLogConfig(upstreamProvider)
+		currentSSEEvent = ""
+		gptRelaySearchCount = 0
+		hasSources.Store(false)
+		hasCitations.Store(false)
+		modelUsage = bailianModelUsage{}
+		readResults, stopReadLoop = startReadLoop(upstream.Body)
+		firstVisibleTimeout = resolveChatStreamFirstVisibleTimeoutForProvider(upstreamProvider)
+		if !firstVisibleTimer.Stop() {
+			select {
+			case <-firstVisibleTimer.C:
+			default:
+			}
+		}
+		firstVisibleTimer.Reset(firstVisibleTimeout)
+		s.logger.Info(
+			"gpt relay fallback selected bailian",
+			"userId", auth.UserID,
+			"clientMsgId", clientMsgID,
+			"request_id", upstreamRequestID,
+			"reason", reason,
+			"fallback_open_ms", lastFallbackOpenMs,
+			"forced_search", forceSearch,
+		)
+		return true
+	}
 	for {
 		var line string
 		var readErr error
@@ -638,6 +707,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			line = result.line
 			readErr = result.err
 		case <-firstVisibleTimer.C:
+			if fallbackGPTRelayToBailian("first_visible_timeout") {
+				continue
+			}
 			streamTimeoutKind = "first_visible"
 			cancelUpstream()
 			_ = upstream.Body.Close()
@@ -689,14 +761,19 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		if line != "" {
 			trimmedLine := strings.TrimRight(line, "\r\n")
 			if trimmedLine == "" {
+				currentSSEEvent = ""
 				continue
 			}
 			if strings.HasPrefix(trimmedLine, "event:") {
+				currentSSEEvent = strings.TrimSpace(strings.TrimPrefix(trimmedLine, "event:"))
 				continue
 			}
 			if !strings.HasPrefix(trimmedLine, ":") && strings.HasPrefix(trimmedLine, "data:") {
 				data := strings.TrimLeft(strings.TrimPrefix(trimmedLine, "data:"), " ")
 				if data == "[DONE]" {
+					if fallbackGPTRelayToBailian("done_before_visible_text") {
+						continue
+					}
 					doneReceived.Store(true)
 					break
 				}
@@ -704,8 +781,14 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 				clientData := ""
 				shouldForward := false
 				upstreamDone := false
-				updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources, &modelUsage)
-				clientData, shouldForward = filterBailianStreamDataForClient(data)
+				upstreamFailed := false
+				if isGPTRelayProvider(upstreamProvider) {
+					clientData, shouldForward, upstreamDone, upstreamFailed = convertGPTRelayResponsesStreamDataForClient(currentSSEEvent, data, &assistantText, &hasCitations, &hasSources, &modelUsage, &gptRelaySearchCount)
+				} else {
+					updateAssistantAccumulator(data, &assistantText, &hasCitations, &hasSources, &modelUsage)
+					clientData, shouldForward = filterBailianStreamDataForClient(data)
+				}
+				currentSSEEvent = ""
 				if !hadVisibleAssistantText && strings.TrimSpace(assistantText.String()) != "" {
 					if firstVisibleMs < 0 {
 						firstVisibleMs = time.Since(requestReceivedAt).Milliseconds()
@@ -721,6 +804,32 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						idleTimer.Reset(idleTimeout)
 						idleTimerC = idleTimer.C
 					}
+				}
+				if isGPTRelayProvider(upstreamProvider) && upstreamFailed {
+					if fallbackGPTRelayToBailian("failed_before_visible_text") {
+						continue
+					}
+					streamTimeoutKind = "upstream_failed"
+					if !clientDisconnected.Load() {
+						writeMu.Lock()
+						s.writeSSEData(w, map[string]any{"error": "UPSTREAM_STREAM_FAILED", "client_msg_id": clientMsgID})
+						writeMu.Unlock()
+					}
+					s.logger.Error(
+						"gpt relay stream failed after visible text",
+						"userId", auth.UserID,
+						"clientMsgId", clientMsgID,
+						"request_id", upstreamRequestID,
+						"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
+					)
+					break
+				}
+				if isGPTRelayProvider(upstreamProvider) && upstreamDone && strings.TrimSpace(assistantText.String()) == "" {
+					if fallbackGPTRelayToBailian("completed_without_visible_text") {
+						continue
+					}
+					clientData = ""
+					shouldForward = false
 				}
 				if !clientDisconnected.Load() {
 					if !shouldForward {
@@ -748,6 +857,25 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if readErr != nil {
+			if streamTimeoutKind == "" && fallbackGPTRelayToBailian("stream_ended_before_visible_text") {
+				continue
+			}
+			if streamTimeoutKind == "" && isGPTRelayProvider(upstreamProvider) && strings.TrimSpace(assistantText.String()) != "" && !doneReceived.Load() {
+				streamTimeoutKind = "upstream_incomplete"
+				if !clientDisconnected.Load() {
+					writeMu.Lock()
+					s.writeSSEData(w, map[string]any{"error": "UPSTREAM_STREAM_FAILED", "kind": streamTimeoutKind, "client_msg_id": clientMsgID})
+					writeMu.Unlock()
+				}
+				s.logger.Error(
+					"gpt relay stream ended before completed event",
+					"userId", auth.UserID,
+					"clientMsgId", clientMsgID,
+					"request_id", upstreamRequestID,
+					"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
+				)
+				break
+			}
 			if streamTimeoutKind != "" {
 				break
 			}
@@ -902,6 +1030,12 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"total_ms", time.Since(requestReceivedAt).Milliseconds(),
 		"assistant_reply_chars", len([]rune(strings.TrimSpace(assistantText.String()))),
 	}
+	if gptRelayFallbackReason != "" {
+		logAttrs = append(logAttrs,
+			"gpt_relay_fallback_reason", gptRelayFallbackReason,
+			"gpt_relay_fallback_open_ms", lastFallbackOpenMs,
+		)
+	}
 	if upstreamProvider == "bailian" {
 		s.bailian.ObserveUsage(modelUsage)
 	}
@@ -1023,8 +1157,15 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 	}
 }
 
-func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, string, error) {
-	response, err := s.openValidatedBailianStreamWithRetry(ctx, messages, options)
+func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, bailianMessages []BailianMessage, gptRelayMessages []BailianMessage, options BailianStreamOptions) (*http.Response, string, error) {
+	if s.gptRelay != nil && s.gptRelay.Enabled() {
+		response, err := s.openValidatedGPTRelayStream(ctx, gptRelayMessages)
+		if err == nil {
+			return response, gptRelayProvider, nil
+		}
+		s.logger.Warn("gpt relay open failed before visible text; fallback to bailian", "error", sanitizeDashScopeErrorMessage(err.Error()))
+	}
+	response, err := s.openValidatedBailianStreamWithRetry(ctx, bailianMessages, options)
 	if err != nil {
 		return nil, "bailian", err
 	}
@@ -1032,7 +1173,20 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, messag
 }
 
 func chatUpstreamSearchLogConfig(provider string) (bool, string, bool) {
+	if provider == gptRelayProvider {
+		return true, "responses_auto_low", true
+	}
 	return true, "turbo", true
+}
+
+func isGPTRelayProvider(provider string) bool {
+	return provider == gptRelayProvider
+}
+
+func (s *Server) openValidatedGPTRelayStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
+	return s.openValidatedStreamWithRetry(ctx, gptRelayProvider, upstreamMaxAttempts, func(openCtx context.Context) (*http.Response, error) {
+		return s.gptRelay.OpenStream(openCtx, messages)
+	})
 }
 
 func (s *Server) openValidatedBailianStreamWithRetry(ctx context.Context, messages []BailianMessage, options BailianStreamOptions) (*http.Response, error) {
@@ -1162,6 +1316,13 @@ func resolveChatStreamFirstVisibleTimeout() time.Duration {
 		return maxDuration
 	}
 	return duration
+}
+
+func resolveChatStreamFirstVisibleTimeoutForProvider(provider string) time.Duration {
+	if isGPTRelayProvider(provider) {
+		return resolveGPTRelayFirstVisibleTimeout(resolveChatStreamMaxDuration())
+	}
+	return resolveChatStreamFirstVisibleTimeout()
 }
 
 func resolveChatStreamIdleTimeout() time.Duration {
@@ -1506,6 +1667,10 @@ func todayAgriChatItemPrefix(index int) string {
 }
 
 func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string, todayAgriContext string) ([]BailianMessage, int, bool) {
+	return s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, currentText, currentImages, contextHeader, todayAgriContext, true)
+}
+
+func (s *Server) buildPromptMessagesWithOptions(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string, todayAgriContext string, includeOutputConstraint bool) ([]BailianMessage, int, bool) {
 	rounds := []SessionRound{}
 	hasMemoryDocument := false
 	if snapshot != nil {
@@ -1537,7 +1702,9 @@ func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds in
 		messages = append(messages, BailianMessage{Role: "user", Content: s.roundToUserContent(round, index == previousRoundIndex, now)})
 		messages = append(messages, BailianMessage{Role: "assistant", Content: round.Assistant})
 	}
-	messages = append(messages, BailianMessage{Role: "system", Content: chatOutputConstraint})
+	if includeOutputConstraint {
+		messages = append(messages, BailianMessage{Role: "system", Content: chatOutputConstraint})
+	}
 	messages = append(messages, BailianMessage{Role: "user", Content: buildVisionUserContent(currentText, currentImages)})
 	return messages, len(rounds), hasMemoryDocument
 }
@@ -1808,6 +1975,118 @@ func updateAssistantAccumulator(data string, assistantText *strings.Builder, has
 			assistantText.WriteString(messagePiece)
 		}
 	}
+}
+
+func convertGPTRelayResponsesStreamDataForClient(event string, data string, assistantText *strings.Builder, hasCitations *atomic.Bool, hasSources *atomic.Bool, modelUsage *bailianModelUsage, searchCount *int) (string, bool, bool, bool) {
+	payload := map[string]any{}
+	if err := json.Unmarshal([]byte(data), &payload); err != nil {
+		return "", false, false, false
+	}
+	if payloadType := asString(payload["type"]); payloadType != "" {
+		event = payloadType
+	}
+	switch event {
+	case "response.output_text.delta":
+		delta := asString(payload["delta"])
+		if delta == "" {
+			return "", false, false, false
+		}
+		assistantText.WriteString(delta)
+		if strings.TrimSpace(delta) == "" {
+			return "", false, false, false
+		}
+		clientPayload := map[string]any{
+			"choices": []map[string]any{
+				{
+					"delta": map[string]any{
+						"content": delta,
+					},
+					"finish_reason": nil,
+					"index":         0,
+				},
+			},
+		}
+		raw, err := json.Marshal(clientPayload)
+		if err != nil {
+			return "", false, false, false
+		}
+		return string(raw), true, false, false
+	case "response.web_search_call.in_progress", "response.web_search_call.searching", "response.web_search_call.completed":
+		if searchCount != nil && *searchCount == 0 {
+			*searchCount = 1
+		}
+		if hasSources != nil {
+			hasSources.Store(true)
+		}
+		return "", false, false, false
+	case "response.failed", "response.incomplete", "response.error", "error":
+		return "", false, false, true
+	case "response.completed":
+		usage := parseGPTRelayResponsesUsage(payload)
+		if searchCount != nil && *searchCount > 0 {
+			usage.Plugins.Search.Count = *searchCount
+		}
+		if usage.hasAny() && modelUsage != nil {
+			*modelUsage = usage
+		}
+		finishPayload := map[string]any{
+			"choices": []map[string]any{
+				{
+					"delta":         map[string]any{},
+					"finish_reason": "stop",
+					"index":         0,
+				},
+			},
+		}
+		if usage.hasAny() {
+			finishPayload["usage"] = usage
+		}
+		raw, err := json.Marshal(finishPayload)
+		if err != nil {
+			return "", false, true, false
+		}
+		return string(raw), true, true, false
+	default:
+		return "", false, false, false
+	}
+}
+
+func parseGPTRelayResponsesUsage(payload map[string]any) bailianModelUsage {
+	response, _ := payload["response"].(map[string]any)
+	rawUsage := payload["usage"]
+	if rawUsage == nil && response != nil {
+		rawUsage = response["usage"]
+	}
+	if rawUsage == nil {
+		return bailianModelUsage{}
+	}
+	raw, err := json.Marshal(rawUsage)
+	if err != nil {
+		return bailianModelUsage{}
+	}
+	var source struct {
+		InputTokens         int `json:"input_tokens"`
+		OutputTokens        int `json:"output_tokens"`
+		TotalTokens         int `json:"total_tokens"`
+		ReasoningTokens     int `json:"reasoning_tokens"`
+		OutputTokensDetails struct {
+			ReasoningTokens int `json:"reasoning_tokens"`
+		} `json:"output_tokens_details"`
+	}
+	if err := json.Unmarshal(raw, &source); err != nil {
+		return bailianModelUsage{}
+	}
+	usage := bailianModelUsage{
+		InputTokens:     source.InputTokens,
+		OutputTokens:    source.OutputTokens,
+		TotalTokens:     source.TotalTokens,
+		ReasoningTokens: source.ReasoningTokens,
+	}
+	usage.OutputTokensDetails.ReasoningTokens = source.OutputTokensDetails.ReasoningTokens
+	if usage.ReasoningTokens == 0 {
+		usage.ReasoningTokens = usage.OutputTokensDetails.ReasoningTokens
+	}
+	return usage
 }
 
 func parseBailianUsagePayload(raw any) (bailianModelUsage, bool) {

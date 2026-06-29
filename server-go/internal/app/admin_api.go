@@ -32,6 +32,7 @@ type AdminOverview struct {
 type AdminHealthStatus struct {
 	API               string `json:"api"`
 	Bailian           string `json:"bailian"`
+	GPTRelay          string `json:"gpt_relay"`
 	Dypns             string `json:"dypns"`
 	DypnsFusion       string `json:"dypns_fusion"`
 	DypnsSMS          string `json:"dypns_sms"`
@@ -3653,6 +3654,10 @@ func countUnreadyAdminDependencies(health AdminHealthStatus) int64 {
 	if strings.ToLower(strings.TrimSpace(health.Bailian)) != "ok" {
 		count++
 	}
+	gptRelay := strings.ToLower(strings.TrimSpace(health.GPTRelay))
+	if gptRelay != "" && gptRelay != "disabled" && gptRelay != "ok" {
+		count++
+	}
 	if strings.ToLower(strings.TrimSpace(health.SMS)) != "ok" {
 		count++
 	}
@@ -4621,6 +4626,7 @@ func (s *Server) adminHealthStatus() AdminHealthStatus {
 	return AdminHealthStatus{
 		API:               "ok",
 		Bailian:           ternary(s.bailian.HasKeyConfigured(), "ok", "missing_key"),
+		GPTRelay:          gptRelayHealthStatus(s.gptRelay),
 		Dypns:             ternary(s.dypns.HasClientConfigured(), "ok", "missing_key"),
 		DypnsFusion:       ternary(s.dypns.HasFusionConfigured(), "ok", "missing_config"),
 		DypnsSMS:          ternary(s.sms.HasConfigured() && redisStatus == "ok", "ok", "missing_config"),
