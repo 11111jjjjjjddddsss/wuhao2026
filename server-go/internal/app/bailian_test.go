@@ -243,6 +243,27 @@ func TestUpdateAssistantAccumulatorCapturesUsageOnlyChunk(t *testing.T) {
 	}
 }
 
+func TestAppendModelUsageLogAttrsCanIncludeZeroReasoning(t *testing.T) {
+	attrs := appendModelUsageLogAttrs(nil, bailianModelUsage{
+		InputTokens:  100,
+		OutputTokens: 20,
+		TotalTokens:  120,
+	}, true)
+
+	if !logAttrsContain(attrs, "model_reasoning_tokens", 0) {
+		t.Fatalf("missing zero reasoning token attr: %#v", attrs)
+	}
+}
+
+func logAttrsContain(attrs []any, key string, value any) bool {
+	for i := 0; i+1 < len(attrs); i += 2 {
+		if attrs[i] == key && attrs[i+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
 func TestOpenStreamFailsOverToNextKeyOnRateLimit(t *testing.T) {
 	authHeaders := []string{}
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

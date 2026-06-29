@@ -766,6 +766,10 @@ func (u bailianModelUsage) hasAny() bool {
 }
 
 func appendBailianUsageLogAttrs(attrs []any, usage bailianModelUsage) []any {
+	return appendModelUsageLogAttrs(attrs, usage, false)
+}
+
+func appendModelUsageLogAttrs(attrs []any, usage bailianModelUsage, includeZeroReasoning bool) []any {
 	if !usage.hasAny() {
 		return attrs
 	}
@@ -774,7 +778,7 @@ func appendBailianUsageLogAttrs(attrs []any, usage bailianModelUsage) []any {
 		"model_output_tokens", usage.normalizedOutputTokens(),
 		"model_total_tokens", usage.normalizedTotalTokens(),
 	)
-	if usage.ReasoningTokens > 0 {
+	if usage.ReasoningTokens > 0 || includeZeroReasoning {
 		attrs = append(attrs, "model_reasoning_tokens", usage.ReasoningTokens)
 	}
 	if searchCount := usage.searchCount(); searchCount > 0 {

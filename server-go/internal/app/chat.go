@@ -1036,10 +1036,16 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			"gpt_relay_fallback_open_ms", lastFallbackOpenMs,
 		)
 	}
+	if isGPTRelayProvider(upstreamProvider) {
+		logAttrs = append(logAttrs,
+			"gpt_relay_reasoning_effort", gptRelayReasoningEffort(),
+			"gpt_relay_search_context_size", gptRelaySearchContextSize(),
+		)
+	}
 	if upstreamProvider == "bailian" {
 		s.bailian.ObserveUsage(modelUsage)
 	}
-	logAttrs = appendBailianUsageLogAttrs(logAttrs, modelUsage)
+	logAttrs = appendModelUsageLogAttrs(logAttrs, modelUsage, isGPTRelayProvider(upstreamProvider))
 	s.logger.Info("chat stream finished", logAttrs...)
 }
 

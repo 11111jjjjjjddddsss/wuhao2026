@@ -134,15 +134,20 @@ func assertOnlyMapKeys(t *testing.T, values map[string]any, allowed ...string) {
 	}
 }
 
-func TestGPTRelayReasoningAndSearchArePinned(t *testing.T) {
+func TestGPTRelayReasoningAllowsMediumOrHighAndSearchStaysLow(t *testing.T) {
 	t.Setenv("GPT_RELAY_REASONING_EFFORT", "high")
 	t.Setenv("GPT_RELAY_SEARCH_CONTEXT_SIZE", "high")
 
-	if got := gptRelayReasoningEffort(); got != "medium" {
-		t.Fatalf("reasoning effort = %q, want medium", got)
+	if got := gptRelayReasoningEffort(); got != "high" {
+		t.Fatalf("reasoning effort = %q, want high", got)
 	}
 	if got := gptRelaySearchContextSize(); got != "low" {
 		t.Fatalf("search context size = %q, want low", got)
+	}
+
+	t.Setenv("GPT_RELAY_REASONING_EFFORT", "xhigh")
+	if got := gptRelayReasoningEffort(); got != "medium" {
+		t.Fatalf("unsupported reasoning effort = %q, want medium", got)
 	}
 }
 

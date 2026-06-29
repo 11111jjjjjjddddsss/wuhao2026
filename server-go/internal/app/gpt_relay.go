@@ -328,10 +328,14 @@ func gptRelayProviderLabel() string {
 
 func gptRelayReasoningEffort() string {
 	value := strings.ToLower(strings.TrimSpace(os.Getenv("GPT_RELAY_REASONING_EFFORT")))
-	if value == "" || value == defaultGPTRelayReasoningEffort {
+	switch value {
+	case "high":
+		return "high"
+	case "", defaultGPTRelayReasoningEffort:
+		return defaultGPTRelayReasoningEffort
+	default:
 		return defaultGPTRelayReasoningEffort
 	}
-	return defaultGPTRelayReasoningEffort
 }
 
 func gptRelaySearchContextSize() string {
