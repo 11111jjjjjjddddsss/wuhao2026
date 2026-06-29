@@ -61,9 +61,37 @@ keys=<本机 DPAPI 加密后的 key 列表>
 
 ## 图片评测
 
-图片仍走 Responses `input_image`，不要说作物名，让模型自己识别。
+图片评测必须同时分清官方 Responses 格式和 Chat Completions 格式，不要把两套 JSON 混着写。
 
-对 `gpt-5.5`，优先省略 `detail` 走模型默认细节；再用 `detail=auto` 和 `detail=high` 做对照。官方图像指南口径里，`gpt-5.5` 的 `auto` / 省略默认接近原图细节；但 API reference 的 `input_image.detail` 枚举仍主要列 `low / high / auto`，所以中转站评测不要先硬传 `original`，避免被中转站参数白名单拒绝。`high` 不是“农技识图必准”开关。
+官方 Responses 图片输入是：
+
+```json
+{
+  "type": "input_image",
+  "image_url": "data:image/jpeg;base64,<base64>",
+  "detail": "auto"
+}
+```
+
+也就是 `image_url` 是字符串，`detail` 和 `image_url` 平级。
+
+官方 Chat Completions 图片输入是：
+
+```json
+{
+  "type": "image_url",
+  "image_url": {
+    "url": "data:image/jpeg;base64,<base64>",
+    "detail": "auto"
+  }
+}
+```
+
+也就是 `image_url` 是对象，`detail` 放在这个对象里。
+
+对第三方中转站，不能只测 Responses。必须把 Responses 正确格式和 Chat 正确格式并排测，因为中转站可能把 Responses 转成 Chat、丢 `detail`、压缩图片、转存图片，或者两条接口走不同上游路由。
+
+对 `gpt-5.5`，优先省略 `detail` 走模型默认细节；再用 `detail=auto`、`detail=high` 做对照。官方图像指南还提到 `original`，但本轮第三方中转评测不先硬传 `original`，避免被中转站参数白名单拒绝；只有确认该站完整支持后再单独对照。`high` / `original` 都不是“农技识图必准”开关。
 
 ```json
 {
@@ -95,8 +123,10 @@ keys=<本机 DPAPI 加密后的 key 列表>
 
 - 2026-06-29 第一轮曾用 `detail=high` 统一测试，但两家中转上没有明显改善识图质量，token 统计也没有明显变化。
 - 2026-06-29 追加测试显示：同一张图上，省略 `detail` 反而比 `auto / high` 更稳；`temperature=0` 只适合 A/B 排查时压住随机摇摆，不适合作为正式用户回答口径。真实产品若要评估 GPT 图片问诊，优先低温但不要归零，例如 `temperature=0.2-0.4`，并靠提示词保留候选、验证点和风险边界。
+- 2026-06-29 夜间又用同一张本地极小玉米锈病样图并排打 Responses / Chat 正确格式：两站都能成功接收图片，单张图输入 token 约 5.2k；其中一家 Responses 和 Chat 都误向红蜘蛛 / 叶螨，另一家 Responses 误向红蜘蛛但 Chat 能说到锈病。这个结果说明格式本身能通，但中转站的 Responses 图片链路和 Chat 图片链路可能不是同一条质量路径。不能只因 Responses 是官方新接口就默认它在第三方中转上更稳。
 - 给出作物信息或让用户补作物，明显比单纯调高清参数更有效。
 - 本地放大 / 锐化只对极小图的某些锈病样本有帮助，对白粉病等粉状 / 点状症状可能把霉层误变成虫卵、白粉虱或螨害颗粒，因此不能默认全局增强。
+- 本地样图如果只有十几 KB，病斑、粉疱、霉层细节本来就弱；评测结论不能直接代表用户 1MiB 左右原图。后续应补真实手机原图、裁剪近景、整株图和多图组合对照。
 - 图片任务的 `reasoning_tokens` 经常低于文字任务，streaming 使用统计还可能显示为 0；不要只看这一项判断模型有没有认真看图。
 - 多图、病害图、作物不明时，两家中转都不够稳，容易把真菌病斑、锈病小疱、白粉病等误判成螨害或泛化叶斑。当前不能替代千问主图片问诊。
 
