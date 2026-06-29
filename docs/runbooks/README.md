@@ -18,6 +18,7 @@
 - [backend-data-boundaries.md](D:/wuhao/docs/runbooks/backend-data-boundaries.md)：后端数据真源、账号资产归属和 `acct_...` 巡检入口
 - [oss.md](D:/wuhao/docs/runbooks/oss.md)：OSS 图片存储资源包、Bucket 配置和生命周期入口
 - [model-key-pool.md](D:/wuhao/docs/runbooks/model-key-pool.md)：后端模型 Key 池和多账号限流排查入口
+- [gpt-relay-evaluation.md](D:/wuhao/docs/runbooks/gpt-relay-evaluation.md)：第三方 GPT 中转站本地评测参数、联网工具调用和成本 / 速度观察入口
 - [resource-capacity.md](D:/wuhao/docs/runbooks/resource-capacity.md)：ECS / RDS / Redis / OSS 容量、到期和升级提醒入口
 - [security-hardening.md](D:/wuhao/docs/runbooks/security-hardening.md)：ECS / 官网免费优先安全加固、防火墙取舍和巡检入口
 - [check-launch-readiness.ps1](D:/wuhao/scripts/check-launch-readiness.ps1)：上线前总门禁脚本，串联项目记忆、后台 surface、Android parity、公网黑盒、ECS readiness、SLS、资源容量和账号资产归属巡检

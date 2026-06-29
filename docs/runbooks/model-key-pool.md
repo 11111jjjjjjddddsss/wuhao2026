@@ -77,7 +77,7 @@ CHAT_PRIMARY_ENABLED=false
 
 - `CHAT_PRIMARY_*` 只作为历史残留和脱敏对象保留说明，不再用于主聊天生产链路。
 - 如果服务器环境里仍有 `CHAT_PRIMARY_ENABLED=true`，请移除或设为 `false` 后重启后端；当前 readiness 会把它视为错误配置。
-- 不要再把中转站 Key、URL 或 Responses 参数写入业务仓库、runbook、聊天记录、日志或后台页面。
+- 不要再把中转站 Key、真实 URL、账号分组或生产环境变量写入业务仓库、聊天记录、日志或后台页面。若用户明确要求记录评测参数，只能写脱敏模板和测试结论，入口见 [gpt-relay-evaluation.md](D:/wuhao/docs/runbooks/gpt-relay-evaluation.md)，不得把它当作生产主链配置。
 
 ## 运行策略
 
