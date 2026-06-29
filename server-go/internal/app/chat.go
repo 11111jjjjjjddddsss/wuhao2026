@@ -21,22 +21,23 @@ import (
 )
 
 const (
-	upstreamMaxAttempts              = 1
-	upstreamRetryBaseWait            = 350 * time.Millisecond
-	chatStreamMaxDuration            = 30 * time.Minute
-	chatStreamFirstVisibleTimeout    = 3 * time.Minute
-	chatStreamIdleTimeout            = 4 * time.Minute
-	maxClientMsgIDLength             = 128
-	maxChatTextRunes                 = 6000
-	maxBailianSSELineBytes           = 256 * 1024
-	appendSessionRoundMaxAttempts    = 3
-	appendSessionRoundRetryBaseWait  = 150 * time.Millisecond
-	chatStreamFinalizeTimeout        = 15 * time.Second
-	chatStreamInflightReleaseTimeout = 5 * time.Second
-	defaultChatThinkingMode          = "always"
-	defaultChatThinkingBudget        = 1024
-	todayAgriContextRoundLimit       = 2
-	chatHistoricalImageContextTTL    = 72 * time.Hour
+	upstreamMaxAttempts                 = 1
+	upstreamRetryBaseWait               = 350 * time.Millisecond
+	chatStreamMaxDuration               = 30 * time.Minute
+	chatStreamFirstVisibleTimeout       = 3 * time.Minute
+	chatStreamIdleTimeout               = 4 * time.Minute
+	maxClientMsgIDLength                = 128
+	maxChatTextRunes                    = 6000
+	maxBailianSSELineBytes              = 256 * 1024
+	appendSessionRoundMaxAttempts       = 3
+	appendSessionRoundRetryBaseWait     = 150 * time.Millisecond
+	chatStreamFinalizeTimeout           = 15 * time.Second
+	chatStreamInflightReleaseTimeout    = 5 * time.Second
+	chatStreamFirstVisibleBoundaryGrace = 150 * time.Millisecond
+	defaultChatThinkingMode             = "always"
+	defaultChatThinkingBudget           = 1024
+	todayAgriContextRoundLimit          = 2
+	chatHistoricalImageContextTTL       = 72 * time.Hour
 )
 
 const chatOutputConstraint = `【输出约束】
@@ -640,6 +641,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		if !isGPTRelayProvider(upstreamProvider) || strings.TrimSpace(assistantText.String()) != "" {
 			return false
 		}
+		if clientDisconnected.Load() {
+			return false
+		}
 		if gptRelayFallbackReason == "" {
 			gptRelayFallbackReason = reason
 			if s.gptRelay != nil {
@@ -725,6 +729,16 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 			line = result.line
 			readErr = result.err
 		case <-firstVisibleTimer.C:
+			select {
+			case result := <-readResults:
+				line = result.line
+				readErr = result.err
+				firstVisibleTimer.Reset(chatStreamFirstVisibleBoundaryGrace)
+			default:
+			}
+			if line != "" || readErr != nil {
+				break
+			}
 			if fallbackGPTRelayToBailian("first_visible_timeout") {
 				continue
 			}

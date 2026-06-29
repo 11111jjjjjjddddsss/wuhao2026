@@ -18,6 +18,7 @@
 - `GPT_RELAY_ENABLED=false` 或未配置完整 Key / endpoint 时不触达 GPT，可快速回到千问主链。
 - 不复用旧 `CHAT_PRIMARY_*`；旧变量仍应保持退役，readiness 继续拒绝 `CHAT_PRIMARY_ENABLED=true`。
 - 只走 Responses 流式接口；不走普通 Chat Completions 联网。
+- Key 配置兼容 `sk-...`、非 `sk-` 单 token、`label token`、`name=value` 和 `provider:token` 形态，方便后续换供应商；真实 Key 仍只进私密环境。
 - 支持多个 Key 轮询和短冷却；开流前失败可换 Key，所有 GPT 尝试失败后回退 Bailian / Qwen。
 - 15 秒内没有用户可见正文时回退 Bailian / Qwen；已吐出可见正文后不在同一条回复中途切模型。
 - GPT 请求带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、历史上下文、本轮文字和图片；GPT 比千问只额外多一段联网规则。

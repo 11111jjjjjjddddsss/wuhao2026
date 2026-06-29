@@ -121,6 +121,24 @@ func TestGPTRelayOpenStreamUsesMinimalResponsesPayload(t *testing.T) {
 	}
 }
 
+func TestNormalizeGPTRelayAPIKeyAcceptsProviderTokenFormats(t *testing.T) {
+	cases := map[string]string{
+		"label sk-test-1":        "sk-test-1",
+		"label relay-token-1":    "relay-token-1",
+		"api_key=relay-token-2":  "relay-token-2",
+		"provider:relay-token-3": "relay-token-3",
+		"relay-token-4":          "relay-token-4",
+		"  relay-token-5  ":      "relay-token-5",
+		"":                       "",
+		"   ":                    "",
+	}
+	for raw, want := range cases {
+		if got := normalizeGPTRelayAPIKey(raw); got != want {
+			t.Fatalf("normalizeGPTRelayAPIKey(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}
+
 func assertOnlyMapKeys(t *testing.T, values map[string]any, allowed ...string) {
 	t.Helper()
 	allowedSet := map[string]struct{}{}

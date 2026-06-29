@@ -402,20 +402,21 @@ func normalizeGPTRelayAPIKey(value string) string {
 	}
 	if idx := strings.Index(trimmed, "="); idx >= 0 {
 		right := strings.TrimSpace(trimmed[idx+1:])
-		if strings.HasPrefix(right, "sk-") {
+		if right != "" {
 			return right
 		}
 	}
 	if idx := strings.LastIndex(trimmed, ":"); idx >= 0 {
 		right := strings.TrimSpace(trimmed[idx+1:])
-		if strings.HasPrefix(right, "sk-") {
+		if right != "" {
 			return right
 		}
 	}
-	if strings.HasPrefix(trimmed, "sk-") {
-		return trimmed
+	fields := strings.Fields(trimmed)
+	if len(fields) > 1 {
+		return fields[len(fields)-1]
 	}
-	return ""
+	return trimmed
 }
 
 func gptRelayKeyPoolSize() int {

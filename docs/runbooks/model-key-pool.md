@@ -153,7 +153,7 @@ DASHSCOPE_AUTO_ROUND_ROBIN_HOLD_SECONDS=120
 1. 确认后端运行环境变量已配置至少一把 Key，且没有把真实 Key 写进仓库。
 2. 如果仍频繁限流，先确认 Key 是否来自不同阿里云主账号；同主账号多个 Key 不会增加真实 RPM / TPM。
 3. 查看后端日志里的上游状态码：`429` 通常是请求或 token 限流，`401 / 403` 多数是 Key 权限、状态或账号问题。
-4. 如果主聊天慢，先看日志里的 `provider`：当前生产应为 `bailian`。若新日志里仍出现 `primary_responses` 或 `primary`，说明线上 revision、环境变量或历史日志查询窗口需要重新核对；当前新代码 `/healthz` 不再输出 `chat_primary`。
+4. 如果主聊天慢，先看日志里的 `provider`：当前生产若启用 `GPT_RELAY_*`，可能先出现 `gpt_relay`，首字前失败 / 超时才回落到 `bailian`；若未启用 GPT relay，则应直接是 `bailian`。若新日志里仍出现 `primary_responses` 或 `primary`，说明线上 revision、环境变量或历史日志查询窗口需要重新核对；当前新代码 `/healthz` 不再输出 `chat_primary`。
 5. 如果只有今日农情失败，确认该 Key 所在账号是否开通联网搜索能力；今日农情当前固定使用 `qwen3.5-plus + OpenAI compatible chat/completions + enable_search=true + search_strategy=turbo + forced_search=true + enable_source=true + enable_thinking=false`。`agent / agent_max` 会带来更多检索和 token 成本，今日农情默认不用。日志会尽量记录 `model_input_tokens / model_output_tokens / model_total_tokens / model_reasoning_tokens / model_search_count`，优先用这些字段判断成本、思考是否关闭和搜索是否触发；兼容 Chat 链路通常没有结构化搜索来源列表，`source_count=0` 不一定表示没联网。2026-06-08 的 `qwen3.5-plus + Responses web_search` 只是旧排障阶段结论，不再是当前生产主线。
 6. 如果在评估记忆文档摘要模型成本，不要只看 `qwen-plus` 资源包单价。按用户提供的两档包价计算：`12000千 token / 11.66元` 折合约 `0.972元 / 百万 token`，`110000千 token / 99.4元` 折合约 `0.904元 / 百万 token`；而 `qwen-plus` 按量输入约 `0.8元 / 百万`、输出约 `2元 / 百万`，后一档资源包也要输出 token 占比超过约 `8.6%` 才比 plus 按量更划算。记忆文档摘要通常是输入长、输出短，资源包本身不是省钱保证；当前先按质量优先固定 `qwen-plus`。
 7. 如果要临时回滚到单 Key，只保留 `DASHSCOPE_API_KEY` 或只保留 `DASHSCOPE_API_KEY_1`，删除其它 Key 槽位后重启后端。`CHAT_PRIMARY_*` 已退出主聊天主链，不能再作为回滚开关；若环境里还有 `CHAT_PRIMARY_ENABLED=true`，readiness 会失败，需移除或设为 `false`。
