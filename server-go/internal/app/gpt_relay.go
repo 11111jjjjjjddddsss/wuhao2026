@@ -15,31 +15,57 @@ import (
 )
 
 const (
-	gptRelayProvider                         = "gpt_relay"
-	defaultGPTRelayModel                     = "gpt-5.5"
-	defaultGPTRelayReasoningEffort           = "medium"
-	defaultGPTRelaySearchContextSize         = "low"
-	defaultGPTRelayFirstVisibleTimeout       = 15 * time.Second
-	defaultGPTRelayDialTimeout               = 4 * time.Second
-	defaultGPTRelayTLSHandshakeTimeout       = 4 * time.Second
-	defaultGPTRelayResponseHeaderTimeout     = 4 * time.Second
-	defaultGPTRelayIdleConnTimeout           = 60 * time.Second
-	defaultGPTRelayKeyCooldown               = 30 * time.Second
-	defaultGPTRelayKeyMaxAttempts            = 10
-	defaultGPTRelayMaxConfiguredKeySlot      = 50
-	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。\n\n带图或高风险问题，必须深度思考。"
+	gptRelayProvider                          = "gpt_relay"
+	defaultGPTRelayModel                      = "gpt-5.5"
+	defaultGPTRelayReasoningEffort            = "medium"
+	defaultGPTRelaySearchContextSize          = "low"
+	defaultGPTRelayFirstVisibleTimeout        = 15 * time.Second
+	defaultGPTRelayDialTimeout                = 4 * time.Second
+	defaultGPTRelayTLSHandshakeTimeout        = 4 * time.Second
+	defaultGPTRelayResponseHeaderTimeout      = 4 * time.Second
+	defaultGPTRelayIdleConnTimeout            = 60 * time.Second
+	defaultGPTRelayKeyCooldown                = 30 * time.Second
+	defaultGPTRelayKeyMaxAttempts             = 10
+	defaultGPTRelayMaxConfiguredKeySlot       = 50
+	defaultGPTRelayCircuitWindow              = 5 * time.Minute
+	defaultGPTRelayCircuitOpenDuration        = 2 * time.Minute
+	defaultGPTRelayCircuitConsecutiveFailures = 8
+	defaultGPTRelayCircuitMinRequests         = 30
+	defaultGPTRelayCircuitFailurePercent      = 70
+	defaultGPTRelayMaxSearchCallsInstruction  = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。\n\n带图或高风险问题，必须深度思考。"
 )
 
 type GPTRelayClient struct {
-	httpClient      *http.Client
-	cooldownMu      sync.Mutex
-	keyCooldown     map[string]time.Time
-	selectionMu     sync.Mutex
-	keySelectionIdx int
+	httpClient                 *http.Client
+	cooldownMu                 sync.Mutex
+	keyCooldown                map[string]time.Time
+	selectionMu                sync.Mutex
+	keySelectionIdx            int
+	circuitMu                  sync.Mutex
+	circuitEvents              []gptRelayCircuitEvent
+	circuitConsecutiveFailures int
+	circuitOpenUntil           time.Time
+	circuitHalfOpen            bool
 }
 
 type gptRelayAPIKeyEntry struct {
 	Value string
+}
+
+type gptRelayCircuitEvent struct {
+	At      time.Time
+	Failure bool
+}
+
+type gptRelayCircuitState struct {
+	Allowed             bool
+	Open                bool
+	HalfOpen            bool
+	OpenUntil           time.Time
+	ConsecutiveFailures int
+	WindowRequests      int
+	WindowFailures      int
+	Trigger             string
 }
 
 func NewGPTRelayClientFromEnv() *GPTRelayClient {
@@ -73,6 +99,87 @@ func (c *GPTRelayClient) Enabled() bool {
 
 func (c *GPTRelayClient) HasKeyConfigured() bool {
 	return len(gptRelayKeyEntries()) > 0
+}
+
+func (c *GPTRelayClient) CircuitAllowRequest(now time.Time) gptRelayCircuitState {
+	if c == nil || !gptRelayCircuitBreakerEnabled() {
+		return gptRelayCircuitState{Allowed: true}
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	c.circuitMu.Lock()
+	defer c.circuitMu.Unlock()
+	c.pruneCircuitEventsLocked(now)
+	if !c.circuitOpenUntil.IsZero() && now.Before(c.circuitOpenUntil) {
+		state := c.circuitStateLocked(now)
+		state.Allowed = false
+		return state
+	}
+	if !c.circuitOpenUntil.IsZero() && !c.circuitHalfOpen {
+		c.circuitHalfOpen = true
+		state := c.circuitStateLocked(now)
+		state.Allowed = true
+		return state
+	}
+	if c.circuitHalfOpen {
+		state := c.circuitStateLocked(now)
+		state.Allowed = false
+		return state
+	}
+	state := c.circuitStateLocked(now)
+	state.Allowed = true
+	return state
+}
+
+func (c *GPTRelayClient) ObserveCircuitSuccess(now time.Time) gptRelayCircuitState {
+	if c == nil || !gptRelayCircuitBreakerEnabled() {
+		return gptRelayCircuitState{Allowed: true}
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	c.circuitMu.Lock()
+	defer c.circuitMu.Unlock()
+	c.pruneCircuitEventsLocked(now)
+	c.circuitEvents = append(c.circuitEvents, gptRelayCircuitEvent{At: now})
+	c.circuitConsecutiveFailures = 0
+	c.circuitOpenUntil = time.Time{}
+	c.circuitHalfOpen = false
+	state := c.circuitStateLocked(now)
+	state.Allowed = true
+	return state
+}
+
+func (c *GPTRelayClient) ObserveCircuitFailure(now time.Time, reason string) gptRelayCircuitState {
+	if c == nil || !gptRelayCircuitBreakerEnabled() {
+		return gptRelayCircuitState{Allowed: true}
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	c.circuitMu.Lock()
+	defer c.circuitMu.Unlock()
+	c.pruneCircuitEventsLocked(now)
+	c.circuitEvents = append(c.circuitEvents, gptRelayCircuitEvent{At: now, Failure: true})
+	c.circuitConsecutiveFailures++
+	state := c.circuitStateLocked(now)
+	trigger := ""
+	if c.circuitHalfOpen {
+		trigger = firstNonEmpty(reason, "half_open_failure")
+	} else if c.circuitConsecutiveFailures >= gptRelayCircuitConsecutiveFailures() {
+		trigger = "consecutive_failures"
+	} else if state.WindowRequests >= gptRelayCircuitMinRequests() && state.WindowFailures*100 >= state.WindowRequests*gptRelayCircuitFailurePercent() {
+		trigger = "failure_rate"
+	}
+	if trigger != "" {
+		c.circuitOpenUntil = now.Add(gptRelayCircuitOpenDuration())
+		c.circuitHalfOpen = false
+		state = c.circuitStateLocked(now)
+		state.Trigger = trigger
+	}
+	state.Allowed = !state.Open
+	return state
 }
 
 func (c *GPTRelayClient) OpenStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
@@ -177,6 +284,84 @@ func gptRelayHealthStatus(client *GPTRelayClient) string {
 		return "missing_config"
 	}
 	return "ok"
+}
+
+func gptRelayCircuitBreakerEnabled() bool {
+	raw := strings.TrimSpace(os.Getenv("GPT_RELAY_CIRCUIT_BREAKER_ENABLED"))
+	if raw == "" {
+		return true
+	}
+	return parseBoolEnv(raw)
+}
+
+func gptRelayCircuitWindow() time.Duration {
+	duration := envDurationWithDefault("GPT_RELAY_CIRCUIT_WINDOW_SECONDS", defaultGPTRelayCircuitWindow)
+	if duration <= 0 {
+		return defaultGPTRelayCircuitWindow
+	}
+	return duration
+}
+
+func gptRelayCircuitOpenDuration() time.Duration {
+	duration := envDurationWithDefault("GPT_RELAY_CIRCUIT_OPEN_SECONDS", defaultGPTRelayCircuitOpenDuration)
+	if duration <= 0 {
+		return defaultGPTRelayCircuitOpenDuration
+	}
+	return duration
+}
+
+func gptRelayCircuitConsecutiveFailures() int {
+	value := envIntWithDefault("GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES", defaultGPTRelayCircuitConsecutiveFailures)
+	if value <= 0 {
+		return defaultGPTRelayCircuitConsecutiveFailures
+	}
+	return value
+}
+
+func gptRelayCircuitMinRequests() int {
+	value := envIntWithDefault("GPT_RELAY_CIRCUIT_MIN_REQUESTS", defaultGPTRelayCircuitMinRequests)
+	if value <= 0 {
+		return defaultGPTRelayCircuitMinRequests
+	}
+	return value
+}
+
+func gptRelayCircuitFailurePercent() int {
+	value := envIntWithDefault("GPT_RELAY_CIRCUIT_FAILURE_PERCENT", defaultGPTRelayCircuitFailurePercent)
+	if value <= 0 || value > 100 {
+		return defaultGPTRelayCircuitFailurePercent
+	}
+	return value
+}
+
+func (c *GPTRelayClient) pruneCircuitEventsLocked(now time.Time) {
+	window := gptRelayCircuitWindow()
+	cutoff := now.Add(-window)
+	keepFrom := 0
+	for keepFrom < len(c.circuitEvents) && c.circuitEvents[keepFrom].At.Before(cutoff) {
+		keepFrom++
+	}
+	if keepFrom > 0 {
+		copy(c.circuitEvents, c.circuitEvents[keepFrom:])
+		c.circuitEvents = c.circuitEvents[:len(c.circuitEvents)-keepFrom]
+	}
+}
+
+func (c *GPTRelayClient) circuitStateLocked(now time.Time) gptRelayCircuitState {
+	failures := 0
+	for _, event := range c.circuitEvents {
+		if event.Failure {
+			failures++
+		}
+	}
+	return gptRelayCircuitState{
+		Open:                !c.circuitOpenUntil.IsZero() && now.Before(c.circuitOpenUntil),
+		HalfOpen:            c.circuitHalfOpen,
+		OpenUntil:           c.circuitOpenUntil,
+		ConsecutiveFailures: c.circuitConsecutiveFailures,
+		WindowRequests:      len(c.circuitEvents),
+		WindowFailures:      failures,
+	}
 }
 
 func gptRelayKeyEntries() []gptRelayAPIKeyEntry {

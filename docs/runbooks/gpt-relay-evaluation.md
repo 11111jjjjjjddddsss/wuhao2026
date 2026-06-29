@@ -25,6 +25,32 @@
 - 不设置 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或图片 `detail`。
 - `/healthz` 和后台只暴露 `gpt_relay=disabled / ok / missing_config` 等非敏感状态，不暴露真实 URL、Key 数量、供应商名或账号分组。
 
+## 轻量熔断
+
+GPT relay 有进程内轻量熔断，只跟随 GPT 候选链路，不接管千问链路，也不进入 `/healthz` 硬门禁。
+
+默认触发很保守：
+
+- 连续 8 次 GPT relay 已实际尝试但首字前失败 / 超时，才熔断。
+- 或 5 分钟窗口内至少 30 次 GPT relay 尝试，且失败率达到 70% 以上，才熔断。
+- 熔断后暂停 GPT relay 2 分钟，大多数请求直接走 Bailian / Qwen 兜底，避免每个用户都先撞慢接口。
+- 2 分钟后只放 1 个 GPT relay 探针请求；探针只要出现用户可见正文首字，就立刻关闭熔断并恢复正常尽量走 GPT；探针仍首字前失败，则再暂停 2 分钟。
+
+计入失败的只限 GPT relay 这条候选整体失败，例如开流前整体失败、首字预算耗尽、首字前 `response.failed / completed_without_visible_text / stream_ended_before_visible_text` 等。单把 Key 的冷却、`GPT_RELAY_ENABLED=false`、缺配置、熔断已打开导致跳过、用户切后台 / 客户端断开、千问失败、归档 / 扣次 / 摘要失败都不计入。
+
+可调环境变量：
+
+```text
+GPT_RELAY_CIRCUIT_BREAKER_ENABLED=true
+GPT_RELAY_CIRCUIT_WINDOW_SECONDS=300
+GPT_RELAY_CIRCUIT_OPEN_SECONDS=120
+GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES=8
+GPT_RELAY_CIRCUIT_MIN_REQUESTS=30
+GPT_RELAY_CIRCUIT_FAILURE_PERCENT=70
+```
+
+如果用户明确要求尽量都走 GPT，可以继续调高连续失败阈值、最小样本数或失败率；如果中转站大面积抖动，再调低。直接完全关闭 GPT relay 仍用 `GPT_RELAY_ENABLED=false`。
+
 灰度前先在服务器私密环境写入脱敏模板对应的真实配置，跑 10 Key 连接性、文字、图片、联网和并发测试；观察慢、贵、错、断或隐私不可接受时，直接关 `GPT_RELAY_ENABLED=false` 回千问。
 
 ## 本机私密配置

@@ -242,6 +242,103 @@ func TestOpenValidatedChatStreamDoesNotCallGPTRelayWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestOpenValidatedChatStreamSkipsGPTRelayWhenCircuitOpen(t *testing.T) {
+	gptHits := int32(0)
+	gptServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&gptHits, 1)
+		http.Error(w, "bad relay", http.StatusBadGateway)
+	}))
+	defer gptServer.Close()
+	bailianHits := int32(0)
+	bailianServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&bailianHits, 1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer bailianServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_BASE_URL", gptServer.URL)
+	t.Setenv("GPT_RELAY_API_KEY", "sk-test-relay")
+	t.Setenv("GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES", "1")
+	t.Setenv("GPT_RELAY_CIRCUIT_OPEN_SECONDS", "60")
+	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
+	t.Setenv("DASHSCOPE_API_KEY", "test-bailian")
+
+	server := &Server{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		bailian:  NewBailianClient(),
+		gptRelay: NewGPTRelayClientFromEnv(),
+	}
+	for i := 0; i < 2; i++ {
+		response, provider, cancelProvider, err := server.openValidatedChatStreamWithFallback(
+			context.Background(),
+			time.Now(),
+			[]BailianMessage{{Role: "user", Content: "bailian"}},
+			[]BailianMessage{{Role: "user", Content: "gpt"}},
+			BailianStreamOptions{},
+		)
+		if err != nil {
+			t.Fatalf("open stream %d: %v", i+1, err)
+		}
+		_ = response.Body.Close()
+		cancelProvider()
+		if provider != "bailian" {
+			t.Fatalf("provider %d = %q, want bailian", i+1, provider)
+		}
+	}
+	if got := atomic.LoadInt32(&gptHits); got != 1 {
+		t.Fatalf("second request should skip open circuit, gpt hits=%d", got)
+	}
+	if got := atomic.LoadInt32(&bailianHits); got != 2 {
+		t.Fatalf("both requests should reach bailian fallback, hits=%d", got)
+	}
+}
+
+func TestOpenValidatedChatStreamDoesNotCountCanceledRequestAsCircuitFailure(t *testing.T) {
+	gptServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "should not count canceled request", http.StatusBadGateway)
+	}))
+	defer gptServer.Close()
+	bailianServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer bailianServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_BASE_URL", gptServer.URL)
+	t.Setenv("GPT_RELAY_API_KEY", "sk-test-relay")
+	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
+	t.Setenv("DASHSCOPE_API_KEY", "test-bailian")
+
+	server := &Server{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		bailian:  NewBailianClient(),
+		gptRelay: NewGPTRelayClientFromEnv(),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	response, _, cancelProvider, err := server.openValidatedChatStreamWithFallback(
+		ctx,
+		time.Now(),
+		[]BailianMessage{{Role: "user", Content: "bailian"}},
+		[]BailianMessage{{Role: "user", Content: "gpt"}},
+		BailianStreamOptions{},
+	)
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	cancelProvider()
+	if err == nil {
+		t.Fatal("expected canceled context to fail opening fallback stream")
+	}
+	state := server.gptRelay.CircuitAllowRequest(time.Now())
+	if state.ConsecutiveFailures != 0 || state.WindowFailures != 0 {
+		t.Fatalf("canceled request should not count as circuit failure, state=%#v", state)
+	}
+}
+
 func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
 	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "")
@@ -267,6 +364,72 @@ func TestGPTRelayFirstVisibleTimeoutCountsFromRequestReceived(t *testing.T) {
 
 	if got := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 16*time.Second); got != time.Millisecond {
 		t.Fatalf("exhausted first visible timeout = %s, want 1ms", got)
+	}
+}
+
+func TestGPTRelayCircuitOpensAfterConsecutiveFailuresAndHalfOpenProbe(t *testing.T) {
+	t.Setenv("GPT_RELAY_CIRCUIT_BREAKER_ENABLED", "true")
+	t.Setenv("GPT_RELAY_CIRCUIT_WINDOW_SECONDS", "300")
+	t.Setenv("GPT_RELAY_CIRCUIT_OPEN_SECONDS", "60")
+	t.Setenv("GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES", "8")
+	t.Setenv("GPT_RELAY_CIRCUIT_MIN_REQUESTS", "30")
+	t.Setenv("GPT_RELAY_CIRCUIT_FAILURE_PERCENT", "70")
+
+	client := NewGPTRelayClientFromEnv()
+	now := time.Unix(1000, 0)
+	for i := 0; i < 7; i++ {
+		state := client.ObserveCircuitFailure(now.Add(time.Duration(i)*time.Second), "first_visible_timeout")
+		if state.Open {
+			t.Fatalf("circuit should stay closed before threshold, state=%#v", state)
+		}
+	}
+	opened := client.ObserveCircuitFailure(now.Add(7*time.Second), "first_visible_timeout")
+	if !opened.Open || opened.Trigger != "consecutive_failures" {
+		t.Fatalf("circuit should open after consecutive failures, state=%#v", opened)
+	}
+	blocked := client.CircuitAllowRequest(now.Add(8 * time.Second))
+	if blocked.Allowed || !blocked.Open {
+		t.Fatalf("circuit should block while open, state=%#v", blocked)
+	}
+	probe := client.CircuitAllowRequest(now.Add(68 * time.Second))
+	if !probe.Allowed || !probe.HalfOpen {
+		t.Fatalf("first request after open period should be half-open probe, state=%#v", probe)
+	}
+	second := client.CircuitAllowRequest(now.Add(69 * time.Second))
+	if second.Allowed {
+		t.Fatalf("half-open should allow only one probe before result, state=%#v", second)
+	}
+	recovered := client.ObserveCircuitSuccess(now.Add(70 * time.Second))
+	if recovered.Open || recovered.HalfOpen || recovered.ConsecutiveFailures != 0 {
+		t.Fatalf("successful probe should close circuit, state=%#v", recovered)
+	}
+	if allow := client.CircuitAllowRequest(now.Add(71 * time.Second)); !allow.Allowed {
+		t.Fatalf("circuit should allow after successful probe, state=%#v", allow)
+	}
+}
+
+func TestGPTRelayCircuitOpensByFailureRateOnlyWithMinimumSamples(t *testing.T) {
+	t.Setenv("GPT_RELAY_CIRCUIT_BREAKER_ENABLED", "true")
+	t.Setenv("GPT_RELAY_CIRCUIT_WINDOW_SECONDS", "300")
+	t.Setenv("GPT_RELAY_CIRCUIT_OPEN_SECONDS", "60")
+	t.Setenv("GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES", "100")
+	t.Setenv("GPT_RELAY_CIRCUIT_MIN_REQUESTS", "30")
+	t.Setenv("GPT_RELAY_CIRCUIT_FAILURE_PERCENT", "70")
+
+	client := NewGPTRelayClientFromEnv()
+	now := time.Unix(2000, 0)
+	for i := 0; i < 20; i++ {
+		client.ObserveCircuitFailure(now.Add(time.Duration(i)*time.Second), "open_failed")
+	}
+	for i := 20; i < 29; i++ {
+		client.ObserveCircuitSuccess(now.Add(time.Duration(i) * time.Second))
+	}
+	if state := client.CircuitAllowRequest(now.Add(29 * time.Second)); !state.Allowed || state.Open {
+		t.Fatalf("failure rate should not open before min samples, state=%#v", state)
+	}
+	opened := client.ObserveCircuitFailure(now.Add(30*time.Second), "open_failed")
+	if !opened.Open || opened.Trigger != "failure_rate" || opened.WindowRequests != 30 || opened.WindowFailures != 21 {
+		t.Fatalf("failure rate should open at min sample threshold, state=%#v", opened)
 	}
 }
 
