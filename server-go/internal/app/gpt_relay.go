@@ -23,16 +23,10 @@ const (
 	defaultGPTRelayModel                      = "gpt-5.5"
 	defaultGPTRelayReasoningEffort            = "medium"
 	defaultGPTRelaySearchContextSize          = "low"
-	defaultGPTRelayFirstVisibleTimeout        = 7 * time.Second
-	defaultGPTRelayDialTimeout                = 4 * time.Second
-	defaultGPTRelayTLSHandshakeTimeout        = 4 * time.Second
-	defaultGPTRelayResponseHeaderTimeout      = 4 * time.Second
+	defaultGPTRelayFirstVisibleTimeout        = 15 * time.Second
 	defaultGPTRelayIdleConnTimeout            = 60 * time.Second
 	defaultGPTRelayKeyCooldown                = 30 * time.Second
 	defaultGPTRelayKeyMaxAttempts             = 10
-	defaultGPTRelayFirstVisibleRetryAttempts  = 1
-	defaultGPTRelayFirstVisibleRetryTimeout   = 7 * time.Second
-	maxGPTRelayFirstVisibleRetryAttempts      = 2
 	defaultGPTRelayMaxConfiguredProviderSlot  = 10
 	defaultGPTRelayMaxConfiguredKeySlot       = 50
 	defaultGPTRelayCircuitWindow              = 5 * time.Minute
@@ -142,11 +136,10 @@ func newGPTRelayHTTPClient() *http.Client {
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
-				Timeout:   envDurationWithDefault("GPT_RELAY_DIAL_TIMEOUT_SECONDS", defaultGPTRelayDialTimeout),
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
-			TLSHandshakeTimeout:   envDurationWithDefault("GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS", defaultGPTRelayTLSHandshakeTimeout),
-			ResponseHeaderTimeout: envDurationWithDefault("GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS", defaultGPTRelayResponseHeaderTimeout),
+			TLSHandshakeTimeout:   0,
+			ResponseHeaderTimeout: 0,
 			IdleConnTimeout:       envDurationWithDefault("GPT_RELAY_IDLE_CONN_TIMEOUT_SECONDS", defaultGPTRelayIdleConnTimeout),
 			ExpectContinueTimeout: 1 * time.Second,
 			MaxIdleConns:          120,
@@ -314,16 +307,14 @@ func (c *GPTRelayClient) doPayloadRequestWithKeys(ctx context.Context, payload [
 		if err != nil {
 			c.coolDownKey(keyID)
 			lastErr = err
-			if ctx.Err() != nil {
-				return nil, err
-			}
+			willRetry := ctx.Err() == nil && attempt+1 < maxAttempts
 			c.logKeyAttempt("gpt relay key attempt failed",
 				"attempt", attempt+1,
 				"max_attempts", maxAttempts,
 				"key_slot", key.Label,
 				"elapsed_ms", elapsedMs,
 				"error_kind", classifyGPTRelayAttemptError(err),
-				"will_retry", attempt+1 < maxAttempts,
+				"will_retry", willRetry,
 			)
 			c.recordKeyAttempt(ctx, gptRelayAttemptRecord{
 				ProviderSlot:  key.ProviderSlot,
@@ -335,6 +326,9 @@ func (c *GPTRelayClient) doPayloadRequestWithKeys(ctx context.Context, payload [
 				MaxAttempts:   maxAttempts,
 				OpenMs:        elapsedMs,
 			})
+			if ctx.Err() != nil {
+				return nil, err
+			}
 			continue
 		}
 		if isGPTRelayRetryableStatus(resp.StatusCode) {
@@ -1014,29 +1008,7 @@ func resolveGPTRelayFirstVisibleTimeout(maxDuration time.Duration) time.Duration
 }
 
 func resolveGPTRelayFirstVisibleRetryAttempts() int {
-	value := envIntWithDefault("GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS", defaultGPTRelayFirstVisibleRetryAttempts)
-	if value < 0 {
-		return 0
-	}
-	if value > maxGPTRelayFirstVisibleRetryAttempts {
-		return maxGPTRelayFirstVisibleRetryAttempts
-	}
-	return value
-}
-
-func resolveGPTRelayFirstVisibleRetryTimeout(maxDuration time.Duration) time.Duration {
-	duration := envDurationWithDefault("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", defaultGPTRelayFirstVisibleRetryTimeout)
-	if duration <= 0 {
-		return defaultGPTRelayFirstVisibleRetryTimeout
-	}
-	firstVisibleTimeout := resolveGPTRelayFirstVisibleTimeout(maxDuration)
-	if firstVisibleTimeout > 0 && duration > firstVisibleTimeout {
-		duration = firstVisibleTimeout
-	}
-	if maxDuration > 0 && duration > maxDuration {
-		return maxDuration
-	}
-	return duration
+	return 0
 }
 
 func gptRelayResponsesURL() string {

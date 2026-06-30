@@ -508,7 +508,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	upstreamCtx, cancelUpstream := context.WithTimeout(withModelCallContext(context.Background(), modelCallMeta), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
 	upstreamOpenStartedAt := time.Now()
-	upstream, upstreamProvider, upstreamProviderCancel, gptRelayCursor, err := s.openValidatedChatStreamWithFallback(upstreamCtx, requestReceivedAt, promptMessages, gptRelayPromptMessages, thinkingOptions)
+	upstream, upstreamProvider, upstreamProviderCancel, _, err := s.openValidatedChatStreamWithFallback(upstreamCtx, requestReceivedAt, promptMessages, gptRelayPromptMessages, thinkingOptions)
 	upstreamOpenedAt := time.Now()
 	upstreamOpenMs := upstreamOpenedAt.Sub(upstreamOpenStartedAt).Milliseconds()
 	requestToUpstreamOpenMs := upstreamOpenedAt.Sub(requestReceivedAt).Milliseconds()
@@ -675,150 +675,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	lastFallbackOpenMs := int64(-1)
 	firstVisibleMs := int64(-1)
 	upstreamFirstVisibleMs := int64(-1)
-	gptRelayFirstVisibleRetries := 0
-	maxGPTRelayFirstVisibleRetries := resolveGPTRelayFirstVisibleRetryAttempts()
-	retryNextGPTRelayBeforeBailian := func(reason string) bool {
-		if reason != "first_visible_timeout" || s.gptRelay == nil || gptRelayFirstVisibleRetries >= maxGPTRelayFirstVisibleRetries {
-			return false
-		}
-		if !isGPTRelayProvider(upstreamProvider) || strings.TrimSpace(assistantText.String()) != "" {
-			return false
-		}
-		if clientDisconnected.Load() {
-			return false
-		}
-		gptRelayFirstVisibleRetries++
-		providerLabel, providerSlot, keySlot := modelCallProviderMetadata(upstreamProvider, upstream)
-		s.insertModelCallRecordAsync(ModelCallRecordInput{
-			RecordType:             "key_attempt",
-			Chain:                  "main_chat",
-			UserID:                 auth.UserID,
-			ClientMsgID:            clientMsgID,
-			RequestID:              requestID,
-			UpstreamRequestID:      upstreamRequestID,
-			Provider:               gptRelayProvider,
-			ProviderLabel:          providerLabel,
-			ProviderSlot:           providerSlot,
-			KeySlot:                keySlot,
-			Model:                  gptRelayModelName(),
-			Status:                 "first_visible_timeout",
-			FallbackReason:         "retry_next_gpt_relay",
-			Tier:                   string(tier),
-			ImageCount:             len(images),
-			PromptHasImages:        promptHasImages,
-			ForcedSearch:           forceSearch,
-			SearchStrategy:         "responses_auto_low",
-			ReasoningEffort:        gptRelayReasoningEffort(),
-			ThinkingEnabled:        thinkingOptions.EnableThinking,
-			ThinkingBudget:         thinkingOptions.ThinkingBudget,
-			OpenMs:                 upstreamOpenMs,
-			RequestToOpenMs:        requestToUpstreamOpenMs,
-			FirstVisibleMs:         -1,
-			UpstreamFirstVisibleMs: -1,
-			TotalMs:                time.Since(requestReceivedAt).Milliseconds(),
-		})
-		s.gptRelay.coolDownResponseKey(upstream)
-		s.logger.Warn(
-			"gpt relay first visible timeout; retry next relay",
-			"userId", auth.UserID,
-			"clientMsgId", clientMsgID,
-			"request_id", upstreamRequestID,
-			"provider_label", providerLabel,
-			"provider_slot", providerSlot,
-			"key_slot", keySlot,
-			"retry", gptRelayFirstVisibleRetries,
-			"max_retries", maxGPTRelayFirstVisibleRetries,
-			"forced_search", forceSearch,
-		)
-		_ = upstream.Body.Close()
-		upstreamProviderCancel()
-		stopReadLoop()
-		retryOpenStartedAt := time.Now()
-		retryCtx, retryCancel := context.WithCancel(upstreamCtx)
-		retryBudget := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration())
-		budgetTimer := time.AfterFunc(retryBudget, retryCancel)
-		retryResponse, retryErr := s.openValidatedGPTRelayStream(retryCtx, gptRelayPromptMessages, gptRelayCursor)
-		timerStopped := budgetTimer.Stop()
-		retryOpenedAt := time.Now()
-		if retryErr != nil {
-			retryCancel()
-			s.logger.Warn(
-				"gpt relay first visible retry open failed; fallback to bailian",
-				"userId", auth.UserID,
-				"clientMsgId", clientMsgID,
-				"error", sanitizeDashScopeErrorMessage(retryErr.Error()),
-				"retry", gptRelayFirstVisibleRetries,
-				"forced_search", forceSearch,
-			)
-			return false
-		}
-		if !timerStopped || retryCtx.Err() != nil {
-			_ = retryResponse.Body.Close()
-			retryCancel()
-			s.logger.Warn(
-				"gpt relay first visible retry open exceeded budget; fallback to bailian",
-				"userId", auth.UserID,
-				"clientMsgId", clientMsgID,
-				"retry", gptRelayFirstVisibleRetries,
-				"forced_search", forceSearch,
-			)
-			return false
-		}
-		retryElapsed := retryOpenedAt.Sub(retryOpenStartedAt)
-		retryFirstVisibleTimeout := retryBudget - retryElapsed
-		if retryFirstVisibleTimeout <= 0 {
-			_ = retryResponse.Body.Close()
-			retryCancel()
-			s.logger.Warn(
-				"gpt relay first visible retry budget exhausted after open; fallback to bailian",
-				"userId", auth.UserID,
-				"clientMsgId", clientMsgID,
-				"retry", gptRelayFirstVisibleRetries,
-				"retry_budget_ms", retryBudget.Milliseconds(),
-				"retry_open_ms", retryElapsed.Milliseconds(),
-				"forced_search", forceSearch,
-			)
-			return false
-		}
-		upstream = retryResponse
-		upstreamProviderCancel = retryCancel
-		upstreamProvider = gptRelayProvider
-		upstreamRequestID = firstNonEmpty(upstream.Header.Get("x-request-id"), upstream.Header.Get("request-id"))
-		upstreamOpenedAt = retryOpenedAt
-		upstreamOpenMs = retryOpenedAt.Sub(retryOpenStartedAt).Milliseconds()
-		requestToUpstreamOpenMs = retryOpenedAt.Sub(requestReceivedAt).Milliseconds()
-		upstreamEnableSearch, upstreamSearchStrategy, upstreamSingleCallSearch = chatUpstreamSearchLogConfig(upstreamProvider)
-		currentSSEEvent = ""
-		gptRelaySearchCount = 0
-		hasSources.Store(false)
-		hasCitations.Store(false)
-		modelUsage = bailianModelUsage{}
-		readResults, stopReadLoop = startReadLoop(upstream.Body)
-		firstVisibleTimeout = retryFirstVisibleTimeout
-		if !firstVisibleTimer.Stop() {
-			select {
-			case <-firstVisibleTimer.C:
-			default:
-			}
-		}
-		firstVisibleTimer.Reset(firstVisibleTimeout)
-		retryProviderLabel, retryProviderSlot, retryKeySlot := modelCallProviderMetadata(upstreamProvider, upstream)
-		s.logger.Info(
-			"gpt relay first visible retry selected next relay",
-			"userId", auth.UserID,
-			"clientMsgId", clientMsgID,
-			"request_id", upstreamRequestID,
-			"provider_label", retryProviderLabel,
-			"provider_slot", retryProviderSlot,
-			"key_slot", retryKeySlot,
-			"retry", gptRelayFirstVisibleRetries,
-			"open_ms", upstreamOpenMs,
-			"retry_budget_ms", retryBudget.Milliseconds(),
-			"remaining_first_visible_ms", firstVisibleTimeout.Milliseconds(),
-			"forced_search", forceSearch,
-		)
-		return true
-	}
 	fallbackGPTRelayToBailian := func(reason string) bool {
 		if !isGPTRelayProvider(upstreamProvider) || strings.TrimSpace(assistantText.String()) != "" {
 			return false
@@ -826,13 +682,48 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		if clientDisconnected.Load() {
 			return false
 		}
-		if retryNextGPTRelayBeforeBailian(reason) {
-			return true
-		}
 		if gptRelayFallbackReason == "" {
 			gptRelayFallbackReason = reason
-			if reason == "first_visible_timeout" && s.gptRelay != nil {
-				s.gptRelay.coolDownResponseKey(upstream)
+			if s.gptRelay != nil {
+				providerLabel, providerSlot, keySlot := modelCallProviderMetadata(upstreamProvider, upstream)
+				if providerSlot != "" || keySlot != "" {
+					status := reason
+					if status != "first_visible_timeout" {
+						status = "no_visible_text"
+					}
+					s.insertModelCallRecordAsync(ModelCallRecordInput{
+						RecordType:             "key_attempt",
+						Chain:                  "main_chat",
+						UserID:                 auth.UserID,
+						ClientMsgID:            clientMsgID,
+						RequestID:              requestID,
+						UpstreamRequestID:      upstreamRequestID,
+						Provider:               gptRelayProvider,
+						ProviderLabel:          providerLabel,
+						ProviderSlot:           providerSlot,
+						KeySlot:                keySlot,
+						Model:                  gptRelayModelName(),
+						Status:                 status,
+						FallbackReason:         reason,
+						Tier:                   string(tier),
+						ImageCount:             len(images),
+						PromptHasImages:        promptHasImages,
+						ForcedSearch:           forceSearch,
+						SearchStrategy:         upstreamSearchStrategy,
+						ReasoningEffort:        gptRelayReasoningEffort(),
+						ThinkingEnabled:        thinkingOptions.EnableThinking,
+						ThinkingBudget:         thinkingOptions.ThinkingBudget,
+						OpenMs:                 upstreamOpenMs,
+						RequestToOpenMs:        requestToUpstreamOpenMs,
+						FirstVisibleMs:         -1,
+						UpstreamFirstVisibleMs: -1,
+						TotalMs:                time.Since(requestReceivedAt).Milliseconds(),
+						SearchCount:            gptRelaySearchCount,
+					})
+				}
+				if reason == "first_visible_timeout" {
+					s.gptRelay.coolDownResponseKey(upstream)
+				}
 			}
 			if s.gptRelay != nil {
 				state := s.gptRelay.ObserveCircuitFailure(time.Now(), reason)
@@ -1454,48 +1345,17 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, reques
 				}
 				if ctx.Err() != nil {
 					s.logger.Warn("gpt relay open aborted by request context; fallback to bailian", "error", ctx.Err().Error())
-				} else {
-					maxOpenRetries := resolveGPTRelayFirstVisibleRetryAttempts()
-					if circuitState.HalfOpen {
-						maxOpenRetries = 0
-					}
-					if maxOpenRetries > 0 && gptRelayKeyPoolSize() > 1 {
-						s.logger.Warn(
-							"gpt relay open failed before visible text; retry next relay",
-							"error", sanitizeDashScopeErrorMessage(err.Error()),
-							"reason", openFailureReason,
-							"retry", 1,
-							"max_retries", maxOpenRetries,
+				}
+				if ctx.Err() == nil {
+					state := s.gptRelay.ObserveCircuitFailure(time.Now(), openFailureReason)
+					if state.Trigger != "" {
+						s.logger.Warn("gpt relay circuit opened",
+							"trigger", state.Trigger,
+							"open_until", state.OpenUntil.Format(time.RFC3339),
+							"consecutive_failures", state.ConsecutiveFailures,
+							"window_requests", state.WindowRequests,
+							"window_failures", state.WindowFailures,
 						)
-						retryResponse, retryCancel, retryFailureReason, retryErr := s.openGPTRelayStreamWithinBudget(ctx, gptRelayMessages, gptRelayCursor, resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()))
-						if retryErr == nil {
-							return retryResponse, gptRelayProvider, retryCancel, gptRelayCursor, nil
-						}
-						openFailureReason = retryFailureReason
-						err = retryErr
-						if ctx.Err() != nil {
-							s.logger.Warn("gpt relay open retry aborted by request context; fallback to bailian", "error", ctx.Err().Error())
-						} else {
-							s.logger.Warn(
-								"gpt relay open retry failed before visible text; fallback to bailian",
-								"error", sanitizeDashScopeErrorMessage(retryErr.Error()),
-								"reason", retryFailureReason,
-								"retry", 1,
-								"max_retries", maxOpenRetries,
-							)
-						}
-					}
-					if ctx.Err() == nil {
-						state := s.gptRelay.ObserveCircuitFailure(time.Now(), openFailureReason)
-						if state.Trigger != "" {
-							s.logger.Warn("gpt relay circuit opened",
-								"trigger", state.Trigger,
-								"open_until", state.OpenUntil.Format(time.RFC3339),
-								"consecutive_failures", state.ConsecutiveFailures,
-								"window_requests", state.WindowRequests,
-								"window_failures", state.WindowFailures,
-							)
-						}
 					}
 				}
 			}

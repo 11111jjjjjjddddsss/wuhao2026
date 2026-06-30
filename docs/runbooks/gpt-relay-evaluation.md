@@ -19,11 +19,11 @@
 - 不复用旧 `CHAT_PRIMARY_*`；旧变量仍应保持退役，readiness 继续拒绝 `CHAT_PRIMARY_ENABLED=true`。
 - 只走 Responses 流式接口；不走普通 Chat Completions 联网。
 - Key 配置兼容 `sk-...`、非 `sk-` 单 token、`label token`、`name=value` 和 `provider:token` 形态，方便后续换供应商；真实 Key 仍只进私密环境。
-- 支持多个 Key 轮询和短冷却；开流前失败可换 Key，所有 GPT 尝试失败后回退 Bailian / Qwen。
+- 支持多个 Key 轮询和短冷却；开流前失败可在当前 provider 内换 Key，当前 provider 在 15 秒内没有上游可见正文时回退 Bailian / Qwen。
 - 单把 Key 开流前失败、可重试 HTTP 状态和后续换 Key 恢复会写入轻量脱敏日志：只记录 `attempt / max_attempts / key_slot / elapsed_ms / error_kind / status / will_retry` 等排障字段，`key_slot` 仅为配置槽位名（如 `GPT_RELAY_API_KEY_3` 或 `GPT_RELAY_API_KEYS_2`），不记录真实 Key、prompt、正文、图片 URL 或中转站完整地址。
-- 多 provider 运行时先按用户请求轮 provider 起手；当前两家就是 `provider_1 -> provider_2 -> provider_1 -> provider_2`，不看成功失败，不做 provider 级冷却。每个 7 秒窗口只选一个 provider，窗口内只在这个 provider 内部轮 Key；首字超时或开流前失败后的短探针沿同一请求 cursor 走下一 provider，不消耗下一题的起手 provider；provider 内部 Key 选择在并发下原子推进。
-- 仓库最新待部署代码中的首字策略为 7+7：第一路 GPT relay 7 秒内开流前失败、响应头超时、开流预算耗尽，或已经开流但没有上游可见正文首字，就短冷却当前具体 Key 并切到下一路 GPT relay；第二路再给 7 秒，仍无正文会短冷却该具体 Key 后回退 Bailian / Qwen。已吐出可见正文后不在同一条回复中途切模型。
-- 开流前连接、TLS 和响应头等待默认是 4 秒级别；这不是正文首字窗口。只要某把 Key 已拿到上游 SSE 响应头，就不再因为还在思考而立刻换 Key；后续如果模型一直没有吐出用户可见正文，才按对应 7 秒首字预算切下一路或回退 Bailian / Qwen。这里的首字只认后端收到上游的用户可见正文，不认 `response.created`、搜索事件、思考 / reasoning 事件、心跳或空白 delta。
+- 多 provider 运行时先按用户请求轮 provider 起手；当前两家应通过 `GPT_RELAY_PROVIDER_1_LABEL=中转联盟`、`GPT_RELAY_PROVIDER_2_LABEL=大大科技` 标清楚，起手顺序就是 `中转联盟 -> 大大科技 -> 中转联盟 -> 大大科技`，不看成功失败，不做 provider 级冷却。每轮只打一家 GPT provider；provider 内部 Key 选择在并发下原子推进。
+- 仓库最新待部署代码中的首字策略为单段 15 秒：从后端收到用户请求开始算，包含 provider 起手、Key 切换、连接、TLS、响应头等待和模型首个可见正文前等待；15 秒内没有上游可见正文首字，就回退 Bailian / Qwen，不在同一轮再切另一家 GPT provider。已吐出可见正文后不在同一条回复中途切模型。
+- GPT relay 不再使用单独的 4 秒连接 / TLS / 响应头切换限制，也不再使用 7+7 同轮短探针。这里的首字只认后端收到上游的用户可见正文，不认 `response.created`、搜索事件、思考 / reasoning 事件、心跳或空白 delta。
 - GPT 请求带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、历史上下文、本轮文字和图片；GPT 比千问只额外多一段 `【GPT专用规则】`（联网 / 带图高风险深度思考规则）。
 - 为提高上游 prompt cache 命中，当前组装顺序把稳定规则前置：千问 / 百炼链路是“主对话锚点 + `【输出约束】` / 回答参考范本”先行，动态时间地点放到本轮用户消息前；GPT relay 的 Responses `instructions` 是“主对话锚点 + `【输出约束】` / 回答参考范本 + `【GPT专用规则】`”先行，记忆、历史上下文、动态时间地点等后置。今日农情不再进入主聊天 prompt，也不再影响请求 hash。该改动只调顺序和移除农情上下文注入，不改任何提示词正文或联网参数。
 - 当前生产固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto`，并追加“一次联网、够用就答”的联网规则。`high` 曾临时验证，但图片问诊首字明显变慢，暂不作为生产口径。
@@ -108,8 +108,8 @@ keys=<本机 DPAPI 加密后的 key 列表>
 
 2026-06-30 线上观察：第三方中转站控制台偶发 `input=0 / output=0 / cost=0` 的流式记录，不等于后端发送了空 prompt，也不等于请求完全没连上。当前主要按两类排查：
 
-1. GPT 流已打开，但对应 7 秒可见正文预算耗尽、客户端断开或上游首字前失败，后端主动关闭 GPT 流并切下一路 GPT relay 或回退 Bailian / Qwen；中转站没有拿到最终 usage / completed 事件，于是留下 0 用量残留。
-2. GPT relay 内部某一把 Key 在开流前连接、TLS 或响应头阶段超时 / 失败，被后端按短超时取消并立刻换下一把 Key；如果后续 Key 成功，用户最终仍看到 GPT 回复，Bailian / Qwen 不会产生调用量，但中转站控制台会留下前置 0 行。
+1. GPT 流已打开，但 15 秒内没有用户可见正文、客户端断开或上游首字前失败，后端主动关闭 GPT 流并回退 Bailian / Qwen；中转站没有拿到最终 usage / completed 事件，于是留下 0 用量残留。
+2. GPT relay 内部某一把 Key 在当前 provider 内开流前失败，被后端立刻换同 provider 内下一把 Key；如果后续 Key 成功，用户最终仍看到 GPT 回复，Bailian / Qwen 不会产生调用量，但中转站控制台会留下前置 0 行。
 
 判断时不要只看中转站面板。先看后端 SLS：`gpt relay key attempt failed` / `gpt relay key attempt retryable status` / `gpt relay key attempt recovered` 用来解释单把 Key 的 0 行；`gpt relay stream fallback to bailian`、`gpt relay fallback selected bailian`、`chat stream finished.provider`、`first_visible_ms`、`upstream_open_ms`、`model_input_tokens` 用来判断整条用户请求最终走 GPT 还是回退千问。
 

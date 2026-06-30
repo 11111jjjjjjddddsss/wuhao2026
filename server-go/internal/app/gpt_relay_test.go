@@ -162,6 +162,7 @@ func clearGPTRelayKeyEnvForTest(t *testing.T) {
 	clearPrefix := func(prefix string) {
 		t.Setenv(prefix+"_BASE_URL", "")
 		t.Setenv(prefix+"_RESPONSES_URL", "")
+		t.Setenv(prefix+"_LABEL", "")
 		for i := 1; i <= defaultGPTRelayMaxConfiguredKeySlot; i++ {
 			t.Setenv(fmt.Sprintf("%s_API_KEY_%d", prefix, i), "")
 		}
@@ -204,6 +205,41 @@ func TestGPTRelayRequestEntriesInterleaveProviderSpecificKeys(t *testing.T) {
 		if strings.Contains(entries[i].Label, "sk-") || strings.Contains(entries[i].Endpoint, "sk-") {
 			t.Fatalf("entry leaked key material: %#v", entries[i])
 		}
+	}
+}
+
+func TestGPTRelayProviderSpecificLabelsAreDecorated(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", modelServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_1_LABEL", "Relay One")
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one")
+	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", modelServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_2_LABEL", "Relay Two")
+	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
+
+	entries := gptRelayRequestEntries()
+	if len(entries) != 2 {
+		t.Fatalf("entry count=%d, want 2", len(entries))
+	}
+	if entries[0].ProviderLabel != "Relay One" || entries[1].ProviderLabel != "Relay Two" {
+		t.Fatalf("provider labels=%q/%q, want Relay One/Relay Two", entries[0].ProviderLabel, entries[1].ProviderLabel)
+	}
+	client := NewGPTRelayClientFromEnv()
+	response, err := client.openStreamWithCursor(context.Background(), []BailianMessage{{Role: "user", Content: "test"}}, client.newRequestCursor())
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer response.Body.Close()
+	if got := response.Header.Get(gptRelayHeaderProviderLabel); got != "Relay One" {
+		t.Fatalf("decorated provider label=%q, want Relay One", got)
 	}
 }
 
@@ -526,7 +562,7 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenGPTRelayOpenFails(t *testi
 	}
 }
 
-func TestOpenValidatedChatStreamRetriesNextGPTRelayWhenInitialOpenFails(t *testing.T) {
+func TestOpenValidatedChatStreamFallsBackToBailianWhenInitialProviderOpenFails(t *testing.T) {
 	firstHits := int32(0)
 	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&firstHits, 1)
@@ -577,20 +613,17 @@ func TestOpenValidatedChatStreamRetriesNextGPTRelayWhenInitialOpenFails(t *testi
 	}
 	defer response.Body.Close()
 	cancelProvider()
-	if provider != gptRelayProvider {
-		t.Fatalf("provider = %q, want %q", provider, gptRelayProvider)
+	if provider != "bailian" {
+		t.Fatalf("provider = %q, want bailian", provider)
 	}
 	if got := atomic.LoadInt32(&firstHits); got != 2 {
 		t.Fatalf("first provider hits=%d, want 2", got)
 	}
-	if got := atomic.LoadInt32(&secondHits); got != 1 {
-		t.Fatalf("second provider hits=%d, want 1", got)
+	if got := atomic.LoadInt32(&secondHits); got != 0 {
+		t.Fatalf("second provider should not be hit within the same request, hits=%d", got)
 	}
-	if got := atomic.LoadInt32(&bailianHits); got != 0 {
-		t.Fatalf("bailian should not be hit when second relay opens, hits=%d", got)
-	}
-	if got := response.Header.Get(gptRelayHeaderProviderSlot); got != "provider_2" {
-		t.Fatalf("retry provider slot=%q, want provider_2", got)
+	if got := atomic.LoadInt32(&bailianHits); got != 1 {
+		t.Fatalf("bailian should be hit after the selected relay provider fails, hits=%d", got)
 	}
 }
 
@@ -749,22 +782,68 @@ func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 	}
 }
 
-func TestGPTRelayFirstVisibleRetryTimeoutIsShortProbe(t *testing.T) {
+func TestGPTRelayFirstVisibleRetryAttemptsAreDisabled(t *testing.T) {
 	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "7")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "")
-	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != defaultGPTRelayFirstVisibleRetryTimeout {
-		t.Fatalf("default retry first visible timeout = %s, want %s", got, defaultGPTRelayFirstVisibleRetryTimeout)
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS", "2")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "7")
+	if got := resolveGPTRelayFirstVisibleRetryAttempts(); got != 0 {
+		t.Fatalf("gpt relay first visible retry attempts = %d, want 0", got)
 	}
+}
 
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "30")
-	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != 7*time.Second {
-		t.Fatalf("retry timeout should clamp to primary first visible timeout, got %s", got)
+func TestGPTRelayHTTPClientDoesNotUseNetworkPhaseTimeouts(t *testing.T) {
+	t.Setenv("GPT_RELAY_DIAL_TIMEOUT_SECONDS", "4")
+	t.Setenv("GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS", "4")
+	t.Setenv("GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS", "4")
+	client := newGPTRelayHTTPClient()
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport type=%T, want *http.Transport", client.Transport)
 	}
+	if transport.TLSHandshakeTimeout != 0 {
+		t.Fatalf("TLSHandshakeTimeout=%s, want 0", transport.TLSHandshakeTimeout)
+	}
+	if transport.ResponseHeaderTimeout != 0 {
+		t.Fatalf("ResponseHeaderTimeout=%s, want 0", transport.ResponseHeaderTimeout)
+	}
+}
 
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "4")
-	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != 4*time.Second {
-		t.Fatalf("configured retry first visible timeout = %s, want 4s", got)
+func TestGPTRelayRecordsCanceledOpenAttempt(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(100 * time.Millisecond)
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", modelServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_1_LABEL", "Relay One")
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one")
+
+	client := NewGPTRelayClientFromEnv()
+	var recorded atomic.Bool
+	var recordedAttempt gptRelayAttemptRecord
+	client.SetAttemptRecorder(func(ctx context.Context, attempt gptRelayAttemptRecord) {
+		recorded.Store(true)
+		recordedAttempt = attempt
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	_, err := client.OpenStream(ctx, []BailianMessage{{Role: "user", Content: "test"}})
+	if err == nil {
+		t.Fatal("expected timeout opening relay stream")
+	}
+	if !recorded.Load() {
+		t.Fatal("expected canceled attempt to be recorded")
+	}
+	if recordedAttempt.ProviderLabel != "Relay One" || recordedAttempt.KeySlot != "GPT_RELAY_PROVIDER_1_API_KEY_1" {
+		t.Fatalf("recorded attempt=%#v, want provider label and key slot", recordedAttempt)
+	}
+	if recordedAttempt.Status != "failed" {
+		t.Fatalf("recorded status=%q, want failed", recordedAttempt.Status)
+	}
+	if recordedAttempt.ErrorKind != "context_deadline_exceeded" && recordedAttempt.ErrorKind != "context_canceled" {
+		t.Fatalf("recorded error kind=%q", recordedAttempt.ErrorKind)
 	}
 }
 
