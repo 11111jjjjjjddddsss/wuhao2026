@@ -8,7 +8,7 @@
 - 同一个阿里云主账号下的多个 API Key 共享该主账号的模型 RPM / TPM 限流，不能靠同账号多建 Key 扩真实并发。阿里云官方限流说明写明：限流按主账号下所有 RAM 子账号、业务空间、API Key 的调用总和计算。参考：[阿里云百炼限流说明](https://help.aliyun.com/zh/model-studio/rate-limit)。
 - 如果目标是扩容前期并发，Key 池里的 Key 应来自不同阿里云主账号；同账号多个 Key 只适合轮换、隔离和应急，不适合当扩容方案。
 - 主对话 `qwen3.5-plus`、记忆文档摘要 `qwen-plus`、今日农情 `qwen3.5-plus` 共用同一个 DashScope / 百炼 Key 池。当前生产口径支持“主账号 Key 组 + 副账号 Key 组”：主账号 4 把 Key 先在主组内轮询消耗，只有主组 Key 在开流前连续遇到限流 / 额度 / 鉴权类失败时，才切到副账号 Key 兜底。记忆文档摘要固定 `qwen-plus`，今日农情固定 `qwen3.5-plus`，不再保留轻量模型候选或环境变量切换入口。
-- 2026-06-27 起，旧第三方中转站 / `gpt-5.5` / OpenAI Responses 优先主聊天链路已退出生产。`CHAT_PRIMARY_*` 不再是受支持的主聊天配置；readiness 会在发现 `CHAT_PRIMARY_ENABLED=true` 时失败，提醒清理环境变量并使用 Bailian / Qwen 主链。2026-06-29 后端新增独立的可选 `GPT_RELAY_*` 候选链路，默认关闭、不复用旧变量名；只有显式配置并开启后才会在主聊天开流前尝试 Responses 中转，失败或 16 秒无可见正文会回退 Bailian / Qwen。日志脱敏脚本可继续保留旧变量名并新增 `GPT_RELAY_*`，只用于覆盖历史日志或残留环境里的密钥形态。
+- 2026-06-27 起，旧第三方中转站 / `gpt-5.5` / OpenAI Responses 优先主聊天链路已退出生产。`CHAT_PRIMARY_*` 不再是受支持的主聊天配置；readiness 会在发现 `CHAT_PRIMARY_ENABLED=true` 时失败，提醒清理环境变量并使用 Bailian / Qwen 主链。2026-06-29 后端新增独立的可选 `GPT_RELAY_*` 候选链路，默认关闭、不复用旧变量名；只有显式配置并开启后才会在主聊天开流前尝试 Responses 中转。当前生产口径是第一路 6 秒内没有上游可见正文首字就切下一路 GPT relay，第二路再给 6 秒，仍无正文才回退 Bailian / Qwen。日志脱敏脚本可继续保留旧变量名并新增 `GPT_RELAY_*`，只用于覆盖历史日志或残留环境里的密钥形态。
 
 ## 环境变量
 
@@ -89,7 +89,9 @@ GPT_RELAY_API_KEYS=<逗号/分号/换行分隔的多个 relay key>
 # 或：GPT_RELAY_API_KEY_1...50
 GPT_RELAY_MODEL=gpt-5.5
 GPT_RELAY_REASONING_EFFORT=medium
-GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS=16
+GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS=6
+GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS=6
+GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS=1
 GPT_RELAY_KEY_MAX_ATTEMPTS=10
 GPT_RELAY_DIAL_TIMEOUT_SECONDS=4
 GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS=4
@@ -112,7 +114,7 @@ GPT_RELAY_KEY_MAX_ATTEMPTS=20
 
 - 配置了 `GPT_RELAY_PROVIDER_1_*` / `GPT_RELAY_PROVIDER_2_*` 后，后端会优先使用 provider 专属池，不再使用旧的顶层 `GPT_RELAY_BASE_URL + GPT_RELAY_API_KEYS` 池。生产推荐用 `API_KEY_1...API_KEY_10` 一把一行，避免长 `API_KEYS=` 行在运维脚本里被转义或截断。
 - 多平台池按 provider 交错展开，例如 `provider1-key1 -> provider2-key1 -> provider1-key2 -> provider2-key2`，每次请求的起点继续轮转，避免所有请求都先撞同一家。
-- 某把 Key / 某个平台开流前失败会继续按池子顺序换下一把；16 秒内仍没有用户可见正文就回退千问。`GPT_RELAY_KEY_MAX_ATTEMPTS=20` 只扩大快速失败时可尝试的池子，不取消 16 秒首字硬上限。
+- 某把 Key / 某个平台开流前失败会继续按池子顺序换下一把；第一路 6 秒内仍没有用户可见正文，就短冷却当前 Key 并按池子顺序给下一路 GPT relay 6 秒短探针，仍无正文才回退千问。`GPT_RELAY_KEY_MAX_ATTEMPTS=20` 只扩大快速失败时可尝试的池子，不取消 6+6 首字硬上限。
 - readiness 只检查这些变量是否 `set / missing`，不打印真实 URL 或 Key。真实值仍只允许放在服务器私密环境或本机私密配置。
 
 说明：
@@ -122,9 +124,9 @@ GPT_RELAY_KEY_MAX_ATTEMPTS=20
 - 真实 Key、真实 URL、账号分组和后台订单信息只允许放在服务器私密环境或本机私密配置，不进仓库、不进日志、不在聊天中复述。后台“模型链路”页可以显示非敏感 provider label、provider 槽位和 Key 槽位，用于知道本次走哪条链路；label 应保持中性可排查，不写完整供应商后台账号、订单、真实 URL 或任何密钥片段。
 - GPT relay 的生产思考档位为 `reasoning.effort=medium`；`high` 曾短暂验证，但图片问诊首字明显变慢、容易触发当前首字预算回落，暂不作为生产口径。联网仍固定 `web_search.search_context_size=low`、`tool_choice=auto` 和“用户明确要求查 / 实时信息才联网，必须只搜索一次、快速回答”的联网规则，当前代码不会把搜索上下文改成 `large`，避免误开高成本路径。
 - 多 Key 会轮询；默认单轮最多尝试 10 把，某把开流前失败会立刻换下一把，失败 Key 只进入短冷却，不会让用户等 30 秒。GPT relay 外层不再套通用开流重试，避免一轮 10 把失败后又整体重来。
-- GPT relay 生产首字预算当前为 16 秒，并从后端收到用户请求开始计算，不是从中转站返回 SSE 后才开始算；这 16 秒包含 key 切换、连接、TLS、响应头等待和模型首个可见正文前的等待。开流前连接 / TLS / 响应头默认各 4 秒，预算耗尽就回退 Bailian / Qwen。
-- 这里的 4 秒不是首字窗口，也不是模型思考窗口；它只限制单把 Key 在开流前的连接、TLS 或响应头阶段。某把 Key 已经拿到上游 SSE 响应头后，就视为这把 Key 开流成功，不会因为模型还在思考就继续换下一把；后续只受 16 秒可见正文总预算约束。
-- 首字判定只看用户可见正文；`response.created`、搜索事件、心跳和空白 delta 都不算成功。已吐出可见正文后不在同一条回复中途切模型，避免半段 GPT 半段千问。
+- GPT relay 生产首字预算当前为 6+6：第一路从后端收到用户请求开始最多 6 秒；若已开流但没收到上游可见正文首字，后端短冷却当前 Key 并按交错池选择下一路 GPT relay，再给 6 秒总预算；第二路仍无正文才回退 Bailian / Qwen。第一路 6 秒包含 key 切换、连接、TLS、响应头等待和模型首个可见正文前的等待；第二路 6 秒从短探针开始算，也包含开流耗时。
+- 这里的 4 秒不是首字窗口，也不是模型思考窗口；它只限制单把 Key 在开流前的连接、TLS 或响应头阶段。某把 Key 已经拿到上游 SSE 响应头后，就视为这把 Key 网络阶段成功，不会因为模型还在思考就立刻换 Key；后续只受对应 6 秒可见正文预算约束。
+- 首字判定只看后端收到上游的用户可见正文；`response.created`、搜索事件、思考 / reasoning 事件、心跳和空白 delta 都不算成功。已吐出可见正文后不在同一条回复中途切模型，避免半段 GPT 半段千问。
 - GPT relay 和千问一样带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、上下文、本轮文字和图片；GPT 额外只多一段 `【联网规则】`。
 - 关闭或回滚只需要移除 `GPT_RELAY_*` 配置，或设置 `GPT_RELAY_ENABLED=false` 后重启服务；不需要 Android 发版。
 

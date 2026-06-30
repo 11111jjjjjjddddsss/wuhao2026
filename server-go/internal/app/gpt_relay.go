@@ -23,7 +23,7 @@ const (
 	defaultGPTRelayModel                      = "gpt-5.5"
 	defaultGPTRelayReasoningEffort            = "medium"
 	defaultGPTRelaySearchContextSize          = "low"
-	defaultGPTRelayFirstVisibleTimeout        = 16 * time.Second
+	defaultGPTRelayFirstVisibleTimeout        = 6 * time.Second
 	defaultGPTRelayDialTimeout                = 4 * time.Second
 	defaultGPTRelayTLSHandshakeTimeout        = 4 * time.Second
 	defaultGPTRelayResponseHeaderTimeout      = 4 * time.Second

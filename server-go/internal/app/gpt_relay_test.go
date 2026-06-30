@@ -597,14 +597,14 @@ func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 
 func TestGPTRelayFirstVisibleRetryTimeoutIsShortProbe(t *testing.T) {
 	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "16")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "6")
 	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "")
 	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != defaultGPTRelayFirstVisibleRetryTimeout {
 		t.Fatalf("default retry first visible timeout = %s, want %s", got, defaultGPTRelayFirstVisibleRetryTimeout)
 	}
 
 	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "30")
-	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != 16*time.Second {
+	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != 6*time.Second {
 		t.Fatalf("retry timeout should clamp to primary first visible timeout, got %s", got)
 	}
 
