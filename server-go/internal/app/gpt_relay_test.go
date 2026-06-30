@@ -526,6 +526,74 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenGPTRelayOpenFails(t *testi
 	}
 }
 
+func TestOpenValidatedChatStreamRetriesNextGPTRelayWhenInitialOpenFails(t *testing.T) {
+	firstHits := int32(0)
+	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&firstHits, 1)
+		http.Error(w, "bad relay", http.StatusBadGateway)
+	}))
+	defer firstServer.Close()
+	secondHits := int32(0)
+	secondServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&secondHits, 1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer secondServer.Close()
+	bailianHits := int32(0)
+	bailianServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&bailianHits, 1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer bailianServer.Close()
+
+	clearGPTRelayKeyEnvForTest(t)
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", firstServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one")
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_2", "sk-provider-one-backup")
+	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", secondServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
+	t.Setenv("GPT_RELAY_KEY_MAX_ATTEMPTS", "20")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS", "1")
+	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
+	t.Setenv("DASHSCOPE_API_KEY", "test-bailian")
+
+	server := &Server{
+		logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
+		bailian:  NewBailianClient(),
+		gptRelay: NewGPTRelayClientFromEnv(),
+	}
+	response, provider, cancelProvider, _, err := server.openValidatedChatStreamWithFallback(
+		context.Background(),
+		time.Now(),
+		[]BailianMessage{{Role: "user", Content: "bailian"}},
+		[]BailianMessage{{Role: "user", Content: "gpt"}},
+		BailianStreamOptions{},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer response.Body.Close()
+	cancelProvider()
+	if provider != gptRelayProvider {
+		t.Fatalf("provider = %q, want %q", provider, gptRelayProvider)
+	}
+	if got := atomic.LoadInt32(&firstHits); got != 2 {
+		t.Fatalf("first provider hits=%d, want 2", got)
+	}
+	if got := atomic.LoadInt32(&secondHits); got != 1 {
+		t.Fatalf("second provider hits=%d, want 1", got)
+	}
+	if got := atomic.LoadInt32(&bailianHits); got != 0 {
+		t.Fatalf("bailian should not be hit when second relay opens, hits=%d", got)
+	}
+	if got := response.Header.Get(gptRelayHeaderProviderSlot); got != "provider_2" {
+		t.Fatalf("retry provider slot=%q, want provider_2", got)
+	}
+}
+
 func TestOpenValidatedChatStreamDoesNotCallGPTRelayWhenDisabled(t *testing.T) {
 	gptHits := int32(0)
 	gptServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

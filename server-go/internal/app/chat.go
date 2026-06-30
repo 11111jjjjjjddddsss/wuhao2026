@@ -1448,39 +1448,45 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, reques
 				)
 			} else {
 				gptRelayCursor := s.gptRelay.newRequestCursor()
-				gptCtx, cancelGPT := context.WithCancel(ctx)
-				budgetTimer := time.AfterFunc(remaining, cancelGPT)
-				response, err := s.openValidatedGPTRelayStream(gptCtx, gptRelayMessages, gptRelayCursor)
-				timerStopped := budgetTimer.Stop()
+				response, cancelGPT, openFailureReason, err := s.openGPTRelayStreamWithinBudget(ctx, gptRelayMessages, gptRelayCursor, remaining)
 				if err == nil {
-					if !timerStopped || gptCtx.Err() != nil {
-						_ = response.Body.Close()
-						cancelGPT()
-						if ctx.Err() != nil {
-							s.logger.Warn("gpt relay open aborted by request context; fallback to bailian", "error", ctx.Err().Error())
-						} else {
-							state := s.gptRelay.ObserveCircuitFailure(time.Now(), "open_exceeded_budget")
-							s.logger.Warn("gpt relay open exceeded first visible budget; fallback to bailian")
-							if state.Trigger != "" {
-								s.logger.Warn("gpt relay circuit opened",
-									"trigger", state.Trigger,
-									"open_until", state.OpenUntil.Format(time.RFC3339),
-									"consecutive_failures", state.ConsecutiveFailures,
-									"window_requests", state.WindowRequests,
-									"window_failures", state.WindowFailures,
-								)
-							}
-						}
-					} else {
-						return response, gptRelayProvider, cancelGPT, gptRelayCursor, nil
-					}
+					return response, gptRelayProvider, cancelGPT, gptRelayCursor, nil
+				}
+				if ctx.Err() != nil {
+					s.logger.Warn("gpt relay open aborted by request context; fallback to bailian", "error", ctx.Err().Error())
 				} else {
-					cancelGPT()
-					if ctx.Err() != nil {
-						s.logger.Warn("gpt relay open aborted by request context; fallback to bailian", "error", ctx.Err().Error())
-					} else {
-						state := s.gptRelay.ObserveCircuitFailure(time.Now(), "open_failed")
-						s.logger.Warn("gpt relay open failed before visible text; fallback to bailian", "error", sanitizeDashScopeErrorMessage(err.Error()))
+					maxOpenRetries := resolveGPTRelayFirstVisibleRetryAttempts()
+					if circuitState.HalfOpen {
+						maxOpenRetries = 0
+					}
+					if maxOpenRetries > 0 && gptRelayKeyPoolSize() > 1 {
+						s.logger.Warn(
+							"gpt relay open failed before visible text; retry next relay",
+							"error", sanitizeDashScopeErrorMessage(err.Error()),
+							"reason", openFailureReason,
+							"retry", 1,
+							"max_retries", maxOpenRetries,
+						)
+						retryResponse, retryCancel, retryFailureReason, retryErr := s.openGPTRelayStreamWithinBudget(ctx, gptRelayMessages, gptRelayCursor, resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()))
+						if retryErr == nil {
+							return retryResponse, gptRelayProvider, retryCancel, gptRelayCursor, nil
+						}
+						openFailureReason = retryFailureReason
+						err = retryErr
+						if ctx.Err() != nil {
+							s.logger.Warn("gpt relay open retry aborted by request context; fallback to bailian", "error", ctx.Err().Error())
+						} else {
+							s.logger.Warn(
+								"gpt relay open retry failed before visible text; fallback to bailian",
+								"error", sanitizeDashScopeErrorMessage(retryErr.Error()),
+								"reason", retryFailureReason,
+								"retry", 1,
+								"max_retries", maxOpenRetries,
+							)
+						}
+					}
+					if ctx.Err() == nil {
+						state := s.gptRelay.ObserveCircuitFailure(time.Now(), openFailureReason)
 						if state.Trigger != "" {
 							s.logger.Warn("gpt relay circuit opened",
 								"trigger", state.Trigger,
@@ -1502,6 +1508,36 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, reques
 		return nil, "bailian", noopCancel, nil, err
 	}
 	return response, "bailian", noopCancel, nil, nil
+}
+
+func (s *Server) openGPTRelayStreamWithinBudget(ctx context.Context, messages []BailianMessage, cursor *gptRelayRequestCursor, budget time.Duration) (*http.Response, context.CancelFunc, string, error) {
+	if budget <= 0 {
+		return nil, nil, "open_exceeded_budget", context.DeadlineExceeded
+	}
+	gptCtx, cancelGPT := context.WithCancel(ctx)
+	budgetTimer := time.AfterFunc(budget, cancelGPT)
+	response, err := s.openValidatedGPTRelayStream(gptCtx, messages, cursor)
+	timerStopped := budgetTimer.Stop()
+	if err == nil {
+		if !timerStopped || gptCtx.Err() != nil {
+			_ = response.Body.Close()
+			cancelGPT()
+			if ctx.Err() != nil {
+				return nil, nil, "request_context_canceled", ctx.Err()
+			}
+			return nil, nil, "open_exceeded_budget", context.DeadlineExceeded
+		}
+		return response, cancelGPT, "", nil
+	}
+	gptCtxErr := gptCtx.Err()
+	cancelGPT()
+	if ctx.Err() != nil {
+		return nil, nil, "request_context_canceled", ctx.Err()
+	}
+	if !timerStopped || gptCtxErr != nil {
+		return nil, nil, "open_exceeded_budget", context.DeadlineExceeded
+	}
+	return nil, nil, "open_failed", err
 }
 
 func chatUpstreamSearchLogConfig(provider string) (bool, string, bool) {

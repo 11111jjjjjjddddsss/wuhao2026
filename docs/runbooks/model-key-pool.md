@@ -114,7 +114,7 @@ GPT_RELAY_KEY_MAX_ATTEMPTS=20
 
 - 配置了 `GPT_RELAY_PROVIDER_1_*` / `GPT_RELAY_PROVIDER_2_*` 后，后端会优先使用 provider 专属池，不再使用旧的顶层 `GPT_RELAY_BASE_URL + GPT_RELAY_API_KEYS` 池。生产推荐用 `API_KEY_1...API_KEY_10` 一把一行，避免长 `API_KEYS=` 行在运维脚本里被转义或截断。
 - 多平台池运行时先按用户请求轮 provider 起手：当前两家就是 `provider_1 -> provider_2 -> provider_1 -> provider_2`，不看成功失败，也不加 provider 级冷却；同一请求里的短探针沿本请求 cursor 走下一 provider，不消耗下一题起手 provider；每个 provider 内部再原子轮自己的 Key。
-- 某把 Key 开流前失败、可重试状态或首字超时，只会短冷却这把具体 Key；第一路 7 秒内仍没有用户可见正文，就按本请求 cursor 给下一路 GPT relay 7 秒短探针，仍无正文会短冷却短探针 Key 后回退千问。`GPT_RELAY_KEY_MAX_ATTEMPTS=20` 只扩大快速失败时可尝试的池子，不取消 7+7 首字硬上限。
+- 某把 Key 开流前失败、可重试状态或首字超时，只会短冷却这把具体 Key；每个 7 秒窗口只选一个 provider，窗口内只在该 provider 内部轮 Key；第一路开流前失败、响应头超时、开流预算耗尽或 7 秒内仍没有用户可见正文，就按本请求 cursor 给下一路 GPT relay 7 秒短探针，仍无正文会短冷却短探针 Key 后回退千问。`GPT_RELAY_KEY_MAX_ATTEMPTS=20` 只扩大同 provider 内快速失败时可尝试的 Key 数，不取消 7+7 首字硬上限。
 - readiness 只检查这些变量是否 `set / missing`，不打印真实 URL 或 Key。真实值仍只允许放在服务器私密环境或本机私密配置。
 
 说明：
@@ -123,8 +123,8 @@ GPT_RELAY_KEY_MAX_ATTEMPTS=20
 - 默认 `GPT_RELAY_ENABLED=false` 或缺关键配置时完全不触达 GPT，中转站故障不会影响当前 Bailian / Qwen 主链。
 - 真实 Key、真实 URL、账号分组和后台订单信息只允许放在服务器私密环境或本机私密配置，不进仓库、不进日志、不在聊天中复述。后台“模型链路”页可以显示非敏感 provider label、provider 槽位和 Key 槽位，用于知道本次走哪条链路；label 应保持中性可排查，不写完整供应商后台账号、订单、真实 URL 或任何密钥片段。
 - GPT relay 的生产思考档位为 `reasoning.effort=medium`；`high` 曾短暂验证，但图片问诊首字明显变慢、容易触发当前首字预算回落，暂不作为生产口径。联网仍固定 `web_search.search_context_size=low`、`tool_choice=auto` 和“用户明确要求查 / 实时信息才联网，必须只搜索一次、快速回答”的联网规则，当前代码不会把搜索上下文改成 `large`，避免误开高成本路径。
-- 多 Key 会轮询；默认单轮最多尝试 10 把，某把开流前失败会立刻换下一把，失败 Key 只进入短冷却，不会让用户等 30 秒。GPT relay 外层不再套通用开流重试，避免一轮 10 把失败后又整体重来。
-- GPT relay 生产首字预算当前为 7+7：第一路从后端收到用户请求开始最多 7 秒；若已开流但没收到上游可见正文首字，后端短冷却当前具体 Key，并沿同一请求 cursor 选择下一路 GPT relay，再给 7 秒总预算；第二路仍无正文会短冷却该具体 Key 后回退 Bailian / Qwen。第一路 7 秒包含 key 切换、连接、TLS、响应头等待和模型首个可见正文前的等待；第二路 7 秒从短探针开始算，也包含开流耗时。
+- 多 Key 会轮询；默认单轮最多尝试 10 把，某把开流前失败会立刻换同 provider 内下一把，失败 Key 只进入短冷却，不会让用户等 30 秒。GPT relay 外层不再套通用开流重试，避免一轮 Key 失败后又整体重来。
+- 仓库最新待部署代码中的 GPT relay 首字预算为 7+7：第一路从后端收到用户请求开始最多 7 秒；若开流前失败、响应头超时、开流预算耗尽，或已开流但没收到上游可见正文首字，后端短冷却当前具体 Key，并沿同一请求 cursor 选择下一路 GPT relay，再给 7 秒总预算；第二路仍无正文会短冷却该具体 Key 后回退 Bailian / Qwen。第一路 7 秒包含 key 切换、连接、TLS、响应头等待和模型首个可见正文前的等待；第二路 7 秒从短探针开始算，也包含开流耗时。
 - 这里的 4 秒不是首字窗口，也不是模型思考窗口；它只限制单把 Key 在开流前的连接、TLS 或响应头阶段。某把 Key 已经拿到上游 SSE 响应头后，就视为这把 Key 网络阶段成功，不会因为模型还在思考就立刻换 Key；后续只受对应 7 秒可见正文预算约束。
 - 首字判定只看后端收到上游的用户可见正文；`response.created`、搜索事件、思考 / reasoning 事件、心跳和空白 delta 都不算成功。已吐出可见正文后不在同一条回复中途切模型，避免半段 GPT 半段千问。
 - GPT relay 和千问一样带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、上下文、本轮文字和图片；GPT 额外只多一段 `【联网规则】`。

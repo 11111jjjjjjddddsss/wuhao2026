@@ -281,6 +281,16 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte, c
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("GPT_RELAY provider endpoint or API key is missing")
 	}
+	if cursor != nil && c.hasMultipleProviderSlots(keys) {
+		keys = c.selectProviderKeysForRequest(keys, cursor)
+	}
+	return c.doPayloadRequestWithKeys(ctx, payload, keys, cursor)
+}
+
+func (c *GPTRelayClient) doPayloadRequestWithKeys(ctx context.Context, payload []byte, keys []gptRelayAPIKeyEntry, cursor *gptRelayRequestCursor) (*http.Response, error) {
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("GPT_RELAY provider endpoint or API key is missing")
+	}
 	maxAttempts := envIntWithDefault("GPT_RELAY_KEY_MAX_ATTEMPTS", defaultGPTRelayKeyMaxAttempts)
 	if maxAttempts <= 0 {
 		maxAttempts = 1
@@ -369,6 +379,19 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte, c
 		return nil, lastErr
 	}
 	return nil, fmt.Errorf("GPT_RELAY provider endpoint or API key is missing")
+}
+
+func (c *GPTRelayClient) selectProviderKeysForRequest(keys []gptRelayAPIKeyEntry, cursor *gptRelayRequestCursor) []gptRelayAPIKeyEntry {
+	providerOrder, providerKeys := groupGPTRelayKeysByProvider(keys)
+	if len(providerOrder) == 0 {
+		return keys
+	}
+	providerID := providerOrder[c.nextProviderSelectionOffset(len(providerOrder), cursor)]
+	selected := providerKeys[providerID]
+	if len(selected) == 0 {
+		return keys
+	}
+	return selected
 }
 
 func (c *GPTRelayClient) sendPayload(ctx context.Context, endpoint string, payload []byte, apiKey string) (*http.Response, error) {
@@ -692,6 +715,16 @@ func (c *GPTRelayClient) pickNextKeyEntry(keys []gptRelayAPIKeyEntry, attempted 
 	if c.hasMultipleProviderSlots(keys) {
 		return c.pickNextProviderKeyEntry(keys, attempted, cursor)
 	}
+	if providerID, ok := singleGPTRelayProviderID(keys); ok {
+		key, cooledFallback, ok := c.pickKeyFromProvider(providerID, keys, attempted, time.Now())
+		if ok {
+			return key, true
+		}
+		if cooledFallback != nil {
+			return *cooledFallback, true
+		}
+		return gptRelayAPIKeyEntry{}, false
+	}
 	now := time.Now()
 	start := c.nextSelectionOffset(len(keys))
 	var fallback *gptRelayAPIKeyEntry
@@ -732,6 +765,24 @@ func (c *GPTRelayClient) hasMultipleProviderSlots(keys []gptRelayAPIKeyEntry) bo
 		}
 	}
 	return false
+}
+
+func singleGPTRelayProviderID(keys []gptRelayAPIKeyEntry) (string, bool) {
+	providerID := ""
+	for _, key := range keys {
+		id := key.providerRoundRobinID()
+		if id == "" {
+			return "", false
+		}
+		if providerID == "" {
+			providerID = id
+			continue
+		}
+		if id != providerID {
+			return "", false
+		}
+	}
+	return providerID, providerID != ""
 }
 
 func (c *GPTRelayClient) pickNextProviderKeyEntry(keys []gptRelayAPIKeyEntry, attempted map[string]bool, cursor *gptRelayRequestCursor) (gptRelayAPIKeyEntry, bool) {
