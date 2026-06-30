@@ -12,6 +12,7 @@ param(
     [switch]$CheckAppUpdateReleaseMatch,
     [switch]$VerifyAppUpdateDownload,
     [int]$AppUpdatePreviousVersionCode = 0,
+    [string]$AppUpdateApkPath = "",
     [string]$AppUpdatePublicApiBaseUrl = "https://api.nongjiqiancha.cn",
     [string]$ExpectedServerRevision = "",
     [ValidateSet("closed", "limited", "public")]
@@ -516,6 +517,9 @@ if ($CheckAppUpdateReleaseMatch) {
         }
         if ($AppUpdatePreviousVersionCode -gt 0) {
             $matchArgs += @("-PreviousVersionCode", "$AppUpdatePreviousVersionCode")
+        }
+        if (-not [string]::IsNullOrWhiteSpace($AppUpdateApkPath)) {
+            $matchArgs += @("-ApkPath", $AppUpdateApkPath)
         }
         if (-not [string]::IsNullOrWhiteSpace($AppUpdatePublicApiBaseUrl)) {
             $matchArgs += @("-PublicApiBaseUrl", $AppUpdatePublicApiBaseUrl)

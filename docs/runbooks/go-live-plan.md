@@ -119,6 +119,16 @@
 
 `-AppUpdateReleaseGate` 会强制启用构建、后台 owner smoke、后台“检查更新”物料对账、后台 APK 链接下载回验，并调用公网 `/api/app/update` 证明旧包版本会看到 `has_update=true`；没有 `-AppUpdatePreviousVersionCode` 或环境变量 `NONGJI_APP_UPDATE_PREVIOUS_VERSION_CODE` 时会直接失败。它用于正式自更新发包，不用于日常报告。
 
+如果是复查已经发布到官网 / 检查更新的正式包，而不是准备上传一只刚构建的本地包，先把线上正式 APK 下载到本机临时目录，再把它传给 `-AppUpdateApkPath`：
+
+```powershell
+$apk = "$env:TEMP\nongjiqiancha-published.apk"
+Invoke-WebRequest -Uri "<正式 APK URL>" -OutFile $apk
+.\scripts\check-launch-readiness.ps1 -AppUpdateReleaseGate -AppUpdatePreviousVersionCode <旧包versionCode> -AppUpdateApkPath $apk
+```
+
+这样仍会跑 Android 构建和 release artifact 基础检查，但检查更新物料对账会使用已经发布的 APK，避免本地重新构建产生的 ZIP / 签名时间戳字节差异造成 SHA-256 假失败。
+
 真正准备打正式包 / 提交上架前，优先使用正式上线门禁：
 
 ```powershell

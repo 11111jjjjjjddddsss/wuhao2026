@@ -102,6 +102,8 @@ keys=<本机 DPAPI 加密后的 key 列表>
 - `input_tokens / output_tokens / reasoning_tokens`。
 - 是否断流、卡死、429、503 或返回空正文。
 
+2026-06-30 线上观察：第三方中转站控制台偶发 `input=0 / output=0 / cost=0` 的流式记录，不等于后端发送了空 prompt，也不等于请求完全没连上。已用 SLS 对齐一例：后端 `10:10:39` 打开 GPT relay，`10:10:52` 因 `first_visible_timeout` 主动关闭 GPT 流并回退 Bailian / Qwen，随后用户请求正常 200 完成；中转站对应时间附近留下 0 用量记录。当前判断这是流式被首字预算、客户端断开或上游失败提前取消后，中转站没有拿到最终 usage / completed 事件造成的控制台残留。不要把这类 0 行直接当成“请求体为空”或“Key 没连上”；要对照后端 `gpt relay stream fallback to bailian`、`gpt relay fallback selected bailian`、`client_disconnected`、`chat stream finished` 和 `model_input_tokens` 再判断。
+
 ## 图片评测
 
 图片评测必须同时分清官方 Responses 格式和 Chat Completions 格式，不要把两套 JSON 混着写。
