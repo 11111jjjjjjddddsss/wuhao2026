@@ -334,6 +334,59 @@ func TestGPTRelayFirstVisibleTimeoutKeepsProviderRoundRobin(t *testing.T) {
 	}
 }
 
+func TestGPTRelayRequestCursorRotatesRequestStarts(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
+	}))
+	defer firstServer.Close()
+
+	secondServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
+	}))
+	defer secondServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", firstServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one")
+	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", secondServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
+
+	client := NewGPTRelayClientFromEnv()
+	firstRequestCursor := client.newRequestCursor()
+	firstResponse, err := client.openStreamWithCursor(context.Background(), []BailianMessage{{Role: "user", Content: "test"}}, firstRequestCursor)
+	if err != nil {
+		t.Fatalf("first request first relay: %v", err)
+	}
+	if got := firstResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_1" {
+		t.Fatalf("first request first provider slot=%q, want provider_1", got)
+	}
+	_ = firstResponse.Body.Close()
+
+	firstRetryResponse, err := client.openStreamWithCursor(context.Background(), []BailianMessage{{Role: "user", Content: "test"}}, firstRequestCursor)
+	if err != nil {
+		t.Fatalf("first request retry relay: %v", err)
+	}
+	if got := firstRetryResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_2" {
+		t.Fatalf("first request retry provider slot=%q, want provider_2", got)
+	}
+	_ = firstRetryResponse.Body.Close()
+
+	secondRequestCursor := client.newRequestCursor()
+	secondResponse, err := client.openStreamWithCursor(context.Background(), []BailianMessage{{Role: "user", Content: "test"}}, secondRequestCursor)
+	if err != nil {
+		t.Fatalf("second request first relay: %v", err)
+	}
+	if got := secondResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_2" {
+		t.Fatalf("second request first provider slot=%q, want provider_2", got)
+	}
+	_ = secondResponse.Body.Close()
+}
+
 func TestGPTRelayAttemptLogDoesNotLeakAPIKey(t *testing.T) {
 	var logs bytes.Buffer
 	client := NewGPTRelayClientFromEnv()
@@ -453,7 +506,7 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenGPTRelayOpenFails(t *testi
 		bailian:  NewBailianClient(),
 		gptRelay: NewGPTRelayClientFromEnv(),
 	}
-	response, provider, cancelProvider, err := server.openValidatedChatStreamWithFallback(
+	response, provider, cancelProvider, _, err := server.openValidatedChatStreamWithFallback(
 		context.Background(),
 		time.Now(),
 		[]BailianMessage{{Role: "user", Content: "bailian"}},
@@ -497,7 +550,7 @@ func TestOpenValidatedChatStreamDoesNotCallGPTRelayWhenDisabled(t *testing.T) {
 		bailian:  NewBailianClient(),
 		gptRelay: NewGPTRelayClientFromEnv(),
 	}
-	response, provider, cancelProvider, err := server.openValidatedChatStreamWithFallback(
+	response, provider, cancelProvider, _, err := server.openValidatedChatStreamWithFallback(
 		context.Background(),
 		time.Now(),
 		[]BailianMessage{{Role: "user", Content: "bailian"}},
@@ -546,7 +599,7 @@ func TestOpenValidatedChatStreamSkipsGPTRelayWhenCircuitOpen(t *testing.T) {
 		gptRelay: NewGPTRelayClientFromEnv(),
 	}
 	for i := 0; i < 2; i++ {
-		response, provider, cancelProvider, err := server.openValidatedChatStreamWithFallback(
+		response, provider, cancelProvider, _, err := server.openValidatedChatStreamWithFallback(
 			context.Background(),
 			time.Now(),
 			[]BailianMessage{{Role: "user", Content: "bailian"}},
@@ -594,7 +647,7 @@ func TestOpenValidatedChatStreamDoesNotCountCanceledRequestAsCircuitFailure(t *t
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	response, _, cancelProvider, err := server.openValidatedChatStreamWithFallback(
+	response, _, cancelProvider, _, err := server.openValidatedChatStreamWithFallback(
 		ctx,
 		time.Now(),
 		[]BailianMessage{{Role: "user", Content: "bailian"}},

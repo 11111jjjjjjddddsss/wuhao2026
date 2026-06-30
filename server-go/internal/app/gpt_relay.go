@@ -110,6 +110,11 @@ type gptRelayCircuitState struct {
 	Trigger             string
 }
 
+type gptRelayRequestCursor struct {
+	mu                   sync.Mutex
+	providerSelectionIdx int
+}
+
 func NewGPTRelayClientFromEnv() *GPTRelayClient {
 	return &GPTRelayClient{
 		httpClient:              newGPTRelayHTTPClient(),
@@ -240,6 +245,10 @@ func (c *GPTRelayClient) ObserveCircuitFailure(now time.Time, reason string) gpt
 }
 
 func (c *GPTRelayClient) OpenStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
+	return c.openStreamWithCursor(ctx, messages, nil)
+}
+
+func (c *GPTRelayClient) openStreamWithCursor(ctx context.Context, messages []BailianMessage, cursor *gptRelayRequestCursor) (*http.Response, error) {
 	if c == nil || !c.Enabled() {
 		return nil, fmt.Errorf("gpt relay disabled")
 	}
@@ -264,10 +273,10 @@ func (c *GPTRelayClient) OpenStream(ctx context.Context, messages []BailianMessa
 	if err != nil {
 		return nil, err
 	}
-	return c.doPayloadRequest(ctx, payload)
+	return c.doPayloadRequest(ctx, payload, cursor)
 }
 
-func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (*http.Response, error) {
+func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte, cursor *gptRelayRequestCursor) (*http.Response, error) {
 	keys := gptRelayRequestEntries()
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("GPT_RELAY provider endpoint or API key is missing")
@@ -283,7 +292,7 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (
 	attempted := map[string]bool{}
 	var lastErr error
 	for attempt := 0; attempt < maxAttempts; attempt++ {
-		key, ok := c.pickNextKeyEntry(keys, attempted)
+		key, ok := c.pickNextKeyEntry(keys, attempted, cursor)
 		if !ok {
 			break
 		}
@@ -676,12 +685,12 @@ func gptRelayKeyPoolSize() int {
 	return len(gptRelayRequestEntries())
 }
 
-func (c *GPTRelayClient) pickNextKeyEntry(keys []gptRelayAPIKeyEntry, attempted map[string]bool) (gptRelayAPIKeyEntry, bool) {
+func (c *GPTRelayClient) pickNextKeyEntry(keys []gptRelayAPIKeyEntry, attempted map[string]bool, cursor *gptRelayRequestCursor) (gptRelayAPIKeyEntry, bool) {
 	if len(keys) == 0 {
 		return gptRelayAPIKeyEntry{}, false
 	}
 	if c.hasMultipleProviderSlots(keys) {
-		return c.pickNextProviderKeyEntry(keys, attempted)
+		return c.pickNextProviderKeyEntry(keys, attempted, cursor)
 	}
 	now := time.Now()
 	start := c.nextSelectionOffset(len(keys))
@@ -725,13 +734,13 @@ func (c *GPTRelayClient) hasMultipleProviderSlots(keys []gptRelayAPIKeyEntry) bo
 	return false
 }
 
-func (c *GPTRelayClient) pickNextProviderKeyEntry(keys []gptRelayAPIKeyEntry, attempted map[string]bool) (gptRelayAPIKeyEntry, bool) {
+func (c *GPTRelayClient) pickNextProviderKeyEntry(keys []gptRelayAPIKeyEntry, attempted map[string]bool, cursor *gptRelayRequestCursor) (gptRelayAPIKeyEntry, bool) {
 	providerOrder, providerKeys := groupGPTRelayKeysByProvider(keys)
 	if len(providerOrder) == 0 {
 		return gptRelayAPIKeyEntry{}, false
 	}
 	now := time.Now()
-	startProvider := c.nextProviderSelectionOffset(len(providerOrder))
+	startProvider := c.nextProviderSelectionOffset(len(providerOrder), cursor)
 	var fallback *gptRelayAPIKeyEntry
 	for offset := 0; offset < len(providerOrder); offset++ {
 		providerID := providerOrder[(startProvider+offset)%len(providerOrder)]
@@ -745,7 +754,6 @@ func (c *GPTRelayClient) pickNextProviderKeyEntry(keys []gptRelayAPIKeyEntry, at
 		}
 	}
 	if fallback != nil {
-		c.advanceProviderKeySelection(fallback.providerRoundRobinID(), providerKeys[fallback.providerRoundRobinID()], fallback.identity())
 		return *fallback, true
 	}
 	return gptRelayAPIKeyEntry{}, false
@@ -780,10 +788,9 @@ func (c *GPTRelayClient) pickKeyFromProvider(providerID string, keys []gptRelayA
 	if len(keys) == 0 {
 		return gptRelayAPIKeyEntry{}, nil, false
 	}
-	start := c.providerKeySelectionOffset(providerID, len(keys))
 	var cooledFallback *gptRelayAPIKeyEntry
 	for offset := 0; offset < len(keys); offset++ {
-		key := keys[(start+offset)%len(keys)]
+		key := c.nextProviderKeyCandidate(providerID, keys)
 		keyID := key.identity()
 		if attempted[keyID] {
 			continue
@@ -795,7 +802,6 @@ func (c *GPTRelayClient) pickKeyFromProvider(providerID string, keys []gptRelayA
 		if c.isKeyCoolingDown(keyID, now) {
 			continue
 		}
-		c.advanceProviderKeySelection(providerID, keys, keyID)
 		return key, nil, true
 	}
 	return gptRelayAPIKeyEntry{}, cooledFallback, false
@@ -812,9 +818,23 @@ func (c *GPTRelayClient) nextSelectionOffset(modulo int) int {
 	return start
 }
 
-func (c *GPTRelayClient) nextProviderSelectionOffset(modulo int) int {
+func (c *GPTRelayClient) newRequestCursor() *gptRelayRequestCursor {
+	if c == nil {
+		return nil
+	}
+	c.selectionMu.Lock()
+	defer c.selectionMu.Unlock()
+	start := c.providerSelectionIdx
+	c.providerSelectionIdx++
+	return &gptRelayRequestCursor{providerSelectionIdx: start}
+}
+
+func (c *GPTRelayClient) nextProviderSelectionOffset(modulo int, cursor *gptRelayRequestCursor) int {
 	if modulo <= 0 {
 		return 0
+	}
+	if cursor != nil {
+		return cursor.nextProviderSelectionOffset(modulo)
 	}
 	c.selectionMu.Lock()
 	defer c.selectionMu.Unlock()
@@ -823,35 +843,29 @@ func (c *GPTRelayClient) nextProviderSelectionOffset(modulo int) int {
 	return start
 }
 
-func (c *GPTRelayClient) providerKeySelectionOffset(providerID string, modulo int) int {
-	if providerID == "" || modulo <= 0 {
+func (c *gptRelayRequestCursor) nextProviderSelectionOffset(modulo int) int {
+	if c == nil || modulo <= 0 {
 		return 0
 	}
-	c.selectionMu.Lock()
-	defer c.selectionMu.Unlock()
-	if c.providerKeySelectionIdx == nil {
-		c.providerKeySelectionIdx = map[string]int{}
-	}
-	return c.providerKeySelectionIdx[providerID] % modulo
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	start := c.providerSelectionIdx % modulo
+	c.providerSelectionIdx++
+	return start
 }
 
-func (c *GPTRelayClient) advanceProviderKeySelection(providerID string, keys []gptRelayAPIKeyEntry, selectedKeyID string) {
+func (c *GPTRelayClient) nextProviderKeyCandidate(providerID string, keys []gptRelayAPIKeyEntry) gptRelayAPIKeyEntry {
 	if providerID == "" || len(keys) == 0 {
-		return
-	}
-	next := 0
-	for idx, key := range keys {
-		if key.identity() == selectedKeyID {
-			next = (idx + 1) % len(keys)
-			break
-		}
+		return gptRelayAPIKeyEntry{}
 	}
 	c.selectionMu.Lock()
 	defer c.selectionMu.Unlock()
 	if c.providerKeySelectionIdx == nil {
 		c.providerKeySelectionIdx = map[string]int{}
 	}
-	c.providerKeySelectionIdx[providerID] = next
+	idx := c.providerKeySelectionIdx[providerID] % len(keys)
+	c.providerKeySelectionIdx[providerID] = (idx + 1) % len(keys)
+	return keys[idx]
 }
 
 func (c *GPTRelayClient) isKeyCoolingDown(key string, now time.Time) bool {

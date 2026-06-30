@@ -508,7 +508,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	upstreamCtx, cancelUpstream := context.WithTimeout(withModelCallContext(context.Background(), modelCallMeta), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
 	upstreamOpenStartedAt := time.Now()
-	upstream, upstreamProvider, upstreamProviderCancel, err := s.openValidatedChatStreamWithFallback(upstreamCtx, requestReceivedAt, promptMessages, gptRelayPromptMessages, thinkingOptions)
+	upstream, upstreamProvider, upstreamProviderCancel, gptRelayCursor, err := s.openValidatedChatStreamWithFallback(upstreamCtx, requestReceivedAt, promptMessages, gptRelayPromptMessages, thinkingOptions)
 	upstreamOpenedAt := time.Now()
 	upstreamOpenMs := upstreamOpenedAt.Sub(upstreamOpenStartedAt).Milliseconds()
 	requestToUpstreamOpenMs := upstreamOpenedAt.Sub(requestReceivedAt).Milliseconds()
@@ -737,7 +737,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		retryCtx, retryCancel := context.WithCancel(upstreamCtx)
 		retryBudget := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration())
 		budgetTimer := time.AfterFunc(retryBudget, retryCancel)
-		retryResponse, retryErr := s.openValidatedGPTRelayStream(retryCtx, gptRelayPromptMessages)
+		retryResponse, retryErr := s.openValidatedGPTRelayStream(retryCtx, gptRelayPromptMessages, gptRelayCursor)
 		timerStopped := budgetTimer.Stop()
 		retryOpenedAt := time.Now()
 		if retryErr != nil {
@@ -831,6 +831,9 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		}
 		if gptRelayFallbackReason == "" {
 			gptRelayFallbackReason = reason
+			if reason == "first_visible_timeout" && s.gptRelay != nil {
+				s.gptRelay.coolDownResponseKey(upstream)
+			}
 			if s.gptRelay != nil {
 				state := s.gptRelay.ObserveCircuitFailure(time.Now(), reason)
 				if state.Trigger != "" {
@@ -1426,7 +1429,7 @@ func (s *Server) retryQuotaConsumeOnDone(userID string, tier Tier, clientMsgID s
 	}
 }
 
-func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, requestReceivedAt time.Time, bailianMessages []BailianMessage, gptRelayMessages []BailianMessage, options BailianStreamOptions) (*http.Response, string, context.CancelFunc, error) {
+func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, requestReceivedAt time.Time, bailianMessages []BailianMessage, gptRelayMessages []BailianMessage, options BailianStreamOptions) (*http.Response, string, context.CancelFunc, *gptRelayRequestCursor, error) {
 	noopCancel := func() {}
 	if s.gptRelay != nil && s.gptRelay.Enabled() {
 		remaining := resolveGPTRelayFirstVisibleTimeout(resolveChatStreamMaxDuration())
@@ -1444,9 +1447,10 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, reques
 					"window_failures", circuitState.WindowFailures,
 				)
 			} else {
+				gptRelayCursor := s.gptRelay.newRequestCursor()
 				gptCtx, cancelGPT := context.WithCancel(ctx)
 				budgetTimer := time.AfterFunc(remaining, cancelGPT)
-				response, err := s.openValidatedGPTRelayStream(gptCtx, gptRelayMessages)
+				response, err := s.openValidatedGPTRelayStream(gptCtx, gptRelayMessages, gptRelayCursor)
 				timerStopped := budgetTimer.Stop()
 				if err == nil {
 					if !timerStopped || gptCtx.Err() != nil {
@@ -1468,7 +1472,7 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, reques
 							}
 						}
 					} else {
-						return response, gptRelayProvider, cancelGPT, nil
+						return response, gptRelayProvider, cancelGPT, gptRelayCursor, nil
 					}
 				} else {
 					cancelGPT()
@@ -1495,9 +1499,9 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, reques
 	}
 	response, err := s.openValidatedBailianStreamWithRetry(ctx, bailianMessages, options)
 	if err != nil {
-		return nil, "bailian", noopCancel, err
+		return nil, "bailian", noopCancel, nil, err
 	}
-	return response, "bailian", noopCancel, nil
+	return response, "bailian", noopCancel, nil, nil
 }
 
 func chatUpstreamSearchLogConfig(provider string) (bool, string, bool) {
@@ -1511,9 +1515,9 @@ func isGPTRelayProvider(provider string) bool {
 	return provider == gptRelayProvider
 }
 
-func (s *Server) openValidatedGPTRelayStream(ctx context.Context, messages []BailianMessage) (*http.Response, error) {
+func (s *Server) openValidatedGPTRelayStream(ctx context.Context, messages []BailianMessage, cursor *gptRelayRequestCursor) (*http.Response, error) {
 	return s.openValidatedStreamWithRetry(ctx, gptRelayProvider, 1, func(openCtx context.Context) (*http.Response, error) {
-		return s.gptRelay.OpenStream(openCtx, messages)
+		return s.gptRelay.openStreamWithCursor(openCtx, messages, cursor)
 	})
 }
 
