@@ -3709,7 +3709,7 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	   COALESCE(e.tier, 'free') AS tier,
 	   e.tier_expire_at,
 	   COALESCE(sa.round_total, 0) AS round_total,
-	   sa.last_seen_at,
+	   COALESCE((SELECT MAX(archive.created_at) FROM session_round_archive archive WHERE archive.user_id = a.user_id), sa.last_seen_at) AS last_seen_at,
 	   sa.last_region,
 	   sa.last_region_source,
 	   sa.last_region_reliability,

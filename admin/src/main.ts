@@ -2500,7 +2500,7 @@ function usersTable(users: AdminUserListEntry[]): string {
                 </td>
                 <td>${statusPill(user.tier || "free")}</td>
                 <td>${quotaText(user.daily)}</td>
-                <td>${formatTime(user.last_seen_at)}<div class="small muted">${user.round_total} 轮</div></td>
+                <td>${user.last_seen_at ? formatTime(user.last_seen_at) : "暂无问诊时间"}<div class="small muted">${user.round_total} 轮</div></td>
                 <td>${escapeHTML(user.last_region || "未知")}<div class="small muted">${escapeHTML([user.last_region_source, user.last_region_reliability].filter(Boolean).join(" / "))}</div></td>
                 <td>${user.error_count_24h ? statusPill(String(user.error_count_24h), "bad") : statusPill("0", "ok")}</td>
                 <td>${supportUserCell(user)}</td>
