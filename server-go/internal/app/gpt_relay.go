@@ -23,7 +23,7 @@ const (
 	defaultGPTRelayModel                      = "gpt-5.5"
 	defaultGPTRelayReasoningEffort            = "medium"
 	defaultGPTRelaySearchContextSize          = "low"
-	defaultGPTRelayFirstVisibleTimeout        = 6 * time.Second
+	defaultGPTRelayFirstVisibleTimeout        = 7 * time.Second
 	defaultGPTRelayDialTimeout                = 4 * time.Second
 	defaultGPTRelayTLSHandshakeTimeout        = 4 * time.Second
 	defaultGPTRelayResponseHeaderTimeout      = 4 * time.Second
@@ -31,7 +31,7 @@ const (
 	defaultGPTRelayKeyCooldown                = 30 * time.Second
 	defaultGPTRelayKeyMaxAttempts             = 10
 	defaultGPTRelayFirstVisibleRetryAttempts  = 1
-	defaultGPTRelayFirstVisibleRetryTimeout   = 6 * time.Second
+	defaultGPTRelayFirstVisibleRetryTimeout   = 7 * time.Second
 	maxGPTRelayFirstVisibleRetryAttempts      = 2
 	defaultGPTRelayMaxConfiguredProviderSlot  = 10
 	defaultGPTRelayMaxConfiguredKeySlot       = 50
@@ -49,6 +49,7 @@ type GPTRelayClient struct {
 	attemptRecorder            func(context.Context, gptRelayAttemptRecord)
 	cooldownMu                 sync.Mutex
 	keyCooldown                map[string]time.Time
+	providerCooldown           map[string]time.Time
 	selectionMu                sync.Mutex
 	keySelectionIdx            int
 	circuitMu                  sync.Mutex
@@ -71,6 +72,13 @@ func (e gptRelayAPIKeyEntry) identity() string {
 		return e.Value
 	}
 	return e.Endpoint + "\x00" + e.Value
+}
+
+func (e gptRelayAPIKeyEntry) providerIdentity() string {
+	if e.Endpoint == "" {
+		return e.ProviderSlot
+	}
+	return e.Endpoint + "\x00" + e.ProviderSlot
 }
 
 type gptRelayProviderKeyGroup struct {
@@ -110,8 +118,9 @@ type gptRelayCircuitState struct {
 
 func NewGPTRelayClientFromEnv() *GPTRelayClient {
 	return &GPTRelayClient{
-		httpClient:  newGPTRelayHTTPClient(),
-		keyCooldown: map[string]time.Time{},
+		httpClient:       newGPTRelayHTTPClient(),
+		keyCooldown:      map[string]time.Time{},
+		providerCooldown: map[string]time.Time{},
 	}
 }
 
@@ -291,6 +300,7 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (
 		elapsedMs := time.Since(attemptStartedAt).Milliseconds()
 		if err != nil {
 			c.coolDownKey(keyID)
+			c.coolDownProvider(key.providerIdentity())
 			lastErr = err
 			if ctx.Err() != nil {
 				return nil, err
@@ -317,6 +327,7 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (
 		}
 		if isGPTRelayRetryableStatus(resp.StatusCode) {
 			c.coolDownKey(keyID)
+			c.coolDownProvider(key.providerIdentity())
 			c.logKeyAttempt("gpt relay key attempt retryable status",
 				"attempt", attempt+1,
 				"max_attempts", maxAttempts,
@@ -411,6 +422,7 @@ func (c *GPTRelayClient) coolDownResponseKey(resp *http.Response) {
 			continue
 		}
 		c.coolDownKey(key.identity())
+		c.coolDownProvider(key.providerIdentity())
 		return
 	}
 }
@@ -680,6 +692,7 @@ func (c *GPTRelayClient) pickNextKeyEntry(keys []gptRelayAPIKeyEntry, attempted 
 	now := time.Now()
 	start := c.nextSelectionOffset(len(keys))
 	var fallback *gptRelayAPIKeyEntry
+	var providerCoolingFallback *gptRelayAPIKeyEntry
 	for offset := 0; offset < len(keys); offset++ {
 		idx := (start + offset) % len(keys)
 		key := keys[idx]
@@ -691,9 +704,20 @@ func (c *GPTRelayClient) pickNextKeyEntry(keys []gptRelayAPIKeyEntry, attempted 
 			candidate := key
 			fallback = &candidate
 		}
-		if !c.isKeyCoolingDown(keyID, now) {
-			return key, true
+		if c.isKeyCoolingDown(keyID, now) {
+			continue
 		}
+		if c.isProviderCoolingDown(key.providerIdentity(), now) {
+			if providerCoolingFallback == nil {
+				candidate := key
+				providerCoolingFallback = &candidate
+			}
+			continue
+		}
+		return key, true
+	}
+	if providerCoolingFallback != nil {
+		return *providerCoolingFallback, true
 	}
 	if fallback != nil {
 		return *fallback, true
@@ -726,6 +750,23 @@ func (c *GPTRelayClient) isKeyCoolingDown(key string, now time.Time) bool {
 	return true
 }
 
+func (c *GPTRelayClient) isProviderCoolingDown(provider string, now time.Time) bool {
+	if provider == "" {
+		return false
+	}
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	until, ok := c.providerCooldown[provider]
+	if !ok {
+		return false
+	}
+	if !now.Before(until) {
+		delete(c.providerCooldown, provider)
+		return false
+	}
+	return true
+}
+
 func (c *GPTRelayClient) coolDownKey(key string) {
 	c.cooldownMu.Lock()
 	defer c.cooldownMu.Unlock()
@@ -735,6 +776,20 @@ func (c *GPTRelayClient) coolDownKey(key string) {
 		return
 	}
 	c.keyCooldown[key] = time.Now().Add(duration)
+}
+
+func (c *GPTRelayClient) coolDownProvider(provider string) {
+	if provider == "" {
+		return
+	}
+	c.cooldownMu.Lock()
+	defer c.cooldownMu.Unlock()
+	duration := envDurationWithDefault("GPT_RELAY_KEY_COOLDOWN_SECONDS", defaultGPTRelayKeyCooldown)
+	if duration <= 0 {
+		delete(c.providerCooldown, provider)
+		return
+	}
+	c.providerCooldown[provider] = time.Now().Add(duration)
 }
 
 func isGPTRelayRetryableStatus(status int) bool {
