@@ -712,8 +712,12 @@ type bailianModelUsage struct {
 	PromptTokens       int `json:"prompt_tokens"`
 	CompletionTokens   int `json:"completion_tokens"`
 	InputTokensDetails struct {
-		TextTokens int `json:"text_tokens"`
+		TextTokens   int `json:"text_tokens"`
+		CachedTokens int `json:"cached_tokens"`
 	} `json:"input_tokens_details"`
+	PromptTokensDetails struct {
+		CachedTokens int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
 	OutputTokensDetails struct {
 		ReasoningTokens int `json:"reasoning_tokens"`
 		TextTokens      int `json:"text_tokens"`
@@ -757,12 +761,20 @@ func (u bailianModelUsage) searchCount() int {
 	return u.Plugins.Search.Count
 }
 
+func (u bailianModelUsage) cachedTokens() int {
+	if u.InputTokensDetails.CachedTokens > 0 {
+		return u.InputTokensDetails.CachedTokens
+	}
+	return u.PromptTokensDetails.CachedTokens
+}
+
 func (u bailianModelUsage) hasAny() bool {
 	return u.normalizedInputTokens() > 0 ||
 		u.normalizedOutputTokens() > 0 ||
 		u.normalizedTotalTokens() > 0 ||
 		u.ReasoningTokens > 0 ||
-		u.searchCount() > 0
+		u.searchCount() > 0 ||
+		u.cachedTokens() > 0
 }
 
 func appendBailianUsageLogAttrs(attrs []any, usage bailianModelUsage) []any {
@@ -783,6 +795,9 @@ func appendModelUsageLogAttrs(attrs []any, usage bailianModelUsage, includeZeroR
 	}
 	if searchCount := usage.searchCount(); searchCount > 0 {
 		attrs = append(attrs, "model_search_count", searchCount)
+	}
+	if cachedTokens := usage.cachedTokens(); cachedTokens > 0 {
+		attrs = append(attrs, "model_cached_tokens", cachedTokens)
 	}
 	return attrs
 }

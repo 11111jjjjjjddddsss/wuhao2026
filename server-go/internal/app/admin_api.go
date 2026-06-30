@@ -668,6 +668,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 	includePhoneNumber := adminCanViewAccountPhoneInUserList(admin.User.Role)
 	filter := AdminUserQuery{
 		Query:                strings.TrimSpace(r.URL.Query().Get("query")),
+		Sort:                 adminUserSort(r.URL.Query().Get("sort")),
 		DayCN:                GetTodayKeyCN(s.shanghai, time.Now()),
 		Limit:                parseAdminLimit(r.URL.Query().Get("limit")),
 		NowMs:                time.Now().UnixMilli(),
@@ -684,7 +685,7 @@ func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusInternalServerError, "internal_error")
 		return
 	}
-	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", true, http.StatusOK, map[string]any{"limit": filter.Limit, "row_count": len(users), "phone_number_visible": includePhoneNumber})
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.users.list", "app_accounts", "", "", true, http.StatusOK, map[string]any{"limit": filter.Limit, "row_count": len(users), "phone_number_visible": includePhoneNumber, "sort": filter.Sort})
 	s.writeJSON(w, http.StatusOK, map[string]any{"users": users, "filter": filter})
 }
 
@@ -1553,6 +1554,34 @@ func (s *Server) handleAdminAppLogs(w http.ResponseWriter, r *http.Request) {
 	s.writeJSON(w, http.StatusOK, map[string]any{"logs": logs, "summary": summary, "filter": filter})
 }
 
+func (s *Server) handleAdminModelCalls(w http.ResponseWriter, r *http.Request) {
+	admin, ok := s.requireAdmin(w, r, "ops_readonly", "auditor")
+	if !ok {
+		return
+	}
+	filter, validationError := parseAdminModelCallRecordQuery(r.URL.Query(), time.Now())
+	if validationError != "" {
+		s.writeError(w, http.StatusBadRequest, validationError)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), adminDashboardTimeout)
+	defer cancel()
+	records, err := s.store.ListAdminModelCallRecords(ctx, filter)
+	if err != nil {
+		s.logger.Error("admin list model call records failed", "error", err)
+		s.writeError(w, http.StatusInternalServerError, "internal_error")
+		return
+	}
+	s.recordAdminAuditLog(r, admin.User.Username, "admin.model_calls", "model_call_records", "", filter.UserID, true, http.StatusOK, map[string]any{
+		"row_count":     len(records),
+		"provider":      filter.Provider,
+		"status":        filter.Status,
+		"record_type":   filter.RecordType,
+		"client_msg_id": filter.ClientMsgID,
+	})
+	s.writeJSON(w, http.StatusOK, map[string]any{"records": records, "filter": filter})
+}
+
 func (s *Server) handleAdminAuditLogs(w http.ResponseWriter, r *http.Request) {
 	admin, ok := s.requireAdmin(w, r, "auditor", "ops_readonly")
 	if !ok {
@@ -1981,6 +2010,7 @@ func (s *Server) recordAdminAppUpdateValidationFailure(r *http.Request, actor st
 
 type AdminUserQuery struct {
 	Query                string `json:"query,omitempty"`
+	Sort                 string `json:"sort,omitempty"`
 	ExactUserID          string `json:"-"`
 	DayCN                string `json:"day_cn"`
 	Limit                int    `json:"limit"`
@@ -1988,6 +2018,32 @@ type AdminUserQuery struct {
 	SinceMs              int64  `json:"since_ms,omitempty"`
 	IncludePhoneNumber   bool   `json:"-"`
 	AllowPhoneHashSearch bool   `json:"-"`
+}
+
+func adminUserSort(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "recent_chat_desc", "recent_chat_asc", "tier_desc", "rounds_desc", "created_desc":
+		return strings.ToLower(strings.TrimSpace(value))
+	default:
+		return "activity_desc"
+	}
+}
+
+func adminUserOrderBy(sort string, nowMs int64) (string, []any) {
+	switch adminUserSort(sort) {
+	case "recent_chat_desc":
+		return "last_seen_at IS NULL ASC, last_seen_at DESC, COALESCE(a.last_login_at, a.updated_at, a.created_at) DESC", nil
+	case "recent_chat_asc":
+		return "last_seen_at IS NULL ASC, last_seen_at ASC, COALESCE(a.last_login_at, a.updated_at, a.created_at) DESC", nil
+	case "tier_desc":
+		return "CASE WHEN e.tier = 'pro' AND COALESCE(e.tier_expire_at, 0) > ? THEN 3 WHEN e.tier = 'plus' AND COALESCE(e.tier_expire_at, 0) > ? THEN 2 ELSE 1 END DESC, last_seen_at IS NULL ASC, last_seen_at DESC, COALESCE(a.last_login_at, a.updated_at, a.created_at) DESC", []any{nowMs, nowMs}
+	case "rounds_desc":
+		return "COALESCE(sa.round_total, 0) DESC, last_seen_at IS NULL ASC, last_seen_at DESC, COALESCE(a.last_login_at, a.updated_at, a.created_at) DESC", nil
+	case "created_desc":
+		return "a.created_at DESC, COALESCE(a.last_login_at, a.updated_at, a.created_at) DESC", nil
+	default:
+		return "COALESCE(a.last_login_at, a.updated_at, a.created_at) DESC", nil
+	}
 }
 
 func adminCanViewAccountPhone(role string) bool {
@@ -3324,7 +3380,8 @@ func mainChatMonitoringThinkingDisabled() bool {
 
 func mainChatMonitoringCostNote() string {
 	if gptRelayConfigured() {
-		return "后端先尝试可选 GPT relay，开流失败或 15 秒无可见正文会回退千问；不会在 Android 端保存模型 Key。"
+		timeoutSeconds := int(resolveGPTRelayFirstVisibleTimeout(0) / time.Second)
+		return "后端先尝试可选 GPT relay，开流失败或 " + strconv.Itoa(timeoutSeconds) + " 秒无可见正文会回退千问；不会在 Android 端保存模型 Key。"
 	}
 	return "纯文字默认非思考；带图问诊默认启用小预算思考。可联网但不强制搜索；不会在 Android 端保存模型 Key。"
 }
@@ -3384,6 +3441,8 @@ func adminRouteAllowed(role string, route string) bool {
 		return adminRoleAllowed(role, "support", "ops_readonly", "auditor")
 	case "app-logs":
 		return adminRoleAllowed(role, "ops_readonly", "support", "auditor")
+	case "model-calls":
+		return adminRoleAllowed(role, "ops_readonly", "auditor")
 	case "today-agri":
 		return adminRoleAllowed(role, "content_ops", "ops_readonly", "auditor")
 	case "app-update":
@@ -3753,7 +3812,9 @@ func (s *Store) ListAdminUsers(ctx context.Context, filter AdminUserQuery) ([]Ad
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY COALESCE(a.last_login_at, a.updated_at, a.created_at) DESC LIMIT ?"
+	orderBy, orderArgs := adminUserOrderBy(filter.Sort, nowMs)
+	query += " ORDER BY " + orderBy + " LIMIT ?"
+	args = append(args, orderArgs...)
 	args = append(args, limit)
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {

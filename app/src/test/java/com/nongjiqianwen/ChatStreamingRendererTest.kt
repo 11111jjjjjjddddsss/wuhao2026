@@ -174,8 +174,16 @@ class ChatStreamingRendererTest {
         )
 
         assertEquals("看官网，或 https://www.natesc.org.cn/。", rendered.text)
-        assertTrue(rendered.hasSpanFor("官网") { it.textDecoration == TextDecoration.Underline })
-        assertTrue(rendered.hasSpanFor("https://www.natesc.org.cn/") { it.textDecoration == TextDecoration.Underline })
+        assertTrue(
+            rendered.hasSpanFor("官网") {
+                it.color == Color(0xFF111111) && it.textDecoration == TextDecoration.Underline
+            }
+        )
+        assertTrue(
+            rendered.hasSpanFor("https://www.natesc.org.cn/") {
+                it.color == Color(0xFF111111) && it.textDecoration == TextDecoration.Underline
+            }
+        )
         assertTrue(rendered.hasUrlFor("官网", "https://www.moa.gov.cn"))
         assertTrue(rendered.hasUrlFor("https://www.natesc.org.cn/", "https://www.natesc.org.cn/"))
     }
@@ -191,7 +199,7 @@ class ChatStreamingRendererTest {
         assertTrue(rendered.hasSpanFor("官网") { it.fontWeight == FontWeight.SemiBold })
         assertTrue(
             rendered.hasSpanFor("官网") {
-                it.color == Color(0xFF2563EB) && it.textDecoration == TextDecoration.Underline
+                it.color == Color(0xFF111111) && it.textDecoration == TextDecoration.Underline
             }
         )
         assertTrue(rendered.hasUrlFor("官网", "https://www.moa.gov.cn"))

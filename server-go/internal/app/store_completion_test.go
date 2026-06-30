@@ -99,6 +99,28 @@ func TestPruneExpiredAdminAuditLogsUsesRetentionWindow(t *testing.T) {
 	}
 }
 
+func TestPruneExpiredModelCallRecordsUsesRetentionWindow(t *testing.T) {
+	store, mock, cleanup := newGiftCardSQLMock(t)
+	defer cleanup()
+
+	nowMs := int64(1_800_000_008_000)
+	cutoffMs := nowMs - int64(defaultModelCallRecordRetention/time.Millisecond)
+	mock.ExpectExec("DELETE FROM model_call_records").
+		WithArgs(cutoffMs, modelCallRecordPruneBatchLimit).
+		WillReturnResult(sqlmock.NewResult(0, 7))
+
+	rows, err := store.PruneExpiredModelCallRecords(context.Background(), nowMs)
+	if err != nil {
+		t.Fatalf("PruneExpiredModelCallRecords failed: %v", err)
+	}
+	if rows != 7 {
+		t.Fatalf("rows=%d, want 7", rows)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet SQL expectations: %v", err)
+	}
+}
+
 func TestGetSessionRoundCompletionReturnsReplayWhenArchiveExists(t *testing.T) {
 	store, mock, cleanup := newGiftCardSQLMock(t)
 	defer cleanup()

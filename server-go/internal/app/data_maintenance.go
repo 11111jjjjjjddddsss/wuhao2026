@@ -58,4 +58,11 @@ func (s *Server) runDataMaintenance() {
 	} else if auditRows > 0 {
 		s.logger.Info("data maintenance pruned admin audit logs", "rows", auditRows)
 	}
+
+	modelCallRows, err := s.store.PruneExpiredModelCallRecords(ctx, nowMs)
+	if err != nil {
+		s.logger.Warn("data maintenance prune model call records failed", "error", err)
+	} else if modelCallRows > 0 {
+		s.logger.Info("data maintenance pruned model call records", "rows", modelCallRows)
+	}
 }

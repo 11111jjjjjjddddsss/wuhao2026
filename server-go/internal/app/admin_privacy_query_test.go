@@ -72,6 +72,29 @@ func TestAdminUserSearchRespectsPhoneHashSearchPermission(t *testing.T) {
 	}
 }
 
+func TestAdminUserSortWhitelist(t *testing.T) {
+	if got := adminUserSort("tier_desc"); got != "tier_desc" {
+		t.Fatalf("adminUserSort tier_desc = %q", got)
+	}
+	if got := adminUserSort("recent_chat_desc"); got != "recent_chat_desc" {
+		t.Fatalf("adminUserSort recent_chat_desc = %q", got)
+	}
+	if got := adminUserSort("created_at DESC; DROP TABLE app_accounts"); got != "activity_desc" {
+		t.Fatalf("adminUserSort unsafe value = %q, want activity_desc", got)
+	}
+	orderBy, args := adminUserOrderBy("tier_desc", 1700000000000)
+	if !strings.Contains(orderBy, "CASE WHEN e.tier = 'pro'") || !strings.Contains(orderBy, "last_seen_at DESC") {
+		t.Fatalf("tier sort order by missing expected clauses: %s", orderBy)
+	}
+	if len(args) != 2 {
+		t.Fatalf("tier sort args = %d, want 2", len(args))
+	}
+	defaultOrderBy, defaultArgs := adminUserOrderBy("bad sort", 1700000000000)
+	if strings.Contains(defaultOrderBy, "bad sort") || len(defaultArgs) != 0 {
+		t.Fatalf("unsafe sort leaked into SQL: %q args=%v", defaultOrderBy, defaultArgs)
+	}
+}
+
 func TestSupportConversationSearchRespectsBodyAndPhoneHashPermissions(t *testing.T) {
 	t.Setenv("APP_SECRET", "unit-test-secret")
 	store, mock, cleanup := newAdminPrivacySQLMock(t, func(expected string, actual string) error {

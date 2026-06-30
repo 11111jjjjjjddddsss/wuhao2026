@@ -188,6 +188,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 		giftCardRedeemLimiter: newGiftCardRedeemRateLimiter(redisClient),
 		backgroundStop:        make(chan struct{}),
 	}
+	gptRelay.SetAttemptRecorder(server.recordGPTRelayKeyAttempt)
 	server.registerRoutes()
 	server.startQuotaConsumeRepairWorker()
 	server.startDataMaintenanceWorker()
@@ -238,6 +239,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("GET /admin-api/v1/support/messages", s.handleAdminSupportMessages)
 	s.mux.HandleFunc("POST /admin-api/v1/support/messages", s.handleAdminCreateSupportMessage)
 	s.mux.HandleFunc("POST /admin-api/v1/support/conversations/status", s.handleAdminUpdateSupportConversationStatus)
+	s.mux.HandleFunc("GET /admin-api/v1/model-calls", s.handleAdminModelCalls)
 	s.mux.HandleFunc("GET /admin-api/v1/app-logs", s.handleAdminAppLogs)
 	s.mux.HandleFunc("GET /admin-api/v1/audit-logs", s.handleAdminAuditLogs)
 	s.mux.HandleFunc("GET /admin-api/v1/today-agri/cards", s.handleAdminTodayAgriCards)

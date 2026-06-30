@@ -2468,7 +2468,7 @@ internal fun buildRendererInlineAnnotatedString(
 
         fun currentLinkStyle(): SpanStyle {
             return currentTextStyle().copy(
-                color = Color(0xFF2563EB),
+                color = Color(0xFF111111),
                 textDecoration = TextDecoration.Underline
             )
         }

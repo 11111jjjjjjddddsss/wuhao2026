@@ -550,14 +550,14 @@ func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 
 func TestGPTRelayFirstVisibleTimeoutCountsFromRequestReceived(t *testing.T) {
 	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "15")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "16")
 
-	remaining := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 13*time.Second)
+	remaining := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 14*time.Second)
 	if remaining < 1900*time.Millisecond || remaining > 2100*time.Millisecond {
 		t.Fatalf("remaining first visible timeout = %s, want about 2s", remaining)
 	}
 
-	if got := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 16*time.Second); got != time.Millisecond {
+	if got := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 17*time.Second); got != time.Millisecond {
 		t.Fatalf("exhausted first visible timeout = %s, want 1ms", got)
 	}
 }

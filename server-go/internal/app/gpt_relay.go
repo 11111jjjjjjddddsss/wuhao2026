@@ -17,10 +17,13 @@ import (
 
 const (
 	gptRelayProvider                          = "gpt_relay"
+	gptRelayHeaderProviderLabel              = "X-Nongji-Gpt-Provider-Label"
+	gptRelayHeaderProviderSlot               = "X-Nongji-Gpt-Provider-Slot"
+	gptRelayHeaderKeySlot                    = "X-Nongji-Gpt-Key-Slot"
 	defaultGPTRelayModel                      = "gpt-5.5"
 	defaultGPTRelayReasoningEffort            = "medium"
 	defaultGPTRelaySearchContextSize          = "low"
-	defaultGPTRelayFirstVisibleTimeout        = 15 * time.Second
+	defaultGPTRelayFirstVisibleTimeout        = 16 * time.Second
 	defaultGPTRelayDialTimeout                = 4 * time.Second
 	defaultGPTRelayTLSHandshakeTimeout        = 4 * time.Second
 	defaultGPTRelayResponseHeaderTimeout      = 4 * time.Second
@@ -40,6 +43,7 @@ const (
 type GPTRelayClient struct {
 	httpClient                 *http.Client
 	logger                     *slog.Logger
+	attemptRecorder            func(context.Context, gptRelayAttemptRecord)
 	cooldownMu                 sync.Mutex
 	keyCooldown                map[string]time.Time
 	selectionMu                sync.Mutex
@@ -52,9 +56,11 @@ type GPTRelayClient struct {
 }
 
 type gptRelayAPIKeyEntry struct {
-	Value    string
-	Label    string
-	Endpoint string
+	Value         string
+	Label         string
+	Endpoint      string
+	ProviderSlot  string
+	ProviderLabel string
 }
 
 func (e gptRelayAPIKeyEntry) identity() string {
@@ -65,8 +71,22 @@ func (e gptRelayAPIKeyEntry) identity() string {
 }
 
 type gptRelayProviderKeyGroup struct {
-	Endpoint string
-	Entries  []gptRelayAPIKeyEntry
+	Endpoint      string
+	ProviderSlot  string
+	ProviderLabel string
+	Entries       []gptRelayAPIKeyEntry
+}
+
+type gptRelayAttemptRecord struct {
+	ProviderSlot  string
+	ProviderLabel string
+	KeySlot       string
+	Status        string
+	ErrorKind     string
+	HTTPStatus    int
+	Attempt       int
+	MaxAttempts   int
+	OpenMs        int64
 }
 
 type gptRelayCircuitEvent struct {
@@ -97,6 +117,13 @@ func (c *GPTRelayClient) SetLogger(logger *slog.Logger) {
 		return
 	}
 	c.logger = logger
+}
+
+func (c *GPTRelayClient) SetAttemptRecorder(recorder func(context.Context, gptRelayAttemptRecord)) {
+	if c == nil {
+		return
+	}
+	c.attemptRecorder = recorder
 }
 
 func newGPTRelayHTTPClient() *http.Client {
@@ -273,6 +300,16 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (
 				"error_kind", classifyGPTRelayAttemptError(err),
 				"will_retry", attempt+1 < maxAttempts,
 			)
+			c.recordKeyAttempt(ctx, gptRelayAttemptRecord{
+				ProviderSlot:  key.ProviderSlot,
+				ProviderLabel: key.ProviderLabel,
+				KeySlot:       key.Label,
+				Status:        "failed",
+				ErrorKind:     classifyGPTRelayAttemptError(err),
+				Attempt:       attempt + 1,
+				MaxAttempts:   maxAttempts,
+				OpenMs:        elapsedMs,
+			})
 			continue
 		}
 		if isGPTRelayRetryableStatus(resp.StatusCode) {
@@ -285,6 +322,16 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (
 				"status", resp.StatusCode,
 				"will_retry", attempt+1 < maxAttempts,
 			)
+			c.recordKeyAttempt(ctx, gptRelayAttemptRecord{
+				ProviderSlot:  key.ProviderSlot,
+				ProviderLabel: key.ProviderLabel,
+				KeySlot:       key.Label,
+				Status:        "retryable_status",
+				HTTPStatus:    resp.StatusCode,
+				Attempt:       attempt + 1,
+				MaxAttempts:   maxAttempts,
+				OpenMs:        elapsedMs,
+			})
 		}
 		if isGPTRelayRetryableStatus(resp.StatusCode) && attempt+1 < maxAttempts && ctx.Err() == nil {
 			_, _ = readLimitedResponseBody(resp.Body, bailianBodyPreviewLimit)
@@ -300,6 +347,7 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (
 				"previous_attempts", attempt,
 			)
 		}
+		c.decorateResponseWithKeyMetadata(resp, key)
 		return resp, nil
 	}
 	if lastErr != nil {
@@ -325,6 +373,22 @@ func (c *GPTRelayClient) logKeyAttempt(msg string, attrs ...any) {
 		return
 	}
 	c.logger.Info(msg, attrs...)
+}
+
+func (c *GPTRelayClient) recordKeyAttempt(ctx context.Context, record gptRelayAttemptRecord) {
+	if c == nil || c.attemptRecorder == nil {
+		return
+	}
+	c.attemptRecorder(ctx, record)
+}
+
+func (c *GPTRelayClient) decorateResponseWithKeyMetadata(resp *http.Response, key gptRelayAPIKeyEntry) {
+	if resp == nil {
+		return
+	}
+	resp.Header.Set(gptRelayHeaderProviderLabel, key.ProviderLabel)
+	resp.Header.Set(gptRelayHeaderProviderSlot, key.ProviderSlot)
+	resp.Header.Set(gptRelayHeaderKeySlot, key.Label)
 }
 
 func gptRelayEnabled() bool {
@@ -463,7 +527,7 @@ func gptRelayRequestEntries() []gptRelayAPIKeyEntry {
 	if endpoint == "" {
 		return nil
 	}
-	return withGPTRelayEndpoint(gptRelayKeyEntries(), endpoint)
+	return withGPTRelayEndpoint(gptRelayKeyEntries(), endpoint, "gpt_relay", gptRelayProviderLabel())
 }
 
 func gptRelayProviderKeyGroups() []gptRelayProviderKeyGroup {
@@ -474,22 +538,25 @@ func gptRelayProviderKeyGroups() []gptRelayProviderKeyGroup {
 		if endpoint == "" {
 			continue
 		}
-		entries := withGPTRelayEndpoint(gptRelayKeyEntriesForPrefix(prefix), endpoint)
+		providerSlot := fmt.Sprintf("provider_%d", i)
+		entries := withGPTRelayEndpoint(gptRelayKeyEntriesForPrefix(prefix), endpoint, providerSlot, gptRelayProviderLabelForPrefix(prefix, providerSlot))
 		if len(entries) == 0 {
 			continue
 		}
-		groups = append(groups, gptRelayProviderKeyGroup{Endpoint: endpoint, Entries: entries})
+		groups = append(groups, gptRelayProviderKeyGroup{Endpoint: endpoint, ProviderSlot: providerSlot, ProviderLabel: gptRelayProviderLabelForPrefix(prefix, providerSlot), Entries: entries})
 	}
 	return groups
 }
 
-func withGPTRelayEndpoint(entries []gptRelayAPIKeyEntry, endpoint string) []gptRelayAPIKeyEntry {
+func withGPTRelayEndpoint(entries []gptRelayAPIKeyEntry, endpoint string, providerSlot string, providerLabel string) []gptRelayAPIKeyEntry {
 	if endpoint == "" || len(entries) == 0 {
 		return nil
 	}
 	result := make([]gptRelayAPIKeyEntry, 0, len(entries))
 	for _, entry := range entries {
 		entry.Endpoint = endpoint
+		entry.ProviderSlot = providerSlot
+		entry.ProviderLabel = providerLabel
 		result = append(result, entry)
 	}
 	return result
@@ -668,6 +735,18 @@ func gptRelayProviderLabel() string {
 	safe := sanitizeDashScopeErrorMessage(label)
 	if safe == "" || strings.Contains(safe, "[redacted]") || strings.Contains(safe, "[url]") || strings.Contains(safe, "[phone]") {
 		return "GPT Relay"
+	}
+	return truncateRunes(safe, 20)
+}
+
+func gptRelayProviderLabelForPrefix(prefix string, fallback string) string {
+	label := strings.TrimSpace(os.Getenv(prefix + "_LABEL"))
+	if label == "" {
+		return fallback
+	}
+	safe := sanitizeDashScopeErrorMessage(label)
+	if safe == "" || strings.Contains(safe, "[redacted]") || strings.Contains(safe, "[url]") || strings.Contains(safe, "[phone]") {
+		return fallback
 	}
 	return truncateRunes(safe, 20)
 }

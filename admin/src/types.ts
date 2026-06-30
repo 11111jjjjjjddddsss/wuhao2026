@@ -9,6 +9,7 @@ export type AdminRouteKey =
   | "gift-cards"
   | "account-deletion"
   | "support"
+  | "model-calls"
   | "app-logs"
   | "today-agri"
   | "app-update"
@@ -19,6 +20,7 @@ export type AdminRouteKey =
 export type AdminMonitoringLevel = "ok" | "warn" | "bad" | "error";
 export type AdminMonitoringCapabilityStatus = "ready" | "partial" | "planned";
 export type AdminRole = "owner" | "ops_readonly" | "support" | "content_ops" | "release_ops" | "finance_ops" | "auditor";
+export type AdminUserSort = "activity_desc" | "recent_chat_desc" | "recent_chat_asc" | "tier_desc" | "rounds_desc" | "created_desc";
 
 export interface AdminUser {
   id: number;
@@ -538,6 +540,50 @@ export interface ClientAppLogEntry {
   client_time_ms?: number;
   created_at: number;
   masked_ip?: string;
+}
+
+export interface AdminModelCallRecord {
+  id: number;
+  record_type: string;
+  chain: string;
+  user_id?: string;
+  client_msg_id?: string;
+  request_id?: string;
+  upstream_request_id?: string;
+  provider: string;
+  provider_label?: string;
+  provider_slot?: string;
+  key_slot?: string;
+  model?: string;
+  status: string;
+  fallback_reason?: string;
+  error_kind?: string;
+  http_status?: number;
+  attempt?: number;
+  max_attempts?: number;
+  tier?: string;
+  image_count: number;
+  prompt_has_images: boolean;
+  forced_search: boolean;
+  search_strategy?: string;
+  reasoning_effort?: string;
+  thinking_enabled: boolean;
+  thinking_budget?: number;
+  open_ms: number;
+  request_to_open_ms: number;
+  first_visible_ms: number;
+  upstream_first_visible_ms: number;
+  total_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  reasoning_tokens: number;
+  cached_tokens: number;
+  search_count: number;
+  reply_chars: number;
+  client_disconnected: boolean;
+  created_at: number;
+  updated_at: number;
 }
 
 export interface AdminGiftCardBatch {

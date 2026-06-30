@@ -15,6 +15,7 @@ import type {
   AdminInsightBreakdown,
   AdminInsights,
   AdminMonitoring,
+  AdminModelCallRecord,
   AdminOrderEntry,
   AdminOrdersResponse,
   AdminOverview,
@@ -30,6 +31,7 @@ import type {
   AdminRole,
   AdminUserDetail,
   AdminUserListEntry,
+  AdminUserSort,
   AuthPayload,
   ClientAppLogEntry,
   ClientAppLogSummaryEntry,
@@ -47,7 +49,7 @@ interface RouteItem {
   roles?: AdminRole[];
 }
 
-const simpleRouteKeys: RouteKey[] = ["monitoring", "users", "support", "app-logs", "gift-cards"];
+const simpleRouteKeys: RouteKey[] = ["monitoring", "users", "support", "model-calls", "app-logs", "gift-cards"];
 const adminModeStorageKey = "nongji_admin_simple_mode";
 
 const routes: RouteItem[] = [
@@ -62,6 +64,7 @@ const routes: RouteItem[] = [
   { key: "support", label: "帮助反馈", section: "运营工作台", hint: "回复/查看", roles: ["support", "ops_readonly", "auditor"] },
   { key: "today-agri", label: "今日农情", section: "运营工作台", hint: "人工/补跑", roles: ["content_ops", "ops_readonly", "auditor"] },
   { key: "app-update", label: "检查更新", section: "运营工作台", hint: "发布/停更", roles: ["release_ops", "ops_readonly", "auditor"] },
+  { key: "model-calls", label: "模型链路", section: "排障与安全", hint: "平台/耗时", roles: ["ops_readonly", "auditor"] },
   { key: "app-logs", label: "App日志", section: "排障与安全", hint: "可查", roles: ["ops_readonly", "support", "auditor"] },
   { key: "audit", label: "审计", section: "排障与安全", hint: "可查", roles: ["auditor", "ops_readonly"] },
   { key: "account", label: "账号安全", section: "排障与安全", hint: "改密" },
@@ -81,6 +84,7 @@ let privacyMaskEnabled = false;
 let adminSimpleMode = loadAdminSimpleMode();
 const pageState = {
   userQuery: "",
+  userSort: "activity_desc" as AdminUserSort,
   userDetailID: "",
   supportUserID: "",
   supportStatus: "open",
@@ -98,6 +102,7 @@ const pageState = {
   accountDeletionUserID: "",
   accountDeletionStatus: "pending",
   appLogWindow: "24h",
+  modelCallWindow: "24h",
   auditWindow: "24h",
 };
 
@@ -399,6 +404,8 @@ async function routeContent(route: RouteKey): Promise<string> {
       return accountDeletionPage();
     case "support":
       return supportPage();
+    case "model-calls":
+      return modelCallsPage();
     case "app-logs":
       return appLogsPage();
     case "today-agri":
@@ -728,8 +735,9 @@ async function monitoringPage(): Promise<string> {
 
 async function usersPage(): Promise<string> {
   const query = pageState.userQuery;
+  const sort = pageState.userSort;
   const response = await apiFetch<{ users: AdminUserListEntry[]; filter: unknown }>(
-    `/admin-api/v1/users${toQuery({ query, limit: 50 })}`,
+    `/admin-api/v1/users${toQuery({ query, sort, limit: 50 })}`,
   );
   return `
     ${pageHead("用户管理", "按账号ID查询用户；主账号也可用完整手机号精确查询。", "users")}
@@ -738,8 +746,12 @@ async function usersPage(): Promise<string> {
         <span>账号查询</span>
         <input class="input" name="query" value="${escapeAttr(query)}" placeholder="账号ID / 手机号" />
       </label>
+      <label class="field">
+        <span>排序</span>
+        ${selectHTML("sort", sort, userSortOptions())}
+      </label>
       <button class="button primary" type="submit">查询</button>
-      ${query ? `<button class="button" type="button" data-action="clear-user-filter">清空</button>` : ""}
+      ${query || sort !== "activity_desc" ? `<button class="button" type="button" data-action="clear-user-filter">清空</button>` : ""}
     </form>
     <div class="users-workspace">
       <section id="users-list-card" class="card">
@@ -1134,6 +1146,29 @@ async function todayAgriPage(): Promise<string> {
   `;
 }
 
+async function modelCallsPage(): Promise<string> {
+  const sinceMs = sinceFromWindow(pageState.modelCallWindow);
+  const params = readFilterState("model-call", { since_ms: sinceMs, limit: 100 });
+  const response = await apiFetch<{ records: AdminModelCallRecord[]; filter: unknown }>(
+    `/admin-api/v1/model-calls${toQuery(params)}`,
+  );
+  const slowCount = response.records.filter((row) => row.first_visible_ms > 12000 || row.total_ms > 30000).length;
+  const zeroCostCount = response.records.filter((row) => row.input_tokens === 0 && row.output_tokens === 0).length;
+  return `
+    ${pageHead("模型链路", "看主对话每次走哪家、哪把槽位、首字和 token；不展示密钥、正文或图片 URL。", "model-calls")}
+    ${modelCallFilterForm()}
+    <section class="grid kpi">
+      ${kpi("当前记录", response.records.length, "最多最近 100 条")}
+      ${kpi("慢请求", slowCount, "首字 >12s 或总耗时 >30s")}
+      ${kpi("0 token 记录", zeroCostCount, "通常是开流前失败或供应方未计费")}
+    </section>
+    <section class="card">
+      <div class="card-head"><div class="card-title">链路明细</div><span class="small muted">${response.records.length} 条</span></div>
+      <div class="table-wrap">${modelCallRecordsTable(response.records)}</div>
+    </section>
+  `;
+}
+
 function isPreviewableTodayAgriCard(row: AdminDailyAgriEntry): boolean {
   if (row.status !== "ready") return false;
   const error = (row.error || "").toLowerCase();
@@ -1389,6 +1424,7 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
   }
   if (form.id === "users-filter-form") {
     pageState.userQuery = formValue(form, "query");
+    pageState.userSort = normalizeUserSort(formValue(form, "sort"));
     pageState.userDetailID = "";
     await render();
     return;
@@ -1457,6 +1493,12 @@ async function handleSubmit(form: HTMLFormElement): Promise<void> {
   if (form.id === "app-log-form") {
     captureFilterState(form, "app-log");
     pageState.appLogWindow = formValue(form, "app_log_window") || "24h";
+    await render();
+    return;
+  }
+  if (form.id === "model-call-form") {
+    captureFilterState(form, "model-call");
+    pageState.modelCallWindow = formValue(form, "model_call_window") || "24h";
     await render();
     return;
   }
@@ -1539,6 +1581,7 @@ async function handleAction(button: HTMLElement): Promise<void> {
   }
   if (action === "clear-user-filter") {
     pageState.userQuery = "";
+    pageState.userSort = "activity_desc";
     pageState.userDetailID = "";
     await render();
     return;
@@ -1595,6 +1638,11 @@ async function handleAction(button: HTMLElement): Promise<void> {
     if (key === "app-log") {
       filterState.delete("app-log");
       pageState.appLogWindow = "24h";
+      await render();
+    }
+    if (key === "model-call") {
+      filterState.delete("model-call");
+      pageState.modelCallWindow = "24h";
       await render();
     }
     if (key === "audit") {
@@ -2428,6 +2476,11 @@ const pageGuides: Partial<Record<RouteKey, PageGuideItem[]>> = {
     { label: "先筛", value: "账号ID、事件名、事件前缀、时间范围" },
     { label: "常用入口", value: "监控页可一键带入登录/更新排障筛选" },
     { label: "隐私", value: "日志展示层会再次脱敏" },
+  ],
+  "model-calls": [
+    { label: "先看", value: "平台、模型、key槽位、首字和总耗时" },
+    { label: "0 token", value: "多半是开流前失败或供应方未计费记录", level: "warn" },
+    { label: "隐私", value: "不展示密钥、正文或图片 URL" },
   ],
   "today-agri": [
     { label: "先看", value: "最新 ready 卡片和失败原因" },
@@ -3621,6 +3674,109 @@ function supportStatusPill(item: AdminSupportConversation): string {
   return statusPill("已处理", "ok");
 }
 
+function modelCallRecordsTable(rows: AdminModelCallRecord[]): string {
+  if (!rows.length) return emptyState("没有链路记录", "当前筛选条件下暂无模型调用记录。");
+  return `
+    <table class="table mobile-card-table">
+      <thead><tr><th>时间</th><th>平台/模型</th><th>状态</th><th>耗时</th><th>Token</th><th>场景</th><th>账号/消息</th></tr></thead>
+      <tbody>
+        ${rows
+          .map(
+            (row) => `
+              <tr>
+                ${tableCell("时间", `${formatTime(row.created_at)}<div class="small muted">#${row.id}</div>`)}
+                ${tableCell("平台/模型", modelCallProviderCell(row))}
+                ${tableCell("状态", modelCallStatusCell(row))}
+                ${tableCell("耗时", modelCallTimingCell(row))}
+                ${tableCell("Token", modelCallTokenCell(row))}
+                ${tableCell("场景", modelCallSceneCell(row))}
+                ${tableCell("账号/消息", modelCallActorCell(row))}
+              </tr>
+            `,
+          )
+          .join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+function modelCallProviderCell(row: AdminModelCallRecord): string {
+  const provider = row.provider_label || row.provider || "unknown";
+  const slot = [row.provider_slot, row.key_slot].filter(Boolean).join(" / ");
+  return `
+    <strong>${escapeHTML(provider)}</strong>
+    <div class="small muted">${escapeHTML(row.model || "未返回模型名")}</div>
+    ${slot ? `<div class="small muted">${escapeHTML(slot)}</div>` : ""}
+  `;
+}
+
+function modelCallStatusCell(row: AdminModelCallRecord): string {
+  const status = row.status || "unknown";
+  const level: "ok" | "warn" | "bad" | "info" =
+    ["ok", "first_visible"].includes(status) ? "ok" :
+    ["failed", "open_failed", "stream_open_failed", "timeout", "idle", "empty_reply", "incomplete"].includes(status) ? "bad" :
+    ["retryable_status", "client_disconnected"].includes(status) ? "warn" :
+    "info";
+  const details = [
+    row.http_status ? `HTTP ${row.http_status}` : "",
+    row.error_kind || "",
+    row.fallback_reason ? `fallback ${row.fallback_reason}` : "",
+    row.client_disconnected ? "客户端断开" : "",
+  ].filter(Boolean).join(" / ");
+  return `${statusPill(status, level)}${details ? `<div class="small muted">${escapeHTML(details)}</div>` : ""}`;
+}
+
+function modelCallTimingCell(row: AdminModelCallRecord): string {
+  return `
+    <div>首字：${formatDurationMs(row.first_visible_ms)}</div>
+    <div class="small muted">开流：${formatDurationMs(row.open_ms)} / 总：${formatDurationMs(row.total_ms)}</div>
+    <div class="small muted">上游首字：${formatDurationMs(row.upstream_first_visible_ms)}</div>
+  `;
+}
+
+function modelCallTokenCell(row: AdminModelCallRecord): string {
+  return `
+    <div>入/出：${formatInt(row.input_tokens)} / ${formatInt(row.output_tokens)}</div>
+    <div class="small muted">总 ${formatInt(row.total_tokens)} · 缓存 ${formatInt(row.cached_tokens)}</div>
+    <div class="small muted">思考 ${formatInt(row.reasoning_tokens)} · 搜索 ${formatInt(row.search_count)}</div>
+  `;
+}
+
+function modelCallSceneCell(row: AdminModelCallRecord): string {
+  const flags = [
+    row.image_count ? `${row.image_count} 图` : "",
+    row.forced_search ? "联网" : "",
+    row.reasoning_effort ? `思维 ${row.reasoning_effort}` : "",
+    row.thinking_enabled ? `千问思考 ${row.thinking_budget || ""}`.trim() : "",
+  ].filter(Boolean).join(" / ");
+  const attempt = row.attempt ? `尝试 ${row.attempt}/${row.max_attempts || "?"}` : "";
+  return `
+    <div>${escapeHTML(row.record_type || "unknown")}</div>
+    <div class="small muted">${escapeHTML([row.chain, row.tier, attempt].filter(Boolean).join(" / "))}</div>
+    ${flags ? `<div class="small muted">${escapeHTML(flags)}</div>` : ""}
+  `;
+}
+
+function modelCallActorCell(row: AdminModelCallRecord): string {
+  const user = row.user_id ? accountIDLink(row.user_id, true) : "未返回";
+  const msg = row.client_msg_id ? `<div class="small muted mono">${escapeHTML(row.client_msg_id)}</div>` : "";
+  const req = row.request_id || row.upstream_request_id
+    ? `<div class="small muted mono">${escapeHTML([row.request_id, row.upstream_request_id].filter(Boolean).join(" / "))}</div>`
+    : "";
+  return `${user}${msg}${req}`;
+}
+
+function formatDurationMs(value?: number | null): string {
+  if (value === undefined || value === null || value < 0) return "未返回";
+  if (value >= 1000) return `${(value / 1000).toFixed(value >= 10000 ? 0 : 1)}s`;
+  return `${value}ms`;
+}
+
+function formatInt(value?: number | null): string {
+  if (value === undefined || value === null) return "0";
+  return String(value);
+}
+
 function appLogsTable(rows: ClientAppLogEntry[]): string {
   if (!rows.length) return emptyState("没有 App 日志", "当前筛选条件下暂无日志。");
   return `
@@ -4082,6 +4238,23 @@ function logFilterForm(formID: string, key: string, selectedWindow: string): str
   `;
 }
 
+function modelCallFilterForm(): string {
+  const key = "model-call";
+  const hasFilter = Object.values(filterState.get(key) || {}).some((value) => value.trim() !== "") || pageState.modelCallWindow !== "24h";
+  return `
+    <form class="filters" id="model-call-form">
+      ${timeWindowField("model_call_window", pageState.modelCallWindow)}
+      <label class="field"><span>平台</span>${selectHTML("provider", readInputValue(key, "provider"), [["", "全部"], ["gpt_relay", "GPT中转"], ["bailian", "千问百炼"]])}</label>
+      <label class="field"><span>记录</span>${selectHTML("record_type", readInputValue(key, "record_type"), [["", "全部"], ["stream_final", "完整回复"], ["key_attempt", "钥匙尝试"], ["stream_open_failed", "开流失败"]])}</label>
+      <label class="field"><span>状态</span><input class="input" name="status" value="${escapeAttr(readInputValue(key, "status"))}" placeholder="ok / failed / timeout" /></label>
+      <label class="field"><span>账号ID</span><input class="input" name="user_id" value="${escapeAttr(readInputValue(key, "user_id"))}" placeholder="acct_..." /></label>
+      <label class="field"><span>消息ID</span><input class="input" name="client_msg_id" value="${escapeAttr(readInputValue(key, "client_msg_id"))}" placeholder="client_msg_id" /></label>
+      <button class="button primary" type="submit">查询</button>
+      ${hasFilter ? `<button class="button" type="button" data-action="clear-log-filter" data-filter-key="${escapeAttr(key)}">清空</button>` : ""}
+    </form>
+  `;
+}
+
 function timeWindowField(name: string, selected: string): string {
   return `
     <label class="field">
@@ -4089,6 +4262,21 @@ function timeWindowField(name: string, selected: string): string {
       ${selectHTML(name, selected, [["24h", "最近24小时"], ["7d", "最近7天"], ["30d", "最近30天"]])}
     </label>
   `;
+}
+
+function userSortOptions(): [AdminUserSort, string][] {
+  return [
+    ["activity_desc", "最近活跃"],
+    ["recent_chat_desc", "最近问诊"],
+    ["recent_chat_asc", "最早问诊"],
+    ["tier_desc", "会员级别"],
+    ["rounds_desc", "问诊轮次"],
+    ["created_desc", "新注册"],
+  ];
+}
+
+function normalizeUserSort(value: string): AdminUserSort {
+  return userSortOptions().some(([option]) => option === value) ? (value as AdminUserSort) : "activity_desc";
 }
 
 function selectHTML(name: string, value: string, options: [string, string][]): string {

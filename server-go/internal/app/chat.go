@@ -490,7 +490,22 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"forced_search", forceSearch,
 	)
 
-	upstreamCtx, cancelUpstream := context.WithTimeout(context.Background(), resolveChatStreamMaxDuration())
+	requestID := RequestIDFromContext(r.Context())
+	modelCallMeta := modelCallContext{
+		Chain:            "main_chat",
+		UserID:           auth.UserID,
+		ClientMsgID:      clientMsgID,
+		RequestID:        requestID,
+		Tier:             string(tier),
+		ImageCount:       len(images),
+		PromptHasImages: promptHasImages,
+		ForcedSearch:    forceSearch,
+		SearchStrategy:  "responses_auto_low",
+		ReasoningEffort: gptRelayReasoningEffort(),
+		ThinkingEnabled: thinkingOptions.EnableThinking,
+		ThinkingBudget:  thinkingOptions.ThinkingBudget,
+	}
+	upstreamCtx, cancelUpstream := context.WithTimeout(withModelCallContext(context.Background(), modelCallMeta), resolveChatStreamMaxDuration())
 	defer cancelUpstream()
 	upstreamOpenStartedAt := time.Now()
 	upstream, upstreamProvider, upstreamProviderCancel, err := s.openValidatedChatStreamWithFallback(upstreamCtx, requestReceivedAt, promptMessages, gptRelayPromptMessages, thinkingOptions)
@@ -498,10 +513,37 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	upstreamOpenMs := upstreamOpenedAt.Sub(upstreamOpenStartedAt).Milliseconds()
 	requestToUpstreamOpenMs := upstreamOpenedAt.Sub(requestReceivedAt).Milliseconds()
 	if err != nil {
+		s.insertModelCallRecordAsync(ModelCallRecordInput{
+			RecordType:             "stream_open_failed",
+			Chain:                  "main_chat",
+			UserID:                 auth.UserID,
+			ClientMsgID:            clientMsgID,
+			RequestID:              requestID,
+			Provider:               upstreamProvider,
+			ProviderLabel:          firstNonEmpty(upstreamProvider, "unknown"),
+			ProviderSlot:           upstreamProvider,
+			Model:                  modelCallModelForProvider(upstreamProvider),
+			Status:                 "open_failed",
+			ErrorKind:              upstreamOpenErrorKind(err),
+			HTTPStatus:             upstreamOpenErrorStatus(err),
+			Tier:                   string(tier),
+			ImageCount:             len(images),
+			PromptHasImages:        promptHasImages,
+			ForcedSearch:           forceSearch,
+			SearchStrategy:         "turbo",
+			ReasoningEffort:        gptRelayReasoningEffort(),
+			ThinkingEnabled:        thinkingOptions.EnableThinking,
+			ThinkingBudget:         thinkingOptions.ThinkingBudget,
+			OpenMs:                 upstreamOpenMs,
+			RequestToOpenMs:        requestToUpstreamOpenMs,
+			FirstVisibleMs:         -1,
+			UpstreamFirstVisibleMs: -1,
+			TotalMs:                time.Since(requestReceivedAt).Milliseconds(),
+		})
 		s.respondUpstreamOpenError(
 			w,
 			err,
-			"request_id", RequestIDFromContext(r.Context()),
+			"request_id", requestID,
 			"userId", auth.UserID,
 			"clientMsgId", clientMsgID,
 			"tier", tier,
@@ -1076,6 +1118,44 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	if upstreamProvider == "bailian" {
 		s.bailian.ObserveUsage(modelUsage)
 	}
+	providerLabel, providerSlot, keySlot := modelCallProviderMetadata(upstreamProvider, upstream)
+	visibleText := strings.TrimSpace(assistantText.String())
+	s.insertModelCallRecordAsync(ModelCallRecordInput{
+		RecordType:             "stream_final",
+		Chain:                  "main_chat",
+		UserID:                 auth.UserID,
+		ClientMsgID:            clientMsgID,
+		RequestID:              requestID,
+		UpstreamRequestID:      upstreamRequestID,
+		Provider:               upstreamProvider,
+		ProviderLabel:          providerLabel,
+		ProviderSlot:           providerSlot,
+		KeySlot:                keySlot,
+		Model:                  modelCallModelForProvider(upstreamProvider),
+		Status:                 modelCallStreamStatus(sendDoneAfterArchive, doneReceived.Load(), clientDisconnected.Load(), streamTimeoutKind, visibleText != ""),
+		FallbackReason:         gptRelayFallbackReason,
+		Tier:                   string(tier),
+		ImageCount:             len(images),
+		PromptHasImages:        promptHasImages,
+		ForcedSearch:           forceSearch,
+		SearchStrategy:         upstreamSearchStrategy,
+		ReasoningEffort:        func() string { if isGPTRelayProvider(upstreamProvider) { return gptRelayReasoningEffort() }; return "" }(),
+		ThinkingEnabled:        thinkingOptions.EnableThinking,
+		ThinkingBudget:         thinkingOptions.ThinkingBudget,
+		OpenMs:                 upstreamOpenMs,
+		RequestToOpenMs:        requestToUpstreamOpenMs,
+		FirstVisibleMs:         firstVisibleMs,
+		UpstreamFirstVisibleMs: upstreamFirstVisibleMs,
+		TotalMs:                time.Since(requestReceivedAt).Milliseconds(),
+		InputTokens:            modelUsage.normalizedInputTokens(),
+		OutputTokens:           modelUsage.normalizedOutputTokens(),
+		TotalTokens:            modelUsage.normalizedTotalTokens(),
+		ReasoningTokens:        modelUsage.normalized().ReasoningTokens,
+		CachedTokens:           modelUsage.cachedTokens(),
+		SearchCount:            modelCallSearchCount(upstreamProvider, modelUsage, gptRelaySearchCount),
+		ReplyChars:             len([]rune(visibleText)),
+		ClientDisconnected:     clientDisconnected.Load(),
+	})
 	logAttrs = appendModelUsageLogAttrs(logAttrs, modelUsage, isGPTRelayProvider(upstreamProvider))
 	s.logger.Info("chat stream finished", logAttrs...)
 }
