@@ -665,13 +665,13 @@ func gptRelayLocalHTTPHost(host string) bool {
 }
 
 func buildGPTRelayResponsesPrompt(messages []BailianMessage) (string, []map[string]any) {
-	instructionParts := []string{}
+	systemParts := []string{}
 	input := make([]map[string]any, 0, len(messages))
 	for _, message := range messages {
 		role := strings.ToLower(strings.TrimSpace(message.Role))
 		if role == "system" {
 			if text := gptRelayInstructionText(message.Content); text != "" {
-				instructionParts = append(instructionParts, text)
+				systemParts = append(systemParts, text)
 			}
 			continue
 		}
@@ -680,8 +680,39 @@ func buildGPTRelayResponsesPrompt(messages []BailianMessage) (string, []map[stri
 			"content": gptRelayResponsesContent(message.Content),
 		})
 	}
-	instructionParts = append(instructionParts, gptRelayNetworkingInstruction())
+	instructionParts := orderedGPTRelayInstructionParts(systemParts)
 	return strings.Join(instructionParts, "\n\n"), input
+}
+
+func orderedGPTRelayInstructionParts(systemParts []string) []string {
+	instructionParts := []string{}
+	if len(systemParts) == 0 {
+		return append(instructionParts, gptRelayNetworkingInstruction())
+	}
+
+	// Keep the stable, high-value rules at the front so upstream prompt caching can
+	// reuse them. Dynamic context such as time, location and memory follows after.
+	instructionParts = append(instructionParts, systemParts[0])
+	outputConstraint := strings.TrimSpace(chatOutputConstraint)
+	dynamicParts := []string{}
+	hasOutputConstraint := false
+	for _, part := range systemParts[1:] {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed == outputConstraint {
+			if !hasOutputConstraint {
+				instructionParts = append(instructionParts, trimmed)
+				hasOutputConstraint = true
+			}
+			continue
+		}
+		dynamicParts = append(dynamicParts, trimmed)
+	}
+	instructionParts = append(instructionParts, gptRelayNetworkingInstruction())
+	instructionParts = append(instructionParts, dynamicParts...)
+	return instructionParts
 }
 
 func gptRelayInstructionText(content any) string {

@@ -612,6 +612,17 @@ func TestGPTRelayPromptVariantIncludesChatOutputConstraintAndNetworkingRule(t *t
 	if !strings.Contains(instructions, "带图或高风险问题，必须深度思考。") {
 		t.Fatalf("gpt relay instructions missing image reasoning rule:\n%s", instructions)
 	}
+	anchorIndex := strings.Index(instructions, "anchor")
+	outputIndex := strings.Index(instructions, "【输出约束】")
+	gptRuleIndex := strings.Index(instructions, "【GPT专用规则】")
+	contextIndex := strings.Index(instructions, "context")
+	memoryIndex := strings.Index(instructions, "memory")
+	if anchorIndex < 0 || outputIndex < 0 || gptRuleIndex < 0 || contextIndex < 0 || memoryIndex < 0 {
+		t.Fatalf("gpt relay instructions missing order markers:\n%s", instructions)
+	}
+	if !(anchorIndex < outputIndex && outputIndex < gptRuleIndex && gptRuleIndex < memoryIndex && memoryIndex < contextIndex) {
+		t.Fatalf("gpt relay stable instructions should precede dynamic context for cache reuse:\n%s", instructions)
+	}
 	if len(input) == 0 {
 		t.Fatalf("gpt relay input should keep non-system messages")
 	}

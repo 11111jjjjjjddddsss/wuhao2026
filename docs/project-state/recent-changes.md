@@ -5,6 +5,7 @@
 
 ## 2026-06-30
 
+- 主聊天提示词组装改成缓存友好顺序：千问 / 百炼链路和 GPT relay 链路都把稳定规则前置为“主对话锚点 + `【输出约束】` / 回答参考范本”，动态时间地点移到本轮用户消息前；GPT relay 比千问只额外多一段 `【GPT专用规则】`，并排在锚点和输出约束之后、动态上下文之前。该改动只调整消息顺序，不改锚点、输出约束正文、GPT 专用规则、记忆提示词、图片上下文、6 轮上下文、联网参数或 Android；目的是减少动态时间地点过早打断 prompt cache 前缀，实际缓存命中仍看上游统计。
 - GPT relay 增加单把 Key 尝试脱敏日志：当某把 Key 在开流前请求失败、返回可重试 HTTP 状态，或后续换 Key 恢复成功时，后端只记录 `attempt / max_attempts / key_slot / elapsed_ms / error_kind / status / will_retry` 等低成本字段，其中 `key_slot` 是配置槽位名，不记录真实 Key、prompt、正文、图片 URL 或中转站完整地址。该改动用于定位第三方中转站控制台 `input=0 / output=0 / cost=0` 的真实来源，区分“整条 GPT 流首字前被取消并回退千问”和“GPT relay 内部前几把 Key 开流失败但后续 Key 成功”。不改 4 秒开流超时、不改 15 秒首字预算、不改熔断阈值、不改模型参数、不改 Android。
 - 正式包上线门禁脚本补已发布 APK 复查参数：`check-launch-readiness.ps1` 新增 `-AppUpdateApkPath`，复查已同步到官网 / 检查更新的正式包时，可用下载回来的线上 APK 做版本、大小、SHA-256 和旧包更新探针对账，避免本地重新构建 APK 与已发布 APK 因 ZIP / 签名时间戳字节差异造成假失败；`check-app-update-release-match.ps1` 同步对齐本地后台 smoke 私密配置读取方式，降低 Windows 路径字段导致私密 JSON 整体解析失败、进而误报缺后台凭据的风险。默认正式发版路径不变；本轮只改脚本和 runbook / 项目记忆，不发布 Android 新包，不改官网下载，不动微信支付。
 - 主聊天上下文和记忆触发口径按用户要求统一降成本并部署生产后端 `9b70f2d6`：Free / Plus / Pro 的 A 层历史滑窗全部改为最近 6 轮，记忆文档摘要也全部改为每 6 条完整 AI 回复触发一次，触发时冻结当时 6 轮窗口作为待提取 job。该改动只改 Go 后端轮数策略和单测，不改主对话锚点、`【输出约束】`、GPT 专用规则、记忆文档提示词、摘要模型、图片上下文规则、会员每日次数、Android 或正式包；老用户已有超过 6 轮的 `session_ab.a_json` 会在下一次完整问答归档后自然裁剪，不需要数据库迁移。验证通过 `go test ./...`、`go build ./...`、项目记忆检查、迁移风险扫描、ECS 双端口发布、`check-ecs-readiness.ps1 -ExpectedRevision 9b70f2d6 -ExpectedAlipayPaymentGate public` 和公网黑盒。

@@ -396,8 +396,11 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		t.Fatalf("expected previous round image preserved, got %#v", got)
 	}
 
-	if messages[6].Role != "system" || messages[6].Content != chatOutputConstraint {
-		t.Fatalf("expected output constraint immediately before current user input, got %#v", messages[6])
+	if messages[1].Role != "system" || messages[1].Content != chatOutputConstraint {
+		t.Fatalf("expected output constraint immediately after anchor for cache reuse, got %#v", messages[1])
+	}
+	if messages[6].Role != "system" || messages[6].Content != "context" {
+		t.Fatalf("expected dynamic context immediately before current user input, got %#v", messages[6])
 	}
 	currentUser := messages[7]
 	currentContent, ok := currentUser.Content.([]map[string]any)
@@ -634,6 +637,9 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	if len(messages) != 5 {
 		t.Fatalf("expected 5 messages, got %d", len(messages))
 	}
+	if messages[1].Role != "system" || messages[1].Content != chatOutputConstraint {
+		t.Fatalf("expected output constraint immediately after anchor for cache reuse, got %#v", messages[1])
+	}
 	if messages[2].Role != "system" {
 		t.Fatalf("expected memory document to be inserted as system message")
 	}
@@ -645,8 +651,8 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 			t.Fatalf("memory document prompt should not expose legacy label %q: %#v", forbidden, messages[2].Content)
 		}
 	}
-	if messages[3].Role != "system" || messages[3].Content != chatOutputConstraint {
-		t.Fatalf("expected output constraint before current user input, got %#v", messages[3])
+	if messages[3].Role != "system" || messages[3].Content != "context" {
+		t.Fatalf("expected dynamic context before current user input, got %#v", messages[3])
 	}
 	if messages[4].Content != "hello" {
 		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
@@ -897,11 +903,14 @@ func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 	if len(messages) != 5 {
 		t.Fatalf("expected 5 messages, got %d", len(messages))
 	}
-	if messages[2].Role != "system" || messages[2].Content != todayAgriContext {
-		t.Fatalf("expected today agri context before output constraint, got %#v", messages[2])
+	if messages[1].Role != "system" || messages[1].Content != chatOutputConstraint {
+		t.Fatalf("expected output constraint immediately after anchor for cache reuse, got %#v", messages[1])
 	}
-	if messages[3].Role != "system" || messages[3].Content != chatOutputConstraint {
-		t.Fatalf("expected output constraint as the last system message before user input, got %#v", messages[3])
+	if messages[2].Role != "system" || messages[2].Content != todayAgriContext {
+		t.Fatalf("expected today agri context after stable output constraint, got %#v", messages[2])
+	}
+	if messages[3].Role != "system" || messages[3].Content != "context" {
+		t.Fatalf("expected dynamic context before user input, got %#v", messages[3])
 	}
 	if messages[4].Role != "user" || messages[4].Content != "刚才第二条什么意思" {
 		t.Fatalf("expected current user message after output constraint, got %#v", messages[4])
