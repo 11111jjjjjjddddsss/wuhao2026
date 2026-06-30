@@ -70,9 +70,6 @@ func (s *SummaryService) log() *slog.Logger {
 }
 
 func GetMemoryDocumentInterval(tier Tier) int {
-	if tier == TierPro {
-		return 9
-	}
 	return 6
 }
 

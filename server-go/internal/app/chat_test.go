@@ -1243,14 +1243,14 @@ func TestTierWindowsAndSummaryIntervalsMatchBusinessRules(t *testing.T) {
 	if got := getAWindowByTier(TierPlus); got != 6 {
 		t.Fatalf("plus a-window mismatch: %d", got)
 	}
-	if got := getAWindowByTier(TierPro); got != 9 {
+	if got := getAWindowByTier(TierPro); got != 6 {
 		t.Fatalf("pro a-window mismatch: %d", got)
 	}
 
 	if got := GetMemoryDocumentInterval(TierFree); got != 6 {
 		t.Fatalf("free/plus memory interval mismatch: %d", got)
 	}
-	if got := GetMemoryDocumentInterval(TierPro); got != 9 {
+	if got := GetMemoryDocumentInterval(TierPro); got != 6 {
 		t.Fatalf("pro memory interval mismatch: %d", got)
 	}
 }
