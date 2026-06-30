@@ -5,6 +5,7 @@
 
 ## 2026-07-01
 
+- 复查 GPT relay 两家中转连接和小样本回答质量：生产配置确认为 `GPT_RELAY_MODEL=gpt-5.5`、`reasoning.effort=medium`、`search_context_size=low`、15 秒上游可见正文首字、同平台最多 5 把 Key；中转联盟和大大科技各 5 个 Key 槽位均从 ECS 直连流式探针返回 200，短文本首字约 1.6-2.8 秒，本轮未见连接失败。同步跑普通番茄问诊和联网玉米病虫害小样本，两家答案整体能做到中文、非客服腔、结论前置、不用表格、能提示不确定性和追问线索，适合继续小流量观察；风险是复杂普通问诊里中转联盟样本首字曾到约 33 秒、在 App 真实 15 秒策略下会回退百炼，大大科技样本首字约 11 秒但总耗时约 61 秒，联网样本输入 token 接近 9.5k 且搜索事件统计不等同于“只搜一次”硬保证。ECS 私密环境同时清理了旧手工粘贴残留的裸 URL / 裸 Key 列表，未改正式 `GPT_RELAY_PROVIDER_*` 和 `DASHSCOPE_*` 配置，避免运维脚本 `source server.env` 被旧残留绊倒；真实 Key 和完整 URL 不进入仓库或文档。
 - GPT relay 按用户最终口径继续收口：每一波 15 秒只请求一个平台，只看该平台上游用户可见正文首字；15 秒内无正文直接百炼 / 千问兜底，不在同一波切另一家 GPT provider。选定平台内部仍允许最多 5 把 Key 快速轮询，开流前失败或可重试状态只换同平台下一把；删除 GPT relay Key 冷却和进程内熔断运行逻辑，旧连接 / TLS / 响应头阶段限制和 7+7 同轮短探针仍保持退役。readiness 不再把 `GPT_RELAY_KEY_COOLDOWN_SECONDS`、`GPT_RELAY_CIRCUIT_*` 或旧网络 / retry 变量列为正常配置，若生产 env 残留这些退役变量会失败提示清理；`GPT_RELAY_KEY_MAX_ATTEMPTS` 只允许作为同平台 Key 尝试硬上限，最大 5。GPT 思维档位仍为 medium，联网仍为 `tool_choice=auto + search_context_size=low`，主对话锚点、`【输出约束】`、GPT 专用规则、图片入参、记忆摘要模型、Android 正式包均不改。
 ## 2026-06-30
 
