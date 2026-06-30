@@ -1,8 +1,10 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -119,6 +121,92 @@ func TestGPTRelayOpenStreamUsesMinimalResponsesPayload(t *testing.T) {
 	if _, ok := imagePart["detail"]; ok {
 		t.Fatalf("gpt relay should not set image detail: %#v", imagePart)
 	}
+}
+
+func TestGPTRelayKeyEntriesUseNonSecretSlotLabels(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	t.Setenv("GPT_RELAY_API_KEY_1", "sk-slot-one")
+	t.Setenv("GPT_RELAY_API_KEY_2", "sk-slot-two")
+	t.Setenv("GPT_RELAY_API_KEY", "sk-single")
+	t.Setenv("GPT_RELAY_API_KEYS", "name sk-list-one,sk-list-two")
+
+	entries := gptRelayKeyEntries()
+	if len(entries) != 5 {
+		t.Fatalf("entry count = %d, want 5: %#v", len(entries), entries)
+	}
+	for _, entry := range entries {
+		if entry.Label == "" {
+			t.Fatalf("entry label should be non-empty: %#v", entry)
+		}
+		if strings.Contains(entry.Label, "sk-") {
+			t.Fatalf("entry label leaked key material: %#v", entry)
+		}
+	}
+	wantLabels := []string{
+		"GPT_RELAY_API_KEY_1",
+		"GPT_RELAY_API_KEY_2",
+		"GPT_RELAY_API_KEY",
+		"GPT_RELAY_API_KEYS_1",
+		"GPT_RELAY_API_KEYS_2",
+	}
+	for i, want := range wantLabels {
+		if entries[i].Label != want {
+			t.Fatalf("label[%d]=%q, want %q", i, entries[i].Label, want)
+		}
+	}
+}
+
+func clearGPTRelayKeyEnvForTest(t *testing.T) {
+	t.Helper()
+	for i := 1; i <= defaultGPTRelayMaxConfiguredKeySlot; i++ {
+		t.Setenv(fmt.Sprintf("GPT_RELAY_API_KEY_%d", i), "")
+	}
+	t.Setenv("GPT_RELAY_API_KEY", "")
+	t.Setenv("GPT_RELAY_API_KEYS", "")
+}
+
+func TestGPTRelayAttemptLogDoesNotLeakAPIKey(t *testing.T) {
+	var logs bytes.Buffer
+	client := NewGPTRelayClientFromEnv()
+	client.SetLogger(slog.New(slog.NewJSONHandler(&logs, nil)))
+
+	client.logKeyAttempt("gpt relay key attempt failed",
+		"attempt", 1,
+		"key_slot", "GPT_RELAY_API_KEY_1",
+		"error_kind", "response_header_timeout",
+	)
+
+	text := logs.String()
+	if !strings.Contains(text, "GPT_RELAY_API_KEY_1") {
+		t.Fatalf("log should include key slot label: %s", text)
+	}
+	if strings.Contains(text, "sk-") {
+		t.Fatalf("log leaked key material: %s", text)
+	}
+}
+
+func TestClassifyGPTRelayAttemptError(t *testing.T) {
+	cases := map[string]string{
+		"net/http: timeout awaiting response headers": "response_header_timeout",
+		"TLS handshake timeout":                       "tls_handshake_timeout",
+		"dial tcp: i/o timeout":                       "io_timeout",
+		"context deadline exceeded":                   "context_deadline_exceeded",
+		"context canceled":                            "context_canceled",
+		"read: connection reset by peer":              "connection_reset",
+		"EOF":                                         "eof",
+	}
+	for input, want := range cases {
+		err := errString(input)
+		if got := classifyGPTRelayAttemptError(err); got != want {
+			t.Fatalf("classify(%q)=%q, want %q", input, got, want)
+		}
+	}
+}
+
+type errString string
+
+func (e errString) Error() string {
+	return string(e)
 }
 
 func TestNormalizeGPTRelayAPIKeyAcceptsProviderTokenFormats(t *testing.T) {

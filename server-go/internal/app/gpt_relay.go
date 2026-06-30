@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -37,6 +38,7 @@ const (
 
 type GPTRelayClient struct {
 	httpClient                 *http.Client
+	logger                     *slog.Logger
 	cooldownMu                 sync.Mutex
 	keyCooldown                map[string]time.Time
 	selectionMu                sync.Mutex
@@ -50,6 +52,7 @@ type GPTRelayClient struct {
 
 type gptRelayAPIKeyEntry struct {
 	Value string
+	Label string
 }
 
 type gptRelayCircuitEvent struct {
@@ -73,6 +76,13 @@ func NewGPTRelayClientFromEnv() *GPTRelayClient {
 		httpClient:  newGPTRelayHTTPClient(),
 		keyCooldown: map[string]time.Time{},
 	}
+}
+
+func (c *GPTRelayClient) SetLogger(logger *slog.Logger) {
+	if c == nil {
+		return
+	}
+	c.logger = logger
 }
 
 func newGPTRelayHTTPClient() *http.Client {
@@ -231,22 +241,49 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, endpoint string, 
 			break
 		}
 		attempted[key.Value] = true
+		attemptStartedAt := time.Now()
 		resp, err := c.sendPayload(ctx, endpoint, payload, key.Value)
+		elapsedMs := time.Since(attemptStartedAt).Milliseconds()
 		if err != nil {
 			c.coolDownKey(key.Value)
 			lastErr = err
 			if ctx.Err() != nil {
 				return nil, err
 			}
+			c.logKeyAttempt("gpt relay key attempt failed",
+				"attempt", attempt+1,
+				"max_attempts", maxAttempts,
+				"key_slot", key.Label,
+				"elapsed_ms", elapsedMs,
+				"error_kind", classifyGPTRelayAttemptError(err),
+				"will_retry", attempt+1 < maxAttempts,
+			)
 			continue
 		}
 		if isGPTRelayRetryableStatus(resp.StatusCode) {
 			c.coolDownKey(key.Value)
+			c.logKeyAttempt("gpt relay key attempt retryable status",
+				"attempt", attempt+1,
+				"max_attempts", maxAttempts,
+				"key_slot", key.Label,
+				"elapsed_ms", elapsedMs,
+				"status", resp.StatusCode,
+				"will_retry", attempt+1 < maxAttempts,
+			)
 		}
 		if isGPTRelayRetryableStatus(resp.StatusCode) && attempt+1 < maxAttempts && ctx.Err() == nil {
 			_, _ = readLimitedResponseBody(resp.Body, bailianBodyPreviewLimit)
 			_ = resp.Body.Close()
 			continue
+		}
+		if attempt > 0 {
+			c.logKeyAttempt("gpt relay key attempt recovered",
+				"attempt", attempt+1,
+				"max_attempts", maxAttempts,
+				"key_slot", key.Label,
+				"elapsed_ms", elapsedMs,
+				"previous_attempts", attempt,
+			)
 		}
 		return resp, nil
 	}
@@ -266,6 +303,13 @@ func (c *GPTRelayClient) sendPayload(ctx context.Context, endpoint string, paylo
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
 	return c.httpClient.Do(req)
+}
+
+func (c *GPTRelayClient) logKeyAttempt(msg string, attrs ...any) {
+	if c == nil || c.logger == nil {
+		return
+	}
+	c.logger.Info(msg, attrs...)
 }
 
 func gptRelayEnabled() bool {
@@ -366,7 +410,7 @@ func (c *GPTRelayClient) circuitStateLocked(now time.Time) gptRelayCircuitState 
 
 func gptRelayKeyEntries() []gptRelayAPIKeyEntry {
 	result := []gptRelayAPIKeyEntry{}
-	addKey := func(value string) {
+	addKey := func(value string, label string) {
 		key := normalizeGPTRelayAPIKey(value)
 		if key == "" {
 			return
@@ -376,17 +420,45 @@ func gptRelayKeyEntries() []gptRelayAPIKeyEntry {
 				return
 			}
 		}
-		result = append(result, gptRelayAPIKeyEntry{Value: key})
+		result = append(result, gptRelayAPIKeyEntry{Value: key, Label: label})
 	}
 
 	for i := 1; i <= defaultGPTRelayMaxConfiguredKeySlot; i++ {
-		addKey(os.Getenv(fmt.Sprintf("GPT_RELAY_API_KEY_%d", i)))
+		slot := fmt.Sprintf("GPT_RELAY_API_KEY_%d", i)
+		addKey(os.Getenv(slot), slot)
 	}
-	addKey(os.Getenv("GPT_RELAY_API_KEY"))
-	for _, key := range splitConfiguredKeys(os.Getenv("GPT_RELAY_API_KEYS")) {
-		addKey(key)
+	addKey(os.Getenv("GPT_RELAY_API_KEY"), "GPT_RELAY_API_KEY")
+	for idx, key := range splitConfiguredKeys(os.Getenv("GPT_RELAY_API_KEYS")) {
+		addKey(key, fmt.Sprintf("GPT_RELAY_API_KEYS_%d", idx+1))
 	}
 	return result
+}
+
+func classifyGPTRelayAttemptError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "timeout awaiting response headers"):
+		return "response_header_timeout"
+	case strings.Contains(msg, "tls handshake timeout"):
+		return "tls_handshake_timeout"
+	case strings.Contains(msg, "i/o timeout"):
+		return "io_timeout"
+	case strings.Contains(msg, "context deadline exceeded"):
+		return "context_deadline_exceeded"
+	case strings.Contains(msg, "context canceled"):
+		return "context_canceled"
+	case strings.Contains(msg, "connection refused"):
+		return "connection_refused"
+	case strings.Contains(msg, "connection reset"):
+		return "connection_reset"
+	case strings.Contains(msg, "eof"):
+		return "eof"
+	default:
+		return "request_error"
+	}
 }
 
 func normalizeGPTRelayAPIKey(value string) string {

@@ -133,6 +133,7 @@ func NewServer(logger *slog.Logger) (*Server, error) {
 	}
 	bailian := NewBailianClient()
 	gptRelay := NewGPTRelayClientFromEnv()
+	gptRelay.SetLogger(logger)
 	dypns, err := NewDypnsClientFromEnv()
 	if err != nil {
 		return nil, err
