@@ -9,7 +9,7 @@
 - 真实 Key 和真实中转站 URL 只允许放在本机私密配置里，不能进仓库、日志、后台页面、项目记忆或聊天复述。
 - Android 端仍然不能保存、注入或直连任何模型 Key。
 - 评测时可以记录参数模板、速度、token、错误码和质量结论；不要记录完整密钥、完整请求头或完整供应商账单页。
-- 当前结论只用于人工评估和 `GPT_RELAY_*` 小流量灰度依据。若要正式启用，必须重新走安全、稳定性、成本、隐私和真机回归决策。
+- 当前结论用于人工评估、供应商更换和 `GPT_RELAY_*` 灰度观察。若要扩大流量、替换供应商或改变首字 / 思考 / 联网策略，必须重新走安全、稳定性、成本、隐私和真机回归决策。
 
 ## 当前代码接入口
 
@@ -19,42 +19,20 @@
 - 不复用旧 `CHAT_PRIMARY_*`；旧变量仍应保持退役，readiness 继续拒绝 `CHAT_PRIMARY_ENABLED=true`。
 - 只走 Responses 流式接口；不走普通 Chat Completions 联网。
 - Key 配置兼容 `sk-...`、非 `sk-` 单 token、`label token`、`name=value` 和 `provider:token` 形态，方便后续换供应商；真实 Key 仍只进私密环境。
-- 支持多个 Key 轮询和短冷却；开流前失败可在当前 provider 内换 Key，当前 provider 在 15 秒内没有上游可见正文时回退 Bailian / Qwen。
+- 支持多个 Key 轮询；开流前失败或可重试状态可在当前 provider 内换下一把 Key，不做 GPT relay Key 冷却。当前 provider 在 15 秒内没有上游可见正文时回退 Bailian / Qwen。
 - 单把 Key 开流前失败、可重试 HTTP 状态和后续换 Key 恢复会写入轻量脱敏日志：只记录 `attempt / max_attempts / key_slot / elapsed_ms / error_kind / status / will_retry` 等排障字段，`key_slot` 仅为配置槽位名（如 `GPT_RELAY_API_KEY_3` 或 `GPT_RELAY_API_KEYS_2`），不记录真实 Key、prompt、正文、图片 URL 或中转站完整地址。
-- 多 provider 运行时先按用户请求轮 provider 起手；当前两家应通过 `GPT_RELAY_PROVIDER_1_LABEL=中转联盟`、`GPT_RELAY_PROVIDER_2_LABEL=大大科技` 标清楚，起手顺序就是 `中转联盟 -> 大大科技 -> 中转联盟 -> 大大科技`，不看成功失败，不做 provider 级冷却。每轮只打一家 GPT provider；provider 内部 Key 选择在并发下原子推进。
-- 仓库最新待部署代码中的首字策略为单段 15 秒：从后端收到用户请求开始算，包含 provider 起手、Key 切换、连接、TLS、响应头等待和模型首个可见正文前等待；15 秒内没有上游可见正文首字，就回退 Bailian / Qwen，不在同一轮再切另一家 GPT provider。已吐出可见正文后不在同一条回复中途切模型。
-- GPT relay 不再使用单独的 4 秒连接 / TLS / 响应头切换限制，也不再使用 7+7 同轮短探针。这里的首字只认后端收到上游的用户可见正文，不认 `response.created`、搜索事件、思考 / reasoning 事件、心跳或空白 delta。
+- 多 provider 运行时先按用户请求轮 provider 起手；当前两家应通过 `GPT_RELAY_PROVIDER_1_LABEL=中转联盟`、`GPT_RELAY_PROVIDER_2_LABEL=大大科技` 标清楚，起手顺序就是 `中转联盟 -> 大大科技 -> 中转联盟 -> 大大科技`，不看成功失败，不做 provider 级冷却。每一波 15 秒只打一家 GPT provider，不在同一波切另一家；provider 内部 Key 选择在并发下原子推进。
+- 仓库最新待部署代码中的首字策略为单段 15 秒：从后端收到用户请求开始算，包含 provider 起手、同平台 Key 切换、连接、TLS、响应头等待和模型首个可见正文前等待；15 秒内没有上游可见正文首字，就回退 Bailian / Qwen，不在同一轮再切另一家 GPT provider。已吐出可见正文后不在同一条回复中途切模型。
+- GPT relay 不再使用旧连接 / TLS / 响应头阶段切换限制，也不再使用 7+7 同轮短探针。这里的首字只认后端收到上游的用户可见正文，不认 `response.created`、搜索事件、思考 / reasoning 事件、心跳或空白 delta。
 - GPT 请求带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、历史上下文、本轮文字和图片；GPT 比千问只额外多一段 `【GPT专用规则】`（联网 / 带图高风险深度思考规则）。
 - 为提高上游 prompt cache 命中，当前组装顺序把稳定规则前置：千问 / 百炼链路是“主对话锚点 + `【输出约束】` / 回答参考范本”先行，动态时间地点放到本轮用户消息前；GPT relay 的 Responses `instructions` 是“主对话锚点 + `【输出约束】` / 回答参考范本 + `【GPT专用规则】`”先行，记忆、历史上下文、动态时间地点等后置。今日农情不再进入主聊天 prompt，也不再影响请求 hash。该改动只调顺序和移除农情上下文注入，不改任何提示词正文或联网参数。
 - 当前生产固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto`，并追加“一次联网、够用就答”的联网规则。`high` 曾临时验证，但图片问诊首字明显变慢，暂不作为生产口径。
 - 不设置 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或图片 `detail`。
 - `/healthz` 和后台只暴露 `gpt_relay=disabled / ok / missing_config` 等非敏感状态，不暴露真实 URL、Key 数量、供应商名或账号分组。
 
-## 轻量熔断
+## 首字兜底
 
-GPT relay 有进程内轻量熔断，只跟随 GPT 候选链路，不接管千问链路，也不进入 `/healthz` 硬门禁。
-
-默认触发很保守：
-
-- 连续 8 次 GPT relay 已实际尝试但首字前失败 / 超时，才熔断。
-- 或 5 分钟窗口内至少 30 次 GPT relay 尝试，且失败率达到 70% 以上，才熔断。
-- 熔断后暂停 GPT relay 2 分钟，大多数请求直接走 Bailian / Qwen 兜底，避免每个用户都先撞慢接口。
-- 2 分钟后只放 1 个 GPT relay 探针请求；探针只要出现用户可见正文首字，就立刻关闭熔断并恢复正常尽量走 GPT；探针仍首字前失败，则再暂停 2 分钟。
-
-计入失败的只限 GPT relay 这条候选整体失败，例如开流前整体失败、首字预算耗尽、首字前 `response.failed / completed_without_visible_text / stream_ended_before_visible_text` 等。单把 Key 的冷却、`GPT_RELAY_ENABLED=false`、缺配置、熔断已打开导致跳过、用户切后台 / 客户端断开、千问失败、归档 / 扣次 / 摘要失败都不计入。
-
-可调环境变量：
-
-```text
-GPT_RELAY_CIRCUIT_BREAKER_ENABLED=true
-GPT_RELAY_CIRCUIT_WINDOW_SECONDS=300
-GPT_RELAY_CIRCUIT_OPEN_SECONDS=120
-GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES=8
-GPT_RELAY_CIRCUIT_MIN_REQUESTS=30
-GPT_RELAY_CIRCUIT_FAILURE_PERCENT=70
-```
-
-如果用户明确要求尽量都走 GPT，可以继续调高连续失败阈值、最小样本数或失败率；如果中转站大面积抖动，再调低。直接完全关闭 GPT relay 仍用 `GPT_RELAY_ENABLED=false`。
+当前 GPT relay 不再使用进程内熔断、Key 冷却、旧网络阶段切换或 7+7 同轮短探针。运行时只保留一个主动回退条件：后端在 15 秒内没有收到当前平台的上游用户可见正文首字，就回退 Bailian / Qwen；Key 只允许在同一个 provider 内快速轮换。`GPT_RELAY_CIRCUIT_*` 和 `GPT_RELAY_KEY_COOLDOWN_SECONDS` 属于退役变量，不应继续配置。
 
 灰度前先在服务器私密环境写入脱敏模板对应的真实配置，跑 10 Key 连接性、文字、图片、联网和并发测试；观察慢、贵、错、断或隐私不可接受时，直接关 `GPT_RELAY_ENABLED=false` 回千问。
 

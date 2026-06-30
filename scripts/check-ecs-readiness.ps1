@@ -441,7 +441,7 @@ for key in \
   GPT_RELAY_ENABLED GPT_RELAY_PROVIDER_LABEL GPT_RELAY_BASE_URL GPT_RELAY_RESPONSES_URL GPT_RELAY_MODEL GPT_RELAY_API_KEY GPT_RELAY_API_KEYS GPT_RELAY_API_KEY_1 GPT_RELAY_API_KEY_2 GPT_RELAY_API_KEY_3 GPT_RELAY_API_KEY_4 GPT_RELAY_API_KEY_5 GPT_RELAY_API_KEY_6 GPT_RELAY_API_KEY_7 GPT_RELAY_API_KEY_8 GPT_RELAY_API_KEY_9 GPT_RELAY_API_KEY_10 \
   GPT_RELAY_PROVIDER_1_BASE_URL GPT_RELAY_PROVIDER_1_RESPONSES_URL GPT_RELAY_PROVIDER_1_LABEL GPT_RELAY_PROVIDER_1_API_KEY GPT_RELAY_PROVIDER_1_API_KEYS GPT_RELAY_PROVIDER_1_API_KEY_1 GPT_RELAY_PROVIDER_1_API_KEY_2 GPT_RELAY_PROVIDER_1_API_KEY_3 GPT_RELAY_PROVIDER_1_API_KEY_4 GPT_RELAY_PROVIDER_1_API_KEY_5 GPT_RELAY_PROVIDER_1_API_KEY_6 GPT_RELAY_PROVIDER_1_API_KEY_7 GPT_RELAY_PROVIDER_1_API_KEY_8 GPT_RELAY_PROVIDER_1_API_KEY_9 GPT_RELAY_PROVIDER_1_API_KEY_10 \
   GPT_RELAY_PROVIDER_2_BASE_URL GPT_RELAY_PROVIDER_2_RESPONSES_URL GPT_RELAY_PROVIDER_2_LABEL GPT_RELAY_PROVIDER_2_API_KEY GPT_RELAY_PROVIDER_2_API_KEYS GPT_RELAY_PROVIDER_2_API_KEY_1 GPT_RELAY_PROVIDER_2_API_KEY_2 GPT_RELAY_PROVIDER_2_API_KEY_3 GPT_RELAY_PROVIDER_2_API_KEY_4 GPT_RELAY_PROVIDER_2_API_KEY_5 GPT_RELAY_PROVIDER_2_API_KEY_6 GPT_RELAY_PROVIDER_2_API_KEY_7 GPT_RELAY_PROVIDER_2_API_KEY_8 GPT_RELAY_PROVIDER_2_API_KEY_9 GPT_RELAY_PROVIDER_2_API_KEY_10 \
-  GPT_RELAY_REASONING_EFFORT GPT_RELAY_SEARCH_CONTEXT_SIZE GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS GPT_RELAY_IDLE_CONN_TIMEOUT_SECONDS GPT_RELAY_KEY_MAX_ATTEMPTS GPT_RELAY_KEY_COOLDOWN_SECONDS GPT_RELAY_CIRCUIT_BREAKER_ENABLED GPT_RELAY_CIRCUIT_WINDOW_SECONDS GPT_RELAY_CIRCUIT_OPEN_SECONDS GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES GPT_RELAY_CIRCUIT_MIN_REQUESTS GPT_RELAY_CIRCUIT_FAILURE_PERCENT \
+  GPT_RELAY_REASONING_EFFORT GPT_RELAY_SEARCH_CONTEXT_SIZE GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS GPT_RELAY_IDLE_CONN_TIMEOUT_SECONDS GPT_RELAY_KEY_MAX_ATTEMPTS \
   DASHSCOPE_API_KEY DASHSCOPE_API_KEY_1 DASHSCOPE_API_KEY_2 DASHSCOPE_API_KEY_3 DASHSCOPE_API_KEYS DASHSCOPE_KEY_COOLDOWN_SECONDS \
   DASHSCOPE_PRIMARY_API_KEY_1 DASHSCOPE_PRIMARY_API_KEY_2 DASHSCOPE_PRIMARY_API_KEY_3 DASHSCOPE_PRIMARY_API_KEY_4 DASHSCOPE_PRIMARY_API_KEYS \
   DASHSCOPE_SECONDARY_API_KEY_1 DASHSCOPE_SECONDARY_API_KEY_2 DASHSCOPE_SECONDARY_API_KEYS \
@@ -488,6 +488,48 @@ if is_truthy "$chat_primary_enabled"; then
   echo 'CHAT_PRIMARY_ENABLED has been retired from the production main chat path; remove it and use the Bailian/Qwen main chain' >&2
   exit 16
 fi
+
+gpt_relay_reasoning_effort=$(env_value GPT_RELAY_REASONING_EFFORT || true)
+if [ -n "$gpt_relay_reasoning_effort" ] && [ "$(printf '%s' "$gpt_relay_reasoning_effort" | tr '[:upper:]' '[:lower:]' | xargs)" != "medium" ]; then
+  echo 'GPT_RELAY_REASONING_EFFORT must stay medium for the current production GPT relay policy' >&2
+  exit 16
+fi
+
+gpt_relay_search_context_size=$(env_value GPT_RELAY_SEARCH_CONTEXT_SIZE || true)
+if [ -n "$gpt_relay_search_context_size" ] && [ "$(printf '%s' "$gpt_relay_search_context_size" | tr '[:upper:]' '[:lower:]' | xargs)" != "low" ]; then
+  echo 'GPT_RELAY_SEARCH_CONTEXT_SIZE must stay low for the current production GPT relay policy' >&2
+  exit 16
+fi
+
+gpt_relay_first_visible_timeout=$(env_value GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS || true)
+if [ -n "$gpt_relay_first_visible_timeout" ] && [ "$(printf '%s' "$gpt_relay_first_visible_timeout" | xargs)" != "15" ]; then
+  echo 'GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS must be 15; only upstream visible-text first byte controls Bailian fallback' >&2
+  exit 16
+fi
+
+gpt_relay_key_max_attempts=$(env_value GPT_RELAY_KEY_MAX_ATTEMPTS || true)
+if [ -n "$gpt_relay_key_max_attempts" ]; then
+  case "$gpt_relay_key_max_attempts" in
+    ''|*[!0-9]*)
+      echo 'GPT_RELAY_KEY_MAX_ATTEMPTS must be a number no greater than 5' >&2
+      exit 16
+      ;;
+    *)
+      if [ "$gpt_relay_key_max_attempts" -gt 5 ]; then
+        echo 'GPT_RELAY_KEY_MAX_ATTEMPTS must be no greater than 5 for the current same-provider key pool' >&2
+        exit 16
+      fi
+      ;;
+  esac
+fi
+
+for retired_gpt_relay_key in GPT_RELAY_KEY_COOLDOWN_SECONDS GPT_RELAY_CIRCUIT_BREAKER_ENABLED GPT_RELAY_CIRCUIT_WINDOW_SECONDS GPT_RELAY_CIRCUIT_OPEN_SECONDS GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES GPT_RELAY_CIRCUIT_MIN_REQUESTS GPT_RELAY_CIRCUIT_FAILURE_PERCENT GPT_RELAY_DIAL_TIMEOUT_SECONDS GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS; do
+  retired_gpt_relay_value=$(env_value "$retired_gpt_relay_key" || true)
+  if [ -n "$retired_gpt_relay_value" ]; then
+    echo "$retired_gpt_relay_key is retired; current GPT relay fallback is only the 15s upstream visible-text gate" >&2
+    exit 16
+  fi
+done
 
 app_android_update_enabled=$(env_value APP_ANDROID_UPDATE_ENABLED || true)
 if is_truthy "$app_android_update_enabled"; then

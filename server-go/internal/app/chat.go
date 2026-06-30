@@ -721,24 +721,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						SearchCount:            gptRelaySearchCount,
 					})
 				}
-				if reason == "first_visible_timeout" {
-					s.gptRelay.coolDownResponseKey(upstream)
-				}
-			}
-			if s.gptRelay != nil {
-				state := s.gptRelay.ObserveCircuitFailure(time.Now(), reason)
-				if state.Trigger != "" {
-					s.logger.Warn("gpt relay circuit opened",
-						"userId", auth.UserID,
-						"clientMsgId", clientMsgID,
-						"trigger", state.Trigger,
-						"open_until", state.OpenUntil.Format(time.RFC3339),
-						"consecutive_failures", state.ConsecutiveFailures,
-						"window_requests", state.WindowRequests,
-						"window_failures", state.WindowFailures,
-						"reason", reason,
-					)
-				}
 			}
 		}
 		s.logger.Warn(
@@ -904,9 +886,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					if firstVisibleMs < 0 {
 						firstVisibleMs = time.Since(requestReceivedAt).Milliseconds()
 						upstreamFirstVisibleMs = time.Since(upstreamOpenedAt).Milliseconds()
-					}
-					if isGPTRelayProvider(upstreamProvider) && s.gptRelay != nil {
-						s.gptRelay.ObserveCircuitSuccess(time.Now())
 					}
 					if firstVisibleTimeout > 0 && !firstVisibleTimer.Stop() {
 						select {
@@ -1328,37 +1307,15 @@ func (s *Server) openValidatedChatStreamWithFallback(ctx context.Context, reques
 			remaining -= time.Since(requestReceivedAt)
 		}
 		if remaining > 0 {
-			circuitState := s.gptRelay.CircuitAllowRequest(time.Now())
-			if !circuitState.Allowed {
-				s.logger.Warn("gpt relay circuit open; fallback to bailian",
-					"open_until", circuitState.OpenUntil.Format(time.RFC3339),
-					"half_open", circuitState.HalfOpen,
-					"consecutive_failures", circuitState.ConsecutiveFailures,
-					"window_requests", circuitState.WindowRequests,
-					"window_failures", circuitState.WindowFailures,
-				)
-			} else {
-				gptRelayCursor := s.gptRelay.newRequestCursor()
-				response, cancelGPT, openFailureReason, err := s.openGPTRelayStreamWithinBudget(ctx, gptRelayMessages, gptRelayCursor, remaining)
-				if err == nil {
-					return response, gptRelayProvider, cancelGPT, gptRelayCursor, nil
-				}
-				if ctx.Err() != nil {
-					s.logger.Warn("gpt relay open aborted by request context; fallback to bailian", "error", ctx.Err().Error())
-				}
-				if ctx.Err() == nil {
-					state := s.gptRelay.ObserveCircuitFailure(time.Now(), openFailureReason)
-					if state.Trigger != "" {
-						s.logger.Warn("gpt relay circuit opened",
-							"trigger", state.Trigger,
-							"open_until", state.OpenUntil.Format(time.RFC3339),
-							"consecutive_failures", state.ConsecutiveFailures,
-							"window_requests", state.WindowRequests,
-							"window_failures", state.WindowFailures,
-						)
-					}
-				}
+			gptRelayCursor := s.gptRelay.newRequestCursor()
+			response, cancelGPT, openFailureReason, err := s.openGPTRelayStreamWithinBudget(ctx, gptRelayMessages, gptRelayCursor, remaining)
+			if err == nil {
+				return response, gptRelayProvider, cancelGPT, gptRelayCursor, nil
 			}
+			if ctx.Err() != nil {
+				s.logger.Warn("gpt relay open aborted by request context; fallback to bailian", "error", ctx.Err().Error())
+			}
+			s.logger.Warn("gpt relay open failed; fallback to bailian", "error", err, "reason", openFailureReason)
 		} else {
 			s.logger.Warn("gpt relay skipped because first visible budget exhausted; fallback to bailian")
 		}

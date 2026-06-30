@@ -243,12 +243,12 @@ func TestGPTRelayProviderSpecificLabelsAreDecorated(t *testing.T) {
 	}
 }
 
-func TestGPTRelayOpenStreamRetriesAcrossProviderSpecificEndpoints(t *testing.T) {
+func TestGPTRelayOpenStreamDoesNotRetryAcrossProviderSpecificEndpoints(t *testing.T) {
 	clearGPTRelayKeyEnvForTest(t)
 	firstHits := int32(0)
 	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&firstHits, 1)
-		http.Error(w, "try next provider", http.StatusBadGateway)
+		http.Error(w, "bad relay", http.StatusBadGateway)
 	}))
 	defer firstServer.Close()
 
@@ -268,7 +268,6 @@ func TestGPTRelayOpenStreamRetriesAcrossProviderSpecificEndpoints(t *testing.T) 
 	defer secondServer.Close()
 
 	t.Setenv("GPT_RELAY_ENABLED", "true")
-	t.Setenv("GPT_RELAY_KEY_MAX_ATTEMPTS", "2")
 	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", firstServer.URL)
 	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one")
 	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", secondServer.URL)
@@ -282,15 +281,18 @@ func TestGPTRelayOpenStreamRetriesAcrossProviderSpecificEndpoints(t *testing.T) 
 		t.Fatalf("open stream: %v", err)
 	}
 	_ = response.Body.Close()
+	if response.StatusCode != http.StatusBadGateway {
+		t.Fatalf("status=%d, want %d", response.StatusCode, http.StatusBadGateway)
+	}
 	if got := atomic.LoadInt32(&firstHits); got != 1 {
 		t.Fatalf("first provider hits=%d, want 1", got)
 	}
-	if got := atomic.LoadInt32(&secondHits); got != 1 {
-		t.Fatalf("second provider hits=%d, want 1", got)
+	if got := atomic.LoadInt32(&secondHits); got != 0 {
+		t.Fatalf("second provider should not be hit within the same request, hits=%d", got)
 	}
 }
 
-func TestGPTRelayFirstVisibleTimeoutKeepsProviderRoundRobin(t *testing.T) {
+func TestGPTRelayProviderRoundRobinIgnoresRetiredCooldownEnv(t *testing.T) {
 	clearGPTRelayKeyEnvForTest(t)
 	firstHits := int32(0)
 	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -319,9 +321,6 @@ func TestGPTRelayFirstVisibleTimeoutKeepsProviderRoundRobin(t *testing.T) {
 	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
 
 	client := NewGPTRelayClientFromEnv()
-	resp := &http.Response{Header: http.Header{}}
-	resp.Header.Set(gptRelayHeaderProviderSlot, "provider_1")
-	resp.Header.Set(gptRelayHeaderKeySlot, "GPT_RELAY_PROVIDER_1_API_KEY_1")
 	firstResponse, err := client.OpenStream(
 		context.Background(),
 		[]BailianMessage{{Role: "user", Content: "test"}},
@@ -332,7 +331,6 @@ func TestGPTRelayFirstVisibleTimeoutKeepsProviderRoundRobin(t *testing.T) {
 	if got := firstResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_1" {
 		t.Fatalf("first provider slot=%q, want provider_1", got)
 	}
-	client.coolDownResponseKey(resp)
 	_ = firstResponse.Body.Close()
 
 	secondResponse, err := client.OpenStream(
@@ -370,7 +368,7 @@ func TestGPTRelayFirstVisibleTimeoutKeepsProviderRoundRobin(t *testing.T) {
 	}
 }
 
-func TestGPTRelayRequestCursorRotatesRequestStarts(t *testing.T) {
+func TestGPTRelayRequestCursorPinsOneProviderPerRequest(t *testing.T) {
 	clearGPTRelayKeyEnvForTest(t)
 	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -407,8 +405,8 @@ func TestGPTRelayRequestCursorRotatesRequestStarts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first request retry relay: %v", err)
 	}
-	if got := firstRetryResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_2" {
-		t.Fatalf("first request retry provider slot=%q, want provider_2", got)
+	if got := firstRetryResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_1" {
+		t.Fatalf("first request retry provider slot=%q, want provider_1", got)
 	}
 	_ = firstRetryResponse.Body.Close()
 
@@ -591,8 +589,6 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenInitialProviderOpenFails(t
 	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_2", "sk-provider-one-backup")
 	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", secondServer.URL)
 	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
-	t.Setenv("GPT_RELAY_KEY_MAX_ATTEMPTS", "20")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS", "1")
 	t.Setenv("BAILIAN_BASE_URL", bailianServer.URL)
 	t.Setenv("DASHSCOPE_API_KEY", "test-bailian")
 
@@ -624,6 +620,84 @@ func TestOpenValidatedChatStreamFallsBackToBailianWhenInitialProviderOpenFails(t
 	}
 	if got := atomic.LoadInt32(&bailianHits); got != 1 {
 		t.Fatalf("bailian should be hit after the selected relay provider fails, hits=%d", got)
+	}
+}
+
+func TestGPTRelayRetriesQuotaBadRequestWithinSameProvider(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	firstHits := int32(0)
+	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&firstHits, 1)
+		switch r.Header.Get("Authorization") {
+		case "Bearer sk-provider-one-1":
+			http.Error(w, `{"error":{"message":"insufficient quota"}}`, http.StatusBadRequest)
+		case "Bearer sk-provider-one-2":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("event: response.completed\n"))
+			_, _ = w.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
+		default:
+			t.Fatalf("unexpected Authorization header: %q", r.Header.Get("Authorization"))
+		}
+	}))
+	defer firstServer.Close()
+
+	secondHits := int32(0)
+	secondServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&secondHits, 1)
+		http.Error(w, "should not hit second provider", http.StatusInternalServerError)
+	}))
+	defer secondServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", firstServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one-1")
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_2", "sk-provider-one-2")
+	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", secondServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
+
+	response, err := NewGPTRelayClientFromEnv().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "test"}},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status=%d, want %d", response.StatusCode, http.StatusOK)
+	}
+	if got := atomic.LoadInt32(&firstHits); got != 2 {
+		t.Fatalf("first provider hits=%d, want 2", got)
+	}
+	if got := atomic.LoadInt32(&secondHits); got != 0 {
+		t.Fatalf("second provider should not be hit within the same request, hits=%d", got)
+	}
+}
+
+func TestGPTRelayKeyMaxAttemptsIsCappedAtFive(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	hits := int32(0)
+	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&hits, 1)
+		http.Error(w, "bad relay", http.StatusBadGateway)
+	}))
+	defer modelServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_KEY_MAX_ATTEMPTS", "20")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", modelServer.URL)
+	for i := 1; i <= 6; i++ {
+		t.Setenv(fmt.Sprintf("GPT_RELAY_PROVIDER_1_API_KEY_%d", i), fmt.Sprintf("sk-provider-one-%d", i))
+	}
+
+	client := NewGPTRelayClientFromEnv()
+	response, err := client.OpenStream(context.Background(), []BailianMessage{{Role: "user", Content: "test"}})
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	defer response.Body.Close()
+	if got := atomic.LoadInt32(&hits); got != 5 {
+		t.Fatalf("provider key attempts=%d, want 5", got)
 	}
 }
 
@@ -671,7 +745,7 @@ func TestOpenValidatedChatStreamDoesNotCallGPTRelayWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestOpenValidatedChatStreamSkipsGPTRelayWhenCircuitOpen(t *testing.T) {
+func TestOpenValidatedChatStreamIgnoresRetiredCircuitEnv(t *testing.T) {
 	gptHits := int32(0)
 	gptServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&gptHits, 1)
@@ -716,15 +790,15 @@ func TestOpenValidatedChatStreamSkipsGPTRelayWhenCircuitOpen(t *testing.T) {
 			t.Fatalf("provider %d = %q, want bailian", i+1, provider)
 		}
 	}
-	if got := atomic.LoadInt32(&gptHits); got != 1 {
-		t.Fatalf("second request should skip open circuit, gpt hits=%d", got)
+	if got := atomic.LoadInt32(&gptHits); got != 2 {
+		t.Fatalf("retired circuit env should not skip gpt relay, gpt hits=%d", got)
 	}
 	if got := atomic.LoadInt32(&bailianHits); got != 2 {
 		t.Fatalf("both requests should reach bailian fallback, hits=%d", got)
 	}
 }
 
-func TestOpenValidatedChatStreamDoesNotCountCanceledRequestAsCircuitFailure(t *testing.T) {
+func TestOpenValidatedChatStreamCanceledRequestFailsWithoutCircuitState(t *testing.T) {
 	gptServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "should not count canceled request", http.StatusBadGateway)
 	}))
@@ -762,15 +836,11 @@ func TestOpenValidatedChatStreamDoesNotCountCanceledRequestAsCircuitFailure(t *t
 	if err == nil {
 		t.Fatal("expected canceled context to fail opening fallback stream")
 	}
-	state := server.gptRelay.CircuitAllowRequest(time.Now())
-	if state.ConsecutiveFailures != 0 || state.WindowFailures != 0 {
-		t.Fatalf("canceled request should not count as circuit failure, state=%#v", state)
-	}
 }
 
 func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "16")
 	if got := resolveChatStreamFirstVisibleTimeoutForProvider(gptRelayProvider); got != defaultGPTRelayFirstVisibleTimeout {
 		t.Fatalf("default gpt relay first visible timeout = %s, want %s", got, defaultGPTRelayFirstVisibleTimeout)
 	}
@@ -782,19 +852,10 @@ func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 	}
 }
 
-func TestGPTRelayFirstVisibleRetryAttemptsAreDisabled(t *testing.T) {
-	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS", "2")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "7")
-	if got := resolveGPTRelayFirstVisibleRetryAttempts(); got != 0 {
-		t.Fatalf("gpt relay first visible retry attempts = %d, want 0", got)
-	}
-}
-
 func TestGPTRelayHTTPClientDoesNotUseNetworkPhaseTimeouts(t *testing.T) {
-	t.Setenv("GPT_RELAY_DIAL_TIMEOUT_SECONDS", "4")
-	t.Setenv("GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS", "4")
-	t.Setenv("GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS", "4")
+	t.Setenv("GPT_RELAY_DIAL_TIMEOUT_SECONDS", "99")
+	t.Setenv("GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS", "99")
+	t.Setenv("GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS", "99")
 	client := newGPTRelayHTTPClient()
 	transport, ok := client.Transport.(*http.Transport)
 	if !ok {
@@ -852,78 +913,12 @@ func TestGPTRelayFirstVisibleTimeoutCountsFromRequestReceived(t *testing.T) {
 	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "16")
 
 	remaining := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 14*time.Second)
-	if remaining < 1900*time.Millisecond || remaining > 2100*time.Millisecond {
-		t.Fatalf("remaining first visible timeout = %s, want about 2s", remaining)
+	if remaining < 900*time.Millisecond || remaining > 1100*time.Millisecond {
+		t.Fatalf("remaining first visible timeout = %s, want about 1s", remaining)
 	}
 
 	if got := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 17*time.Second); got != time.Millisecond {
 		t.Fatalf("exhausted first visible timeout = %s, want 1ms", got)
-	}
-}
-
-func TestGPTRelayCircuitOpensAfterConsecutiveFailuresAndHalfOpenProbe(t *testing.T) {
-	t.Setenv("GPT_RELAY_CIRCUIT_BREAKER_ENABLED", "true")
-	t.Setenv("GPT_RELAY_CIRCUIT_WINDOW_SECONDS", "300")
-	t.Setenv("GPT_RELAY_CIRCUIT_OPEN_SECONDS", "60")
-	t.Setenv("GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES", "8")
-	t.Setenv("GPT_RELAY_CIRCUIT_MIN_REQUESTS", "30")
-	t.Setenv("GPT_RELAY_CIRCUIT_FAILURE_PERCENT", "70")
-
-	client := NewGPTRelayClientFromEnv()
-	now := time.Unix(1000, 0)
-	for i := 0; i < 7; i++ {
-		state := client.ObserveCircuitFailure(now.Add(time.Duration(i)*time.Second), "first_visible_timeout")
-		if state.Open {
-			t.Fatalf("circuit should stay closed before threshold, state=%#v", state)
-		}
-	}
-	opened := client.ObserveCircuitFailure(now.Add(7*time.Second), "first_visible_timeout")
-	if !opened.Open || opened.Trigger != "consecutive_failures" {
-		t.Fatalf("circuit should open after consecutive failures, state=%#v", opened)
-	}
-	blocked := client.CircuitAllowRequest(now.Add(8 * time.Second))
-	if blocked.Allowed || !blocked.Open {
-		t.Fatalf("circuit should block while open, state=%#v", blocked)
-	}
-	probe := client.CircuitAllowRequest(now.Add(68 * time.Second))
-	if !probe.Allowed || !probe.HalfOpen {
-		t.Fatalf("first request after open period should be half-open probe, state=%#v", probe)
-	}
-	second := client.CircuitAllowRequest(now.Add(69 * time.Second))
-	if second.Allowed {
-		t.Fatalf("half-open should allow only one probe before result, state=%#v", second)
-	}
-	recovered := client.ObserveCircuitSuccess(now.Add(70 * time.Second))
-	if recovered.Open || recovered.HalfOpen || recovered.ConsecutiveFailures != 0 {
-		t.Fatalf("successful probe should close circuit, state=%#v", recovered)
-	}
-	if allow := client.CircuitAllowRequest(now.Add(71 * time.Second)); !allow.Allowed {
-		t.Fatalf("circuit should allow after successful probe, state=%#v", allow)
-	}
-}
-
-func TestGPTRelayCircuitOpensByFailureRateOnlyWithMinimumSamples(t *testing.T) {
-	t.Setenv("GPT_RELAY_CIRCUIT_BREAKER_ENABLED", "true")
-	t.Setenv("GPT_RELAY_CIRCUIT_WINDOW_SECONDS", "300")
-	t.Setenv("GPT_RELAY_CIRCUIT_OPEN_SECONDS", "60")
-	t.Setenv("GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES", "100")
-	t.Setenv("GPT_RELAY_CIRCUIT_MIN_REQUESTS", "30")
-	t.Setenv("GPT_RELAY_CIRCUIT_FAILURE_PERCENT", "70")
-
-	client := NewGPTRelayClientFromEnv()
-	now := time.Unix(2000, 0)
-	for i := 0; i < 20; i++ {
-		client.ObserveCircuitFailure(now.Add(time.Duration(i)*time.Second), "open_failed")
-	}
-	for i := 20; i < 29; i++ {
-		client.ObserveCircuitSuccess(now.Add(time.Duration(i) * time.Second))
-	}
-	if state := client.CircuitAllowRequest(now.Add(29 * time.Second)); !state.Allowed || state.Open {
-		t.Fatalf("failure rate should not open before min samples, state=%#v", state)
-	}
-	opened := client.ObserveCircuitFailure(now.Add(30*time.Second), "open_failed")
-	if !opened.Open || opened.Trigger != "failure_rate" || opened.WindowRequests != 30 || opened.WindowFailures != 21 {
-		t.Fatalf("failure rate should open at min sample threshold, state=%#v", opened)
 	}
 }
 
