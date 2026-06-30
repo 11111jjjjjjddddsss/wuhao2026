@@ -3715,7 +3715,7 @@ function modelCallStatusCell(row: AdminModelCallRecord): string {
   const level: "ok" | "warn" | "bad" | "info" =
     ["ok", "first_visible"].includes(status) ? "ok" :
     ["failed", "open_failed", "stream_open_failed", "timeout", "idle", "empty_reply", "incomplete"].includes(status) ? "bad" :
-    ["retryable_status", "client_disconnected"].includes(status) ? "warn" :
+    ["retryable_status", "client_disconnected", "first_visible_timeout"].includes(status) ? "warn" :
     "info";
   const details = [
     row.http_status ? `HTTP ${row.http_status}` : "",

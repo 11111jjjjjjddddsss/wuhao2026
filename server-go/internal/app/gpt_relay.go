@@ -17,9 +17,9 @@ import (
 
 const (
 	gptRelayProvider                          = "gpt_relay"
-	gptRelayHeaderProviderLabel              = "X-Nongji-Gpt-Provider-Label"
-	gptRelayHeaderProviderSlot               = "X-Nongji-Gpt-Provider-Slot"
-	gptRelayHeaderKeySlot                    = "X-Nongji-Gpt-Key-Slot"
+	gptRelayHeaderProviderLabel               = "X-Nongji-Gpt-Provider-Label"
+	gptRelayHeaderProviderSlot                = "X-Nongji-Gpt-Provider-Slot"
+	gptRelayHeaderKeySlot                     = "X-Nongji-Gpt-Key-Slot"
 	defaultGPTRelayModel                      = "gpt-5.5"
 	defaultGPTRelayReasoningEffort            = "medium"
 	defaultGPTRelaySearchContextSize          = "low"
@@ -30,6 +30,9 @@ const (
 	defaultGPTRelayIdleConnTimeout            = 60 * time.Second
 	defaultGPTRelayKeyCooldown                = 30 * time.Second
 	defaultGPTRelayKeyMaxAttempts             = 10
+	defaultGPTRelayFirstVisibleRetryAttempts  = 1
+	defaultGPTRelayFirstVisibleRetryTimeout   = 6 * time.Second
+	maxGPTRelayFirstVisibleRetryAttempts      = 2
 	defaultGPTRelayMaxConfiguredProviderSlot  = 10
 	defaultGPTRelayMaxConfiguredKeySlot       = 50
 	defaultGPTRelayCircuitWindow              = 5 * time.Minute
@@ -389,6 +392,27 @@ func (c *GPTRelayClient) decorateResponseWithKeyMetadata(resp *http.Response, ke
 	resp.Header.Set(gptRelayHeaderProviderLabel, key.ProviderLabel)
 	resp.Header.Set(gptRelayHeaderProviderSlot, key.ProviderSlot)
 	resp.Header.Set(gptRelayHeaderKeySlot, key.Label)
+}
+
+func (c *GPTRelayClient) coolDownResponseKey(resp *http.Response) {
+	if c == nil || resp == nil {
+		return
+	}
+	providerSlot := strings.TrimSpace(resp.Header.Get(gptRelayHeaderProviderSlot))
+	keySlot := strings.TrimSpace(resp.Header.Get(gptRelayHeaderKeySlot))
+	if keySlot == "" {
+		return
+	}
+	for _, key := range gptRelayRequestEntries() {
+		if key.Label != keySlot {
+			continue
+		}
+		if providerSlot != "" && key.ProviderSlot != providerSlot {
+			continue
+		}
+		c.coolDownKey(key.identity())
+		return
+	}
 }
 
 func gptRelayEnabled() bool {
@@ -775,6 +799,32 @@ func resolveGPTRelayFirstVisibleTimeout(maxDuration time.Duration) time.Duration
 	duration := envDurationWithDefault("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", defaultGPTRelayFirstVisibleTimeout)
 	if duration <= 0 {
 		return defaultGPTRelayFirstVisibleTimeout
+	}
+	if maxDuration > 0 && duration > maxDuration {
+		return maxDuration
+	}
+	return duration
+}
+
+func resolveGPTRelayFirstVisibleRetryAttempts() int {
+	value := envIntWithDefault("GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS", defaultGPTRelayFirstVisibleRetryAttempts)
+	if value < 0 {
+		return 0
+	}
+	if value > maxGPTRelayFirstVisibleRetryAttempts {
+		return maxGPTRelayFirstVisibleRetryAttempts
+	}
+	return value
+}
+
+func resolveGPTRelayFirstVisibleRetryTimeout(maxDuration time.Duration) time.Duration {
+	duration := envDurationWithDefault("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", defaultGPTRelayFirstVisibleRetryTimeout)
+	if duration <= 0 {
+		return defaultGPTRelayFirstVisibleRetryTimeout
+	}
+	firstVisibleTimeout := resolveGPTRelayFirstVisibleTimeout(maxDuration)
+	if firstVisibleTimeout > 0 && duration > firstVisibleTimeout {
+		duration = firstVisibleTimeout
 	}
 	if maxDuration > 0 && duration > maxDuration {
 		return maxDuration

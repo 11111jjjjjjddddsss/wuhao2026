@@ -492,12 +492,12 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	requestID := RequestIDFromContext(r.Context())
 	modelCallMeta := modelCallContext{
-		Chain:            "main_chat",
-		UserID:           auth.UserID,
-		ClientMsgID:      clientMsgID,
-		RequestID:        requestID,
-		Tier:             string(tier),
-		ImageCount:       len(images),
+		Chain:           "main_chat",
+		UserID:          auth.UserID,
+		ClientMsgID:     clientMsgID,
+		RequestID:       requestID,
+		Tier:            string(tier),
+		ImageCount:      len(images),
 		PromptHasImages: promptHasImages,
 		ForcedSearch:    forceSearch,
 		SearchStrategy:  "responses_auto_low",
@@ -675,12 +675,159 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	lastFallbackOpenMs := int64(-1)
 	firstVisibleMs := int64(-1)
 	upstreamFirstVisibleMs := int64(-1)
+	gptRelayFirstVisibleRetries := 0
+	maxGPTRelayFirstVisibleRetries := resolveGPTRelayFirstVisibleRetryAttempts()
+	retryNextGPTRelayBeforeBailian := func(reason string) bool {
+		if reason != "first_visible_timeout" || s.gptRelay == nil || gptRelayFirstVisibleRetries >= maxGPTRelayFirstVisibleRetries {
+			return false
+		}
+		if !isGPTRelayProvider(upstreamProvider) || strings.TrimSpace(assistantText.String()) != "" {
+			return false
+		}
+		if clientDisconnected.Load() {
+			return false
+		}
+		gptRelayFirstVisibleRetries++
+		providerLabel, providerSlot, keySlot := modelCallProviderMetadata(upstreamProvider, upstream)
+		s.insertModelCallRecordAsync(ModelCallRecordInput{
+			RecordType:             "key_attempt",
+			Chain:                  "main_chat",
+			UserID:                 auth.UserID,
+			ClientMsgID:            clientMsgID,
+			RequestID:              requestID,
+			UpstreamRequestID:      upstreamRequestID,
+			Provider:               gptRelayProvider,
+			ProviderLabel:          providerLabel,
+			ProviderSlot:           providerSlot,
+			KeySlot:                keySlot,
+			Model:                  gptRelayModelName(),
+			Status:                 "first_visible_timeout",
+			FallbackReason:         "retry_next_gpt_relay",
+			Tier:                   string(tier),
+			ImageCount:             len(images),
+			PromptHasImages:        promptHasImages,
+			ForcedSearch:           forceSearch,
+			SearchStrategy:         "responses_auto_low",
+			ReasoningEffort:        gptRelayReasoningEffort(),
+			ThinkingEnabled:        thinkingOptions.EnableThinking,
+			ThinkingBudget:         thinkingOptions.ThinkingBudget,
+			OpenMs:                 upstreamOpenMs,
+			RequestToOpenMs:        requestToUpstreamOpenMs,
+			FirstVisibleMs:         -1,
+			UpstreamFirstVisibleMs: -1,
+			TotalMs:                time.Since(requestReceivedAt).Milliseconds(),
+		})
+		s.gptRelay.coolDownResponseKey(upstream)
+		s.logger.Warn(
+			"gpt relay first visible timeout; retry next relay",
+			"userId", auth.UserID,
+			"clientMsgId", clientMsgID,
+			"request_id", upstreamRequestID,
+			"provider_label", providerLabel,
+			"provider_slot", providerSlot,
+			"key_slot", keySlot,
+			"retry", gptRelayFirstVisibleRetries,
+			"max_retries", maxGPTRelayFirstVisibleRetries,
+			"forced_search", forceSearch,
+		)
+		_ = upstream.Body.Close()
+		upstreamProviderCancel()
+		stopReadLoop()
+		retryOpenStartedAt := time.Now()
+		retryCtx, retryCancel := context.WithCancel(upstreamCtx)
+		retryBudget := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration())
+		budgetTimer := time.AfterFunc(retryBudget, retryCancel)
+		retryResponse, retryErr := s.openValidatedGPTRelayStream(retryCtx, gptRelayPromptMessages)
+		timerStopped := budgetTimer.Stop()
+		retryOpenedAt := time.Now()
+		if retryErr != nil {
+			retryCancel()
+			s.logger.Warn(
+				"gpt relay first visible retry open failed; fallback to bailian",
+				"userId", auth.UserID,
+				"clientMsgId", clientMsgID,
+				"error", sanitizeDashScopeErrorMessage(retryErr.Error()),
+				"retry", gptRelayFirstVisibleRetries,
+				"forced_search", forceSearch,
+			)
+			return false
+		}
+		if !timerStopped || retryCtx.Err() != nil {
+			_ = retryResponse.Body.Close()
+			retryCancel()
+			s.logger.Warn(
+				"gpt relay first visible retry open exceeded budget; fallback to bailian",
+				"userId", auth.UserID,
+				"clientMsgId", clientMsgID,
+				"retry", gptRelayFirstVisibleRetries,
+				"forced_search", forceSearch,
+			)
+			return false
+		}
+		retryElapsed := retryOpenedAt.Sub(retryOpenStartedAt)
+		retryFirstVisibleTimeout := retryBudget - retryElapsed
+		if retryFirstVisibleTimeout <= 0 {
+			_ = retryResponse.Body.Close()
+			retryCancel()
+			s.logger.Warn(
+				"gpt relay first visible retry budget exhausted after open; fallback to bailian",
+				"userId", auth.UserID,
+				"clientMsgId", clientMsgID,
+				"retry", gptRelayFirstVisibleRetries,
+				"retry_budget_ms", retryBudget.Milliseconds(),
+				"retry_open_ms", retryElapsed.Milliseconds(),
+				"forced_search", forceSearch,
+			)
+			return false
+		}
+		upstream = retryResponse
+		upstreamProviderCancel = retryCancel
+		upstreamProvider = gptRelayProvider
+		upstreamRequestID = firstNonEmpty(upstream.Header.Get("x-request-id"), upstream.Header.Get("request-id"))
+		upstreamOpenedAt = retryOpenedAt
+		upstreamOpenMs = retryOpenedAt.Sub(retryOpenStartedAt).Milliseconds()
+		requestToUpstreamOpenMs = retryOpenedAt.Sub(requestReceivedAt).Milliseconds()
+		upstreamEnableSearch, upstreamSearchStrategy, upstreamSingleCallSearch = chatUpstreamSearchLogConfig(upstreamProvider)
+		currentSSEEvent = ""
+		gptRelaySearchCount = 0
+		hasSources.Store(false)
+		hasCitations.Store(false)
+		modelUsage = bailianModelUsage{}
+		readResults, stopReadLoop = startReadLoop(upstream.Body)
+		firstVisibleTimeout = retryFirstVisibleTimeout
+		if !firstVisibleTimer.Stop() {
+			select {
+			case <-firstVisibleTimer.C:
+			default:
+			}
+		}
+		firstVisibleTimer.Reset(firstVisibleTimeout)
+		retryProviderLabel, retryProviderSlot, retryKeySlot := modelCallProviderMetadata(upstreamProvider, upstream)
+		s.logger.Info(
+			"gpt relay first visible retry selected next relay",
+			"userId", auth.UserID,
+			"clientMsgId", clientMsgID,
+			"request_id", upstreamRequestID,
+			"provider_label", retryProviderLabel,
+			"provider_slot", retryProviderSlot,
+			"key_slot", retryKeySlot,
+			"retry", gptRelayFirstVisibleRetries,
+			"open_ms", upstreamOpenMs,
+			"retry_budget_ms", retryBudget.Milliseconds(),
+			"remaining_first_visible_ms", firstVisibleTimeout.Milliseconds(),
+			"forced_search", forceSearch,
+		)
+		return true
+	}
 	fallbackGPTRelayToBailian := func(reason string) bool {
 		if !isGPTRelayProvider(upstreamProvider) || strings.TrimSpace(assistantText.String()) != "" {
 			return false
 		}
 		if clientDisconnected.Load() {
 			return false
+		}
+		if retryNextGPTRelayBeforeBailian(reason) {
+			return true
 		}
 		if gptRelayFallbackReason == "" {
 			gptRelayFallbackReason = reason
@@ -1121,25 +1268,30 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 	providerLabel, providerSlot, keySlot := modelCallProviderMetadata(upstreamProvider, upstream)
 	visibleText := strings.TrimSpace(assistantText.String())
 	s.insertModelCallRecordAsync(ModelCallRecordInput{
-		RecordType:             "stream_final",
-		Chain:                  "main_chat",
-		UserID:                 auth.UserID,
-		ClientMsgID:            clientMsgID,
-		RequestID:              requestID,
-		UpstreamRequestID:      upstreamRequestID,
-		Provider:               upstreamProvider,
-		ProviderLabel:          providerLabel,
-		ProviderSlot:           providerSlot,
-		KeySlot:                keySlot,
-		Model:                  modelCallModelForProvider(upstreamProvider),
-		Status:                 modelCallStreamStatus(sendDoneAfterArchive, doneReceived.Load(), clientDisconnected.Load(), streamTimeoutKind, visibleText != ""),
-		FallbackReason:         gptRelayFallbackReason,
-		Tier:                   string(tier),
-		ImageCount:             len(images),
-		PromptHasImages:        promptHasImages,
-		ForcedSearch:           forceSearch,
-		SearchStrategy:         upstreamSearchStrategy,
-		ReasoningEffort:        func() string { if isGPTRelayProvider(upstreamProvider) { return gptRelayReasoningEffort() }; return "" }(),
+		RecordType:        "stream_final",
+		Chain:             "main_chat",
+		UserID:            auth.UserID,
+		ClientMsgID:       clientMsgID,
+		RequestID:         requestID,
+		UpstreamRequestID: upstreamRequestID,
+		Provider:          upstreamProvider,
+		ProviderLabel:     providerLabel,
+		ProviderSlot:      providerSlot,
+		KeySlot:           keySlot,
+		Model:             modelCallModelForProvider(upstreamProvider),
+		Status:            modelCallStreamStatus(sendDoneAfterArchive, doneReceived.Load(), clientDisconnected.Load(), streamTimeoutKind, visibleText != ""),
+		FallbackReason:    gptRelayFallbackReason,
+		Tier:              string(tier),
+		ImageCount:        len(images),
+		PromptHasImages:   promptHasImages,
+		ForcedSearch:      forceSearch,
+		SearchStrategy:    upstreamSearchStrategy,
+		ReasoningEffort: func() string {
+			if isGPTRelayProvider(upstreamProvider) {
+				return gptRelayReasoningEffort()
+			}
+			return ""
+		}(),
 		ThinkingEnabled:        thinkingOptions.EnableThinking,
 		ThinkingBudget:         thinkingOptions.ThinkingBudget,
 		OpenMs:                 upstreamOpenMs,

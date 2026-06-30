@@ -254,6 +254,53 @@ func TestGPTRelayOpenStreamRetriesAcrossProviderSpecificEndpoints(t *testing.T) 
 	}
 }
 
+func TestGPTRelayCoolDownResponseKeySkipsTimedOutProvider(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	firstHits := int32(0)
+	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&firstHits, 1)
+		http.Error(w, "slow provider should be cooling down", http.StatusInternalServerError)
+	}))
+	defer firstServer.Close()
+
+	secondHits := int32(0)
+	secondServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&secondHits, 1)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
+	}))
+	defer secondServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_KEY_COOLDOWN_SECONDS", "60")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", firstServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one")
+	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", secondServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
+
+	client := NewGPTRelayClientFromEnv()
+	resp := &http.Response{Header: http.Header{}}
+	resp.Header.Set(gptRelayHeaderProviderSlot, "provider_1")
+	resp.Header.Set(gptRelayHeaderKeySlot, "GPT_RELAY_PROVIDER_1_API_KEY_1")
+	client.coolDownResponseKey(resp)
+
+	response, err := client.OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "test"}},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	_ = response.Body.Close()
+	if got := atomic.LoadInt32(&firstHits); got != 0 {
+		t.Fatalf("first provider should be skipped while cooling down, hits=%d", got)
+	}
+	if got := atomic.LoadInt32(&secondHits); got != 1 {
+		t.Fatalf("second provider hits=%d, want 1", got)
+	}
+}
+
 func TestGPTRelayAttemptLogDoesNotLeakAPIKey(t *testing.T) {
 	var logs bytes.Buffer
 	client := NewGPTRelayClientFromEnv()
@@ -545,6 +592,25 @@ func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
 	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "10")
 	if got := resolveChatStreamFirstVisibleTimeoutForProvider(gptRelayProvider); got != 5*time.Second {
 		t.Fatalf("gpt relay first visible timeout should clamp to max duration, got %s", got)
+	}
+}
+
+func TestGPTRelayFirstVisibleRetryTimeoutIsShortProbe(t *testing.T) {
+	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "30")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "16")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "")
+	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != defaultGPTRelayFirstVisibleRetryTimeout {
+		t.Fatalf("default retry first visible timeout = %s, want %s", got, defaultGPTRelayFirstVisibleRetryTimeout)
+	}
+
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "30")
+	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != 16*time.Second {
+		t.Fatalf("retry timeout should clamp to primary first visible timeout, got %s", got)
+	}
+
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS", "4")
+	if got := resolveGPTRelayFirstVisibleRetryTimeout(resolveChatStreamMaxDuration()); got != 4*time.Second {
+		t.Fatalf("configured retry first visible timeout = %s, want 4s", got)
 	}
 }
 
