@@ -580,7 +580,6 @@ func TestGPTRelayPromptVariantIncludesChatOutputConstraintAndNetworkingRule(t *t
 		"current",
 		nil,
 		"context",
-		"",
 		true,
 	)
 	if usedCount != 1 || !hasMemory {

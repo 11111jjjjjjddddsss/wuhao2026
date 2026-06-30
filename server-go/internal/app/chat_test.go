@@ -10,12 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
-
-	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
 func TestSessionRoundAppendRetryPolicy(t *testing.T) {
@@ -363,7 +360,6 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		"current",
 		[]string{"https://img/current.jpg"},
 		"context",
-		"",
 	)
 
 	if usedCount != 2 {
@@ -437,7 +433,6 @@ func TestBuildPromptMessagesDropsExpiredPreviousRoundImages(t *testing.T) {
 		"current",
 		nil,
 		"context",
-		"",
 	)
 
 	if usedCount != 1 {
@@ -453,116 +448,6 @@ func TestBuildPromptMessagesDropsExpiredPreviousRoundImages(t *testing.T) {
 	payload, _ := json.Marshal(historicalUser.Content)
 	if strings.Contains(string(payload), "expired.jpg") {
 		t.Fatalf("expired image URL leaked into prompt content: %#v", historicalUser.Content)
-	}
-}
-
-func TestResolveTodayAgriChatContextRequiresSavedUserItem(t *testing.T) {
-	store, mock, cleanup := newGiftCardSQLMock(t)
-	defer cleanup()
-
-	server := &Server{store: store}
-	userID := "acct_today_context"
-	dayCN := "20260618"
-
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
-		 FROM today_agri_user_items
-		 WHERE user_id = ? AND day_cn = ?
-		 ORDER BY updated_at DESC, day_cn DESC
-		 LIMIT ?`)).
-		WithArgs(userID, dayCN, 1).
-		WillReturnRows(sqlmock.NewRows([]string{"day_cn", "anchor_client_msg_id", "content_json", "created_at", "updated_at"}))
-
-	if got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN); got != "" {
-		t.Fatalf("context without saved item = %q, want empty", got)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("sql expectations: %v", err)
-	}
-}
-
-func TestResolveTodayAgriChatContextUsesSavedDisplayCopy(t *testing.T) {
-	store, mock, cleanup := newGiftCardSQLMock(t)
-	defer cleanup()
-
-	server := &Server{store: store}
-	userID := "acct_today_context"
-	dayCN := "20260618"
-	card := testDailyAgriCard(dayCN)
-	card.Items[0].Summary = "保存后的展示摘要。"
-	raw, err := json.Marshal(card)
-	if err != nil {
-		t.Fatalf("marshal card: %v", err)
-	}
-
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
-		 FROM today_agri_user_items
-		 WHERE user_id = ? AND day_cn = ?
-		 ORDER BY updated_at DESC, day_cn DESC
-		 LIMIT ?`)).
-		WithArgs(userID, dayCN, 1).
-		WillReturnRows(
-			sqlmock.NewRows([]string{"day_cn", "anchor_client_msg_id", "content_json", "created_at", "updated_at"}).
-				AddRow(dayCN, "assistant_anchor_1", string(raw), int64(1700000000000), int64(1700000001000)),
-		)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, created_at FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1")).
-		WithArgs(userID, "anchor_1").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(11), int64(1700000000000)))
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)
-		 FROM session_round_archive
-		 WHERE user_id = ?
-		   AND (created_at > ? OR (created_at = ? AND id > ?))`)).
-		WithArgs(userID, int64(1700000000000), int64(1700000000000), int64(11)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(1)))
-
-	got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN)
-	if !strings.Contains(got, "今日农情界面上下文") {
-		t.Fatalf("context missing heading: %q", got)
-	}
-	if !strings.Contains(got, "保存后的展示摘要。") {
-		t.Fatalf("context did not use saved display copy: %q", got)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("sql expectations: %v", err)
-	}
-}
-
-func TestResolveTodayAgriChatContextStopsAfterTwoArchivedRounds(t *testing.T) {
-	store, mock, cleanup := newGiftCardSQLMock(t)
-	defer cleanup()
-
-	server := &Server{store: store}
-	userID := "acct_today_context"
-	dayCN := "20260618"
-	raw, err := json.Marshal(testDailyAgriCard(dayCN))
-	if err != nil {
-		t.Fatalf("marshal card: %v", err)
-	}
-
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT day_cn, anchor_client_msg_id, content_json, created_at, updated_at
-		 FROM today_agri_user_items
-		 WHERE user_id = ? AND day_cn = ?
-		 ORDER BY updated_at DESC, day_cn DESC
-		 LIMIT ?`)).
-		WithArgs(userID, dayCN, 1).
-		WillReturnRows(
-			sqlmock.NewRows([]string{"day_cn", "anchor_client_msg_id", "content_json", "created_at", "updated_at"}).
-				AddRow(dayCN, "assistant_anchor_1", string(raw), int64(1700000000000), int64(1700000001000)),
-		)
-	mock.ExpectQuery(regexp.QuoteMeta("SELECT id, created_at FROM session_round_archive WHERE user_id = ? AND client_msg_id = ? LIMIT 1")).
-		WithArgs(userID, "anchor_1").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(11), int64(1700000000000)))
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT COUNT(*)
-		 FROM session_round_archive
-		 WHERE user_id = ?
-		   AND (created_at > ? OR (created_at = ? AND id > ?))`)).
-		WithArgs(userID, int64(1700000000000), int64(1700000000000), int64(11)).
-		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(int64(2)))
-
-	if got := server.resolveTodayAgriChatContext(context.Background(), userID, dayCN, dayCN); got != "" {
-		t.Fatalf("context after two rounds = %q, want empty", got)
-	}
-	if err := mock.ExpectationsWereMet(); err != nil {
-		t.Fatalf("sql expectations: %v", err)
 	}
 }
 
@@ -625,7 +510,6 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 		"hello",
 		nil,
 		"context",
-		"",
 	)
 
 	if usedCount != 0 {
@@ -681,7 +565,6 @@ func TestBuildPromptMessagesDoesNotDuplicatePendingMemoryJobStillInWindow(t *tes
 		"继续",
 		nil,
 		"context",
-		"",
 	)
 
 	if usedCount != 2 || hasMemoryDocument {
@@ -720,7 +603,6 @@ func TestBuildPromptMessagesAddsPendingMemoryJobAfterItSlidesOutOfWindow(t *test
 		"继续",
 		nil,
 		"context",
-		"",
 	)
 
 	if usedCount != 2 || hasMemoryDocument {
@@ -764,7 +646,6 @@ func TestBuildPromptMessagesOnlyAddsPendingMemoryRoundsMissingFromActiveWindow(t
 		"继续",
 		nil,
 		"context",
-		"",
 	)
 
 	if usedCount != 3 || hasMemoryDocument {
@@ -815,7 +696,6 @@ func TestBuildPromptMessagesAddsAllPendingMemoryJobsAfterLongOutage(t *testing.T
 		"继续",
 		nil,
 		"context",
-		"",
 	)
 
 	if usedCount != 2 || hasMemoryDocument {
@@ -860,7 +740,7 @@ func TestBuildPromptMessagesDeduplicatesOverlappingPendingMemoryJobs(t *testing.
 		},
 	}
 
-	messages, _, _ := server.buildPromptMessages(snapshot, 1, "继续", nil, "context", "")
+	messages, _, _ := server.buildPromptMessages(snapshot, 1, "继续", nil, "context")
 
 	if len(messages) < 4 || messages[2].Role != "system" {
 		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
@@ -879,11 +759,10 @@ func TestBuildPromptMessagesDeduplicatesOverlappingPendingMemoryJobs(t *testing.
 	}
 }
 
-func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
+func TestBuildPromptMessagesDoesNotAddTodayAgriContext(t *testing.T) {
 	server := &Server{
 		systemAnchor: "anchor",
 	}
-	todayAgriContext := "今日农情界面上下文（来自 App 主界面最近展示的当天资讯；不是用户地块、症状、诊断、长期记忆或账户信息。）\n今日农情 · 6月17日\n\n一、病虫监测"
 
 	messages, usedCount, hasMemoryDocument := server.buildPromptMessages(
 		&SessionSnapshot{UserID: "u1"},
@@ -891,7 +770,6 @@ func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 		"刚才第二条什么意思",
 		nil,
 		"context",
-		todayAgriContext,
 	)
 
 	if usedCount != 0 {
@@ -900,48 +778,22 @@ func TestBuildPromptMessagesAddsTodayAgriContextWhenProvided(t *testing.T) {
 	if hasMemoryDocument {
 		t.Fatalf("expected no memory document")
 	}
-	if len(messages) != 5 {
-		t.Fatalf("expected 5 messages, got %d", len(messages))
+	if len(messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(messages))
 	}
 	if messages[1].Role != "system" || messages[1].Content != chatOutputConstraint {
 		t.Fatalf("expected output constraint immediately after anchor for cache reuse, got %#v", messages[1])
 	}
-	if messages[2].Role != "system" || messages[2].Content != todayAgriContext {
-		t.Fatalf("expected today agri context after stable output constraint, got %#v", messages[2])
-	}
-	if messages[3].Role != "system" || messages[3].Content != "context" {
-		t.Fatalf("expected dynamic context before user input, got %#v", messages[3])
-	}
-	if messages[4].Role != "user" || messages[4].Content != "刚才第二条什么意思" {
-		t.Fatalf("expected current user message after output constraint, got %#v", messages[4])
-	}
-}
-
-func TestFormatTodayAgriChatContextKeepsBoundaryAndReadableItems(t *testing.T) {
-	context := formatTodayAgriChatContext(&DailyAgriCard{
-		DateCN: "20260617",
-		Items: []DailyAgriCardItem{
-			{Title: "病虫监测", Summary: "多地提醒加强田间巡查。", Source: "全国农技中心", URL: "https://example.com/a"},
-			{Title: "栽培管理", Summary: "雨后注意排水。", Source: "农业农村部"},
-			{Title: "产地流通", Summary: "部分蔬菜产区供应恢复。"},
-		},
-	})
-
-	for _, want := range []string{
-		"今日农情界面上下文",
-		"不是用户地块、症状、诊断、长期记忆或账户信息",
-		"今日农情 · 6月17日",
-		"一、病虫监测",
-		"二、栽培管理",
-		"三、产地流通",
-		"来源：全国农技中心",
-	} {
-		if !strings.Contains(context, want) {
-			t.Fatalf("expected context to contain %q, got %q", want, context)
+	for _, message := range messages {
+		if message.Role == "system" && strings.Contains(message.Content.(string), "今日农情界面上下文") {
+			t.Fatalf("today agri context should not be injected into chat prompt: %#v", message.Content)
 		}
 	}
-	if strings.Contains(context, "https://example.com") {
-		t.Fatalf("today agri chat context must not expose raw source URLs: %q", context)
+	if messages[2].Role != "system" || messages[2].Content != "context" {
+		t.Fatalf("expected dynamic context before user input, got %#v", messages[2])
+	}
+	if messages[3].Role != "user" || messages[3].Content != "刚才第二条什么意思" {
+		t.Fatalf("expected current user message after output constraint, got %#v", messages[3])
 	}
 }
 
@@ -961,15 +813,15 @@ func TestNormalizeTodayAgriContextDay(t *testing.T) {
 	}
 }
 
-func TestChatStreamRequestHashIncludesTodayAgriContextDay(t *testing.T) {
-	base := chatStreamRequestHash("hello", nil, "")
-	withDashedDay := chatStreamRequestHash("hello", nil, "2026-06-17")
-	withCompactDay := chatStreamRequestHash("hello", nil, "20260617")
-	if base == withCompactDay {
-		t.Fatalf("expected today agri context day to affect request hash")
+func TestChatStreamRequestHashUsesTextAndImagesOnly(t *testing.T) {
+	base := chatStreamRequestHash("hello", nil)
+	withWhitespace := chatStreamRequestHash(" hello ", nil)
+	withImage := chatStreamRequestHash("hello", []string{"https://img/current.jpg"})
+	if base != withWhitespace {
+		t.Fatalf("expected request hash to normalize surrounding text whitespace")
 	}
-	if withDashedDay != withCompactDay {
-		t.Fatalf("expected normalized today agri context day to keep stable hash")
+	if base == withImage {
+		t.Fatalf("expected images to affect request hash")
 	}
 }
 
@@ -1002,7 +854,6 @@ func TestBuildPromptMessagesIncludesHistoricalRoundTimeWhenAvailable(t *testing.
 		"今天又黄了",
 		nil,
 		"context",
-		"",
 	)
 
 	if usedCount != 1 {

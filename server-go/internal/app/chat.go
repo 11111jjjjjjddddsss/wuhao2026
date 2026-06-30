@@ -36,7 +36,6 @@ const (
 	chatStreamFirstVisibleBoundaryGrace = 150 * time.Millisecond
 	defaultChatThinkingMode             = "always"
 	defaultChatThinkingBudget           = 1024
-	todayAgriContextRoundLimit          = 2
 	chatHistoricalImageContextTTL       = 72 * time.Hour
 )
 
@@ -255,8 +254,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		s.writeError(w, http.StatusBadRequest, validationError)
 		return
 	}
-	todayAgriContextDay := normalizeTodayAgriContextDay(body.TodayAgriContextDay)
-	requestHash := chatStreamRequestHash(text, images, todayAgriContextDay)
+	requestHash := chatStreamRequestHash(text, images)
 
 	ctx := r.Context()
 	if err := s.store.EnsureUser(ctx, auth.UserID, TierFree); err != nil {
@@ -460,9 +458,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		region.Region,
 		region.Reliability,
 	)
-	todayAgriContext := s.resolveTodayAgriChatContext(ctx, auth.UserID, todayAgriContextDay, dayCN)
-	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext)
-	gptRelayPromptMessages, _, _ := s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, text, images, contextHeader, todayAgriContext, true)
+	promptMessages, usedARoundsCount, hasMemoryDocument := s.buildPromptMessages(snapshot, aWindowRounds, text, images, contextHeader)
+	gptRelayPromptMessages, _, _ := s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, text, images, contextHeader, true)
 	promptChars := countBailianMessageContentRunes(promptMessages)
 	promptHasImages := promptIncludesImageContext(snapshot, aWindowRounds, images)
 	thinkingOptions := resolveChatThinkingOptionsForImageContext(promptHasImages)
@@ -488,7 +485,6 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 		"region", region.Region,
 		"region_source", region.Source,
 		"region_reliability", region.Reliability,
-		"has_today_agri_context", todayAgriContext != "",
 		"thinking_enabled", thinkingOptions.EnableThinking,
 		"thinking_budget", thinkingOptions.ThinkingBudget,
 		"forced_search", forceSearch,
@@ -1677,112 +1673,11 @@ func normalizeTodayAgriAnchorClientMsgID(raw string) string {
 	return anchor
 }
 
-func (s *Server) resolveTodayAgriChatContext(ctx context.Context, userID string, requestedDay string, currentDayCN string) string {
-	dayCN := normalizeTodayAgriContextDay(requestedDay)
-	if dayCN == "" || dayCN != currentDayCN || strings.TrimSpace(userID) == "" || s.store == nil {
-		return ""
-	}
-	lookupCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	items, err := s.store.GetTodayAgriUserItems(lookupCtx, userID, dayCN, 1)
-	if err != nil {
-		if s.logger != nil {
-			s.logger.Warn("load saved today agri context failed", "userId", userID, "day_cn", dayCN, "error", err)
-		}
-		return ""
-	}
-	if len(items) == 0 || items[0].DayCN != dayCN {
-		return ""
-	}
-	anchorClientMsgID := normalizeTodayAgriAnchorClientMsgID(items[0].AnchorClientMsgID)
-	if anchorClientMsgID == "" {
-		return ""
-	}
-	roundsAfterAnchor, foundAnchor, err := s.store.CountSessionRoundsAfterClientMsgID(lookupCtx, userID, anchorClientMsgID)
-	if err != nil {
-		if s.logger != nil {
-			s.logger.Warn("count today agri anchor rounds failed", "userId", userID, "day_cn", dayCN, "error", err)
-		}
-		return ""
-	}
-	if !foundAnchor || roundsAfterAnchor >= todayAgriContextRoundLimit {
-		return ""
-	}
-	card := items[0].Card
-	return formatTodayAgriChatContext(&card)
+func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string) ([]BailianMessage, int, bool) {
+	return s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, currentText, currentImages, contextHeader, true)
 }
 
-func formatTodayAgriChatContext(card *DailyAgriCard) string {
-	if card == nil {
-		return ""
-	}
-	items := make([]DailyAgriCardItem, 0, dailyAgriTargetItemCount)
-	for _, item := range card.Items {
-		title := strings.TrimSpace(item.Title)
-		summary := strings.TrimSpace(item.Summary)
-		if title == "" || summary == "" {
-			continue
-		}
-		items = append(items, item)
-		if len(items) == dailyAgriTargetItemCount {
-			break
-		}
-	}
-	if len(items) == 0 {
-		return ""
-	}
-	var builder strings.Builder
-	builder.WriteString("今日农情界面上下文（来自 App 主界面最近展示的当天资讯；不是用户地块、症状、诊断、长期记忆或账户信息。仅当用户明确追问今日农情、刚才/上面展示的农情，或第几条资讯时参考；否则忽略。）\n")
-	builder.WriteString("今日农情")
-	if dateText := formatTodayAgriChatDate(card.DateCN); dateText != "" {
-		builder.WriteString(" · ")
-		builder.WriteString(dateText)
-	}
-	for index, item := range items {
-		builder.WriteString("\n\n")
-		builder.WriteString(todayAgriChatItemPrefix(index))
-		builder.WriteString(strings.TrimSpace(item.Title))
-		builder.WriteString("\n")
-		builder.WriteString(strings.TrimSpace(item.Summary))
-		if source := dailyAgriPublicSourceName(item); source != "" {
-			builder.WriteString("\n来源：")
-			builder.WriteString(source)
-		}
-	}
-	return builder.String()
-}
-
-func formatTodayAgriChatDate(dayCN string) string {
-	dayCN = normalizeTodayAgriContextDay(dayCN)
-	if len(dayCN) != 8 {
-		return ""
-	}
-	month := strings.TrimLeft(dayCN[4:6], "0")
-	day := strings.TrimLeft(dayCN[6:8], "0")
-	if month == "" || day == "" {
-		return ""
-	}
-	return month + "月" + day + "日"
-}
-
-func todayAgriChatItemPrefix(index int) string {
-	switch index {
-	case 0:
-		return "一、"
-	case 1:
-		return "二、"
-	case 2:
-		return "三、"
-	default:
-		return fmt.Sprintf("%d. ", index+1)
-	}
-}
-
-func (s *Server) buildPromptMessages(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string, todayAgriContext string) ([]BailianMessage, int, bool) {
-	return s.buildPromptMessagesWithOptions(snapshot, aWindowRounds, currentText, currentImages, contextHeader, todayAgriContext, true)
-}
-
-func (s *Server) buildPromptMessagesWithOptions(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string, todayAgriContext string, includeOutputConstraint bool) ([]BailianMessage, int, bool) {
+func (s *Server) buildPromptMessagesWithOptions(snapshot *SessionSnapshot, aWindowRounds int, currentText string, currentImages []string, contextHeader string, includeOutputConstraint bool) ([]BailianMessage, int, bool) {
 	rounds := []SessionRound{}
 	hasMemoryDocument := false
 	if snapshot != nil {
@@ -1806,10 +1701,6 @@ func (s *Server) buildPromptMessagesWithOptions(snapshot *SessionSnapshot, aWind
 	if pendingMemoryContext := buildPendingMemoryPromptContext(snapshot, rounds); pendingMemoryContext != "" {
 		messages = append(messages, BailianMessage{Role: "system", Content: pendingMemoryContext})
 	}
-	if trimmedTodayAgriContext := strings.TrimSpace(todayAgriContext); trimmedTodayAgriContext != "" {
-		messages = append(messages, BailianMessage{Role: "system", Content: trimmedTodayAgriContext})
-	}
-
 	previousRoundIndex := len(rounds) - 1
 	now := time.Now()
 	for index, round := range rounds {
@@ -1988,15 +1879,13 @@ func validateChatStreamInput(clientMsgID string, text string, images []string) s
 	return ""
 }
 
-func chatStreamRequestHash(text string, images []string, todayAgriContextDay string) string {
+func chatStreamRequestHash(text string, images []string) string {
 	payload := struct {
-		Text                string   `json:"text"`
-		Images              []string `json:"images"`
-		TodayAgriContextDay string   `json:"today_agri_context_day,omitempty"`
+		Text   string   `json:"text"`
+		Images []string `json:"images"`
 	}{
-		Text:                strings.TrimSpace(text),
-		Images:              normalizeImages(images),
-		TodayAgriContextDay: normalizeTodayAgriContextDay(todayAgriContextDay),
+		Text:   strings.TrimSpace(text),
+		Images: normalizeImages(images),
 	}
 	raw, _ := json.Marshal(payload)
 	sum := sha256.Sum256(raw)

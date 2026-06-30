@@ -23,7 +23,7 @@
 - 单把 Key 开流前失败、可重试 HTTP 状态和后续换 Key 恢复会写入轻量脱敏日志：只记录 `attempt / max_attempts / key_slot / elapsed_ms / error_kind / status / will_retry` 等排障字段，`key_slot` 仅为配置槽位名（如 `GPT_RELAY_API_KEY_3` 或 `GPT_RELAY_API_KEYS_2`），不记录真实 Key、prompt、正文、图片 URL 或中转站完整地址。
 - 15 秒内没有用户可见正文时回退 Bailian / Qwen；已吐出可见正文后不在同一条回复中途切模型。
 - GPT 请求带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、历史上下文、本轮文字和图片；GPT 比千问只额外多一段 `【GPT专用规则】`（联网 / 带图高风险深度思考规则）。
-- 为提高上游 prompt cache 命中，当前组装顺序把稳定规则前置：千问 / 百炼链路是“主对话锚点 + `【输出约束】` / 回答参考范本”先行，动态时间地点放到本轮用户消息前；GPT relay 的 Responses `instructions` 是“主对话锚点 + `【输出约束】` / 回答参考范本 + `【GPT专用规则】`”先行，记忆、今日农情、历史上下文、动态时间地点等后置。该改动只调顺序，不改任何提示词正文或联网参数。
+- 为提高上游 prompt cache 命中，当前组装顺序把稳定规则前置：千问 / 百炼链路是“主对话锚点 + `【输出约束】` / 回答参考范本”先行，动态时间地点放到本轮用户消息前；GPT relay 的 Responses `instructions` 是“主对话锚点 + `【输出约束】` / 回答参考范本 + `【GPT专用规则】`”先行，记忆、历史上下文、动态时间地点等后置。今日农情不再进入主聊天 prompt，也不再影响请求 hash。该改动只调顺序和移除农情上下文注入，不改任何提示词正文或联网参数。
 - 当前生产固定 `reasoning.effort=medium`、`web_search.search_context_size=low`、`tool_choice=auto`，并追加“一次联网、够用就答”的联网规则。`high` 曾临时验证，但图片问诊首字明显变慢，暂不作为生产口径。
 - 不设置 `temperature`、`top_p`、`max_tokens`、`max_output_tokens` 或图片 `detail`。
 - `/healthz` 和后台只暴露 `gpt_relay=disabled / ok / missing_config` 等非敏感状态，不暴露真实 URL、Key 数量、供应商名或账号分组。
