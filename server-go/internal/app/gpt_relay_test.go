@@ -254,12 +254,14 @@ func TestGPTRelayOpenStreamRetriesAcrossProviderSpecificEndpoints(t *testing.T) 
 	}
 }
 
-func TestGPTRelayCoolDownResponseKeySkipsTimedOutProvider(t *testing.T) {
+func TestGPTRelayFirstVisibleTimeoutKeepsProviderRoundRobin(t *testing.T) {
 	clearGPTRelayKeyEnvForTest(t)
 	firstHits := int32(0)
 	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&firstHits, 1)
-		http.Error(w, "slow provider should be cooling down", http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
 	}))
 	defer firstServer.Close()
 
@@ -284,23 +286,51 @@ func TestGPTRelayCoolDownResponseKeySkipsTimedOutProvider(t *testing.T) {
 	resp := &http.Response{Header: http.Header{}}
 	resp.Header.Set(gptRelayHeaderProviderSlot, "provider_1")
 	resp.Header.Set(gptRelayHeaderKeySlot, "GPT_RELAY_PROVIDER_1_API_KEY_1")
+	firstResponse, err := client.OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "test"}},
+	)
+	if err != nil {
+		t.Fatalf("first open stream: %v", err)
+	}
+	if got := firstResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_1" {
+		t.Fatalf("first provider slot=%q, want provider_1", got)
+	}
 	client.coolDownResponseKey(resp)
+	_ = firstResponse.Body.Close()
 
-	for i := 0; i < 3; i++ {
-		response, err := client.OpenStream(
-			context.Background(),
-			[]BailianMessage{{Role: "user", Content: "test"}},
-		)
-		if err != nil {
-			t.Fatalf("open stream %d: %v", i+1, err)
-		}
-		_ = response.Body.Close()
+	secondResponse, err := client.OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "test"}},
+	)
+	if err != nil {
+		t.Fatalf("second open stream: %v", err)
 	}
-	if got := atomic.LoadInt32(&firstHits); got != 0 {
-		t.Fatalf("first provider should be skipped while cooling down, hits=%d", got)
+	if got := secondResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_2" {
+		t.Fatalf("second provider slot=%q, want provider_2", got)
 	}
-	if got := atomic.LoadInt32(&secondHits); got != 3 {
-		t.Fatalf("second provider hits=%d, want 3", got)
+	_ = secondResponse.Body.Close()
+
+	thirdResponse, err := client.OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "test"}},
+	)
+	if err != nil {
+		t.Fatalf("third open stream: %v", err)
+	}
+	if got := thirdResponse.Header.Get(gptRelayHeaderProviderSlot); got != "provider_1" {
+		t.Fatalf("third provider slot=%q, want provider_1", got)
+	}
+	if got := thirdResponse.Header.Get(gptRelayHeaderKeySlot); got != "GPT_RELAY_PROVIDER_1_API_KEY_2" {
+		t.Fatalf("third key slot=%q, want GPT_RELAY_PROVIDER_1_API_KEY_2", got)
+	}
+	_ = thirdResponse.Body.Close()
+
+	if got := atomic.LoadInt32(&firstHits); got != 2 {
+		t.Fatalf("first provider hits=%d, want 2", got)
+	}
+	if got := atomic.LoadInt32(&secondHits); got != 1 {
+		t.Fatalf("second provider hits=%d, want 1", got)
 	}
 }
 
