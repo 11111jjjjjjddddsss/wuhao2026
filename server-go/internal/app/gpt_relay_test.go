@@ -16,6 +16,7 @@ import (
 )
 
 func TestGPTRelayOpenStreamUsesMinimalResponsesPayload(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
 	var captured map[string]any
 	modelServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/v1/responses" {
@@ -158,11 +159,99 @@ func TestGPTRelayKeyEntriesUseNonSecretSlotLabels(t *testing.T) {
 
 func clearGPTRelayKeyEnvForTest(t *testing.T) {
 	t.Helper()
-	for i := 1; i <= defaultGPTRelayMaxConfiguredKeySlot; i++ {
-		t.Setenv(fmt.Sprintf("GPT_RELAY_API_KEY_%d", i), "")
+	clearPrefix := func(prefix string) {
+		t.Setenv(prefix+"_BASE_URL", "")
+		t.Setenv(prefix+"_RESPONSES_URL", "")
+		for i := 1; i <= defaultGPTRelayMaxConfiguredKeySlot; i++ {
+			t.Setenv(fmt.Sprintf("%s_API_KEY_%d", prefix, i), "")
+		}
+		t.Setenv(prefix+"_API_KEY", "")
+		t.Setenv(prefix+"_API_KEYS", "")
 	}
-	t.Setenv("GPT_RELAY_API_KEY", "")
-	t.Setenv("GPT_RELAY_API_KEYS", "")
+	clearPrefix("GPT_RELAY")
+	for i := 1; i <= defaultGPTRelayMaxConfiguredProviderSlot; i++ {
+		clearPrefix(fmt.Sprintf("GPT_RELAY_PROVIDER_%d", i))
+	}
+}
+
+func TestGPTRelayRequestEntriesInterleaveProviderSpecificKeys(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	t.Setenv("GPT_RELAY_BASE_URL", "https://legacy.example")
+	t.Setenv("GPT_RELAY_API_KEY_1", "sk-legacy")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", "https://provider-one.example")
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-p1-1")
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_2", "sk-p1-2")
+	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", "https://provider-two.example/v1")
+	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEYS", "name sk-p2-1,sk-p2-2")
+
+	entries := gptRelayRequestEntries()
+	if len(entries) != 4 {
+		t.Fatalf("entry count = %d, want 4: %#v", len(entries), entries)
+	}
+	want := []struct {
+		label    string
+		endpoint string
+	}{
+		{"GPT_RELAY_PROVIDER_1_API_KEY_1", "https://provider-one.example/v1/responses"},
+		{"GPT_RELAY_PROVIDER_2_API_KEYS_1", "https://provider-two.example/v1/responses"},
+		{"GPT_RELAY_PROVIDER_1_API_KEY_2", "https://provider-one.example/v1/responses"},
+		{"GPT_RELAY_PROVIDER_2_API_KEYS_2", "https://provider-two.example/v1/responses"},
+	}
+	for i, expected := range want {
+		if entries[i].Label != expected.label || entries[i].Endpoint != expected.endpoint {
+			t.Fatalf("entry[%d]=%#v, want label=%q endpoint=%q", i, entries[i], expected.label, expected.endpoint)
+		}
+		if strings.Contains(entries[i].Label, "sk-") || strings.Contains(entries[i].Endpoint, "sk-") {
+			t.Fatalf("entry leaked key material: %#v", entries[i])
+		}
+	}
+}
+
+func TestGPTRelayOpenStreamRetriesAcrossProviderSpecificEndpoints(t *testing.T) {
+	clearGPTRelayKeyEnvForTest(t)
+	firstHits := int32(0)
+	firstServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&firstHits, 1)
+		http.Error(w, "try next provider", http.StatusBadGateway)
+	}))
+	defer firstServer.Close()
+
+	secondHits := int32(0)
+	secondServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&secondHits, 1)
+		if r.URL.Path != "/v1/responses" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer sk-provider-two" {
+			t.Fatalf("unexpected Authorization header: %q", got)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte("event: response.completed\n"))
+		_, _ = w.Write([]byte("data: {\"type\":\"response.completed\"}\n\n"))
+	}))
+	defer secondServer.Close()
+
+	t.Setenv("GPT_RELAY_ENABLED", "true")
+	t.Setenv("GPT_RELAY_KEY_MAX_ATTEMPTS", "2")
+	t.Setenv("GPT_RELAY_PROVIDER_1_BASE_URL", firstServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_1_API_KEY_1", "sk-provider-one")
+	t.Setenv("GPT_RELAY_PROVIDER_2_BASE_URL", secondServer.URL)
+	t.Setenv("GPT_RELAY_PROVIDER_2_API_KEY_1", "sk-provider-two")
+
+	response, err := NewGPTRelayClientFromEnv().OpenStream(
+		context.Background(),
+		[]BailianMessage{{Role: "user", Content: "test"}},
+	)
+	if err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	_ = response.Body.Close()
+	if got := atomic.LoadInt32(&firstHits); got != 1 {
+		t.Fatalf("first provider hits=%d, want 1", got)
+	}
+	if got := atomic.LoadInt32(&secondHits); got != 1 {
+		t.Fatalf("second provider hits=%d, want 1", got)
+	}
 }
 
 func TestGPTRelayAttemptLogDoesNotLeakAPIKey(t *testing.T) {

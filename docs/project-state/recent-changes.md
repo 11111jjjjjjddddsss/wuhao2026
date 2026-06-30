@@ -5,6 +5,7 @@
 
 ## 2026-06-30
 
+- GPT relay 从单中转平台扩展为多 provider 交错候选池：新增 `GPT_RELAY_PROVIDER_1_*` / `GPT_RELAY_PROVIDER_2_*` 等 provider 专属 base URL 与 Key 列表配置；一旦配置 provider 专属池，后端会优先使用该池并忽略旧顶层单平台池。候选池按 `provider1-key1 -> provider2-key1 -> provider1-key2 -> provider2-key2` 交错展开，每次请求起点继续轮转，避免所有请求都先撞同一家。某把 Key / 某个平台开流前失败会继续换下一把；15 秒内仍没有用户可见正文就回退千问；已吐出用户可见正文后不在同一条回复中途切模型。同步补单测覆盖双 provider 交错顺序和第一 provider 失败后打到第二 provider，并把 readiness 脚本纳入 provider 专属变量的 `set / missing` 检查。该改动不改主对话锚点、`【输出约束】`、GPT 专用规则、6 轮上下文、图片入参、记忆摘要模型、Android 或正式包；真实 Key / URL 继续只放私密环境。
 - 后台“查用户”列表的最近问诊展示口径修正：后端 `last_seen_at` 现在优先取 `session_round_archive` 中该账号最新问诊归档时间，再回退 `session_ab.last_seen_at`，避免纯图片问诊或未上报地区上下文的用户出现“有 1 轮 / 多轮问诊但时间显示未返回”的误导；后台前端空值文案从“未返回”改为“暂无问诊时间”。该改动只影响后台用户列表展示，不改用户侧 App、模型链路、图片-only 兜底提示、归档、扣次或上下文组装。
 - 今日农情从主聊天模型上下文移除：后端不再读取 `today_agri_context_day` 去查当天农情展示项，不再把今日农情内容注入千问或 GPT relay prompt，也不再让今日农情日期影响 `client_msg_id` 请求 hash。旧 Android 字段保留兼容但后端忽略；今日农情卡片展示、设置页历史、后台生成 / 人工发布、展示记录和删除历史清理不变。该改动用于减少无效 token、DB 查询和 prompt cache 干扰，不改今日农情提示词、不发 Android 包。
 - 主聊天提示词组装改成缓存友好顺序：千问 / 百炼链路和 GPT relay 链路都把稳定规则前置为“主对话锚点 + `【输出约束】` / 回答参考范本”，动态时间地点移到本轮用户消息前；GPT relay 比千问只额外多一段 `【GPT专用规则】`，并排在锚点和输出约束之后、动态上下文之前。该改动只调整消息顺序，不改锚点、输出约束正文、GPT 专用规则、记忆提示词、图片上下文、6 轮上下文、联网参数或 Android；目的是减少动态时间地点过早打断 prompt cache 前缀，实际缓存命中仍看上游统计。

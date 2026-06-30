@@ -96,6 +96,23 @@ GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS=4
 GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS=4
 ```
 
+双中转平台配置模板：
+
+```text
+GPT_RELAY_PROVIDER_1_BASE_URL=<OpenAI-compatible base url A>
+GPT_RELAY_PROVIDER_1_API_KEYS=<逗号/分号/换行分隔的多个 relay key>
+GPT_RELAY_PROVIDER_2_BASE_URL=<OpenAI-compatible base url B>
+GPT_RELAY_PROVIDER_2_API_KEYS=<逗号/分号/换行分隔的多个 relay key>
+GPT_RELAY_KEY_MAX_ATTEMPTS=20
+```
+
+说明：
+
+- 配置了 `GPT_RELAY_PROVIDER_1_*` / `GPT_RELAY_PROVIDER_2_*` 后，后端会优先使用 provider 专属池，不再使用旧的顶层 `GPT_RELAY_BASE_URL + GPT_RELAY_API_KEYS` 池。
+- 多平台池按 provider 交错展开，例如 `provider1-key1 -> provider2-key1 -> provider1-key2 -> provider2-key2`，每次请求的起点继续轮转，避免所有请求都先撞同一家。
+- 某把 Key / 某个平台开流前失败会继续按池子顺序换下一把；15 秒内仍没有用户可见正文就回退千问。`GPT_RELAY_KEY_MAX_ATTEMPTS=20` 只扩大快速失败时可尝试的池子，不取消 15 秒首字硬上限。
+- readiness 只检查这些变量是否 `set / missing`，不打印真实 URL 或 Key。真实值仍只允许放在服务器私密环境或本机私密配置。
+
 说明：
 
 - `GPT_RELAY_*` 是独立的新候选链路，不等于旧 `CHAT_PRIMARY_*` 复活。

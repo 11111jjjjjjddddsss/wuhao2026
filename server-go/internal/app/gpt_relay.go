@@ -27,6 +27,7 @@ const (
 	defaultGPTRelayIdleConnTimeout            = 60 * time.Second
 	defaultGPTRelayKeyCooldown                = 30 * time.Second
 	defaultGPTRelayKeyMaxAttempts             = 10
+	defaultGPTRelayMaxConfiguredProviderSlot  = 10
 	defaultGPTRelayMaxConfiguredKeySlot       = 50
 	defaultGPTRelayCircuitWindow              = 5 * time.Minute
 	defaultGPTRelayCircuitOpenDuration        = 2 * time.Minute
@@ -51,8 +52,21 @@ type GPTRelayClient struct {
 }
 
 type gptRelayAPIKeyEntry struct {
-	Value string
-	Label string
+	Value    string
+	Label    string
+	Endpoint string
+}
+
+func (e gptRelayAPIKeyEntry) identity() string {
+	if e.Endpoint == "" {
+		return e.Value
+	}
+	return e.Endpoint + "\x00" + e.Value
+}
+
+type gptRelayProviderKeyGroup struct {
+	Endpoint string
+	Entries  []gptRelayAPIKeyEntry
 }
 
 type gptRelayCircuitEvent struct {
@@ -108,7 +122,7 @@ func (c *GPTRelayClient) Enabled() bool {
 }
 
 func (c *GPTRelayClient) HasKeyConfigured() bool {
-	return len(gptRelayKeyEntries()) > 0
+	return len(gptRelayRequestEntries()) > 0
 }
 
 func (c *GPTRelayClient) CircuitAllowRequest(now time.Time) gptRelayCircuitState {
@@ -217,13 +231,13 @@ func (c *GPTRelayClient) OpenStream(ctx context.Context, messages []BailianMessa
 	if err != nil {
 		return nil, err
 	}
-	return c.doPayloadRequest(ctx, gptRelayResponsesURL(), payload)
+	return c.doPayloadRequest(ctx, payload)
 }
 
-func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, endpoint string, payload []byte) (*http.Response, error) {
-	keys := gptRelayKeyEntries()
+func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, payload []byte) (*http.Response, error) {
+	keys := gptRelayRequestEntries()
 	if len(keys) == 0 {
-		return nil, fmt.Errorf("GPT_RELAY_API_KEY(S) is missing")
+		return nil, fmt.Errorf("GPT_RELAY provider endpoint or API key is missing")
 	}
 	maxAttempts := envIntWithDefault("GPT_RELAY_KEY_MAX_ATTEMPTS", defaultGPTRelayKeyMaxAttempts)
 	if maxAttempts <= 0 {
@@ -240,12 +254,13 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, endpoint string, 
 		if !ok {
 			break
 		}
-		attempted[key.Value] = true
+		keyID := key.identity()
+		attempted[keyID] = true
 		attemptStartedAt := time.Now()
-		resp, err := c.sendPayload(ctx, endpoint, payload, key.Value)
+		resp, err := c.sendPayload(ctx, key.Endpoint, payload, key.Value)
 		elapsedMs := time.Since(attemptStartedAt).Milliseconds()
 		if err != nil {
-			c.coolDownKey(key.Value)
+			c.coolDownKey(keyID)
 			lastErr = err
 			if ctx.Err() != nil {
 				return nil, err
@@ -261,7 +276,7 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, endpoint string, 
 			continue
 		}
 		if isGPTRelayRetryableStatus(resp.StatusCode) {
-			c.coolDownKey(key.Value)
+			c.coolDownKey(keyID)
 			c.logKeyAttempt("gpt relay key attempt retryable status",
 				"attempt", attempt+1,
 				"max_attempts", maxAttempts,
@@ -290,7 +305,7 @@ func (c *GPTRelayClient) doPayloadRequest(ctx context.Context, endpoint string, 
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, fmt.Errorf("GPT_RELAY_API_KEY(S) is missing")
+	return nil, fmt.Errorf("GPT_RELAY provider endpoint or API key is missing")
 }
 
 func (c *GPTRelayClient) sendPayload(ctx context.Context, endpoint string, payload []byte, apiKey string) (*http.Response, error) {
@@ -317,7 +332,7 @@ func gptRelayEnabled() bool {
 }
 
 func gptRelayConfigured() bool {
-	return gptRelayEnabled() && len(gptRelayKeyEntries()) > 0 && gptRelayResponsesURL() != ""
+	return gptRelayEnabled() && len(gptRelayRequestEntries()) > 0
 }
 
 func gptRelayHealthStatus(client *GPTRelayClient) string {
@@ -409,6 +424,10 @@ func (c *GPTRelayClient) circuitStateLocked(now time.Time) gptRelayCircuitState 
 }
 
 func gptRelayKeyEntries() []gptRelayAPIKeyEntry {
+	return gptRelayKeyEntriesForPrefix("GPT_RELAY")
+}
+
+func gptRelayKeyEntriesForPrefix(prefix string) []gptRelayAPIKeyEntry {
 	result := []gptRelayAPIKeyEntry{}
 	addKey := func(value string, label string) {
 		key := normalizeGPTRelayAPIKey(value)
@@ -424,12 +443,80 @@ func gptRelayKeyEntries() []gptRelayAPIKeyEntry {
 	}
 
 	for i := 1; i <= defaultGPTRelayMaxConfiguredKeySlot; i++ {
-		slot := fmt.Sprintf("GPT_RELAY_API_KEY_%d", i)
+		slot := fmt.Sprintf("%s_API_KEY_%d", prefix, i)
 		addKey(os.Getenv(slot), slot)
 	}
-	addKey(os.Getenv("GPT_RELAY_API_KEY"), "GPT_RELAY_API_KEY")
-	for idx, key := range splitConfiguredKeys(os.Getenv("GPT_RELAY_API_KEYS")) {
-		addKey(key, fmt.Sprintf("GPT_RELAY_API_KEYS_%d", idx+1))
+	singleSlot := prefix + "_API_KEY"
+	addKey(os.Getenv(singleSlot), singleSlot)
+	listSlot := prefix + "_API_KEYS"
+	for idx, key := range splitConfiguredKeys(os.Getenv(listSlot)) {
+		addKey(key, fmt.Sprintf("%s_%d", listSlot, idx+1))
+	}
+	return result
+}
+
+func gptRelayRequestEntries() []gptRelayAPIKeyEntry {
+	if groups := gptRelayProviderKeyGroups(); len(groups) > 0 {
+		return interleaveGPTRelayProviderKeyGroups(groups)
+	}
+	endpoint := gptRelayResponsesURL()
+	if endpoint == "" {
+		return nil
+	}
+	return withGPTRelayEndpoint(gptRelayKeyEntries(), endpoint)
+}
+
+func gptRelayProviderKeyGroups() []gptRelayProviderKeyGroup {
+	groups := []gptRelayProviderKeyGroup{}
+	for i := 1; i <= defaultGPTRelayMaxConfiguredProviderSlot; i++ {
+		prefix := fmt.Sprintf("GPT_RELAY_PROVIDER_%d", i)
+		endpoint := gptRelayResponsesURLForPrefix(prefix)
+		if endpoint == "" {
+			continue
+		}
+		entries := withGPTRelayEndpoint(gptRelayKeyEntriesForPrefix(prefix), endpoint)
+		if len(entries) == 0 {
+			continue
+		}
+		groups = append(groups, gptRelayProviderKeyGroup{Endpoint: endpoint, Entries: entries})
+	}
+	return groups
+}
+
+func withGPTRelayEndpoint(entries []gptRelayAPIKeyEntry, endpoint string) []gptRelayAPIKeyEntry {
+	if endpoint == "" || len(entries) == 0 {
+		return nil
+	}
+	result := make([]gptRelayAPIKeyEntry, 0, len(entries))
+	for _, entry := range entries {
+		entry.Endpoint = endpoint
+		result = append(result, entry)
+	}
+	return result
+}
+
+func interleaveGPTRelayProviderKeyGroups(groups []gptRelayProviderKeyGroup) []gptRelayAPIKeyEntry {
+	maxLen := 0
+	for _, group := range groups {
+		if len(group.Entries) > maxLen {
+			maxLen = len(group.Entries)
+		}
+	}
+	result := []gptRelayAPIKeyEntry{}
+	seen := map[string]bool{}
+	for idx := 0; idx < maxLen; idx++ {
+		for _, group := range groups {
+			if idx >= len(group.Entries) {
+				continue
+			}
+			entry := group.Entries[idx]
+			id := entry.identity()
+			if seen[id] {
+				continue
+			}
+			seen[id] = true
+			result = append(result, entry)
+		}
 	}
 	return result
 }
@@ -492,7 +579,7 @@ func normalizeGPTRelayAPIKey(value string) string {
 }
 
 func gptRelayKeyPoolSize() int {
-	return len(gptRelayKeyEntries())
+	return len(gptRelayRequestEntries())
 }
 
 func (c *GPTRelayClient) pickNextKeyEntry(keys []gptRelayAPIKeyEntry, attempted map[string]bool) (gptRelayAPIKeyEntry, bool) {
@@ -505,14 +592,15 @@ func (c *GPTRelayClient) pickNextKeyEntry(keys []gptRelayAPIKeyEntry, attempted 
 	for offset := 0; offset < len(keys); offset++ {
 		idx := (start + offset) % len(keys)
 		key := keys[idx]
-		if attempted[key.Value] {
+		keyID := key.identity()
+		if attempted[keyID] {
 			continue
 		}
 		if fallback == nil {
 			candidate := key
 			fallback = &candidate
 		}
-		if !c.isKeyCoolingDown(key.Value, now) {
+		if !c.isKeyCoolingDown(keyID, now) {
 			return key, true
 		}
 	}
@@ -616,10 +704,14 @@ func resolveGPTRelayFirstVisibleTimeout(maxDuration time.Duration) time.Duration
 }
 
 func gptRelayResponsesURL() string {
-	if direct := strings.TrimSpace(os.Getenv("GPT_RELAY_RESPONSES_URL")); direct != "" {
+	return gptRelayResponsesURLForPrefix("GPT_RELAY")
+}
+
+func gptRelayResponsesURLForPrefix(prefix string) string {
+	if direct := strings.TrimSpace(os.Getenv(prefix + "_RESPONSES_URL")); direct != "" {
 		return gptRelaySafeEndpointURL(direct)
 	}
-	baseURL := strings.TrimSpace(os.Getenv("GPT_RELAY_BASE_URL"))
+	baseURL := strings.TrimSpace(os.Getenv(prefix + "_BASE_URL"))
 	if baseURL == "" {
 		return ""
 	}
