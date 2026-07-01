@@ -1228,6 +1228,17 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun continuousNumberedQuestionListUsesRegularListSpacing() {
+        val previous = classifyStreamingLine("6. 最近浇水、施肥、打药情况")
+        val current = classifyStreamingLine("7. 天气和棚内环境")
+
+        require(previous is StreamingLineModel.Numbered)
+        require(current is StreamingLineModel.Numbered)
+        assertTrue(isRendererCompactNumberedSection(current))
+        assertEquals(MARKDOWN_BLOCK_SPACING, rendererMarkdownBlockSpacingAfter(previous, current))
+    }
+
+    @Test
     fun boldNumberedLabelsWithInlineBodyStayPlainNumberedItems() {
         val state = splitStreamingBlockState(
             "**影响价格的关键因素**\n" +
@@ -2040,6 +2051,25 @@ class ChatStreamingRendererTest {
         val input = "价格参考 9.8 元到 20.5 元，版本 1.0.6 不应拆开，数字 1左右也不拆，1、2、3 这种串也不拆。"
 
         assertEquals(input, buildRendererPlainCopyText(input))
+    }
+
+    @Test
+    fun orderedListMarkersRequireWhitespaceAfterMarker() {
+        val inlineTightNumber = classifyStreamingLine("1.核实证件：采购时确认产品是否有肥料登记证。")
+        val activeInlineTightNumber = classifyActiveStreamingLine("1.核实证件：采购时确认产品是否有肥料登记证。")
+        val decimalQuantity = classifyStreamingLine("5.1升 × 0.91 ≈ **4.64公斤**")
+
+        assertTrue(inlineTightNumber is StreamingLineModel.Paragraph)
+        assertTrue(activeInlineTightNumber is StreamingLineModel.Paragraph)
+        assertTrue(decimalQuantity is StreamingLineModel.Paragraph)
+    }
+
+    @Test
+    fun boldDecimalQuantityDoesNotBecomeNumberedListItem() {
+        val model = classifyStreamingLine("**5.1升花生油**")
+
+        assertFalse(model is StreamingLineModel.Numbered)
+        assertEquals("5.1升花生油", buildRendererPlainCopyText("**5.1升花生油**"))
     }
 
     @Test

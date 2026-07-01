@@ -196,7 +196,6 @@ internal fun appendAssistantChunk(
 }
 
 private val rendererHeadingRegex = Regex("^#{1,6}\\s+.*$")
-private val rendererNumberedRegex = Regex("^\\d+[.)]\\s*[^\\d%.)）\\]】、].*$")
 private val rendererQuoteRegex = Regex("^>\\s+.*$")
 private val rendererHorizontalRuleRegex = Regex("""^([-*_])(?:\s*\1){2,}\s*$""")
 private val rendererEmptyQuoteControlRegex = Regex("""^(?:>\s*)+$""")
@@ -723,8 +722,29 @@ private fun rendererMarkdownIndentLevel(line: String): Int {
     return (columns / 4).coerceIn(0, 2)
 }
 
-private fun rendererNumberedMarkerEnd(line: String): Int =
-    line.indexOfFirst { it == '.' || it == ')' }
+private data class RendererNumberedMarker(
+    val number: String,
+    val markerEnd: Int,
+    val bodyStart: Int
+)
+
+private fun parseRendererNumberedMarker(line: String): RendererNumberedMarker? {
+    val digitsEnd = line.indexOfFirst { !it.isDigit() }
+    if (digitsEnd <= 0) return null
+    val marker = line.getOrNull(digitsEnd) ?: return null
+    if (marker != '.' && marker != ')' && marker != '．') return null
+    if (line.getOrNull(digitsEnd + 1)?.isWhitespace() != true) return null
+    var bodyStart = digitsEnd + 2
+    while (bodyStart < line.length && line[bodyStart].isWhitespace()) {
+        bodyStart += 1
+    }
+    if (bodyStart >= line.length) return null
+    return RendererNumberedMarker(
+        number = line.take(digitsEnd),
+        markerEnd = digitsEnd,
+        bodyStart = bodyStart
+    )
+}
 
 private fun normalizeRendererTaskListText(text: String): String {
     val trimmed = text.trimStart()
@@ -991,6 +1011,7 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
         )
     }
     val bulletText = parseRendererBulletText(trimmed)
+    val numberedMarker = parseRendererNumberedMarker(trimmed)
     return when {
         trimmed.matches(rendererHeadingRegex) -> {
             val marker = trimmed.takeWhile { it == '#' }
@@ -1002,11 +1023,10 @@ internal fun classifyStreamingLine(line: String): StreamingLineModel {
                 indentLevel = indentLevel
             )
         }
-        trimmed.matches(rendererNumberedRegex) && rendererNumberedMarkerEnd(trimmed) > 0 -> {
-            val markerEnd = rendererNumberedMarkerEnd(trimmed)
+        numberedMarker != null -> {
             StreamingLineModel.Numbered(
-                number = trimmed.take(markerEnd),
-                text = normalizeRendererTaskListText(trimmed.drop(markerEnd + 1).trimStart()),
+                number = numberedMarker.number,
+                text = normalizeRendererTaskListText(trimmed.drop(numberedMarker.bodyStart)),
                 indentLevel = indentLevel
             )
         }
@@ -1064,21 +1084,12 @@ internal fun classifyActiveStreamingLine(line: String): StreamingLineModel {
             indentLevel = indentLevel
         )
     }
-    val numberedPrefix = trimmed.takeWhile { it.isDigit() }
-    val numberedMarker = trimmed.getOrNull(numberedPrefix.length)
-    val numberedRemainder = trimmed.drop(numberedPrefix.length + 1)
-    if (
-        numberedPrefix.isNotEmpty() &&
-        (numberedMarker == '.' || numberedMarker == ')') &&
-        numberedRemainder.trimStart().firstOrNull()?.isDigit() == false
-    ) {
-        if (numberedRemainder.trim().isNotEmpty()) {
-            return StreamingLineModel.Numbered(
-                number = numberedPrefix,
-                text = normalizeRendererTaskListText(numberedRemainder.trimStart()),
-                indentLevel = indentLevel
-            )
-        }
+    parseRendererNumberedMarker(trimmed)?.let { marker ->
+        return StreamingLineModel.Numbered(
+            number = marker.number,
+            text = normalizeRendererTaskListText(trimmed.drop(marker.bodyStart)),
+            indentLevel = indentLevel
+        )
     }
     return StreamingLineModel.Paragraph(line)
 }
@@ -1304,7 +1315,7 @@ private fun parseRendererBoldArabicNumberedLine(
     val closing = trimmed.indexOf("**", startIndex = 2)
     if (closing <= 2) return null
     val titleWithMarker = trimmed.substring(2, closing).trim()
-    val match = Regex("""^(\d{1,2})[.)．]\s*(.+)$""").matchEntire(titleWithMarker) ?: return null
+    val match = Regex("""^(\d{1,2})[.)．]\s+(.+)$""").matchEntire(titleWithMarker) ?: return null
     val title = match.groupValues[2].trim()
     if (title.isBlank()) return null
     if (title.any { it == '\n' }) return null
@@ -1762,7 +1773,7 @@ private fun isStructuralRendererStreamingLine(trimmed: String): Boolean {
         parseRendererActiveStandaloneBoldHeading(trimmed) != null ||
         parseRendererChineseSectionHeading(trimmed) != null ||
         parseRendererBulletText(trimmed) != null ||
-        trimmed.matches(rendererNumberedRegex) ||
+        parseRendererNumberedMarker(trimmed) != null ||
         trimmed.matches(rendererQuoteRegex)
 }
 
@@ -2150,12 +2161,14 @@ private fun markdownBlockSpacingModifier(
     }
 }
 
-private fun rendererMarkdownBlockSpacingAfter(
+internal fun rendererMarkdownBlockSpacingAfter(
     previousBlock: StreamingLineModel,
     currentBlock: StreamingLineModel
 ): Dp {
     return when {
         currentBlock is StreamingLineModel.Heading -> 18.dp
+        previousBlock is StreamingLineModel.Numbered &&
+            currentBlock is StreamingLineModel.Numbered -> MARKDOWN_BLOCK_SPACING
         previousBlock is StreamingLineModel.Numbered &&
             isRendererCompactNumberedSection(previousBlock) &&
             currentBlock !is StreamingLineModel.Blank -> 12.dp
