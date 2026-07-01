@@ -75,6 +75,7 @@ object SessionApi {
     private const val STREAM_NETWORK_RETRY_MAX = 0
     private const val STREAM_ACTIVE_RETRY_MAX = 6
     private const val STREAM_ACTIVE_RETRY_BASE_DELAY_MS = 550L
+    private const val STREAM_READ_TIMEOUT_SECONDS = 90L
     private const val CLIENT_LOG_THROTTLE_MS = 60_000L
     private const val APP_UPDATE_MAX_APK_DOWNLOAD_BYTES = 200L * 1024L * 1024L
     private val gson = Gson()
@@ -85,7 +86,7 @@ object SessionApi {
         .writeTimeout(15, TimeUnit.SECONDS)
         .build()
     private val streamClient = client.newBuilder()
-        .readTimeout(0, TimeUnit.MILLISECONDS)
+        .readTimeout(STREAM_READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
     private val currentStreamCall = AtomicReference<Call?>(null)
     private val runtimeGeneration = AtomicInteger(0)

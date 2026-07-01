@@ -255,6 +255,10 @@ func TestShouldForceSearchForExplicitSearchIntent(t *testing.T) {
 }
 
 func TestResolveChatStreamWatchdogTimeouts(t *testing.T) {
+	if chatStreamIdleTimeout != 90*time.Second {
+		t.Fatalf("default idle timeout = %s, want 90s", chatStreamIdleTimeout)
+	}
+
 	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "5")
 	t.Setenv("CHAT_STREAM_FIRST_VISIBLE_TIMEOUT_SECONDS", "10")
 	t.Setenv("CHAT_STREAM_IDLE_TIMEOUT_SECONDS", "8")
@@ -274,6 +278,19 @@ func TestResolveChatStreamWatchdogTimeouts(t *testing.T) {
 	}
 	if got := resolveChatStreamIdleTimeout(); got != chatStreamIdleTimeout {
 		t.Fatalf("non-positive idle timeout should use default, got %s", got)
+	}
+}
+
+func TestResetChatStreamIdleTimerRefreshesExpiredSignal(t *testing.T) {
+	timer := time.NewTimer(time.Millisecond)
+	defer timer.Stop()
+	<-timer.C
+
+	timerC := resetChatStreamIdleTimer(timer, 25*time.Millisecond)
+	select {
+	case <-timerC:
+		t.Fatal("idle timer fired immediately after reset")
+	case <-time.After(5 * time.Millisecond):
 	}
 }
 

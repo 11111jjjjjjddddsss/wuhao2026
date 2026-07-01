@@ -25,7 +25,7 @@ const (
 	upstreamRetryBaseWait               = 350 * time.Millisecond
 	chatStreamMaxDuration               = 30 * time.Minute
 	chatStreamFirstVisibleTimeout       = 3 * time.Minute
-	chatStreamIdleTimeout               = 4 * time.Minute
+	chatStreamIdleTimeout               = 90 * time.Second
 	maxClientMsgIDLength                = 128
 	maxChatTextRunes                    = 6000
 	maxBailianSSELineBytes              = 256 * 1024
@@ -871,6 +871,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 				hadVisibleAssistantText := strings.TrimSpace(assistantText.String()) != ""
+				assistantTextLenBefore := assistantText.Len()
 				clientData := ""
 				shouldForward := false
 				upstreamDone := false
@@ -882,7 +883,8 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 					clientData, shouldForward = filterBailianStreamDataForClient(data)
 				}
 				currentSSEEvent = ""
-				if !hadVisibleAssistantText && strings.TrimSpace(assistantText.String()) != "" {
+				hasVisibleAssistantText := strings.TrimSpace(assistantText.String()) != ""
+				if !hadVisibleAssistantText && hasVisibleAssistantText {
 					if firstVisibleMs < 0 {
 						firstVisibleMs = time.Since(requestReceivedAt).Milliseconds()
 						upstreamFirstVisibleMs = time.Since(upstreamOpenedAt).Milliseconds()
@@ -893,9 +895,10 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 						default:
 						}
 					}
+				}
+				if hasVisibleAssistantText && assistantText.Len() > assistantTextLenBefore {
 					if idleTimer != nil {
-						idleTimer.Reset(idleTimeout)
-						idleTimerC = idleTimer.C
+						idleTimerC = resetChatStreamIdleTimer(idleTimer, idleTimeout)
 					}
 				}
 				if isGPTRelayProvider(upstreamProvider) && upstreamFailed {
@@ -1531,6 +1534,20 @@ func resolveChatStreamIdleTimeout() time.Duration {
 		return maxDuration
 	}
 	return duration
+}
+
+func resetChatStreamIdleTimer(timer *time.Timer, duration time.Duration) <-chan time.Time {
+	if timer == nil || duration <= 0 {
+		return nil
+	}
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(duration)
+	return timer.C
 }
 
 func resolveChatStreamInflightLeaseDuration() time.Duration {
