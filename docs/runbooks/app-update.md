@@ -1,6 +1,6 @@
 # App 更新 Runbook
 
-最后更新：2026-07-01
+最后更新：2026-07-02
 
 当前 Android “检查更新”走自有服务器 APK 分发，不走应用商店，也不做静默安装。
 
@@ -16,7 +16,7 @@
 
 正式 release APK 不按测试包 3 天生命周期删除。已经对外发布过的正式包属于回滚、审计和问题定位材料，云端 / 发布记录至少要保留“当前正在下发的正式包 + 最近若干个可回滚正式包 + 对应 `versionCode / versionName / SHA-256 / 文件大小 / commit / 签名指纹`”。APK 体积很小，早期不建议为了省极低的 OSS 存储费删除最近正式物料；后续如果版本很多，再按“保留最近 10 个或最近 12 个月正式包，老包只保留发布记录和 SHA”的口径单独清理。
 
-当前正在下发的正式包为 `1.0.20(21)`，APK URL 是 `https://download.nongjiqiancha.cn/android/releases/21/nongjiqiancha-1.0.20-v21-24757505.apk`，SHA-256 为 `e0e7ab6dcb07f480f352cfd6640eee5603e733505c93b804c4be0f1de5776fc2`，文件大小 `14,426,056` 字节，`force_update=false`。后台检查更新、官网正式下载按钮和 `download.nongjiqiancha.cn` 公网下载都已对齐该物料；旧正式包 `1.0.19(20)` / `1.0.18(19)` / `1.0.17(18)` / `1.0.16(17)` / `1.0.15(16)` / `1.0.14(15)` / `1.0.13(14)` / `1.0.12(13)` / `1.0.11(12)` / `1.0.10(11)` / `1.0.9(10)` / `1.0.8(9)` / `1.0.7(8)` / `1.0.6(7)` / `1.0.5(6)` / `1.0.4(5)` / `1.0.3(4)` / `1.0.2(3)` / `1.0.1(2)` 分别保留在 `android/releases/20/` / `android/releases/19/` / `android/releases/18/` / `android/releases/17/` / `android/releases/16/` / `android/releases/15/` / `android/releases/14/` / `android/releases/13/` / `android/releases/12/` / `android/releases/11/` / `android/releases/10/` / `android/releases/9/` / `android/releases/8/` / `android/releases/7/` / `android/releases/6/` / `android/releases/5/` / `android/releases/4/` / `android/releases/3/` / `android/releases/2/` 和发布历史里，不再作为当前下发目标。
+当前正在下发的正式包为 `1.0.21(22)`，APK URL 是 `https://download.nongjiqiancha.cn/android/releases/22/nongjiqiancha-1.0.21-v22-5a279c98.apk`，SHA-256 为 `5763f3c12e381328526153a7ebd1c780766b20b830be9e245caf58a8bc5e5f89`，文件大小 `14,426,056` 字节，`force_update=false`。后台检查更新、官网正式下载按钮和 `download.nongjiqiancha.cn` 公网下载都已对齐该物料；旧正式包 `1.0.20(21)` / `1.0.19(20)` / `1.0.18(19)` / `1.0.17(18)` / `1.0.16(17)` / `1.0.15(16)` / `1.0.14(15)` / `1.0.13(14)` / `1.0.12(13)` / `1.0.11(12)` / `1.0.10(11)` / `1.0.9(10)` / `1.0.8(9)` / `1.0.7(8)` / `1.0.6(7)` / `1.0.5(6)` / `1.0.4(5)` / `1.0.3(4)` / `1.0.2(3)` / `1.0.1(2)` 分别保留在 `android/releases/21/` / `android/releases/20/` / `android/releases/19/` / `android/releases/18/` / `android/releases/17/` / `android/releases/16/` / `android/releases/15/` / `android/releases/14/` / `android/releases/13/` / `android/releases/12/` / `android/releases/11/` / `android/releases/10/` / `android/releases/9/` / `android/releases/8/` / `android/releases/7/` / `android/releases/6/` / `android/releases/5/` / `android/releases/4/` / `android/releases/3/` / `android/releases/2/` 和发布历史里，不再作为当前下发目标。
 
 本机不作为正式包仓库，不需要长期堆 APK。仓库不再保留本机 APK 清理脚本，也不做后台自动清理；需要整理本机 APK 构建产物时，由用户明确提出后，Codex 再先列出目标路径和体积，确认只涉及生成物后单次人工处理。任何清理都不得删除源码、签名配置、Git 记录、云端正式包或后台发布历史。
 
