@@ -999,7 +999,7 @@ internal fun assistantParagraphTextStyle(): TextStyle = TextStyle(
     fontSize = 16.5.sp,
     lineHeight = 27.5.sp,
     letterSpacing = 0.sp,
-    color = Color(0xFF171717),
+    color = Color(0xFF111111),
     textMotion = TextMotion.Static,
     lineBreak = LineBreak.Paragraph
 )
@@ -3199,7 +3199,7 @@ fun ChatScreen() {
         if (!isStreaming || !hasStreamingItem) return atBottom
         return isForwardListAtExactBottom()
     }
-    val chatPageSurface = Color(0xFFFBFCFD)
+    val chatPageSurface = Color.White
     val appCenterTint = chatPageSurface
     val chromeSurface = Color.White
     val chromeBorder = Color(0xFFD8DADF).copy(alpha = 0.18f)

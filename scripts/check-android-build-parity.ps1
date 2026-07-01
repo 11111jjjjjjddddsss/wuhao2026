@@ -673,10 +673,10 @@ if ($failures.Count -eq 0) {
         "Today agri main-chat copy menu must stay aligned with assistant text copy/full-copy behavior."
     Require-NoMatch $failures $chatScreen 'todayAgriBottomAnchorAppliedKey' `
         "Today agri appearance must not keep a dedicated force-bottom anchor state; it should not pull the user to the bottom at the moment it appears."
-    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantParagraphTextStyle\(\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*16\.5\.sp(?s:.*?)lineHeight\s*=\s*27\.5\.sp(?s:.*?)letterSpacing\s*=\s*0\.sp(?s:.*?)internal\s+fun\s+assistantStreamingParagraphTextStyle\(\):\s*TextStyle\s*=(?s:.*?)lineHeight\s*=\s*29\.sp(?s:.*?)internal\s+fun\s+assistantHeadingTextStyle' `
-        "Assistant main-chat text must keep the roomier pre-tight typography and zero Chinese body letter spacing."
-    Require-Match $failures $chatScreen 'val\s+chatPageSurface\s*=\s*Color\(0xFFFBFCFD\)' `
-        "Main chat page surface must keep the slightly brighter off-white background without changing text, dividers, or input chrome."
+    Require-Match $failures $chatScreen 'internal\s+fun\s+assistantParagraphTextStyle\(\):\s*TextStyle\s*=\s*TextStyle\((?s:.*?)fontSize\s*=\s*16\.5\.sp(?s:.*?)lineHeight\s*=\s*27\.5\.sp(?s:.*?)letterSpacing\s*=\s*0\.sp(?s:.*?)color\s*=\s*Color\(0xFF111111\)(?s:.*?)internal\s+fun\s+assistantStreamingParagraphTextStyle\(\):\s*TextStyle\s*=(?s:.*?)lineHeight\s*=\s*29\.sp(?s:.*?)internal\s+fun\s+assistantHeadingTextStyle' `
+        "Assistant main-chat text must keep the roomier typography, zero Chinese body letter spacing, and darker regular-weight body color."
+    Require-Match $failures $chatScreen 'val\s+chatPageSurface\s*=\s*Color\.White' `
+        "Main chat page surface must keep the white background while input chrome remains independently bordered and shadowed."
     foreach ($paymentEvent in @(
         'payment\.button_tapped',
         'payment\.button_blocked',
