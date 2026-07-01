@@ -1198,6 +1198,36 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun continuousNumberedQuestionListDoesNotCreateMixedDividers() {
+        val state = splitStreamingBlockState(
+            "判断农业问题，最好把这些信息一次说清：\n\n" +
+                "3. 症状从哪里开始\n\n" +
+                "4. 是新叶还是老叶\n\n" +
+                "5. 是零星还是成片\n\n" +
+                "6. 最近浇水、施肥、打药情况\n\n" +
+                "7. 天气和棚内环境\n\n" +
+                "8. 根系、叶背、茎基部有没有异常\n\n" +
+                "所以你要问我农业问题，最好直接给：\n\n" +
+                "作物 + 症状 + 图片 + 最近管理记录。",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        val numberedIndexes = models.withIndex()
+            .filter { (_, model) -> model is StreamingLineModel.Numbered }
+            .map { it.index }
+
+        assertEquals(listOf(1, 2, 3, 4, 5, 6), numberedIndexes)
+        numberedIndexes.forEach { index ->
+            assertFalse(
+                "continuous numbered list should not create divider at index $index",
+                shouldShowStreamingSectionDivider(models, index)
+            )
+        }
+    }
+
+    @Test
     fun boldNumberedLabelsWithInlineBodyStayPlainNumberedItems() {
         val state = splitStreamingBlockState(
             "**影响价格的关键因素**\n" +

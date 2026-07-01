@@ -1130,6 +1130,12 @@ internal fun shouldShowStreamingSectionDivider(
     val previous = previousStreamingSectionDividerCandidate(models, index)
     val next = nextStreamingSectionDividerCandidate(models, index)
     if (next == null) return false
+    if (
+        current is StreamingLineModel.Numbered &&
+        (previous is StreamingLineModel.Numbered || next is StreamingLineModel.Numbered)
+    ) {
+        return false
+    }
     return shouldShowStreamingSectionDivider(previous, current)
 }
 
