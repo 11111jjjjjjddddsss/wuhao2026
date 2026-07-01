@@ -3,6 +3,10 @@
 说明：本文件默认只保留最近 20 条重要变更；当前因 4 月聊天 UI 主链多次大切换，暂保留较长历史方便排障，更早内容仍以 git 历史和 ADR 为准。
 说明补充：本文件允许保留旧方案的历史记录；旧条目里若出现“反向列表 / requestScrollToItem(0) / asReversed()”、旧会诊对象选择或旧模型链路 / 旧中转站 / 旧 Chat Completions 表述，默认都只是历史过程，不代表当前运行时真相或当前协作口径。当前真相始终以根 `AGENTS.md` 和 `docs/project-state/current-status.md` 为准。
 
+## 2026-07-02
+
+- 发布 Android 正式包 `1.0.20(21)` 并同步官网和检查更新：基于提交 `24757505` 构建固定 release 签名 APK `nongjiqiancha-1.0.20-v21-24757505.apk`，大小 `14,426,056` 字节，SHA-256 `e0e7ab6dcb07f480f352cfd6640eee5603e733505c93b804c4be0f1de5776fc2`，下载地址 `https://download.nongjiqiancha.cn/android/releases/21/nongjiqiancha-1.0.20-v21-24757505.apk`。该包只改 Android 展示层：连续编号清单不再按单条长短混加分割线，避免 `3/4/5/7` 有线、`6/8` 没线的视觉割裂；真正“编号标题 + 后续正文段落”的章节仍保留分割层级。debug-only 预览面板补连续编号清单样例，单测覆盖该场景。官网正式下载和后台检查更新已同步该包，`force_update=false`，旧正式包 `1.0.19(20)` 会收到普通更新，当前包不会提示自己更新。验证通过：Android debug 编译、Android debug 单测、build parity、Android release 构建、release 物料校验、下载域名检查、OSS 物料元数据、官网部署、检查更新 release match、公网下载大小 / SHA 回验、ECS readiness、支付 public readiness、后台 owner smoke 和公网黑盒。完整上线残余仍是人工 / 运营项：最终真机回归、App 公安备案、AccessKey 轮换、SLS 首封告警邮件、短信余额 / 成本和支付 public 后首批真实订单观察。
+
 ## 2026-07-01
 
 - GPT relay 首字窗口按用户最新口令从 45 秒调到 50 秒：仍只留大大科技单 provider + 5 把私密 Key，只看后端是否在 50 秒内收到上游用户可见正文首字；不把前端渲染、`response.created`、搜索事件、思考事件、心跳或空白 delta 算首字。50 秒从后端收到用户聊天请求开始算，包含 provider 起手、同平台 Key 切换、连接 / 响应头和模型首个可见正文前等待；50 秒内无正文首字才回退百炼 / 千问。本轮只改后端首字窗口、ECS readiness 校验、GPT relay 单测、根规则、runbook 和项目记忆；不改 GPT 模型、medium 思考、低上下文联网、只搜索一次提示、主对话锚点、`【输出约束】`、图片 detail、记忆摘要模型、Android 或正式包。
