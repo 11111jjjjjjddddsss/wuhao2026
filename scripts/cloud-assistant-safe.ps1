@@ -36,7 +36,13 @@ function Wait-CloudAssistantSendFile {
             "--InstanceId", $InstanceId
         )
         $invocation = @($result.Invocations.Invocation)[0]
+        if ($null -eq $invocation) {
+            continue
+        }
         $instance = @($invocation.InvokeInstances.InvokeInstance)[0]
+        if ($null -eq $instance) {
+            continue
+        }
         if ($instance.InvocationStatus -eq "Success") {
             return
         }

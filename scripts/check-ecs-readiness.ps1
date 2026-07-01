@@ -8,6 +8,43 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function ConvertTo-ProcessArgument {
+    param([AllowNull()][string]$Argument)
+    if ($null -eq $Argument) {
+        return '""'
+    }
+    if ($Argument -notmatch '[\s"]') {
+        return $Argument
+    }
+    $builder = [Text.StringBuilder]::new()
+    [void]$builder.Append('"')
+    $backslashes = 0
+    foreach ($char in $Argument.ToCharArray()) {
+        if ($char -eq '\') {
+            $backslashes++
+            continue
+        }
+        if ($char -eq '"') {
+            if ($backslashes -gt 0) {
+                [void]$builder.Append('\' * ($backslashes * 2))
+                $backslashes = 0
+            }
+            [void]$builder.Append('\"')
+            continue
+        }
+        if ($backslashes -gt 0) {
+            [void]$builder.Append('\' * $backslashes)
+            $backslashes = 0
+        }
+        [void]$builder.Append($char)
+    }
+    if ($backslashes -gt 0) {
+        [void]$builder.Append('\' * ($backslashes * 2))
+    }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
 function Invoke-JsonCommand {
     param([string[]]$CommandArgs)
     if ($CommandArgs.Length -eq 0) {
@@ -25,9 +62,7 @@ function Invoke-JsonCommand {
     try {
         $startInfo = [Diagnostics.ProcessStartInfo]::new()
         $startInfo.FileName = $exe
-        foreach ($argument in $arguments) {
-            [void]$startInfo.ArgumentList.Add($argument)
-        }
+        $startInfo.Arguments = ($arguments | ForEach-Object { ConvertTo-ProcessArgument $_ }) -join " "
         $startInfo.UseShellExecute = $false
         $startInfo.RedirectStandardOutput = $true
         $startInfo.RedirectStandardError = $true
