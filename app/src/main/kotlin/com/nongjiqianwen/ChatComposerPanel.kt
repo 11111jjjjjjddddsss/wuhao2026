@@ -126,6 +126,7 @@ internal const val COMPOSER_ATTACHMENT_FILE_TEXT = "文件"
 internal const val COMPOSER_ATTACHMENT_LIMIT_TEXT = "单次最多4张图片"
 internal const val COMPOSER_ATTACHMENT_SHOOTING_HINT_TEXT = "建议拍清病斑、异常部位、叶背或果实"
 private val ComposerAttachmentActionIconSize = 30.dp
+private const val ComposerAttachmentIconVisualPadding = 0.04f
 
 internal fun limitComposerInputValue(value: TextFieldValue, maxChars: Int): TextFieldValue {
     if (maxChars <= 0 || value.text.length <= maxChars) return value
@@ -1004,13 +1005,13 @@ private fun ComposerCameraIcon(
 ) {
     Canvas(modifier = modifier) {
         val stroke = size.minDimension * 0.085f
-        val left = size.width * 0.1f
-        val top = size.height * 0.3f
-        val right = size.width * 0.9f
-        val bottom = size.height * 0.84f
+        val left = size.width * (0.1f - ComposerAttachmentIconVisualPadding)
+        val top = size.height * (0.3f - ComposerAttachmentIconVisualPadding)
+        val right = size.width * (0.9f + ComposerAttachmentIconVisualPadding)
+        val bottom = size.height * (0.84f + ComposerAttachmentIconVisualPadding)
         val corner = size.minDimension * 0.13f
         val bumpLeft = size.width * 0.34f
-        val bumpTop = size.height * 0.21f
+        val bumpTop = size.height * (0.21f - ComposerAttachmentIconVisualPadding)
         val bumpRight = size.width * 0.66f
         val bumpCorner = size.minDimension * 0.06f
         val cameraPath = Path().apply {
@@ -1059,10 +1060,10 @@ private fun ComposerPhotoIcon(
     Canvas(modifier = modifier) {
         val stroke = size.minDimension * 0.085f
         val corner = size.minDimension * 0.14f
-        val left = size.width * 0.1f
-        val top = size.height * 0.2f
-        val right = size.width * 0.9f
-        val bottom = size.height * 0.84f
+        val left = size.width * (0.1f - ComposerAttachmentIconVisualPadding)
+        val top = size.height * (0.2f - ComposerAttachmentIconVisualPadding)
+        val right = size.width * (0.9f + ComposerAttachmentIconVisualPadding)
+        val bottom = size.height * (0.84f + ComposerAttachmentIconVisualPadding)
         drawRoundRect(
             color = tint,
             topLeft = Offset(left, top),
