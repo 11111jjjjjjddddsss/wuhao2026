@@ -502,8 +502,8 @@ if [ -n "$gpt_relay_search_context_size" ] && [ "$(printf '%s' "$gpt_relay_searc
 fi
 
 gpt_relay_first_visible_timeout=$(env_value GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS || true)
-if [ -n "$gpt_relay_first_visible_timeout" ] && [ "$(printf '%s' "$gpt_relay_first_visible_timeout" | xargs)" != "15" ]; then
-  echo 'GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS must be 15; only upstream visible-text first byte controls Bailian fallback' >&2
+if [ -n "$gpt_relay_first_visible_timeout" ] && [ "$(printf '%s' "$gpt_relay_first_visible_timeout" | xargs)" != "18" ]; then
+  echo 'GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS must be 18; only upstream visible-text first byte controls Bailian fallback' >&2
   exit 16
 fi
 
