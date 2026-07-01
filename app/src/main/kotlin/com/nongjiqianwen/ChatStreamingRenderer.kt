@@ -731,6 +731,7 @@ private data class RendererNumberedMarker(
 private fun parseRendererNumberedMarker(line: String): RendererNumberedMarker? {
     val digitsEnd = line.indexOfFirst { !it.isDigit() }
     if (digitsEnd <= 0) return null
+    if (digitsEnd > 9) return null
     val marker = line.getOrNull(digitsEnd) ?: return null
     if (marker != '.' && marker != ')' && marker != '．') return null
     if (line.getOrNull(digitsEnd + 1)?.isWhitespace() != true) return null
@@ -1138,15 +1139,12 @@ internal fun shouldShowStreamingSectionDivider(
     index: Int
 ): Boolean {
     val current = models.getOrNull(index) ?: return false
-    val previous = previousStreamingSectionDividerCandidate(models, index)
     val next = nextStreamingSectionDividerCandidate(models, index)
     if (next == null) return false
-    if (
-        current is StreamingLineModel.Numbered &&
-        (previous is StreamingLineModel.Numbered || next is StreamingLineModel.Numbered)
-    ) {
+    if (isRendererContinuousNumberedListItem(models, index)) {
         return false
     }
+    val previous = previousStreamingSectionDividerCandidate(models, index)
     return shouldShowStreamingSectionDivider(previous, current)
 }
 
@@ -1170,6 +1168,15 @@ internal fun nextStreamingSectionDividerCandidate(
         if (candidate !is StreamingLineModel.Blank) return candidate
     }
     return null
+}
+
+internal fun isRendererContinuousNumberedListItem(
+    models: List<StreamingLineModel>,
+    index: Int
+): Boolean {
+    if (models.getOrNull(index) !is StreamingLineModel.Numbered) return false
+    return previousStreamingSectionDividerCandidate(models, index) is StreamingLineModel.Numbered ||
+        nextStreamingSectionDividerCandidate(models, index) is StreamingLineModel.Numbered
 }
 
 internal fun buildRendererPlainCopyText(content: String): String {
@@ -1238,9 +1245,10 @@ internal fun isRendererCompactNumberedSection(model: StreamingLineModel.Numbered
 
 internal fun shouldUseRendererCompactNumberedSection(
     model: StreamingLineModel.Numbered,
-    inlineMode: RendererInlineMode
+    inlineMode: RendererInlineMode,
+    continuousNumberedListItem: Boolean = false
 ): Boolean =
-    isRendererCompactNumberedSection(model)
+    !continuousNumberedListItem && isRendererCompactNumberedSection(model)
 
 private fun isRendererCompactNumberedSectionText(text: String): Boolean {
     val trimmed = text.trim()
@@ -1315,7 +1323,7 @@ private fun parseRendererBoldArabicNumberedLine(
     val closing = trimmed.indexOf("**", startIndex = 2)
     if (closing <= 2) return null
     val titleWithMarker = trimmed.substring(2, closing).trim()
-    val match = Regex("""^(\d{1,2})[.)．]\s+(.+)$""").matchEntire(titleWithMarker) ?: return null
+    val match = Regex("""^(\d{1,9})[.)．]\s+(.+)$""").matchEntire(titleWithMarker) ?: return null
     val title = match.groupValues[2].trim()
     if (title.isBlank()) return null
     if (title.any { it == '\n' }) return null
@@ -2152,10 +2160,19 @@ private fun RendererAssistantThinkingIndicatorImpl(
 private fun markdownBlockSpacingModifier(
     previousBlock: StreamingLineModel?,
     currentBlock: StreamingLineModel,
+    previousContinuousNumberedListItem: Boolean = false,
+    currentContinuousNumberedListItem: Boolean = false,
     modifier: Modifier = Modifier
 ): Modifier {
     return if (previousBlock != null) {
-        modifier.padding(top = rendererMarkdownBlockSpacingAfter(previousBlock, currentBlock))
+        modifier.padding(
+            top = rendererMarkdownBlockSpacingAfter(
+                previousBlock = previousBlock,
+                currentBlock = currentBlock,
+                previousContinuousNumberedListItem = previousContinuousNumberedListItem,
+                currentContinuousNumberedListItem = currentContinuousNumberedListItem
+            )
+        )
     } else {
         modifier
     }
@@ -2163,13 +2180,16 @@ private fun markdownBlockSpacingModifier(
 
 internal fun rendererMarkdownBlockSpacingAfter(
     previousBlock: StreamingLineModel,
-    currentBlock: StreamingLineModel
+    currentBlock: StreamingLineModel,
+    previousContinuousNumberedListItem: Boolean = false,
+    currentContinuousNumberedListItem: Boolean = false
 ): Dp {
     return when {
         currentBlock is StreamingLineModel.Heading -> 18.dp
         previousBlock is StreamingLineModel.Numbered &&
             currentBlock is StreamingLineModel.Numbered -> MARKDOWN_BLOCK_SPACING
         previousBlock is StreamingLineModel.Numbered &&
+            !previousContinuousNumberedListItem &&
             isRendererCompactNumberedSection(previousBlock) &&
             currentBlock !is StreamingLineModel.Blank -> 12.dp
         previousBlock is StreamingLineModel.Heading &&
@@ -2177,6 +2197,7 @@ internal fun rendererMarkdownBlockSpacingAfter(
                 if (previousBlock.source == StreamingHeadingSource.StandaloneBold) 14.dp else 12.dp
             }
         currentBlock is StreamingLineModel.Numbered &&
+            !currentContinuousNumberedListItem &&
             isRendererCompactNumberedSection(currentBlock) -> 18.dp
         else -> MARKDOWN_BLOCK_SPACING
     }
@@ -2224,7 +2245,15 @@ private fun RendererAssistantStreamingContentImpl(
                         modifier = Modifier.height(
                             rendererMarkdownBlockSpacingAfter(
                                 previousBlock = unifiedModels[index - 1],
-                                currentBlock = model
+                                currentBlock = model,
+                                previousContinuousNumberedListItem = isRendererContinuousNumberedListItem(
+                                    models = unifiedModels,
+                                    index = index - 1
+                                ),
+                                currentContinuousNumberedListItem = isRendererContinuousNumberedListItem(
+                                    models = unifiedModels,
+                                    index = index
+                                )
                             )
                         )
                     )
@@ -2241,6 +2270,7 @@ private fun RendererAssistantStreamingContentImpl(
                         lastIndex = unifiedModels.lastIndex,
                         model = model
                     ),
+                    continuousNumberedListItem = isRendererContinuousNumberedListItem(unifiedModels, index),
                     linksEnabled = false,
                     tableCopyEnabled = false,
                     showLeadingSectionDivider = blockLeadingDivider,
@@ -2365,6 +2395,7 @@ private fun String.hasRendererUnclosedCodeDelimiter(): Boolean {
 private fun RendererAssistantStreamingUnifiedBlockHost(
     model: StreamingLineModel,
     inlineMode: RendererInlineMode,
+    continuousNumberedListItem: Boolean,
     linksEnabled: Boolean,
     tableCopyEnabled: Boolean,
     showLeadingSectionDivider: Boolean,
@@ -2378,6 +2409,7 @@ private fun RendererAssistantStreamingUnifiedBlockHost(
         RendererAssistantStreamingActiveBlockImpl(
             model = model,
             inlineMode = inlineMode,
+            continuousNumberedListItem = continuousNumberedListItem,
             linksEnabled = linksEnabled,
             tableCopyEnabled = tableCopyEnabled,
             showLeadingSectionDivider = false,
@@ -2915,6 +2947,7 @@ private fun RendererMarkdownSectionDividerImpl() {
 private fun RendererAssistantStreamingActiveBlockImpl(
     model: StreamingLineModel,
     inlineMode: RendererInlineMode,
+    continuousNumberedListItem: Boolean = false,
     linksEnabled: Boolean,
     tableCopyEnabled: Boolean,
     showLeadingSectionDivider: Boolean = false,
@@ -2972,8 +3005,12 @@ private fun RendererAssistantStreamingActiveBlockImpl(
                 }
             }
             is StreamingLineModel.Numbered -> {
-                val compactNumberedSection = remember(model.text, inlineMode) {
-                    shouldUseRendererCompactNumberedSection(model, inlineMode)
+                val compactNumberedSection = remember(model.text, inlineMode, continuousNumberedListItem) {
+                    shouldUseRendererCompactNumberedSection(
+                        model = model,
+                        inlineMode = inlineMode,
+                        continuousNumberedListItem = continuousNumberedListItem
+                    )
                 }
                 val numberStyle = remember(paragraphStyle, compactNumberedSection) {
                     if (compactNumberedSection) {
@@ -3301,12 +3338,21 @@ private fun RendererAssistantMarkdownContentImpl(
                         markdownBlockSpacingModifier(
                             previousBlock = completedModels.getOrNull(index - 1),
                             currentBlock = model,
+                            previousContinuousNumberedListItem = isRendererContinuousNumberedListItem(
+                                models = completedModels,
+                                index = index - 1
+                            ),
+                            currentContinuousNumberedListItem = isRendererContinuousNumberedListItem(
+                                models = completedModels,
+                                index = index
+                            ),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
                 RendererAssistantStreamingUnifiedBlockHost(
                     model = model,
                     inlineMode = RendererInlineMode.Settled,
+                    continuousNumberedListItem = isRendererContinuousNumberedListItem(completedModels, index),
                     linksEnabled = true,
                     tableCopyEnabled = tableCopyEnabled,
                     showLeadingSectionDivider = blockLeadingDivider,

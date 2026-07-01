@@ -1239,6 +1239,85 @@ class ChatStreamingRendererTest {
     }
 
     @Test
+    fun continuousNumberedQuestionListDoesNotUseMixedCompactWeights() {
+        val state = splitStreamingBlockState(
+            "更关键的是结合现场：\n\n" +
+                "1. 作物是什么\n\n" +
+                "2. 哪个生育期\n\n" +
+                "3. 症状从哪里开始\n\n" +
+                "4. 是新叶还是老叶\n\n" +
+                "5. 是零星还是成片\n\n" +
+                "6. 最近浇水、施肥、打药情况\n\n" +
+                "7. 天气和棚内环境\n\n" +
+                "8. 根系、叶背、茎基部有没有异常\n\n" +
+                "所以你要问我农业问题，最好直接给：\n\n" +
+                "作物 + 症状 + 图片 + 最近管理记录。",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        val numberedIndexes = models.withIndex()
+            .filter { (_, model) -> model is StreamingLineModel.Numbered }
+            .map { it.index }
+
+        assertEquals(listOf(1, 2, 3, 4, 5, 6, 7, 8), numberedIndexes)
+        numberedIndexes.forEach { index ->
+            val model = models[index] as StreamingLineModel.Numbered
+            assertTrue(
+                "continuous numbered list item should be detected at index $index",
+                isRendererContinuousNumberedListItem(models, index)
+            )
+            assertFalse(
+                "continuous numbered list item should not use compact heading style at index $index",
+                shouldUseRendererCompactNumberedSection(
+                    model = model,
+                    inlineMode = RendererInlineMode.Settled,
+                    continuousNumberedListItem = true
+                )
+            )
+        }
+    }
+
+    @Test
+    fun continuousNumberedQuestionListUsesRegularSpacingAroundWholeRun() {
+        val state = splitStreamingBlockState(
+            "建议再补几张图：\n\n" +
+                "1. 病斑近照\n\n" +
+                "2. 叶背照\n\n" +
+                "3. 整株照\n\n" +
+                "这样判断会更稳。",
+            treatTrailingLineAsComplete = true
+        )
+        val models = state.completedBlocks.map(::classifyStreamingLine) +
+            listOfNotNull(state.activeBlock?.let(::classifyStreamingLine))
+
+        assertTrue(models[0] is StreamingLineModel.Paragraph)
+        assertTrue(models[1] is StreamingLineModel.Numbered)
+        assertTrue(models[2] is StreamingLineModel.Numbered)
+        assertTrue(models[3] is StreamingLineModel.Numbered)
+        assertTrue(models[4] is StreamingLineModel.Paragraph)
+        assertTrue(isRendererContinuousNumberedListItem(models, 1))
+        assertTrue(isRendererContinuousNumberedListItem(models, 3))
+        assertEquals(
+            MARKDOWN_BLOCK_SPACING,
+            rendererMarkdownBlockSpacingAfter(
+                previousBlock = models[0],
+                currentBlock = models[1],
+                currentContinuousNumberedListItem = true
+            )
+        )
+        assertEquals(
+            MARKDOWN_BLOCK_SPACING,
+            rendererMarkdownBlockSpacingAfter(
+                previousBlock = models[3],
+                currentBlock = models[4],
+                previousContinuousNumberedListItem = true
+            )
+        )
+    }
+
+    @Test
     fun boldNumberedLabelsWithInlineBodyStayPlainNumberedItems() {
         val state = splitStreamingBlockState(
             "**影响价格的关键因素**\n" +
@@ -2058,10 +2137,12 @@ class ChatStreamingRendererTest {
         val inlineTightNumber = classifyStreamingLine("1.核实证件：采购时确认产品是否有肥料登记证。")
         val activeInlineTightNumber = classifyActiveStreamingLine("1.核实证件：采购时确认产品是否有肥料登记证。")
         val decimalQuantity = classifyStreamingLine("5.1升 × 0.91 ≈ **4.64公斤**")
+        val overlongNumber = classifyStreamingLine("1234567890. 这个像长编号，不是 Markdown 列表。")
 
         assertTrue(inlineTightNumber is StreamingLineModel.Paragraph)
         assertTrue(activeInlineTightNumber is StreamingLineModel.Paragraph)
         assertTrue(decimalQuantity is StreamingLineModel.Paragraph)
+        assertTrue(overlongNumber is StreamingLineModel.Paragraph)
     }
 
     @Test
