@@ -538,8 +538,8 @@ if [ -n "$gpt_relay_search_context_size" ] && [ "$(printf '%s' "$gpt_relay_searc
 fi
 
 gpt_relay_first_visible_timeout=$(env_value GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS || true)
-if [ -n "$gpt_relay_first_visible_timeout" ] && [ "$(printf '%s' "$gpt_relay_first_visible_timeout" | xargs)" != "40" ]; then
-  echo 'GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS must be 40; only upstream visible-text first byte controls Bailian fallback' >&2
+if [ -n "$gpt_relay_first_visible_timeout" ] && [ "$(printf '%s' "$gpt_relay_first_visible_timeout" | xargs)" != "45" ]; then
+  echo 'GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS must be 45; only upstream visible-text first byte controls Bailian fallback' >&2
   exit 16
 fi
 
@@ -568,7 +568,7 @@ fi
 for retired_gpt_relay_key in GPT_RELAY_KEY_COOLDOWN_SECONDS GPT_RELAY_CIRCUIT_BREAKER_ENABLED GPT_RELAY_CIRCUIT_WINDOW_SECONDS GPT_RELAY_CIRCUIT_OPEN_SECONDS GPT_RELAY_CIRCUIT_CONSECUTIVE_FAILURES GPT_RELAY_CIRCUIT_MIN_REQUESTS GPT_RELAY_CIRCUIT_FAILURE_PERCENT GPT_RELAY_DIAL_TIMEOUT_SECONDS GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS; do
   retired_gpt_relay_value=$(env_value "$retired_gpt_relay_key" || true)
   if [ -n "$retired_gpt_relay_value" ]; then
-    echo "$retired_gpt_relay_key is retired; current GPT relay fallback is only the 20s upstream visible-text gate" >&2
+    echo "$retired_gpt_relay_key is retired; current GPT relay fallback is only the 45s upstream visible-text gate" >&2
     exit 16
   fi
 done
