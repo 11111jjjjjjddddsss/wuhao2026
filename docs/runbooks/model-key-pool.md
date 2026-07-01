@@ -92,7 +92,20 @@ GPT_RELAY_REASONING_EFFORT=medium
 GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS=15
 ```
 
-双中转平台配置模板：
+当前生产 GPT relay 供应商配置：
+
+```text
+GPT_RELAY_PROVIDER_2_BASE_URL=<OpenAI-compatible base url B>
+GPT_RELAY_PROVIDER_2_LABEL=大大科技
+GPT_RELAY_PROVIDER_2_API_KEY_1=<relay key B1>
+GPT_RELAY_PROVIDER_2_API_KEY_2=<relay key B2>
+GPT_RELAY_PROVIDER_2_API_KEY_3=<relay key B3>
+GPT_RELAY_PROVIDER_2_API_KEY_4=<relay key B4>
+GPT_RELAY_PROVIDER_2_API_KEY_5=<relay key B5>
+GPT_RELAY_KEY_MAX_ATTEMPTS=5
+```
+
+历史 / 可选双中转平台模板：
 
 ```text
 GPT_RELAY_PROVIDER_1_BASE_URL=<OpenAI-compatible base url A>
@@ -115,8 +128,8 @@ GPT_RELAY_KEY_MAX_ATTEMPTS=5
 说明：
 
 - 配置了 `GPT_RELAY_PROVIDER_1_*` / `GPT_RELAY_PROVIDER_2_*` 后，后端会优先使用 provider 专属池，不再使用旧的顶层 `GPT_RELAY_BASE_URL + GPT_RELAY_API_KEYS` 池。生产推荐先每家 5 把 Key，用 `API_KEY_1...API_KEY_5` 一把一行，避免长 `API_KEYS=` 行在运维脚本里被转义或截断；后续只有真实并发或限流压力上来，再扩到每家 10 把。
-- `GPT_RELAY_PROVIDER_1_LABEL` / `GPT_RELAY_PROVIDER_2_LABEL` 是后台“模型链路”的人类可读备注，当前生产应分别填“中转联盟”和“大大科技”。后台显示 label、provider 槽位和 Key 槽位，不显示真实 URL 或真实 Key。
-- 多平台池运行时先按用户请求轮 provider 起手：当前两家就是 `中转联盟 -> 大大科技 -> 中转联盟 -> 大大科技`，不看成功失败，也不加 provider 级冷却；每一波 15 秒只请求一个平台，不在同一波从中转联盟跳到大大科技，或从大大科技跳到中转联盟。
+- `GPT_RELAY_PROVIDER_N_LABEL` 是后台“模型链路”的人类可读备注。当前生产只启用 `GPT_RELAY_PROVIDER_2_LABEL=大大科技`；`GPT_RELAY_PROVIDER_1_*` 中转联盟已因首字不稳定从 ECS 私密环境移除，保留在本机私密备份和 ECS 环境备份中，后期需要再恢复。后台显示 label、provider 槽位和 Key 槽位，不显示真实 URL 或真实 Key。
+- 多平台池运行时会按用户请求轮 provider 起手；但当前生产只有大大科技一个 provider，因此每波都会先打大大科技。15 秒内没有上游用户可见正文首字就回退百炼 / 千问，不在同一波尝试其它 GPT provider。
 - 选定平台后，某把 Key 开流前失败或返回可重试状态，会在同一个 provider 内换下一把 Key；`GPT_RELAY_KEY_MAX_ATTEMPTS=5` 用于覆盖同一家 provider 内 5 把 Key 的快速失败场景。当前不再做“第一家 7 秒、第二家 7 秒”的同轮短探针。
 - readiness 只检查这些变量是否 `set / missing`，不打印真实 URL 或 Key。真实值仍只允许放在服务器私密环境或本机私密配置。
 
