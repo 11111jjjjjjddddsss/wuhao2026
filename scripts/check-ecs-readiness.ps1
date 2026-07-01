@@ -18,33 +18,33 @@ function Invoke-JsonCommand {
     if ($CommandArgs.Length -gt 1) {
         $arguments = $CommandArgs[1..($CommandArgs.Length - 1)]
     }
-    $stderrPath = [IO.Path]::GetTempFileName()
-    $stdout = @()
+    $stdoutText = ""
     $stderr = ""
     $exitCode = 0
-    $oldErrorActionPreference = $ErrorActionPreference
-    $oldNativeErrorPreference = $null
-    $hasNativeErrorPreference = Get-Variable -Name PSNativeCommandUseErrorActionPreference -ErrorAction SilentlyContinue
+    $process = $null
     try {
-        $ErrorActionPreference = "Continue"
-        if ($null -ne $hasNativeErrorPreference) {
-            $oldNativeErrorPreference = $PSNativeCommandUseErrorActionPreference
-            $PSNativeCommandUseErrorActionPreference = $false
+        $startInfo = [Diagnostics.ProcessStartInfo]::new()
+        $startInfo.FileName = $exe
+        foreach ($argument in $arguments) {
+            [void]$startInfo.ArgumentList.Add($argument)
         }
-        $stdout = & $exe @arguments 2> $stderrPath
-        $exitCode = $LASTEXITCODE
-        if (Test-Path -LiteralPath $stderrPath) {
-            $stderr = Get-Content -LiteralPath $stderrPath -Raw -ErrorAction SilentlyContinue
-        }
+        $startInfo.UseShellExecute = $false
+        $startInfo.RedirectStandardOutput = $true
+        $startInfo.RedirectStandardError = $true
+        $startInfo.StandardOutputEncoding = [Text.Encoding]::UTF8
+        $startInfo.StandardErrorEncoding = [Text.Encoding]::UTF8
+        $process = [Diagnostics.Process]::Start($startInfo)
+        $stdoutText = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
     } finally {
-        $ErrorActionPreference = $oldErrorActionPreference
-        if ($null -ne $hasNativeErrorPreference) {
-            $PSNativeCommandUseErrorActionPreference = $oldNativeErrorPreference
+        if ($null -ne $process) {
+            $process.Dispose()
         }
-        Remove-Item -LiteralPath $stderrPath -Force -ErrorAction SilentlyContinue
     }
     if ($exitCode -ne 0) {
-        $safeOutput = (($stdout | Out-String) + "`n" + $stderr) `
+        $safeOutput = ($stdoutText + "`n" + $stderr) `
             -replace '(?i)(AccessKeyId=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(AccessKeySecret=)[^&\s]+', '${1}REDACTED' `
             -replace '(?i)(SecurityToken=)[^&\s]+', '${1}REDACTED' `
@@ -59,7 +59,7 @@ function Invoke-JsonCommand {
         }
         throw "Command failed: $safeCommand`n$safeOutput"
     }
-    $jsonText = $stdout | Out-String
+    $jsonText = $stdoutText
     if ([string]::IsNullOrWhiteSpace($jsonText)) {
         return $null
     }
