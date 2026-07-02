@@ -839,8 +839,8 @@ func TestOpenValidatedChatStreamCanceledRequestFailsWithoutCircuitState(t *testi
 }
 
 func TestGPTRelayFirstVisibleTimeoutDefaultAndClamp(t *testing.T) {
-	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "60")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "50")
+	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "70")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "60")
 	if got := resolveChatStreamFirstVisibleTimeoutForProvider(gptRelayProvider); got != defaultGPTRelayFirstVisibleTimeout {
 		t.Fatalf("default gpt relay first visible timeout = %s, want %s", got, defaultGPTRelayFirstVisibleTimeout)
 	}
@@ -909,15 +909,15 @@ func TestGPTRelayRecordsCanceledOpenAttempt(t *testing.T) {
 }
 
 func TestGPTRelayFirstVisibleTimeoutCountsFromRequestReceived(t *testing.T) {
-	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "60")
-	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "50")
+	t.Setenv("CHAT_STREAM_MAX_DURATION_SECONDS", "70")
+	t.Setenv("GPT_RELAY_FIRST_VISIBLE_TIMEOUT_SECONDS", "60")
 
-	remaining := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 49*time.Second)
+	remaining := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 59*time.Second)
 	if remaining < 900*time.Millisecond || remaining > 1100*time.Millisecond {
 		t.Fatalf("remaining first visible timeout = %s, want about 1s", remaining)
 	}
 
-	if got := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 51*time.Second); got != time.Millisecond {
+	if got := resolveChatStreamFirstVisibleTimeoutForProviderAfter(gptRelayProvider, 61*time.Second); got != time.Millisecond {
 		t.Fatalf("exhausted first visible timeout = %s, want 1ms", got)
 	}
 }
