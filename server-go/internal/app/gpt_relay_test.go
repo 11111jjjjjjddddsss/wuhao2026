@@ -991,9 +991,6 @@ func TestGPTRelayPromptVariantIncludesChatOutputConstraintAndNetworkingRule(t *t
 	if !strings.Contains(instructions, "【GPT专用规则】") {
 		t.Fatalf("gpt relay instructions missing GPT-specific rule:\n%s", instructions)
 	}
-	if !strings.Contains(instructions, "带图或高风险问题，必须深度思考。") {
-		t.Fatalf("gpt relay instructions missing image reasoning rule:\n%s", instructions)
-	}
 	anchorIndex := strings.Index(instructions, "anchor")
 	outputIndex := strings.Index(instructions, "【输出约束】")
 	gptRuleIndex := strings.Index(instructions, "【GPT专用规则】")

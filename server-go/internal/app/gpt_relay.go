@@ -29,7 +29,7 @@ const (
 	defaultGPTRelayKeyMaxAttempts            = 5
 	defaultGPTRelayMaxConfiguredProviderSlot = 10
 	defaultGPTRelayMaxConfiguredKeySlot      = 50
-	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。\n\n带图或高风险问题，必须深度思考。"
+	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻快速回答。\n不要解释搜索过程。"
 )
 
 type GPTRelayClient struct {
