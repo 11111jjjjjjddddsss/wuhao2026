@@ -9392,7 +9392,7 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("未勾选拦截", "不请求平台、不进入登录校验", UiCopyPreviewKind.LoginAgreementBlocked),
                     UiCopyPreviewItem("短信登录", "手机号 + 6位验证码 + 协议勾选", UiCopyPreviewKind.LoginSmsFallback),
                     UiCopyPreviewItem("换手机号后发送", "倒计时只锁刚发成功的手机号，换号可立即发送", UiCopyPreviewKind.LoginPhoneChanged),
-                    UiCopyPreviewItem("登录协议弹窗", "服务协议 / 隐私政策在登录页内打开", UiCopyPreviewKind.LoginLegalDialog)
+                    UiCopyPreviewItem("登录协议弹窗", "用户协议 / 隐私政策在登录页内打开", UiCopyPreviewKind.LoginLegalDialog)
                 )
             ),
             UiCopyPreviewGroup(
@@ -9493,8 +9493,8 @@ private fun UiCopyPreviewOverlay(
                     UiCopyPreviewItem("礼品卡成功样式", "兑换成功立即发放权益", UiCopyPreviewKind.HamburgerGiftCardSuccess),
                     UiCopyPreviewItem("礼品卡生效规则", "生成即可兑换，不做预约生效", UiCopyPreviewKind.HamburgerGiftCardImmediateRule),
                     UiCopyPreviewItem("礼品卡重复兑换", "同一账号重复提交时提示权益已生效", UiCopyPreviewKind.HamburgerGiftCardReplay),
-                    UiCopyPreviewItem("隐私与协议目录", "服务协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
-                    UiCopyPreviewItem("服务协议", "本地内置服务协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
+                    UiCopyPreviewItem("隐私与协议目录", "用户协议、隐私政策和清单入口", UiCopyPreviewKind.HamburgerLegalHubPage),
+                    UiCopyPreviewItem("用户协议", "本地内置用户协议正文", UiCopyPreviewKind.HamburgerServiceAgreementPage),
                     UiCopyPreviewItem("隐私政策", "权限和个人信息说明", UiCopyPreviewKind.HamburgerPrivacyPolicyPage),
                     UiCopyPreviewItem("第三方信息共享清单", "第三方和系统能力说明", UiCopyPreviewKind.HamburgerThirdPartyListPage),
                     UiCopyPreviewItem("个人信息收集清单", "按场景列明处理信息", UiCopyPreviewKind.HamburgerPersonalInfoListPage),
@@ -10116,7 +10116,7 @@ private fun UiCopyPreviewSample(item: UiCopyPreviewItem) {
                 UiCopyPreviewKind.LoginAgreementBlocked -> {
                     UiCopyPreviewLoginPage(
                         agreed = false,
-                        message = "请先同意服务协议和隐私政策"
+                        message = "请先同意用户协议和隐私政策"
                     )
                 }
                 UiCopyPreviewKind.LoginSmsFallback -> {
@@ -10893,7 +10893,7 @@ private fun UiCopyPreviewLoginPage(
                 UiCopyPreviewAgreementCheckbox(checked = agreed)
                 Spacer(Modifier.width(7.dp))
                 Text(
-                    text = "我已阅读并同意《服务协议》《隐私政策》",
+                    text = "我已阅读并同意《用户协议》《隐私政策》",
                     color = Color(0xFF575D66),
                     fontSize = 11.sp,
                     lineHeight = 16.sp,
@@ -10946,7 +10946,7 @@ private fun UiCopyPreviewLoginLegalDialog() {
                     .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 8.dp)
             ) {
                 Text(
-                    text = "服务协议",
+                    text = "用户协议",
                     color = Color(0xFF111111),
                     fontSize = 17.sp,
                     lineHeight = 23.sp,
@@ -10971,7 +10971,7 @@ private fun UiCopyPreviewLoginLegalDialog() {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "服务协议",
+                    text = "用户协议",
                     color = Color(0xFF111111),
                     fontSize = 18.sp,
                     lineHeight = 24.sp,
@@ -10979,13 +10979,13 @@ private fun UiCopyPreviewLoginLegalDialog() {
                     letterSpacing = 0.sp
                 )
                 Text(
-                    text = "登录页内打开协议时，正文区域有固定高度；服务协议本身滚动，隐私政策外层滚动，避免嵌套滚动导致闪退。",
+                    text = "登录页内打开协议时，正文区域有固定高度；用户协议本身滚动，隐私政策外层滚动，避免嵌套滚动导致闪退。",
                     color = Color(0xFF4E5661),
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
                     letterSpacing = 0.sp
                 )
-                UiCopyPreviewGuardRow("服务协议", "有限高度 LazyColumn")
+                UiCopyPreviewGuardRow("用户协议", "有限高度 LazyColumn")
                 UiCopyPreviewGuardRow("隐私政策", "有限高度滚动正文")
             }
         }

@@ -1485,7 +1485,7 @@ private fun HamburgerLegalHubContent(
         HamburgerAccountGroup(
             modifier = Modifier.padding(top = 22.dp)
         ) {
-            HamburgerLegalHubRow("服务协议", onOpenUserAgreement)
+            HamburgerLegalHubRow("用户协议", onOpenUserAgreement)
             HamburgerMenuDivider()
             HamburgerLegalHubRow("隐私政策", onOpenPrivacyPolicy)
             HamburgerMenuDivider()
@@ -1597,7 +1597,7 @@ internal fun HamburgerServiceAgreementContent(
         )
     }
     HamburgerLegalTextPage(
-        title = "服务协议",
+        title = "用户协议",
         meta = "更新日期：2026年6月28日\n生效日期：2026年6月28日\n服务提供者：北京农技千问科技有限公司\n联系邮箱：nongjiqiancha@foxmail.com\nApp备案号：$APP_ICP_RECORD_NUMBER",
         sections = sections,
         modifier = modifier,
@@ -1694,19 +1694,23 @@ internal fun HamburgerPrivacyPolicyContent(
             body = "我们可能通过平台服务器调用云计算、数据存储、智能分析、短信、支付宝支付等服务，用于系统运行、验证码登录、问诊分析、图片理解、今日农情、故障排查、权益核对和付费服务处理。相关服务只在实现对应功能所必需的范围内处理必要信息。当前不接入广告、地图、推送或统计类第三方 SDK。"
         )
         HamburgerAgreementSection(
-            title = "七、保存、安全和共享",
+            title = "七、结构化清单",
+            body = "为便于您和应用市场审核人员查阅，App 内“隐私与协议”目录提供第三方信息共享清单、个人信息收集清单、应用权限和风险提示。您可以在这些页面查看对应功能场景、涉及信息、权限边界、第三方服务和 AI 建议风险。"
+        )
+        HamburgerAgreementSection(
+            title = "八、保存、安全和共享",
             body = "我们按实现服务、权益核对、安全保障、争议处理和依法合规所需的期限保存信息。问诊图片、反馈图片、问答归档、App 自动日志和运行安全日志会按较短周期或必要期限清理；连续问诊所需的短期窗口和长期记忆会保留至您删除历史对话、账号注销处理、达到业务目的或依法依规应处理时；会员、订单、礼品卡、反馈和账号记录按功能、争议处理和法定要求所需期限保存。达到目的后，我们会删除、匿名化或按规则处理。我们不会出售您的个人信息；除依法依规、取得授权、实现服务必要委托处理、处理投诉争议或保护安全外，不会向无关第三方提供您的个人信息。"
         )
         HamburgerAgreementSection(
-            title = "八、您的权利",
+            title = "九、您的权利",
             body = "您可以通过 App 内功能、帮助与反馈或联系邮箱 nongjiqiancha@foxmail.com，要求查询、复制、更正、删除相关信息，撤回授权，咨询账号注销或投诉处理方式。提交账号注销申请后，我们通常在 15 个工作日内完成核验和处理流程，并对依法可删除或匿名化的信息作相应处理；交易核验、安全风控、争议处理等必要记录会按规则保留或去标识化。删除历史对话用于删除问诊聊天历史和长期记忆，不等于完整账号注销，也不会删除会员、礼品卡和反馈记录。"
         )
         HamburgerAgreementSection(
-            title = "九、未成年人保护",
+            title = "十、未成年人保护",
             body = "本服务主要面向具备农业生产、种植管理或相关咨询需求的用户。未成年人应在监护人指导下使用；未满十四周岁儿童提交个人信息前，应取得监护人同意。请不要主动上传未成年人照片、身份信息、联系方式或其他与农业问题无关的敏感内容。"
         )
         HamburgerAgreementSection(
-            title = "十、政策更新",
+            title = "十一、政策更新",
             body = "我们可能根据产品变化、法律法规、权限清单、合作服务或运营需要更新本政策。涉及处理目的、处理方式、个人信息种类或重要权利义务变化时，会通过 App 内页面、弹窗或其他合理方式提示，并在需要时重新取得您的授权。"
         )
     }

@@ -161,7 +161,7 @@ private fun LoginScreen(
 
     fun requireAgreement(): Boolean {
         if (!agreed) {
-            message = "请先同意服务协议和隐私政策"
+            message = "请先同意用户协议和隐私政策"
             return false
         }
         acceptAgreementIfNeeded()
@@ -458,7 +458,7 @@ private fun buildLoginAgreementText() = buildAnnotatedString {
             fontWeight = FontWeight.SemiBold
         )
     ) {
-        append("《服务协议》")
+        append("《用户协议》")
     }
     pop()
     pushStringAnnotation(tag = "privacy", annotation = "privacy")
@@ -550,7 +550,7 @@ private fun LoginLegalDialog(
                             .padding(start = 18.dp, end = 10.dp, top = 10.dp, bottom = 8.dp)
                     ) {
                         Text(
-                            text = if (page == LoginLegalPage.ServiceAgreement) "服务协议" else "隐私政策",
+                            text = if (page == LoginLegalPage.ServiceAgreement) "用户协议" else "隐私政策",
                             color = Color(0xFF111111),
                             fontSize = 17.sp,
                             fontWeight = FontWeight.SemiBold,
