@@ -143,7 +143,7 @@ GPT_RELAY_KEY_MAX_ATTEMPTS=5
 - 当前代码和生产配置中的 GPT relay 首字预算为 60 秒：从后端收到用户请求开始算，包含 provider 起手选择、同平台 key 切换、连接、TLS、响应头等待和模型首个可见正文前的等待。60 秒内没有上游可见正文首字，就回退 Bailian / Qwen，不在同一轮再试另一家 GPT provider。
 - GPT relay 不再使用单独的 `GPT_RELAY_DIAL_TIMEOUT_SECONDS`、`GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS`、`GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS`、`GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS`、`GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS`、`GPT_RELAY_KEY_COOLDOWN_SECONDS` 或 `GPT_RELAY_CIRCUIT_*` 作为切换条件；若生产环境里残留这些变量，应清理，readiness 会按错误配置处理。
 - 首字判定只看后端收到上游的用户可见正文；`response.created`、搜索事件、思考 / reasoning 事件、心跳和空白 delta 都不算成功。已吐出可见正文后不在同一条回复中途切模型，避免半段 GPT 半段千问。
-- GPT relay 和千问一样带主对话锚点、`【输出约束】` / 回答参考范本、时间地点、记忆、上下文、本轮文字和图片；GPT 额外只多一段 `【GPT专用规则】`。
+- GPT relay 和千问一样带主聊天公共提示词、时间地点、记忆、上下文、本轮文字和图片；公共提示词是主对话锚点原文 + `【输出约束】` / 回答参考范本原文拼接成的同一个 system 消息。GPT 额外只多一段 `【GPT专用规则】`。
 - 关闭或回滚只需要移除 `GPT_RELAY_*` 配置，或设置 `GPT_RELAY_ENABLED=false` 后重启服务；不需要 Android 发版。
 
 ## 运行策略

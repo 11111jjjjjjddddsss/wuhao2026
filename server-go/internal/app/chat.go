@@ -1802,10 +1802,7 @@ func (s *Server) buildPromptMessagesWithOptions(snapshot *SessionSnapshot, aWind
 	}
 
 	messages := []BailianMessage{
-		{Role: "system", Content: s.systemAnchor},
-	}
-	if includeOutputConstraint {
-		messages = append(messages, BailianMessage{Role: "system", Content: chatOutputConstraint})
+		{Role: "system", Content: commonChatSystemPrompt(s.systemAnchor, includeOutputConstraint)},
 	}
 	if hasMemoryDocument {
 		messages = append(messages, BailianMessage{Role: "system", Content: "后台背景信息中的记忆摘要（仅供参考；回答应聚焦用户本轮问题。非直接相关时，不要主动提及、展开、串联过往内容，或追加基于记忆的顺带建议）\n" + strings.TrimSpace(snapshot.MemoryDocument)})
@@ -1824,6 +1821,21 @@ func (s *Server) buildPromptMessagesWithOptions(snapshot *SessionSnapshot, aWind
 	}
 	messages = append(messages, BailianMessage{Role: "user", Content: buildVisionUserContent(currentText, currentImages)})
 	return messages, len(rounds), hasMemoryDocument
+}
+
+func commonChatSystemPrompt(systemAnchor string, includeOutputConstraint bool) string {
+	anchor := strings.TrimSpace(systemAnchor)
+	if !includeOutputConstraint {
+		return anchor
+	}
+	outputConstraint := strings.TrimSpace(chatOutputConstraint)
+	if anchor == "" {
+		return outputConstraint
+	}
+	if outputConstraint == "" {
+		return anchor
+	}
+	return anchor + "\n\n" + outputConstraint
 }
 
 func buildPendingMemoryPromptContext(snapshot *SessionSnapshot, activeRounds []SessionRound) string {

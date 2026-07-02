@@ -980,14 +980,8 @@ func TestGPTRelayPromptVariantIncludesChatOutputConstraintAndNetworkingRule(t *t
 	if usedCount != 1 || !hasMemory {
 		t.Fatalf("prompt metadata mismatch used=%d hasMemory=%v", usedCount, hasMemory)
 	}
-	foundOutputConstraint := false
-	for _, message := range messages {
-		if message.Role == "system" && message.Content == chatOutputConstraint {
-			foundOutputConstraint = true
-		}
-	}
-	if !foundOutputConstraint {
-		t.Fatalf("gpt relay prompt must include chat output constraint")
+	if len(messages) == 0 || messages[0].Role != "system" || messages[0].Content != commonChatSystemPrompt("anchor", true) {
+		t.Fatalf("gpt relay prompt must start with common chat prompt, got %#v", messages)
 	}
 	last := messages[len(messages)-1]
 	if last.Role != "user" || last.Content != "current" {

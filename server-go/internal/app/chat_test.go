@@ -408,11 +408,14 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 	if hasMemoryDocument {
 		t.Fatalf("expected no memory document, got hasMemoryDocument=%v", hasMemoryDocument)
 	}
-	if len(messages) != 8 {
-		t.Fatalf("expected 8 messages, got %d", len(messages))
+	if len(messages) != 7 {
+		t.Fatalf("expected 7 messages, got %d", len(messages))
+	}
+	if messages[0].Role != "system" || messages[0].Content != commonChatSystemPrompt("anchor", true) {
+		t.Fatalf("expected common chat prompt at head, got %#v", messages[0])
 	}
 
-	firstHistoricalUser := messages[2]
+	firstHistoricalUser := messages[1]
 	if firstHistoricalUser.Role != "user" {
 		t.Fatalf("expected first historical message to be user, got %q", firstHistoricalUser.Role)
 	}
@@ -420,7 +423,7 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		t.Fatalf("expected older historical round to be text-only")
 	}
 
-	secondHistoricalUser := messages[4]
+	secondHistoricalUser := messages[3]
 	content, ok := secondHistoricalUser.Content.([]map[string]any)
 	if !ok {
 		t.Fatalf("expected previous round to keep images in context")
@@ -432,13 +435,10 @@ func TestBuildPromptMessagesOnlyKeepsImagesForPreviousRoundAndCurrentRound(t *te
 		t.Fatalf("expected previous round image preserved, got %#v", got)
 	}
 
-	if messages[1].Role != "system" || messages[1].Content != chatOutputConstraint {
-		t.Fatalf("expected output constraint immediately after anchor for cache reuse, got %#v", messages[1])
+	if messages[5].Role != "system" || messages[5].Content != "context" {
+		t.Fatalf("expected dynamic context immediately before current user input, got %#v", messages[5])
 	}
-	if messages[6].Role != "system" || messages[6].Content != "context" {
-		t.Fatalf("expected dynamic context immediately before current user input, got %#v", messages[6])
-	}
-	currentUser := messages[7]
+	currentUser := messages[6]
 	currentContent, ok := currentUser.Content.([]map[string]any)
 	if !ok || len(currentContent) != 2 {
 		t.Fatalf("expected current round to keep images in context, got %#v", currentUser.Content)
@@ -478,7 +478,7 @@ func TestBuildPromptMessagesDropsExpiredPreviousRoundImages(t *testing.T) {
 	if usedCount != 1 {
 		t.Fatalf("expected 1 historical round, got %d", usedCount)
 	}
-	historicalUser := messages[2]
+	historicalUser := messages[1]
 	if historicalUser.Role != "user" {
 		t.Fatalf("expected historical message to be user, got %q", historicalUser.Role)
 	}
@@ -558,28 +558,28 @@ func TestBuildPromptMessagesAddsMemoryDocumentWhenPresent(t *testing.T) {
 	if !hasMemoryDocument {
 		t.Fatalf("expected memory document present")
 	}
-	if len(messages) != 5 {
-		t.Fatalf("expected 5 messages, got %d", len(messages))
+	if len(messages) != 4 {
+		t.Fatalf("expected 4 messages, got %d", len(messages))
 	}
-	if messages[1].Role != "system" || messages[1].Content != chatOutputConstraint {
-		t.Fatalf("expected output constraint immediately after anchor for cache reuse, got %#v", messages[1])
+	if messages[0].Role != "system" || messages[0].Content != commonChatSystemPrompt("anchor", true) {
+		t.Fatalf("expected common chat prompt at head, got %#v", messages[0])
 	}
-	if messages[2].Role != "system" {
+	if messages[1].Role != "system" {
 		t.Fatalf("expected memory document to be inserted as system message")
 	}
-	if !strings.HasPrefix(messages[2].Content.(string), "后台背景信息中的记忆摘要（仅供参考；回答应聚焦用户本轮问题。") {
-		t.Fatalf("expected memory document label, got %#v", messages[2].Content)
+	if !strings.HasPrefix(messages[1].Content.(string), "后台背景信息中的记忆摘要（仅供参考；回答应聚焦用户本轮问题。") {
+		t.Fatalf("expected memory document label, got %#v", messages[1].Content)
 	}
 	for _, forbidden := range []string{"后台参考", "后台摘要", "B层", "C层", "内部机制"} {
-		if strings.Contains(messages[2].Content.(string), forbidden) {
-			t.Fatalf("memory document prompt should not expose legacy label %q: %#v", forbidden, messages[2].Content)
+		if strings.Contains(messages[1].Content.(string), forbidden) {
+			t.Fatalf("memory document prompt should not expose legacy label %q: %#v", forbidden, messages[1].Content)
 		}
 	}
-	if messages[3].Role != "system" || messages[3].Content != "context" {
-		t.Fatalf("expected dynamic context before current user input, got %#v", messages[3])
+	if messages[2].Role != "system" || messages[2].Content != "context" {
+		t.Fatalf("expected dynamic context before current user input, got %#v", messages[2])
 	}
-	if messages[4].Content != "hello" {
-		t.Fatalf("expected current text-only user message, got %#v", messages[4].Content)
+	if messages[3].Content != "hello" {
+		t.Fatalf("expected current text-only user message, got %#v", messages[3].Content)
 	}
 }
 
@@ -648,10 +648,10 @@ func TestBuildPromptMessagesAddsPendingMemoryJobAfterItSlidesOutOfWindow(t *test
 	if usedCount != 2 || hasMemoryDocument {
 		t.Fatalf("usedCount=%d hasMemoryDocument=%v", usedCount, hasMemoryDocument)
 	}
-	if len(messages) < 4 || messages[2].Role != "system" {
+	if len(messages) < 3 || messages[1].Role != "system" {
 		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
 	}
-	content := messages[2].Content.(string)
+	content := messages[1].Content.(string)
 	if !strings.HasPrefix(content, "后台背景信息中的待补偿历史片段（仅供参考；回答仍聚焦用户本轮问题。") ||
 		!strings.Contains(content, "第2轮关键病害描述") {
 		t.Fatalf("pending memory context mismatch: %q", content)
@@ -691,10 +691,10 @@ func TestBuildPromptMessagesOnlyAddsPendingMemoryRoundsMissingFromActiveWindow(t
 	if usedCount != 3 || hasMemoryDocument {
 		t.Fatalf("usedCount=%d hasMemoryDocument=%v", usedCount, hasMemoryDocument)
 	}
-	if len(messages) < 4 || messages[2].Role != "system" {
+	if len(messages) < 3 || messages[1].Role != "system" {
 		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
 	}
-	content := messages[2].Content.(string)
+	content := messages[1].Content.(string)
 	if !strings.Contains(content, "第1轮已滑出") {
 		t.Fatalf("missing slid-out pending round in fallback context: %q", content)
 	}
@@ -741,10 +741,10 @@ func TestBuildPromptMessagesAddsAllPendingMemoryJobsAfterLongOutage(t *testing.T
 	if usedCount != 2 || hasMemoryDocument {
 		t.Fatalf("usedCount=%d hasMemoryDocument=%v", usedCount, hasMemoryDocument)
 	}
-	if len(messages) < 4 || messages[2].Role != "system" {
+	if len(messages) < 3 || messages[1].Role != "system" {
 		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
 	}
-	content := messages[2].Content.(string)
+	content := messages[1].Content.(string)
 	for _, want := range []string{"第一批第1轮", "第一批第2轮", "第二批第3轮", "第二批第4轮"} {
 		if !strings.Contains(content, want) {
 			t.Fatalf("missing queued pending round %q in fallback context: %q", want, content)
@@ -782,10 +782,10 @@ func TestBuildPromptMessagesDeduplicatesOverlappingPendingMemoryJobs(t *testing.
 
 	messages, _, _ := server.buildPromptMessages(snapshot, 1, "继续", nil, "context")
 
-	if len(messages) < 4 || messages[2].Role != "system" {
+	if len(messages) < 3 || messages[1].Role != "system" {
 		t.Fatalf("expected pending memory context before active rounds, got %#v", messages)
 	}
-	content := messages[2].Content.(string)
+	content := messages[1].Content.(string)
 	if got := strings.Count(content, "只应出现一次的第2轮"); got != 1 {
 		t.Fatalf("overlapping pending rounds should be deduplicated once, got %d in %q", got, content)
 	}
@@ -818,22 +818,22 @@ func TestBuildPromptMessagesDoesNotAddTodayAgriContext(t *testing.T) {
 	if hasMemoryDocument {
 		t.Fatalf("expected no memory document")
 	}
-	if len(messages) != 4 {
-		t.Fatalf("expected 4 messages, got %d", len(messages))
+	if len(messages) != 3 {
+		t.Fatalf("expected 3 messages, got %d", len(messages))
 	}
-	if messages[1].Role != "system" || messages[1].Content != chatOutputConstraint {
-		t.Fatalf("expected output constraint immediately after anchor for cache reuse, got %#v", messages[1])
+	if messages[0].Role != "system" || messages[0].Content != commonChatSystemPrompt("anchor", true) {
+		t.Fatalf("expected common chat prompt at head, got %#v", messages[0])
 	}
 	for _, message := range messages {
 		if message.Role == "system" && strings.Contains(message.Content.(string), "今日农情界面上下文") {
 			t.Fatalf("today agri context should not be injected into chat prompt: %#v", message.Content)
 		}
 	}
-	if messages[2].Role != "system" || messages[2].Content != "context" {
-		t.Fatalf("expected dynamic context before user input, got %#v", messages[2])
+	if messages[1].Role != "system" || messages[1].Content != "context" {
+		t.Fatalf("expected dynamic context before user input, got %#v", messages[1])
 	}
-	if messages[3].Role != "user" || messages[3].Content != "刚才第二条什么意思" {
-		t.Fatalf("expected current user message after output constraint, got %#v", messages[3])
+	if messages[2].Role != "user" || messages[2].Content != "刚才第二条什么意思" {
+		t.Fatalf("expected current user message after common prompt, got %#v", messages[2])
 	}
 }
 
@@ -899,9 +899,9 @@ func TestBuildPromptMessagesIncludesHistoricalRoundTimeWhenAvailable(t *testing.
 	if usedCount != 1 {
 		t.Fatalf("expected 1 historical round, got %d", usedCount)
 	}
-	historicalUser, ok := messages[2].Content.(string)
+	historicalUser, ok := messages[1].Content.(string)
 	if !ok {
-		t.Fatalf("expected historical user message to be text, got %#v", messages[2].Content)
+		t.Fatalf("expected historical user message to be text, got %#v", messages[1].Content)
 	}
 	if !strings.Contains(historicalUser, "后台背景时间：2026-04-28 21:34:10（Asia/Shanghai，仅供参考）") {
 		t.Fatalf("expected historical time prefix, got %q", historicalUser)
