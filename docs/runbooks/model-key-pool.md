@@ -138,7 +138,7 @@ GPT_RELAY_KEY_MAX_ATTEMPTS=5
 - `GPT_RELAY_*` 是独立的新候选链路，不等于旧 `CHAT_PRIMARY_*` 复活。
 - 默认 `GPT_RELAY_ENABLED=false` 或缺关键配置时完全不触达 GPT，中转站故障不会影响当前 Bailian / Qwen 主链。
 - 真实 Key、真实 URL、账号分组和后台订单信息只允许放在服务器私密环境或本机私密配置，不进仓库、不进日志、不在聊天中复述。后台“模型链路”页可以显示非敏感 provider label、provider 槽位和 Key 槽位，用于知道本次走哪条链路；label 应保持中性可排查，不写完整供应商后台账号、订单、真实 URL 或任何密钥片段。
-- GPT relay 的生产思考档位为 `reasoning.effort=medium`；`high` 曾短暂验证，但图片问诊首字明显变慢、容易触发当前首字预算回落，暂不作为生产口径。联网仍固定 `web_search.search_context_size=low`、`tool_choice=auto` 和“用户明确要求查 / 实时信息才联网，必须只搜索一次、快速回答”的联网规则，当前代码不会把搜索上下文改成 `large`，避免误开高成本路径。
+- GPT relay 的生产思考档位为 `reasoning.effort=medium`；`high` 曾短暂验证，但图片问诊首字明显变慢、容易触发当前首字预算回落，暂不作为生产口径。联网仍固定 `web_search.search_context_size=low`、`tool_choice=auto` 和“默认不联网；只有强时效、强客观核对、用户明确要求联网 / 搜索 / 查询最新信息时才联网；如需联网只搜索一次”的规则，当前代码不会把搜索上下文改成 `large`，避免误开高成本路径。
 - 多 Key 会轮询；默认同一平台内单轮最多尝试 5 把，某把开流前失败会立刻换同 provider 内下一把，不做 GPT relay Key 冷却。GPT relay 外层不再套通用开流重试，避免一轮 Key 失败后又整体重来。
 - 当前代码和生产配置中的 GPT relay 首字预算为 60 秒：从后端收到用户请求开始算，包含 provider 起手选择、同平台 key 切换、连接、TLS、响应头等待和模型首个可见正文前的等待。60 秒内没有上游可见正文首字，就回退 Bailian / Qwen，不在同一轮再试另一家 GPT provider。
 - GPT relay 不再使用单独的 `GPT_RELAY_DIAL_TIMEOUT_SECONDS`、`GPT_RELAY_TLS_HANDSHAKE_TIMEOUT_SECONDS`、`GPT_RELAY_RESPONSE_HEADER_TIMEOUT_SECONDS`、`GPT_RELAY_FIRST_VISIBLE_RETRY_TIMEOUT_SECONDS`、`GPT_RELAY_FIRST_VISIBLE_RETRY_ATTEMPTS`、`GPT_RELAY_KEY_COOLDOWN_SECONDS` 或 `GPT_RELAY_CIRCUIT_*` 作为切换条件；若生产环境里残留这些变量，应清理，readiness 会按错误配置处理。

@@ -103,7 +103,7 @@ func TestGPTRelayOpenStreamUsesMinimalResponsesPayload(t *testing.T) {
 		t.Fatalf("tool_choice mismatch: %#v", got)
 	}
 	instructions := asString(captured["instructions"])
-	if !strings.Contains(instructions, "必须只搜索一次") || !strings.Contains(instructions, "拿到够用信息后立刻快速回答") {
+	if !strings.Contains(instructions, "必须只搜索一次") || !strings.Contains(instructions, "拿到够用信息后立刻回答") {
 		t.Fatalf("instructions missing one-shot search rule: %q", instructions)
 	}
 	input, ok := captured["input"].([]any)
@@ -939,9 +939,13 @@ func TestGPTRelayHealthStatusDisabledAndMissingConfig(t *testing.T) {
 func TestGPTRelayNetworkingInstructionIncludesExplicitSearchRequest(t *testing.T) {
 	instruction := gptRelayNetworkingInstruction()
 	for _, want := range []string{
-		"用户明确要求查一下、搜一下、联网查、看最新信息时，要联网。",
+		"默认不联网，先基于本轮输入、图片、上下文和已有农业知识直接回答",
+		"只有在强时效、强客观核对、用户明确要求联网 / 搜索 / 查询最新信息时，才联网。",
+		"不要因为问题复杂、带图或风险高就自动联网",
+		"图片问诊、病虫害 / 药害判断、用药思路、种植管理建议，默认不联网。",
 		"如需联网，必须只搜索一次。",
-		"拿到够用信息后立刻快速回答。",
+		"拿到够用信息后立刻回答。",
+		"不要展示搜索过程。",
 	} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("networking instruction missing %q in:\n%s", want, instruction)
