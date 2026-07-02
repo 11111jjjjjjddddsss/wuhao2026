@@ -939,16 +939,24 @@ func TestGPTRelayHealthStatusDisabledAndMissingConfig(t *testing.T) {
 func TestGPTRelayNetworkingInstructionIncludesExplicitSearchRequest(t *testing.T) {
 	instruction := gptRelayNetworkingInstruction()
 	for _, want := range []string{
-		"默认不联网，先基于本轮输入、图片、上下文和已有农业知识直接回答",
+		"默认不联网。",
 		"只有在强时效、强客观核对、用户明确要求联网 / 搜索 / 查询最新信息时，才联网。",
-		"不要因为问题复杂、带图或风险高就自动联网",
-		"图片问诊、病虫害 / 药害判断、用药思路、种植管理建议，默认不联网。",
 		"如需联网，必须只搜索一次。",
 		"拿到够用信息后立刻回答。",
-		"不要展示搜索过程。",
+		"不要解释搜索过程。",
 	} {
 		if !strings.Contains(instruction, want) {
 			t.Fatalf("networking instruction missing %q in:\n%s", want, instruction)
+		}
+	}
+	for _, removed := range []string{
+		"先基于本轮输入",
+		"不要因为问题复杂",
+		"图片问诊、病虫害",
+		"不要展示搜索过程",
+	} {
+		if strings.Contains(instruction, removed) {
+			t.Fatalf("networking instruction should not contain %q in:\n%s", removed, instruction)
 		}
 	}
 }

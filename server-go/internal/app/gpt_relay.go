@@ -29,7 +29,7 @@ const (
 	defaultGPTRelayKeyMaxAttempts            = 5
 	defaultGPTRelayMaxConfiguredProviderSlot = 10
 	defaultGPTRelayMaxConfiguredKeySlot      = 50
-	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻回答。\n不要解释搜索过程。\n不要展示搜索过程。"
+	defaultGPTRelayMaxSearchCallsInstruction = "如需联网，必须只搜索一次。\n拿到够用信息后立刻回答。\n不要解释搜索过程。"
 )
 
 type GPTRelayClient struct {
@@ -966,5 +966,5 @@ func gptRelayImageURLValue(item map[string]any) string {
 }
 
 func gptRelayNetworkingInstruction() string {
-	return "【GPT专用规则】\n默认不联网，先基于本轮输入、图片、上下文和已有农业知识直接回答；只有在强时效、强客观核对、用户明确要求联网 / 搜索 / 查询最新信息时，才联网。\n\n不要因为问题复杂、带图或风险高就自动联网；图片问诊、病虫害 / 药害判断、用药思路、种植管理建议，默认不联网。\n\n" + defaultGPTRelayMaxSearchCallsInstruction
+	return "【GPT专用规则】\n默认不联网。\n只有在强时效、强客观核对、用户明确要求联网 / 搜索 / 查询最新信息时，才联网。\n\n" + defaultGPTRelayMaxSearchCallsInstruction
 }
